@@ -19,7 +19,9 @@ export default defineConfig(async (merge) => {
       // 默认请求本地后端；覆盖：TARO_APP_API_BASE=https://your-api.com/api/v1 pnpm build:weapp
       'process.env.TARO_APP_API_BASE': (process.env.TARO_APP_API_BASE && process.env.TARO_APP_API_BASE.trim())
         ? JSON.stringify(process.env.TARO_APP_API_BASE.trim())
-        : JSON.stringify('http://localhost:8001/api/v1'),
+        : (process.env.NODE_ENV !== 'production'
+          ? JSON.stringify('http://127.0.0.1:8001/api/v1')
+          : JSON.stringify('')),
     },
     copy: {
       patterns: [

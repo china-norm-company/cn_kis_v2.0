@@ -116,17 +116,17 @@ function normalizeRelayBase(raw?: string): string | undefined {
   return undefined
 }
 
-// 由 config defineConstants 注入；未配置时默认 localhost，所有对后端的请求走本地
-const DEFAULT_LOCALHOST_BASE = 'http://192.168.71.113:8001/api/v1'
-const rawEnvBase: string | undefined = process.env.TARO_APP_API_BASE as string | undefined
-const compileEnvBaseUrl = rawEnvBase ? normalizeRelayBase(rawEnvBase) : undefined
+// 后端请求地址：优先读取 TARO_APP_API_BASE 环境变量，不存在则使用 localhost
+const LOCALHOST_BASE = 'http://localhost:8001/api/v1'
+const envBase = normalizeRelayBase(process.env.TARO_APP_API_BASE)
+const API_BASE = (envBase || LOCALHOST_BASE).replace(/\/+$/, '')
 
-const runtimeDefaultBase = (typeof wx !== 'undefined' && !!wx) ? DEFAULT_LOCALHOST_BASE : WEB_RELAY_BASE
-export const API_BASE_URL = (compileEnvBaseUrl || runtimeDefaultBase).replace(/\/+$/, '')
+export const API_BASE_URL = API_BASE
+let currentApiBaseUrl = API_BASE
+
 const CLOUD_RELAY_BACKUP_BASE = (CLOUD_RELAY_BACKUP_BASE_RAW || '').trim().replace(/\/+$/, '')
 const REQUEST_TIMEOUT_MS = 8000
 const RETRY_TIMEOUT_MS = 12000
-let currentApiBaseUrl = API_BASE_URL
 
 function isWebRuntime(): boolean {
   // 小程序运行时 Taro 会注入浏览器兼容对象，不能仅靠 window/document 判断。
@@ -143,9 +143,9 @@ function isRelativeApiBase(base: string): boolean {
   return /^\/[a-z0-9/_-]*$/i.test(base)
 }
 
-/** 当前配置的基址是否为本地（localhost/127.0.0.1/192.168.x.x），是则不走云托管，直接 wx.request 到本地 */
+/** 当前配置的基址是否为本地（localhost/127.0.0.1），是则不走云托管，直接 wx.request 到本地 */
 function isLocalhostBase(base: string): boolean {
-  return /^https?:\/\/(127\.0\.0\.1|localhost|192\.168\.\d+\.\d+)(:\d+)?(\/.*)?$/i.test((base || '').trim())
+  return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/.*)?$/i.test((base || '').trim())
 }
 
 export function getCurrentApiBaseUrl(): string {
