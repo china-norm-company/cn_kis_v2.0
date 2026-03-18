@@ -11,6 +11,7 @@ from datetime import date, timedelta
 from django.utils import timezone
 from django.db.models import Q
 from apps.identity.decorators import require_permission, _get_account_from_request
+from apps.identity.phone_session import get_phone_from_request
 from .services.identity_provider_service import (
     get_identity_provider_payload,
     get_identity_provider_config_state,
@@ -21,12 +22,22 @@ router = Router()
 
 
 def _get_subject_from_request(request):
-    """从请求中获取当前受试者（通过 Account -> Subject 关联）"""
+    """从请求中获取当前受试者（优先 JWT phone，兼容 account）"""
     from .models import Subject
+
+    # 方法1: 尝试从 phone_session JWT 提取 phone
+    phone = get_phone_from_request(request)
+    if phone:
+        subject = Subject.objects.filter(phone=phone, is_deleted=False).first()
+        if subject:
+            return subject
+
+    # 方法2: 兼容旧逻辑（account-based token）
     account = _get_account_from_request(request)
-    if not account:
-        return None
-    return Subject.objects.filter(account_id=account.id, is_deleted=False).first()
+    if account:
+        return Subject.objects.filter(account_id=account.id, is_deleted=False).first()
+
+    return None
 
 
 # ============================================================================

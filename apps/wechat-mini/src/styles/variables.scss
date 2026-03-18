@@ -1,0 +1,23 @@
+/* 移动端规范：rpx 优先、安全区、触控热区 */
+$primary: #2B6CB0;
+$primary-light: #EBF4FF;
+$text-primary: #1a202c;
+$text-secondary: #718096;
+$text-muted: #a0aec0;
+$bg-page: #f7fafc;
+$bg-card: #ffffff;
+$border-color: #e2e8f0;
+
+/* 间距（rpx） */
+$spacing-xs: 8rpx;
+$spacing-sm: 16rpx;
+$spacing-md: 24rpx;
+$spacing-lg: 32rpx;
+$spacing-xl: 48rpx;
+
+/* 触控热区：最小 88rpx（约 44pt） */
+$touch-min: 88rpx;
+
+/* 底部安全区：与页面底部留白 */
+$safe-area-bottom: constant(safe-area-inset-bottom);
+$safe-area-bottom-env: env(safe-area-inset-bottom);

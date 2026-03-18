@@ -86,3 +86,34 @@ temp/
 playwright-report/
 test-results/
 coverage/
+
+# Cross-machine sync directory — local IDE data, secrets, never commit
+.cursor-sync/
+
+backend/db.sqlite3
+
+# Django media uploads (user-uploaded files)
+backend/media/
+
+# 方案检查台：项目数据与上传
+instance/
+uploads/
+
+# 方案检查台：真实方案 PDF（含客户数据，不提交）
+005 protocol/
+047 protocol/
+076 protocol/
+104 protocol/
+中文方案/
+复硕标准方案/
+复硕词典.xlsx
+
+# 方案检查台：测试脚本（本地调试用，不纳入版本库）
+test_all.py
+test_quick.py
+
+# 编辑器与 IDE 快照
+.snapshots/
+
+# turbo
+.turbo

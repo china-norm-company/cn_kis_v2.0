@@ -1,0 +1,36 @@
+@import '../../styles/variables.scss';
+
+.faq-page {
+  padding: 24rpx;
+  padding-bottom: calc(56rpx + constant(safe-area-inset-bottom));
+  padding-bottom: calc(56rpx + env(safe-area-inset-bottom));
+}
+
+.faq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.faq-card {
+  padding: 24rpx;
+  background: $bg-card;
+  border-radius: 20rpx;
+  border: 2rpx solid $border-color;
+  box-shadow: 0 8rpx 24rpx rgba(43, 108, 176, 0.06);
+}
+
+.faq-card__q {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 700;
+  color: $text-primary;
+  margin-bottom: 12rpx;
+}
+
+.faq-card__a {
+  display: block;
+  font-size: 26rpx;
+  color: $text-secondary;
+  line-height: 1.55;
+}

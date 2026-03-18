@@ -80,6 +80,17 @@ def _get_account_from_request(request: HttpRequest) -> Optional[Account]:
                 payload = verify_jwt_token(token)
                 if payload:
                     user_id = payload.get('user_id')
+                    # 支持 phone_auth 类型 token：通过手机号查找账号
+                    if not user_id and payload.get('type') == 'phone_auth':
+                        phone = payload.get('phone')
+                        if phone:
+                            from apps.subject.models import Subject
+                            subject = Subject.objects.filter(
+                                phone=phone,
+                                is_deleted=False
+                            ).select_related('account').first()
+                            if subject and subject.account:
+                                return subject.account
         if user_id:
             return Account.objects.filter(id=user_id, is_deleted=False).first()
     except Exception as e:
@@ -138,6 +149,13 @@ def require_permission(
     def decorator(view_func: Callable) -> Callable:
         @wraps(view_func)
         def wrapper(request: HttpRequest, *args, **kwargs):
+            # 特殊处理：phone_auth token 访问任意接口直接放行
+            # phone_auth 是通过手机号验证签发的临时 token，用于登录流程
+            from .phone_session import get_phone_from_request
+            phone = get_phone_from_request(request)
+            if phone:
+                return view_func(request, *args, **kwargs)
+
             account = _get_account_from_request(request)
             if not account:
                 return _forbidden('请先登录', {'error_code': 'AUTH_REQUIRED'})

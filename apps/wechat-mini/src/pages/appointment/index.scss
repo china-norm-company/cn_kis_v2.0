@@ -1,0 +1,198 @@
+@import '../../styles/variables.scss';
+
+.appointment-page {
+  min-height: 100vh;
+  background: $bg-page;
+  padding: $spacing-md $spacing-lg;
+  padding-bottom: calc(#{$spacing-xl} + constant(safe-area-inset-bottom));
+  padding-bottom: calc(#{$spacing-xl} + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: $spacing-md;
+}
+
+.page-title {
+  font-size: 72rpx;
+  font-weight: bold;
+  color: $text-primary;
+}
+
+.create-btn {
+  min-height: $touch-min;
+  padding: 24rpx 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: $primary;
+  border-radius: 24rpx;
+}
+
+.create-btn-text {
+  color: #fff;
+  font-size: 52rpx;
+  font-weight: 500;
+}
+
+.appointment-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 240rpx 0;
+}
+
+.appointment-loading__text {
+  color: $text-secondary;
+  font-size: 56rpx;
+}
+
+.empty-state {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 400rpx;
+}
+
+.empty-text {
+  color: $text-muted;
+  font-size: 56rpx;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.list {
+  padding-bottom: $spacing-md;
+}
+
+.list-item {
+  background: $bg-card;
+  border-radius: 32rpx;
+  padding: $spacing-md;
+  margin-bottom: $spacing-sm;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.04);
+}
+
+.item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12rpx;
+}
+
+.item-date {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.item-status {
+  font-size: 24rpx;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+}
+
+.status-pending { background: #FEF3C7; color: #92400E; }
+.status-confirmed { background: #D1FAE5; color: #065F46; }
+.status-cancelled { background: #F3F4F6; color: #6B7280; }
+.status-completed { background: #DBEAFE; color: #1E40AF; }
+
+.item-time, .item-purpose {
+  font-size: 26rpx;
+  color: #666;
+  margin-bottom: 8rpx;
+}
+
+.item-actions {
+  margin-top: 12rpx;
+  padding-top: 12rpx;
+  border-top: 1rpx solid #f0f0f0;
+}
+
+.cancel-link {
+  font-size: 26rpx;
+  color: #e53e3e;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+}
+
+.modal-content {
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 32rpx;
+  width: 85%;
+  max-width: 600rpx;
+}
+
+.modal-title {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 24rpx;
+}
+
+.form-group {
+  margin-bottom: 20rpx;
+}
+
+.form-label {
+  font-size: 26rpx;
+  color: #666;
+  margin-bottom: 8rpx;
+  display: block;
+}
+
+.picker-value {
+  padding: 16rpx;
+  background: #f5f5f5;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  color: #333;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.btn-cancel, .btn-confirm {
+  flex: 1;
+  min-height: $touch-min;
+  padding: 24rpx;
+  border-radius: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 56rpx;
+  box-sizing: border-box;
+}
+
+.btn-cancel {
+  background: #f5f5f5;
+  color: #666;
+}
+
+.btn-confirm {
+  background: #2B6CB0;
+  color: #fff;
+}
