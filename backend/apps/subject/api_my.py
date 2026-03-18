@@ -399,11 +399,10 @@ def get_binding_status(request):
     """判断当前微信账号是否已绑定 Subject（手机号关联）。
     is_bound=false 时前端应引导用户进入手机号绑定页。
     """
-    account = _get_account_from_request(request)
-    if not account:
-        return 401, {'code': 401, 'msg': '未授权'}
-    from .models import Subject
-    subject = Subject.objects.filter(account_id=account.id, is_deleted=False).first()
+    subject = _get_subject_from_request(request)
+    if not subject:
+        return 404, {'code': 404, 'msg': '未找到受试者信息'}
+
     return {
         'code': 200,
         'msg': 'OK',

@@ -972,6 +972,33 @@ def wechat_login(request, data: WechatLoginIn):
             'data': {'error_code': 'WECHAT_LOGIN_INTERNAL_ERROR', 'traceback': tb},
         }
 
+    # Step 6: Create or update Subject record in t_subject (no account link)
+    from apps.subject.models import Subject, AuthLevel, SubjectSourceChannel, SubjectStatus
+    from apps.subject.services.subject_service import generate_subject_no
+
+    try:
+        subject = Subject.objects.filter(phone=phone_number, is_deleted=False).first()
+        if not subject:
+            subject = Subject.objects.create(
+                subject_no=generate_subject_no(),
+                name='微信用户',
+                phone=phone_number,
+                source_channel=SubjectSourceChannel.WECHAT,
+                auth_level=AuthLevel.PHONE_VERIFIED,
+                status=SubjectStatus.SCREENING,
+            )
+            auth_logger.info(f"wechat_subject_created trace_id={trace_id or '-'} subject_no={subject.subject_no}")
+        else:
+            # Update auth_level if needed
+            if subject.auth_level != AuthLevel.PHONE_VERIFIED:
+                subject.auth_level = AuthLevel.PHONE_VERIFIED
+                subject.save(update_fields=['auth_level', 'update_time'])
+            auth_logger.info(f"wechat_subject_exists trace_id={trace_id or '-'} subject_no={subject.subject_no}")
+    except Exception as e:
+        auth_logger.exception('wechat_login subject create/update failed: %s', e)
+        # Don't fail the login, just log the error
+        subject = None
+
     # Create phone-only session (no database persistence)
     token = create_phone_session(
         phone_number,
@@ -985,11 +1012,18 @@ def wechat_login(request, data: WechatLoginIn):
         'wechat_phone_login_complete',
         trace_id=trace_id or '-',
         phone=f'{phone_number[:3]}****{phone_number[-4:]}',
+        subject_no=subject.subject_no if subject else None,
         elapsed_ms=elapsed_ms,
     )
 
     return {
         'access_token': token,
+        'subject': {
+            'id': subject.id if subject else None,
+            'subject_no': subject.subject_no if subject else None,
+            'name': subject.name if subject else None,
+            'phone': phone_number,
+        },
     }
 
 
