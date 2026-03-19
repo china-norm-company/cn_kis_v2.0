@@ -467,7 +467,15 @@ export async function refreshRolesFromProfile(): Promise<void> {
 /**
  * 退出登录
  */
-export function logout(): void {
+export async function logout(): Promise<void> {
+  const token = Taro.getStorageSync('token')
+  if (token) {
+    try {
+      await post('/auth/wechat/logout', {}, { auth: true })
+    } catch {
+      // 静默失败，继续清除本地
+    }
+  }
   Taro.removeStorageSync('needsBind')
   Taro.removeStorageSync('token')
   Taro.removeStorageSync('userInfo')

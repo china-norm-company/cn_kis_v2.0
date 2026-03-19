@@ -1027,17 +1027,19 @@ def wechat_login(request, data: WechatLoginIn):
     }
 
 
-@router.post('/wechat/logout', summary='微信登出（无状态）')
+@router.post('/wechat/logout', summary='微信登出')
 def wechat_logout(request):
     """
-    微信登出（无状态实现）
-
-    由于使用无状态 JWT，服务器端不保存会话信息。
-    Token 会自然过期，客户端只需清除本地存储即可。
+    微信登出：将 Token 加入 Redis 黑名单实现失效
     """
+    from .phone_session import revoke_phone_session
+
     _auth_trace(request, 'wechat_logout')
-    # 无状态认证，不执行任何服务器端操作
-    # 如需强制失效 Token，需要实现黑名单机制（Redis 等）
+    auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+    if auth_header.startswith('Bearer '):
+        token = auth_header[7:]
+        revoke_phone_session(token)
+        _auth_trace(request, 'wechat_logout_revoked')
     return {'code': 200, 'msg': 'OK'}
 
 

@@ -16,12 +16,24 @@ from django.core.cache import cache
 BLACKLIST_PREFIX = 'blacklist:phone_token:'
 
 
+def _make_jti(phone_number: str) -> str:
+    """生成包含手机号后四位的 jti"""
+    phone_tail = phone_number[-4:] if len(phone_number) >= 4 else phone_number
+    return f"{phone_tail}:{uuid.uuid4().hex[:8]}"
+
+
+def _blacklist_key(token_hash: str, phone: str) -> str:
+    """生成包含手机号后四位的黑名单 key"""
+    phone_tail = phone[-4:] if len(phone) >= 4 else phone
+    return f'{BLACKLIST_PREFIX}{phone_tail}:{token_hash}'
+
+
 def create_phone_session(
     phone_number: str, device_info: str = '', ip_address: str = ''
 ) -> str:
     """创建仅包含手机号的 JWT Token"""
     now = int(time.time())
-    jti = uuid.uuid4().hex
+    jti = _make_jti(phone_number)
 
     payload = {
         'phone': phone_number,
@@ -35,16 +47,19 @@ def create_phone_session(
 
 def verify_phone_token(token: str) -> str | None:
     """验证 JWT Token 并提取手机号，同时检查黑名单"""
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-
-    if cache.get(f'{BLACKLIST_PREFIX}{token_hash}'):
-        return None
-
     try:
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=['HS256'])
         if payload.get('type') != 'phone_auth':
             return None
-        return payload.get('phone')
+        phone = payload.get('phone')
+        if not phone:
+            return None
+        
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        if cache.get(_blacklist_key(token_hash, phone)):
+            return None
+        
+        return phone
     except jwt.ExpiredSignatureError:
         return None
     except jwt.InvalidTokenError:
@@ -61,12 +76,13 @@ def revoke_phone_session(token: str) -> bool:
     if payload.get('type') != 'phone_auth':
         return False
 
+    phone = payload.get('phone')
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     exp = payload.get('exp', 0)
     ttl = max(int(exp - time.time()), 0)
 
-    if ttl > 0:
-        cache.set(f'{BLACKLIST_PREFIX}{token_hash}', '1', ttl)
+    if ttl > 0 and phone:
+        cache.set(_blacklist_key(token_hash, phone), '1', ttl)
     return True
 
 
