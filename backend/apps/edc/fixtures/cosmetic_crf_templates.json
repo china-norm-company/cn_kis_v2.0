@@ -1,0 +1,294 @@
+[
+  {
+    "name": "皮肤水分测试（Corneometer）",
+    "version": "1.0",
+    "description": "使用 Corneometer CM 825 测量皮肤角质层水分含量",
+    "schema": {
+      "title": "皮肤水分测试",
+      "description": "Corneometer CM 825 水分含量测试记录",
+      "questions": [
+        {"id": "test_site", "type": "select", "title": "测试部位", "required": true, "options": [
+          {"label": "前额", "value": "forehead"}, {"label": "左脸颊", "value": "left_cheek"},
+          {"label": "右脸颊", "value": "right_cheek"}, {"label": "下巴", "value": "chin"},
+          {"label": "前臂内侧", "value": "inner_forearm"}, {"label": "手背", "value": "back_of_hand"}
+        ]},
+        {"id": "moisture_value", "type": "number", "title": "水分值", "required": true, "unit": "AU", "min": 0, "max": 130, "repeat": 3, "auto_average": true},
+        {"id": "env_temperature", "type": "number", "title": "环境温度", "required": true, "unit": "°C", "min": 15, "max": 30, "step": 0.1},
+        {"id": "env_humidity", "type": "number", "title": "环境湿度", "required": true, "unit": "%RH", "min": 30, "max": 70, "step": 0.1},
+        {"id": "acclimation_time", "type": "number", "title": "受试者适应时间", "required": true, "unit": "分钟", "min": 15, "max": 60},
+        {"id": "notes", "type": "textarea", "title": "备注", "required": false}
+      ]
+    }
+  },
+  {
+    "name": "经皮失水测试（Tewameter）",
+    "version": "1.0",
+    "description": "使用 Tewameter TM 300 测量经皮水分散失量（TEWL）",
+    "schema": {
+      "title": "经皮失水测试",
+      "description": "Tewameter TM 300 TEWL 测量记录",
+      "questions": [
+        {"id": "test_site", "type": "select", "title": "测试部位", "required": true, "options": [
+          {"label": "前额", "value": "forehead"}, {"label": "左脸颊", "value": "left_cheek"},
+          {"label": "右脸颊", "value": "right_cheek"}, {"label": "前臂内侧", "value": "inner_forearm"}
+        ]},
+        {"id": "tewl_value", "type": "number", "title": "TEWL 值", "required": true, "unit": "g/h/m²", "min": 0, "max": 100, "repeat": 3, "auto_average": true, "step": 0.1},
+        {"id": "env_temperature", "type": "number", "title": "环境温度", "required": true, "unit": "°C", "min": 15, "max": 30, "step": 0.1},
+        {"id": "env_humidity", "type": "number", "title": "环境湿度", "required": true, "unit": "%RH", "min": 30, "max": 70, "step": 0.1},
+        {"id": "notes", "type": "textarea", "title": "备注", "required": false}
+      ]
+    }
+  },
+  {
+    "name": "皮肤弹性测试（Cutometer）",
+    "version": "1.0",
+    "description": "使用 Cutometer Dual MPA 580 测量皮肤弹性参数",
+    "schema": {
+      "title": "皮肤弹性测试",
+      "description": "Cutometer Dual MPA 580 弹性参数记录",
+      "questions": [
+        {"id": "test_site", "type": "select", "title": "测试部位", "required": true, "options": [
+          {"label": "前额", "value": "forehead"}, {"label": "眼角", "value": "eye_corner"},
+          {"label": "脸颊", "value": "cheek"}, {"label": "前臂内侧", "value": "inner_forearm"}
+        ]},
+        {"id": "r0", "type": "number", "title": "R0（Uf - 最终变形）", "required": true, "min": 0, "max": 1, "step": 0.001},
+        {"id": "r1", "type": "number", "title": "R1（Uf - Ua）", "required": true, "min": 0, "max": 1, "step": 0.001},
+        {"id": "r2", "type": "number", "title": "R2（Ua/Uf - 总体弹性）", "required": true, "min": 0, "max": 1, "step": 0.001},
+        {"id": "r5", "type": "number", "title": "R5（Ur/Ue - 净弹性）", "required": true, "min": 0, "max": 1, "step": 0.001},
+        {"id": "r7", "type": "number", "title": "R7（Ur/Uf - 生物弹性）", "required": true, "min": 0, "max": 1, "step": 0.001},
+        {"id": "measurement_count", "type": "number", "title": "测量次数", "required": true, "min": 1, "max": 10},
+        {"id": "suction_time", "type": "number", "title": "吸引时间", "required": true, "unit": "秒", "min": 1, "max": 10},
+        {"id": "notes", "type": "textarea", "title": "备注", "required": false}
+      ]
+    }
+  },
+  {
+    "name": "面部图像拍摄（VISIA-CR）",
+    "version": "1.0",
+    "description": "使用 VISIA-CR 系统进行标准化面部图像拍摄",
+    "schema": {
+      "title": "VISIA-CR 面部图像记录",
+      "description": "标准化面部图像拍摄参数记录",
+      "questions": [
+        {"id": "capture_angle", "type": "checkbox", "title": "拍摄角度", "required": true, "options": [
+          {"label": "正面 (0°)", "value": "front"},
+          {"label": "左侧 45°", "value": "left_45"},
+          {"label": "右侧 45°", "value": "right_45"},
+          {"label": "左侧 90°", "value": "left_90"},
+          {"label": "右侧 90°", "value": "right_90"}
+        ]},
+        {"id": "image_id_front", "type": "text", "title": "正面图片编号", "required": true},
+        {"id": "image_id_left", "type": "text", "title": "左45°图片编号", "required": true},
+        {"id": "image_id_right", "type": "text", "title": "右45°图片编号", "required": true},
+        {"id": "exposure_mode", "type": "select", "title": "曝光模式", "required": true, "options": [
+          {"label": "标准光", "value": "standard"}, {"label": "交叉偏振光", "value": "cross_polarized"},
+          {"label": "平行偏振光", "value": "parallel_polarized"}, {"label": "UV 光", "value": "uv"}
+        ]},
+        {"id": "analysis_modules", "type": "checkbox", "title": "分析模块", "required": false, "options": [
+          {"label": "斑点", "value": "spots"}, {"label": "皱纹", "value": "wrinkles"},
+          {"label": "纹理", "value": "texture"}, {"label": "毛孔", "value": "pores"},
+          {"label": "UV 斑", "value": "uv_spots"}, {"label": "棕色斑", "value": "brown_spots"},
+          {"label": "红色区域", "value": "red_areas"}, {"label": "紫质", "value": "porphyrins"}
+        ]},
+        {"id": "notes", "type": "textarea", "title": "备注", "required": false}
+      ]
+    }
+  },
+  {
+    "name": "皮肤色度测试（色差仪）",
+    "version": "1.0",
+    "description": "使用色差仪（CM-700d/CR-400）测量皮肤色度 L*a*b* 值",
+    "schema": {
+      "title": "皮肤色度测试",
+      "description": "L*a*b* 色度值记录",
+      "questions": [
+        {"id": "test_site", "type": "select", "title": "测试部位", "required": true, "options": [
+          {"label": "前额", "value": "forehead"}, {"label": "脸颊", "value": "cheek"},
+          {"label": "前臂内侧", "value": "inner_forearm"}, {"label": "手背", "value": "back_of_hand"}
+        ]},
+        {"id": "light_source", "type": "select", "title": "标准光源", "required": true, "options": [
+          {"label": "D65", "value": "D65"}, {"label": "A", "value": "A"}, {"label": "C", "value": "C"}
+        ]},
+        {"id": "l_value", "type": "number", "title": "L* 值（明度）", "required": true, "min": 0, "max": 100, "step": 0.01, "repeat": 3, "auto_average": true},
+        {"id": "a_value", "type": "number", "title": "a* 值（红绿）", "required": true, "min": -60, "max": 60, "step": 0.01, "repeat": 3, "auto_average": true},
+        {"id": "b_value", "type": "number", "title": "b* 值（黄蓝）", "required": true, "min": -60, "max": 60, "step": 0.01, "repeat": 3, "auto_average": true},
+        {"id": "notes", "type": "textarea", "title": "备注", "required": false}
+      ]
+    }
+  },
+  {
+    "name": "人体斑贴试验记录",
+    "version": "1.0",
+    "description": "人体斑贴试验（Patch Test）标准记录表",
+    "schema": {
+      "title": "人体斑贴试验",
+      "description": "RIPT/HRIPT 斑贴试验记录",
+      "questions": [
+        {"id": "patch_site", "type": "select", "title": "贴敷位置", "required": true, "options": [
+          {"label": "上背部左侧", "value": "upper_back_left"}, {"label": "上背部右侧", "value": "upper_back_right"},
+          {"label": "前臂内侧", "value": "inner_forearm"}
+        ]},
+        {"id": "application_time", "type": "text", "title": "贴敷起始时间", "required": true, "placeholder": "yyyy-MM-dd HH:mm"},
+        {"id": "removal_time", "type": "text", "title": "揭除时间", "required": true, "placeholder": "yyyy-MM-dd HH:mm"},
+        {"id": "reading_48h", "type": "select", "title": "48h 读数评分", "required": true, "options": [
+          {"label": "0 - 无反应", "value": "0"}, {"label": "± - 可疑反应", "value": "0.5"},
+          {"label": "1 - 轻度红斑", "value": "1"}, {"label": "2 - 红斑+水肿", "value": "2"},
+          {"label": "3 - 红斑+水肿+丘疹", "value": "3"}, {"label": "4 - 红斑+水肿+水疱", "value": "4"}
+        ]},
+        {"id": "reading_72h", "type": "select", "title": "72h 读数评分", "required": true, "options": [
+          {"label": "0 - 无反应", "value": "0"}, {"label": "± - 可疑反应", "value": "0.5"},
+          {"label": "1 - 轻度红斑", "value": "1"}, {"label": "2 - 红斑+水肿", "value": "2"},
+          {"label": "3 - 红斑+水肿+丘疹", "value": "3"}, {"label": "4 - 红斑+水肿+水疱", "value": "4"}
+        ]},
+        {"id": "reading_96h", "type": "select", "title": "96h 读数评分", "required": false, "options": [
+          {"label": "0 - 无反应", "value": "0"}, {"label": "± - 可疑反应", "value": "0.5"},
+          {"label": "1 - 轻度红斑", "value": "1"}, {"label": "2 - 红斑+水肿", "value": "2"},
+          {"label": "3 - 红斑+水肿+丘疹", "value": "3"}, {"label": "4 - 红斑+水肿+水疱", "value": "4"}
+        ]},
+        {"id": "notes", "type": "textarea", "title": "备注", "required": false}
+      ]
+    }
+  },
+  {
+    "name": "防晒指数 SPF 测试",
+    "version": "1.0",
+    "description": "体内法 SPF 测试记录（ISO 24444）",
+    "schema": {
+      "title": "SPF 测试记录",
+      "description": "防晒指数 SPF 测试（ISO 24444 标准）",
+      "questions": [
+        {"id": "test_site", "type": "select", "title": "照射部位", "required": true, "options": [
+          {"label": "背部左侧", "value": "back_left"}, {"label": "背部右侧", "value": "back_right"}
+        ]},
+        {"id": "med_unprotected", "type": "number", "title": "未防护 MED", "required": true, "unit": "J/m²", "min": 0, "step": 0.1},
+        {"id": "med_protected", "type": "number", "title": "防护后 MED", "required": true, "unit": "J/m²", "min": 0, "step": 0.1},
+        {"id": "irradiation_dose", "type": "number", "title": "照射剂量", "required": true, "unit": "J/m²", "min": 0, "step": 0.01},
+        {"id": "erythema_score", "type": "scale", "title": "红斑评分", "required": true, "min": 0, "max": 4, "step": 0.5},
+        {"id": "spf_calculated", "type": "number", "title": "计算 SPF 值", "required": true, "min": 0, "step": 0.1},
+        {"id": "application_amount", "type": "number", "title": "涂抹量", "required": true, "unit": "mg/cm²", "min": 0, "max": 10, "step": 0.1},
+        {"id": "notes", "type": "textarea", "title": "备注", "required": false}
+      ]
+    }
+  },
+  {
+    "name": "皮肤 pH 值测试",
+    "version": "1.0",
+    "description": "使用 Skin-pH-Meter PH 905 测量皮肤表面 pH 值",
+    "schema": {
+      "title": "皮肤 pH 值测试",
+      "description": "Skin-pH-Meter PH 905 pH 值测量",
+      "questions": [
+        {"id": "test_site", "type": "select", "title": "测试部位", "required": true, "options": [
+          {"label": "前额", "value": "forehead"}, {"label": "脸颊", "value": "cheek"},
+          {"label": "前臂内侧", "value": "inner_forearm"}
+        ]},
+        {"id": "ph_value", "type": "number", "title": "pH 值", "required": true, "min": 3.0, "max": 9.0, "step": 0.01, "repeat": 3, "auto_average": true},
+        {"id": "env_temperature", "type": "number", "title": "环境温度", "required": true, "unit": "°C", "min": 15, "max": 30, "step": 0.1},
+        {"id": "notes", "type": "textarea", "title": "备注", "required": false}
+      ]
+    }
+  },
+  {
+    "name": "皮肤油脂测试（Sebumeter）",
+    "version": "1.0",
+    "description": "使用 Sebumeter SM 815 测量皮肤表面油脂含量",
+    "schema": {
+      "title": "皮肤油脂测试",
+      "description": "Sebumeter SM 815 油脂含量测量",
+      "questions": [
+        {"id": "test_site", "type": "select", "title": "测试部位", "required": true, "options": [
+          {"label": "前额", "value": "forehead"}, {"label": "鼻翼", "value": "nose"},
+          {"label": "脸颊", "value": "cheek"}, {"label": "下巴", "value": "chin"}
+        ]},
+        {"id": "sebum_value", "type": "number", "title": "油脂值", "required": true, "unit": "μg/cm²", "min": 0, "max": 500, "repeat": 3, "auto_average": true},
+        {"id": "env_temperature", "type": "number", "title": "环境温度", "required": true, "unit": "°C", "min": 15, "max": 30, "step": 0.1},
+        {"id": "notes", "type": "textarea", "title": "备注", "required": false}
+      ]
+    }
+  },
+  {
+    "name": "皮肤粗糙度测试（PRIMOS）",
+    "version": "1.0",
+    "description": "使用 PRIMOS 3D 光学测量系统记录皮肤粗糙度参数",
+    "schema": {
+      "title": "皮肤粗糙度测试",
+      "description": "PRIMOS 3D 皮肤粗糙度参数",
+      "questions": [
+        {"id": "test_area", "type": "select", "title": "测试区域", "required": true, "options": [
+          {"label": "眼角", "value": "eye_corner"}, {"label": "前额", "value": "forehead"},
+          {"label": "脸颊", "value": "cheek"}, {"label": "前臂", "value": "forearm"}
+        ]},
+        {"id": "ra", "type": "number", "title": "Ra（算术平均粗糙度）", "required": true, "unit": "μm", "min": 0, "max": 100, "step": 0.01},
+        {"id": "rz", "type": "number", "title": "Rz（平均最大高度）", "required": true, "unit": "μm", "min": 0, "max": 500, "step": 0.01},
+        {"id": "rmax", "type": "number", "title": "Rmax（最大粗糙度）", "required": true, "unit": "μm", "min": 0, "max": 500, "step": 0.01},
+        {"id": "measurement_area_size", "type": "text", "title": "测量区域大小", "required": false, "placeholder": "如 18x13mm"},
+        {"id": "notes", "type": "textarea", "title": "备注", "required": false}
+      ]
+    }
+  },
+  {
+    "name": "主观评估问卷（专家评分）",
+    "version": "1.0",
+    "description": "皮肤科专家主观评估问卷",
+    "schema": {
+      "title": "专家主观评估",
+      "description": "皮肤科专家视觉评估记录",
+      "questions": [
+        {"id": "skin_hydration", "type": "scale", "title": "皮肤水润度", "required": true, "min": 0, "max": 10, "step": 1},
+        {"id": "skin_smoothness", "type": "scale", "title": "皮肤光滑度", "required": true, "min": 0, "max": 10, "step": 1},
+        {"id": "skin_brightness", "type": "scale", "title": "皮肤亮泽度", "required": true, "min": 0, "max": 10, "step": 1},
+        {"id": "wrinkle_severity", "type": "scale", "title": "皱纹严重度", "required": true, "min": 0, "max": 10, "step": 1},
+        {"id": "pore_visibility", "type": "scale", "title": "毛孔可见度", "required": true, "min": 0, "max": 10, "step": 1},
+        {"id": "overall_assessment", "type": "radio", "title": "整体改善评价", "required": true, "options": [
+          {"label": "显著改善", "value": "significant"}, {"label": "中度改善", "value": "moderate"},
+          {"label": "轻度改善", "value": "mild"}, {"label": "无变化", "value": "none"},
+          {"label": "恶化", "value": "worse"}
+        ]},
+        {"id": "evaluator_confidence", "type": "radio", "title": "评估者信心程度", "required": true, "options": [
+          {"label": "非常确定", "value": "very_confident"}, {"label": "比较确定", "value": "confident"},
+          {"label": "不太确定", "value": "uncertain"}
+        ]},
+        {"id": "comments", "type": "textarea", "title": "评估意见", "required": false}
+      ]
+    }
+  },
+  {
+    "name": "不良反应记录表",
+    "version": "1.0",
+    "description": "化妆品人体试验不良反应标准记录表",
+    "schema": {
+      "title": "不良反应记录",
+      "description": "化妆品不良反应/不良事件记录",
+      "questions": [
+        {"id": "reaction_type", "type": "select", "title": "反应类型", "required": true, "options": [
+          {"label": "红斑", "value": "erythema"}, {"label": "水肿", "value": "edema"},
+          {"label": "瘙痒", "value": "pruritus"}, {"label": "灼热感", "value": "burning"},
+          {"label": "干燥/脱屑", "value": "dryness"}, {"label": "丘疹", "value": "papule"},
+          {"label": "水疱", "value": "vesicle"}, {"label": "色素沉着", "value": "pigmentation"},
+          {"label": "其他", "value": "other"}
+        ]},
+        {"id": "severity", "type": "radio", "title": "严重程度", "required": true, "options": [
+          {"label": "轻度", "value": "mild"}, {"label": "中度", "value": "moderate"},
+          {"label": "重度", "value": "severe"}
+        ]},
+        {"id": "affected_area", "type": "select", "title": "受影响部位", "required": true, "options": [
+          {"label": "面部", "value": "face"}, {"label": "颈部", "value": "neck"},
+          {"label": "手臂", "value": "arm"}, {"label": "背部", "value": "back"},
+          {"label": "其他", "value": "other"}
+        ]},
+        {"id": "onset_time", "type": "text", "title": "发生时间", "required": true, "placeholder": "yyyy-MM-dd HH:mm"},
+        {"id": "causality", "type": "radio", "title": "因果关系", "required": true, "options": [
+          {"label": "肯定有关", "value": "definite"}, {"label": "可能有关", "value": "probable"},
+          {"label": "可能无关", "value": "possible"}, {"label": "无关", "value": "unrelated"}
+        ]},
+        {"id": "treatment", "type": "textarea", "title": "处理措施", "required": true},
+        {"id": "outcome", "type": "radio", "title": "转归", "required": true, "options": [
+          {"label": "痊愈", "value": "recovered"}, {"label": "好转", "value": "improving"},
+          {"label": "未好转", "value": "not_improved"}, {"label": "恶化", "value": "worsened"},
+          {"label": "后遗症", "value": "sequelae"}
+        ]},
+        {"id": "notes", "type": "textarea", "title": "补充说明", "required": false}
+      ]
+    }
+  }
+]

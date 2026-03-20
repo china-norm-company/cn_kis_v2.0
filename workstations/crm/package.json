@@ -1,0 +1,43 @@
+{
+  "name": "@cn-kis/crm",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "CN KIS 客户服务台",
+  "scripts": {
+    "dev": "vite --host --port 3006",
+    "build": "vite build",
+    "build:fast": "vite build",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit",
+    "test:headed": "npx playwright test --config=playwright.headed.config.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@cn-kis/ui-kit": "workspace:*",
+    "@cn-kis/api-client": "workspace:*",
+    "@cn-kis/feishu-sdk": "workspace:*",
+    "@tanstack/react-query": "^5.17.0",
+    "lucide-react": "^0.562.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.21.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.33",
+    "tailwindcss": "^3.4.1",
+    "@playwright/test": "^1.49.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.11",
+    "vitest": "^1.2.0",
+    "@testing-library/react": "^14.1.0",
+    "@testing-library/jest-dom": "^6.2.0",
+    "jsdom": "^24.0.0"
+  }
+}

@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary-500: #2B6CB0;
+  --color-primary-600: #2563EB;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 14px;
+  height: 100%;
+}
+
+body {
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+  color: #1E293B;
+  background-color: #F8FAFC;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  height: 100%;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* 样品领用台账表格：覆盖 * 的 padding 重置，与领用退库记录列表行距一致 */
+.sample-ledger-table table {
+  border-collapse: collapse;
+}
+.sample-ledger-table thead th {
+  padding: 6px 8px;
+  box-sizing: border-box;
+}
+.sample-ledger-table tbody td {
+  padding: 10px 8px;
+  box-sizing: border-box;
+  min-height: 2.75rem;
+  vertical-align: middle;
+}
+.sample-ledger-table tbody tr {
+  border-bottom: 1px solid #f1f5f9;
+}
+.sample-ledger-table tbody tr:hover {
+  background-color: #f8fafc;
+}

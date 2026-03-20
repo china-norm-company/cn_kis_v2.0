@@ -1,0 +1,58 @@
+# CN KIS V1.0 后端依赖
+# 框架
+Django>=4.2,<5.0
+django-ninja>=1.4.0
+gunicorn>=21.0.0
+pydantic>=2.0
+
+# 数据库
+psycopg2-binary>=2.8.6
+redis>=4.6.0
+
+# 向量库（知识检索，TECHNICAL_STANDARDS 要求）
+pgvector>=0.2.0
+
+# 认证
+PyJWT>=2.8.0
+python-dotenv>=1.0.0
+
+# CORS
+django-cors-headers>=4.3.0
+
+# HTTP
+requests>=2.31.0
+httpx>=0.25.0
+
+# 日志
+loguru>=0.7.0
+python-json-logger>=2.0.0
+
+# 文档处理
+pypdf>=4.0.0
+python-docx>=1.1.0
+openpyxl>=3.1.0
+
+# 报表导出
+reportlab>=4.0.0
+
+# 二维码图片（小程序我的二维码页，避免第三方 downloadFile 域名）
+qrcode[pil]>=7.4.0
+
+# 异步任务
+celery>=5.3.0
+
+# 工具
+arrow>=1.3.0
+python-dateutil>=2.8.0
+pyyaml>=6.0
+jieba>=0.42.1
+pypinyin>=0.50.0
+
+# AI（火山云智能体网关）
+openai>=1.0.0
+
+# 火山引擎 SDK（身份认证 VisualService + STS + ARK runtime）
+volcengine-python-sdk[ark]>=5.0.9
+
+# 监控（可选）
+sentry-sdk>=2.0.0

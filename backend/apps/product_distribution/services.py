@@ -1,0 +1,1010 @@
+"""
+样品发放（产品发放）业务逻辑 — 读写 cn_kis default 库，表与 KIS 结构一致。
+"""
+from datetime import date, datetime, timezone, timedelta
+from decimal import Decimal
+from typing import Optional, Any
+
+# 东八区时间，用于操作时间等
+_TZ_UTC8 = timezone(timedelta(hours=8))
+
+
+def _now_naive_utc8():
+    """当前东八区钟表时间，naive datetime，用于直接写入数据库（库内存东八区）."""
+    return datetime.now(_TZ_UTC8).replace(tzinfo=None)
+
+
+def _raw_update_execution_times(execution_id: int, created_at=None, updated_at=None):
+    """将执行单的 created_at/updated_at 以东八区钟表时间写回数据库（绕过 ORM 的 UTC 转换）."""
+    from django.db import connections
+    conn = connections["default"]
+    if created_at is not None and updated_at is not None:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE product_distribution_execution SET created_at=%s, updated_at=%s WHERE id=%s",
+                [created_at, updated_at, execution_id],
+            )
+    elif updated_at is not None:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE product_distribution_execution SET updated_at=%s WHERE id=%s",
+                [updated_at, execution_id],
+            )
+
+
+def _raw_update_operation_times(operation_id: int, created_at=None, updated_at=None):
+    """将产品操作记录的 created_at/updated_at 以东八区钟表时间写回数据库."""
+    from django.db import connections
+    conn = connections["default"]
+    if created_at is not None and updated_at is not None:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE product_distribution_operation SET created_at=%s, updated_at=%s WHERE id=%s",
+                [created_at, updated_at, operation_id],
+            )
+    elif updated_at is not None:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE product_distribution_operation SET updated_at=%s WHERE id=%s",
+                [updated_at, operation_id],
+            )
+
+
+def _dt_iso_utc8(dt):
+    """将 datetime 转为东八区后再 isoformat，用于接口返回；若为 naive 则按当前时区解释."""
+    if dt is None:
+        return None
+    if getattr(dt, "tzinfo", None) is None:
+        dt = djtzone.make_aware(dt, djtzone.get_current_timezone())
+    return dt.astimezone(_TZ_UTC8).isoformat()
+
+
+def _dt_iso_utc8_stored(dt):
+    """执行单/产品操作的时间字段在 DB 中存的是东八区钟表时间(naive)。
+    Django 读出时可能被当成 UTC 变成 aware，这里统一按「钟表即东八区」展示，避免多算 8 小时。"""
+    if dt is None:
+        return None
+    if getattr(dt, "tzinfo", None) is None:
+        dt = djtzone.make_aware(dt, djtzone.get_current_timezone())
+        return dt.astimezone(_TZ_UTC8).isoformat()
+    if dt.utcoffset() == timedelta(0):
+        return dt.replace(tzinfo=_TZ_UTC8).isoformat()
+    return dt.astimezone(_TZ_UTC8).isoformat()
+
+
+from django.db import transaction
+from django.db.models import Sum, Q, F, Max, Count
+from django.utils import timezone as djtzone
+from django.db.models.functions import Coalesce
+
+from .models import (
+    ProductDistributionWorkOrder,
+    ProductDistributionExecution,
+    ProductDistributionOperation,
+    ProductSampleRequest,
+)
+
+
+def _opt_str(s: Optional[str]) -> Optional[str]:
+    if s is None:
+        return None
+    t = (s or "").strip()
+    return t if t else None
+
+
+def _execution_progress(project_start: date, project_end: date) -> str:
+    today = date.today()
+    if today < project_start:
+        return "not_started"
+    if project_start <= today <= project_end:
+        return "in_progress"
+    return "completed"
+
+
+# ---------- 工单 ----------
+
+def work_order_list(
+    keyword: Optional[str] = None,
+    project_no: Optional[str] = None,
+    project_start_date: Optional[str] = None,
+    project_end_date: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> dict:
+    qs = ProductDistributionWorkOrder.objects.filter(is_delete=0)
+    if keyword:
+        qs = qs.filter(
+            Q(work_order_no__icontains=keyword)
+            | Q(project_no__icontains=keyword)
+            | Q(project_name__icontains=keyword)
+            | Q(researcher__icontains=keyword)
+            | Q(supervisor__icontains=keyword)
+        )
+    if project_no:
+        qs = qs.filter(project_no=project_no)
+    if project_start_date:
+        qs = qs.filter(project_start_date__gte=project_start_date)
+    if project_end_date:
+        qs = qs.filter(project_end_date__lte=project_end_date)
+    total = qs.count()
+    items = list(
+        qs.order_by("-created_at")[(page - 1) * page_size : page * page_size]
+    )
+    list_data = [
+        {
+            "id": row.id,
+            "work_order_no": row.work_order_no,
+            "project_no": row.project_no,
+            "project_name": row.project_name,
+            "project_start_date": str(row.project_start_date),
+            "project_end_date": str(row.project_end_date),
+            "visit_count": row.visit_count or 0,
+            "researcher": row.researcher,
+            "supervisor": row.supervisor,
+            "execution_progress": _execution_progress(row.project_start_date, row.project_end_date),
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        }
+        for row in items
+    ]
+    return {"list": list_data, "total": total, "page": page, "pageSize": page_size}
+
+
+def work_order_detail(work_order_id: int) -> Optional[dict]:
+    try:
+        row = ProductDistributionWorkOrder.objects.get(id=work_order_id, is_delete=0)
+    except ProductDistributionWorkOrder.DoesNotExist:
+        return None
+    execs = (
+        ProductDistributionExecution.objects.filter(
+            work_order_id=work_order_id, is_delete=0
+        )
+        .order_by("-created_at")
+    )
+    executions = [
+        {
+            "id": e.id,
+            "execution_date": str(e.execution_date) if e.execution_date else None,
+            "subject_rd": e.subject_rd,
+            "subject_initials": e.subject_initials,
+            "operator_name": e.operator_name,
+            "remark": e.remark,
+            "created_at": _dt_iso_utc8_stored(e.created_at),
+        }
+        for e in execs
+    ]
+    return {
+        "id": row.id,
+        "work_order_no": row.work_order_no,
+        "project_no": row.project_no,
+        "project_name": row.project_name,
+        "project_start_date": str(row.project_start_date),
+        "project_end_date": str(row.project_end_date),
+        "visit_count": row.visit_count or 0,
+        "researcher": row.researcher,
+        "supervisor": row.supervisor,
+        "usage_method": row.usage_method,
+        "usage_frequency": row.usage_frequency,
+        "precautions": row.precautions,
+        "project_requirements": row.project_requirements,
+        "execution_progress": _execution_progress(row.project_start_date, row.project_end_date),
+        "executions": executions,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+def work_order_generate_no() -> str:
+    today = datetime.now().strftime("%Y%m%d")
+    prefix = f"WO-{today}-"
+    last = (
+        ProductDistributionWorkOrder.objects.filter(
+            work_order_no__startswith=prefix, is_delete=0
+        )
+        .order_by("-work_order_no")
+        .values_list("work_order_no", flat=True)
+        .first()
+    )
+    seq = 1
+    if last:
+        try:
+            seq = int(last.split("-")[-1]) + 1
+        except (ValueError, IndexError):
+            pass
+    return f"{prefix}{seq:03d}"
+
+
+@transaction.atomic(using="default")
+def work_order_create(data: dict, user_id: Optional[int] = None, user_name: Optional[str] = None) -> dict:
+    project_no = (data.get("project_no") or "").strip()
+    if ProductDistributionWorkOrder.objects.filter(project_no=project_no, is_delete=0).exists():
+        raise ValueError("项目编号已存在，无法新建工单")
+    start = data.get("project_start_date")
+    end = data.get("project_end_date")
+    if start and end:
+        if date.fromisoformat(end) < date.fromisoformat(start):
+            raise ValueError("项目结束日期不能早于启动日期")
+    visit_count = data.get("visit_count", 0) or 0
+    if visit_count < 0:
+        raise ValueError("访视次数错误")
+
+    work_order_no = work_order_generate_no()
+    now = datetime.now()
+    wo = ProductDistributionWorkOrder(
+        work_order_no=work_order_no,
+        project_no=project_no,
+        project_name=(data.get("project_name") or "").strip(),
+        project_start_date=start,
+        project_end_date=end,
+        visit_count=visit_count,
+        researcher=_opt_str(data.get("researcher")),
+        supervisor=_opt_str(data.get("supervisor")),
+        usage_method=_opt_str(data.get("usage_method")),
+        usage_frequency=_opt_str(data.get("usage_frequency")),
+        precautions=_opt_str(data.get("precautions")),
+        project_requirements=_opt_str(data.get("project_requirements")),
+        created_by=user_id,
+        updated_by=user_id,
+        created_at=now,
+        updated_at=now,
+    )
+    wo.save(using="default")
+    return {
+        "id": wo.id,
+        "work_order_no": wo.work_order_no,
+        "project_no": wo.project_no,
+        "project_name": wo.project_name,
+        "created_at": wo.created_at.isoformat() if wo.created_at else None,
+    }
+
+
+@transaction.atomic(using="default")
+def work_order_update(work_order_id: int, data: dict, user_id: Optional[int] = None) -> dict:
+    try:
+        row = ProductDistributionWorkOrder.objects.get(id=work_order_id, is_delete=0)
+    except ProductDistributionWorkOrder.DoesNotExist:
+        return None
+
+    project_no = data.get("project_no")
+    if project_no is not None:
+        project_no = project_no.strip()
+        if ProductDistributionWorkOrder.objects.filter(project_no=project_no, is_delete=0).exclude(id=work_order_id).exists():
+            raise ValueError("项目编号已存在，修改失败")
+        row.project_no = project_no
+    if "project_name" in data and data["project_name"] is not None:
+        row.project_name = (data["project_name"] or "").strip()
+    if "project_start_date" in data:
+        row.project_start_date = data["project_start_date"]
+    if "project_end_date" in data:
+        row.project_end_date = data["project_end_date"]
+    if "visit_count" in data:
+        v = data["visit_count"]
+        if v is not None and v < 0:
+            raise ValueError("访视次数必须大于等于0")
+        row.visit_count = v if v is not None else 0
+    if "researcher" in data:
+        row.researcher = _opt_str(data["researcher"])
+    if "supervisor" in data:
+        row.supervisor = _opt_str(data["supervisor"])
+    if "usage_method" in data:
+        row.usage_method = _opt_str(data["usage_method"])
+    if "usage_frequency" in data:
+        row.usage_frequency = _opt_str(data["usage_frequency"])
+    if "precautions" in data:
+        row.precautions = _opt_str(data["precautions"])
+    if "project_requirements" in data:
+        row.project_requirements = _opt_str(data["project_requirements"])
+
+    if row.project_start_date and row.project_end_date and row.project_end_date <= row.project_start_date:
+        raise ValueError("项目结束日期必须大于启动日期")
+    row.updated_by = user_id
+    row.updated_at = datetime.now()
+    row.save(using="default", update_fields=[
+        "project_no", "project_name", "project_start_date", "project_end_date",
+        "visit_count", "researcher", "supervisor", "usage_method", "usage_frequency",
+        "precautions", "project_requirements", "updated_by", "updated_at",
+    ])
+    return {
+        "id": row.id,
+        "work_order_no": row.work_order_no,
+        "project_no": row.project_no,
+        "project_name": row.project_name,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+# ---------- 枚举（固定选项，与 KIS enum_mappings 语义一致） ----------
+
+EXECUTION_STAGE_OPTIONS = [
+    {"value": "washout", "label": "洗脱期"},
+    {"value": "t0", "label": "T0阶段"},
+    {"value": "visit", "label": "回访阶段"},
+]
+
+EXCEPTION_TYPE_OPTIONS = [
+    {"value": "", "label": "无异常"},
+    {"value": "usage_error", "label": "使用错误"},
+    {"value": "diary_error", "label": "日记错误"},
+    {"value": "product_damage", "label": "产品损坏"},
+    {"value": "distribution_error", "label": "发放错误"},
+    {"value": "recovery_error", "label": "回收错误"},
+    {"value": "other", "label": "其他"},
+]
+
+
+def enum_execution_stage() -> dict:
+    return {"options": EXECUTION_STAGE_OPTIONS}
+
+
+def enum_exception_type() -> dict:
+    return {"options": EXCEPTION_TYPE_OPTIONS}
+
+
+# ---------- 样品台账与记录 ----------
+
+def sample_ledger_list(
+    related_project_no: Optional[str] = None,
+    product_code: Optional[str] = None,
+    keyword: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> dict:
+    qs = (
+        ProductSampleRequest.objects.filter(is_delete=0)
+        .values("related_project_no", "product_code")
+        .annotate(
+            product_name=Max("product_name"),
+            unit=Max("unit"),
+            project_name=Max("project_name"),
+            project_start_date=Max("project_start_date"),
+            project_end_date=Max("project_end_date"),
+            total_received=Coalesce(
+                Sum("quantity", filter=Q(operation_type="receive")), Decimal("0")
+            ),
+            total_returned=Coalesce(
+                Sum("quantity", filter=Q(operation_type="return_to_stock")), Decimal("0")
+            ),
+        )
+        .order_by("related_project_no", "product_code")
+    )
+    if related_project_no:
+        qs = qs.filter(related_project_no=related_project_no)
+    if product_code:
+        qs = qs.filter(product_code=product_code)
+    if keyword:
+        # 支持按工单编号搜索：keyword 可能是 work_order_no，需解析为 project_no 再匹配
+        project_nos_from_work_order = list(
+            ProductDistributionWorkOrder.objects.filter(
+                is_delete=0, work_order_no__icontains=keyword
+            ).values_list("project_no", flat=True)
+        )
+        qs = qs.filter(
+            Q(related_project_no__icontains=keyword)
+            | Q(project_name__icontains=keyword)
+            | Q(product_code__icontains=keyword)
+            | Q(product_name__icontains=keyword)
+            | (Q(related_project_no__in=project_nos_from_work_order) if project_nos_from_work_order else Q(pk__in=[]))
+        )
+    total = qs.count()
+    rows = list(qs[(page - 1) * page_size : page * page_size])
+
+    # 发放/回收来自 product_distribution_operation（is_selected=1, is_delete=0）
+    dist_recovery = {}
+    op_rows = list(
+        ProductDistributionOperation.objects.filter(is_selected=1, is_delete=0).values(
+            "execution_id", "product_code", "product_name", "product_distribution", "product_recovery"
+        )
+    )
+    exec_ids = list({o["execution_id"] for o in op_rows})
+    exec_proj = {
+        e["id"]: e["related_project_no"]
+        for e in ProductDistributionExecution.objects.filter(id__in=exec_ids).values("id", "related_project_no")
+    }
+    for o in op_rows:
+        proj = exec_proj.get(o["execution_id"])
+        if proj is None:
+            continue
+        key = (proj, o["product_code"], o["product_name"] or "")
+        if key not in dist_recovery:
+            dist_recovery[key] = {"total_distributed": Decimal("0"), "total_recovered": Decimal("0")}
+        dist_recovery[key]["total_distributed"] += Decimal(str(o.get("product_distribution") or 0))
+        dist_recovery[key]["total_recovered"] += Decimal(str(o.get("product_recovery") or 0))
+
+    project_nos = list({r["related_project_no"] for r in rows})
+    wo_map = {
+        wo.project_no: wo
+        for wo in ProductDistributionWorkOrder.objects.filter(project_no__in=project_nos, is_delete=0)
+    }
+    list_data = []
+    for r in rows:
+        total_received = r.get("total_received") or Decimal("0")
+        total_returned = r.get("total_returned") or Decimal("0")
+        pending = total_received - total_returned
+        key = (r["related_project_no"], r["product_code"], r.get("product_name") or "")
+        dr = dist_recovery.get(key, {})
+        total_distributed = dr.get("total_distributed", Decimal("0"))
+        total_recovered = dr.get("total_recovered", Decimal("0"))
+        wo = wo_map.get(r["related_project_no"])
+        project_close_status = "completed" if pending == 0 else ("pending_return" if pending > 0 else "abnormal")
+        list_data.append({
+            "related_project_no": r["related_project_no"],
+            "project_name": wo.project_name if wo else r.get("project_name"),
+            "project_start_date": str(wo.project_start_date) if wo and wo.project_start_date else (str(r["project_start_date"]) if r.get("project_start_date") else None),
+            "project_end_date": str(wo.project_end_date) if wo and wo.project_end_date else (str(r["project_end_date"]) if r.get("project_end_date") else None),
+            "project_close_status": project_close_status,
+            "product_name": r.get("product_name") or "",
+            "product_code": r["product_code"],
+            "unit": r.get("unit") or "",
+            "total_received": float(total_received),
+            "total_returned": float(total_returned),
+            "total_distributed": float(total_distributed),
+            "total_recovered": float(total_recovered),
+            "pending_return_qty": float(pending),
+            "work_order_no": wo.work_order_no if wo else None,
+        })
+    return {"list": list_data, "total": total, "page": page, "pageSize": page_size}
+
+
+def sample_order_list(
+    keyword: Optional[str] = None,
+    related_project_no: Optional[str] = None,
+    product_code: Optional[str] = None,
+    operation_type: Optional[str] = None,
+    operation_date_from: Optional[str] = None,
+    operation_date_to: Optional[str] = None,
+    purpose: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> dict:
+    qs = ProductSampleRequest.objects.filter(is_delete=0)
+    if keyword:
+        # 支持按工单编号搜索：keyword 可能是 work_order_no，需解析为 project_no 再匹配
+        project_nos_from_work_order = list(
+            ProductDistributionWorkOrder.objects.filter(
+                is_delete=0, work_order_no__icontains=keyword
+            ).values_list("project_no", flat=True)
+        )
+        qs = qs.filter(
+            Q(related_project_no__icontains=keyword)
+            | Q(project_name__icontains=keyword)
+            | Q(product_code__icontains=keyword)
+            | Q(product_name__icontains=keyword)
+            | Q(purpose__icontains=keyword)
+            | (Q(related_project_no__in=project_nos_from_work_order) if project_nos_from_work_order else Q(pk__in=[]))
+        )
+    if related_project_no:
+        qs = qs.filter(related_project_no=related_project_no)
+    if product_code:
+        qs = qs.filter(product_code=product_code)
+    if operation_type:
+        qs = qs.filter(operation_type=operation_type)
+    if operation_date_from:
+        qs = qs.filter(operation_date__gte=operation_date_from)
+    if operation_date_to:
+        qs = qs.filter(operation_date__lte=operation_date_to)
+    if purpose:
+        qs = qs.filter(purpose__icontains=purpose)
+    total = qs.count()
+    items = list(qs.order_by("-operation_date", "-id")[(page - 1) * page_size : page * page_size])
+    project_nos = list({r.related_project_no for r in items})
+    wo_map = {wo.project_no: wo for wo in ProductDistributionWorkOrder.objects.filter(project_no__in=project_nos, is_delete=0)}
+    list_data = []
+    for row in items:
+        wo = wo_map.get(row.related_project_no)
+        list_data.append({
+            "id": row.id,
+            "operation_type": row.operation_type,
+            "operation_date": str(row.operation_date),
+            "related_project_no": row.related_project_no,
+            "project_name": wo.project_name if wo else row.project_name,
+            "supervisor": wo.supervisor if wo else row.supervisor,
+            "product_name": row.product_name,
+            "product_code": row.product_code,
+            "quantity": float(row.quantity),
+            "unit": row.unit,
+            "purpose": row.purpose,
+            "operator_name": row.operator_name,
+            "remark": row.remark,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        })
+    return {"list": list_data, "total": total, "page": page, "pageSize": page_size}
+
+
+def sample_order_detail(record_id: int) -> Optional[dict]:
+    try:
+        row = ProductSampleRequest.objects.get(id=record_id, is_delete=0)
+    except ProductSampleRequest.DoesNotExist:
+        return None
+    wo = None
+    try:
+        wo = ProductDistributionWorkOrder.objects.get(project_no=row.related_project_no, is_delete=0)
+    except ProductDistributionWorkOrder.DoesNotExist:
+        pass
+    return {
+        "id": row.id,
+        "operation_type": row.operation_type,
+        "operation_date": str(row.operation_date),
+        "related_project_no": row.related_project_no,
+        "project_name": wo.project_name if wo else row.project_name,
+        "project_start_date": str(wo.project_start_date) if wo and wo.project_start_date else (str(row.project_start_date) if row.project_start_date else None),
+        "project_end_date": str(wo.project_end_date) if wo and wo.project_end_date else (str(row.project_end_date) if row.project_end_date else None),
+        "researcher": wo.researcher if wo else row.researcher,
+        "supervisor": wo.supervisor if wo else row.supervisor,
+        "product_name": row.product_name,
+        "product_code": row.product_code,
+        "quantity": float(row.quantity),
+        "unit": row.unit,
+        "purpose": row.purpose,
+        "operator_id": row.operator_id,
+        "operator_name": row.operator_name,
+        "remark": row.remark,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+@transaction.atomic(using="default")
+def sample_order_create(data: dict, user_id: Optional[int] = None, user_name: Optional[str] = None) -> dict:
+    now = datetime.now()
+    row = ProductSampleRequest(
+        operation_type=data.get("operation_type", "receive"),
+        operation_date=data["operation_date"],
+        related_project_no=(data.get("related_project_no") or "").strip(),
+        project_name=_opt_str(data.get("project_name")),
+        project_start_date=data.get("project_start_date"),
+        project_end_date=data.get("project_end_date"),
+        researcher=_opt_str(data.get("researcher")),
+        supervisor=_opt_str(data.get("supervisor")),
+        product_name=(data.get("product_name") or "").strip(),
+        product_code=(data.get("product_code") or "").strip(),
+        quantity=data.get("quantity", 0),
+        unit=_opt_str(data.get("unit")),
+        purpose=(data.get("purpose") or "").strip(),
+        operator_id=user_id,
+        operator_name=user_name,
+        remark=_opt_str(data.get("remark")),
+        created_by=user_id,
+        updated_by=user_id,
+        created_at=now,
+        updated_at=now,
+    )
+    row.save(using="default")
+    return {
+        "id": row.id,
+        "operation_type": row.operation_type,
+        "operation_date": str(row.operation_date),
+        "related_project_no": row.related_project_no,
+        "product_name": row.product_name,
+        "product_code": row.product_code,
+        "quantity": float(row.quantity),
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+@transaction.atomic(using="default")
+def sample_order_update(record_id: int, data: dict, user_id: Optional[int] = None, user_name: Optional[str] = None) -> Optional[dict]:
+    try:
+        row = ProductSampleRequest.objects.get(id=record_id, is_delete=0)
+    except ProductSampleRequest.DoesNotExist:
+        return None
+    for key in ("operation_type", "operation_date", "related_project_no", "project_name", "project_start_date",
+                "project_end_date", "researcher", "supervisor", "product_name", "product_code",
+                "quantity", "unit", "purpose", "remark"):
+        if key in data:
+            v = data[key]
+            if key in ("project_name", "researcher", "supervisor", "product_name", "product_code", "unit", "purpose", "remark") and v is not None:
+                v = (v or "").strip() or None
+            setattr(row, key, v)
+    row.updated_by = user_id
+    if user_name is not None:
+        row.operator_id = user_id
+        row.operator_name = _opt_str(user_name) or row.operator_name
+    row.updated_at = datetime.now()
+    row.save(using="default")
+    return sample_order_detail(record_id)
+
+
+def project_products(related_project_no: str) -> dict:
+    if not (related_project_no and related_project_no.strip()):
+        return {"list": []}
+    rows = (
+        ProductSampleRequest.objects.filter(
+            related_project_no=related_project_no.strip(), is_delete=0
+        )
+        .values("product_code", "product_name")
+        .distinct()
+    )
+    list_data = [{"product_code": r["product_code"], "product_name": r["product_name"] or ""} for r in rows]
+    return {"list": list_data}
+
+
+# ---------- 执行记录 ----------
+
+def execution_list(
+    work_order_id: Optional[int] = None,
+    subject_rd: Optional[str] = None,
+    keyword: Optional[str] = None,
+    execution_date_from: Optional[str] = None,
+    execution_date_to: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> dict:
+    qs = ProductDistributionExecution.objects.filter(is_delete=0)
+    if work_order_id is not None:
+        qs = qs.filter(work_order_id=work_order_id)
+    if subject_rd:
+        qs = qs.filter(subject_rd__icontains=subject_rd)
+    if keyword:
+        qs = qs.filter(
+            Q(related_project_no__icontains=keyword)
+            | Q(subject_rd__icontains=keyword)
+            | Q(subject_initials__icontains=keyword)
+            | Q(screening_no__icontains=keyword)
+        ) | qs.filter(
+            work_order_id__in=ProductDistributionWorkOrder.objects.filter(
+                is_delete=0,
+            ).filter(
+                Q(work_order_no__icontains=keyword)
+                | Q(project_no__icontains=keyword)
+                | Q(project_name__icontains=keyword)
+            ).values_list("id", flat=True)
+        )
+    if execution_date_from:
+        qs = qs.filter(execution_date__gte=execution_date_from)
+    if execution_date_to:
+        qs = qs.filter(execution_date__lte=execution_date_to)
+    total = qs.count()
+    items = list(qs.order_by("-execution_date", "-id")[(page - 1) * page_size : page * page_size])
+    list_data = [
+        {
+            "id": row.id,
+            "work_order_id": row.work_order_id,
+            "related_project_no": row.related_project_no,
+            "subject_rd": row.subject_rd,
+            "subject_initials": row.subject_initials,
+            "screening_no": row.screening_no,
+            "execution_date": str(row.execution_date) if row.execution_date else None,
+            "operator_name": row.operator_name,
+            "exception_type": row.exception_type,
+            "remark": row.remark,
+            "created_at": _dt_iso_utc8_stored(row.created_at),
+        }
+        for row in items
+    ]
+    return {"list": list_data, "total": total, "page": page, "pageSize": page_size}
+
+
+def execution_detail(execution_id: int) -> Optional[dict]:
+    try:
+        row = ProductDistributionExecution.objects.get(id=execution_id, is_delete=0)
+    except ProductDistributionExecution.DoesNotExist:
+        return None
+    wo = (
+        ProductDistributionWorkOrder.objects.filter(id=row.work_order_id, is_delete=0).first()
+        if row.work_order_id else None
+    )
+    ops = list(
+        ProductDistributionOperation.objects.filter(
+            execution_id=execution_id, is_delete=0
+        ).order_by("id")
+    )
+    products = []
+    for op in ops:
+        pot = None
+        if getattr(op, "product_site_use", 0):
+            pot = "site_use"
+        elif op.product_distribution:
+            pot = "distribution"
+        elif op.product_inspection:
+            pot = "inspection"
+        elif op.product_recovery:
+            pot = "recovery"
+        products.append({
+            "id": op.id,
+            "stage": op.stage,
+            "execution_cycle": op.execution_cycle,
+            "product_code": op.product_code,
+            "product_name": op.product_name,
+            "bottle_sequence": op.bottle_sequence,
+            "is_selected": op.is_selected,
+            "product_operation_type": pot,
+            "product_distribution": op.product_distribution,
+            "product_inspection": op.product_inspection,
+            "product_recovery": op.product_recovery,
+            "product_site_use": getattr(op, "product_site_use", 0),
+            "distribution_weight": float(op.distribution_weight) if op.distribution_weight is not None else None,
+            "inspection_weight": float(op.inspection_weight) if op.inspection_weight is not None else None,
+            "recovery_weight": float(op.recovery_weight) if op.recovery_weight is not None else None,
+            "diary_distribution": op.diary_distribution,
+            "diary_inspection": op.diary_inspection,
+            "diary_recovery": op.diary_recovery,
+            "usage_diagram_file_id": getattr(op, "usage_diagram_file_id", None),
+            "operator_name": None,
+            "operation_time": _dt_iso_utc8_stored(op.updated_at),
+        })
+    return {
+        "id": row.id,
+        "work_order_id": row.work_order_id,
+        "related_project_no": row.related_project_no,
+        "project_no": wo.project_no if wo else None,
+        "project_name": wo.project_name if wo else None,
+        "subject_rd": row.subject_rd,
+        "subject_initials": row.subject_initials,
+        "screening_no": row.screening_no,
+        "execution_date": str(row.execution_date) if row.execution_date else None,
+        "operator_id": row.operator_id,
+        "operator_name": row.operator_name,
+        "exception_type": row.exception_type,
+        "exception_description": row.exception_description,
+        "remark": row.remark,
+        "products": products,
+        "created_at": _dt_iso_utc8_stored(row.created_at),
+        "updated_at": _dt_iso_utc8_stored(row.updated_at),
+    }
+
+
+def _product_create_to_dict(p: dict) -> dict:
+    pot = (p.get("product_operation_type") or "").strip() or None
+    dist = p.get("product_distribution", False) if pot is None else (pot == "distribution")
+    insp = p.get("product_inspection", False) if pot is None else (pot == "inspection")
+    rec = p.get("product_recovery", False) if pot is None else (pot == "recovery")
+    site_use = p.get("product_site_use", False) if pot is None else (pot == "site_use")
+    out = {
+        "stage": (p.get("stage") or "").strip(),
+        "execution_cycle": _opt_str(p.get("execution_cycle")),
+        "product_code": (p.get("product_code") or "").strip(),
+        "product_name": (p.get("product_name") or "").strip(),
+        "bottle_sequence": _opt_str(p.get("bottle_sequence")),
+        "is_selected": 1 if p.get("is_selected", 1) else 0,
+        "product_distribution": dist,
+        "product_inspection": insp,
+        "product_recovery": rec,
+        "product_site_use": site_use,
+        "distribution_weight": p.get("distribution_weight"),
+        "inspection_weight": p.get("inspection_weight"),
+        "recovery_weight": p.get("recovery_weight"),
+        "diary_distribution": bool(p.get("diary_distribution", False)),
+        "diary_inspection": bool(p.get("diary_inspection", False)),
+        "diary_recovery": bool(p.get("diary_recovery", False)),
+    }
+    if "usage_diagram_file_id" in p and p.get("usage_diagram_file_id") is not None:
+        out["usage_diagram_file_id"] = p.get("usage_diagram_file_id")
+    return out
+
+
+def _op_equals(op: ProductDistributionOperation, row: dict) -> bool:
+    """比较已有操作行与待更新数据是否一致，一致则无需更新。"""
+    def _eq(a: Any, b: Any) -> bool:
+        if a is None and b is None:
+            return True
+        if a is None or b is None:
+            return False
+        if isinstance(a, Decimal) and isinstance(b, (int, float)):
+            return float(a) == float(b)
+        if isinstance(b, Decimal) and isinstance(a, (int, float)):
+            return float(a) == float(b)
+        return a == b
+
+    return (
+        (op.stage or "") == (row.get("stage") or "")
+        and (op.execution_cycle or "") == (row.get("execution_cycle") or "")
+        and (op.product_code or "") == (row.get("product_code") or "")
+        and (op.product_name or "") == (row.get("product_name") or "")
+        and (op.bottle_sequence or "") == (row.get("bottle_sequence") or "")
+        and op.is_selected == row.get("is_selected", 1)
+        and op.product_distribution == (1 if row.get("product_distribution") else 0)
+        and op.product_inspection == (1 if row.get("product_inspection") else 0)
+        and op.product_recovery == (1 if row.get("product_recovery") else 0)
+        and getattr(op, "product_site_use", 0) == (1 if row.get("product_site_use") else 0)
+        and _eq(op.distribution_weight, row.get("distribution_weight"))
+        and _eq(op.inspection_weight, row.get("inspection_weight"))
+        and _eq(op.recovery_weight, row.get("recovery_weight"))
+        and op.diary_distribution == (1 if row.get("diary_distribution") else 0)
+        and op.diary_inspection == (1 if row.get("diary_inspection") else 0)
+        and op.diary_recovery == (1 if row.get("diary_recovery") else 0)
+        and _eq(getattr(op, "usage_diagram_file_id", None), row.get("usage_diagram_file_id"))
+    )
+
+
+@transaction.atomic(using="default")
+def execution_create(data: dict, user_id: Optional[int] = None, user_name: Optional[str] = None) -> dict:
+    work_order_id = data.get("work_order_id")
+    if not ProductDistributionWorkOrder.objects.filter(id=work_order_id, is_delete=0).exists():
+        raise ValueError("工单不存在")
+    related_project_no = (data.get("related_project_no") or "").strip()
+    subject_rd = (data.get("subject_rd") or "").strip()
+    if ProductDistributionExecution.objects.filter(
+        related_project_no=related_project_no, subject_rd=subject_rd, is_delete=0
+    ).exists():
+        raise ValueError(f"RD号：{subject_rd} 已存在于项目中")
+
+    operator_display_name = _opt_str(data.get("operator_name")) or user_name
+    now = _now_naive_utc8()
+    exec_row = ProductDistributionExecution(
+        work_order_id=work_order_id,
+        related_project_no=related_project_no,
+        subject_rd=subject_rd,
+        subject_initials=(data.get("subject_initials") or "").strip(),
+        screening_no=_opt_str(data.get("screening_no")),
+        execution_date=data.get("execution_date"),
+        operator_id=user_id,
+        operator_name=operator_display_name,
+        exception_type=_opt_str(data.get("exception_type")),
+        exception_description=_opt_str(data.get("exception_description")),
+        remark=_opt_str(data.get("remark")),
+        created_by=user_id,
+        updated_by=user_id,
+        created_at=now,
+        updated_at=now,
+    )
+    exec_row.save(using="default")
+    _raw_update_execution_times(exec_row.id, now, now)
+
+    products = data.get("products") or []
+    for r in products:
+        row = _product_create_to_dict(r)
+        op = ProductDistributionOperation(
+            execution_id=exec_row.id,
+            stage=row["stage"],
+            execution_cycle=row.get("execution_cycle"),
+            product_code=row["product_code"],
+            product_name=row["product_name"],
+            bottle_sequence=row.get("bottle_sequence"),
+            is_selected=row.get("is_selected", 1),
+            product_distribution=1 if row.get("product_distribution") else 0,
+            product_inspection=1 if row.get("product_inspection") else 0,
+            product_recovery=1 if row.get("product_recovery") else 0,
+            product_site_use=1 if row.get("product_site_use") else 0,
+            distribution_weight=row.get("distribution_weight"),
+            inspection_weight=row.get("inspection_weight"),
+            recovery_weight=row.get("recovery_weight"),
+            diary_distribution=1 if row.get("diary_distribution") else 0,
+            diary_inspection=1 if row.get("diary_inspection") else 0,
+            diary_recovery=1 if row.get("diary_recovery") else 0,
+            usage_diagram_file_id=row.get("usage_diagram_file_id"),
+            created_by=user_id,
+            updated_by=user_id,
+            created_at=now,
+            updated_at=now,
+        )
+        op.save(using="default")
+        _raw_update_operation_times(op.id, now, now)
+
+    return {
+        "id": exec_row.id,
+        "work_order_id": exec_row.work_order_id,
+        "related_project_no": exec_row.related_project_no,
+        "subject_rd": exec_row.subject_rd,
+        "subject_initials": exec_row.subject_initials,
+        "screening_no": exec_row.screening_no,
+        "execution_date": str(exec_row.execution_date) if exec_row.execution_date else None,
+        "created_at": _dt_iso_utc8(now),
+    }
+
+
+@transaction.atomic(using="default")
+def execution_update(
+    execution_id: int, data: dict, user_id: Optional[int] = None, user_name: Optional[str] = None
+) -> Optional[dict]:
+    try:
+        row = ProductDistributionExecution.objects.get(id=execution_id, is_delete=0)
+    except ProductDistributionExecution.DoesNotExist:
+        return None
+
+    if "related_project_no" in data and data["related_project_no"] is not None:
+        row.related_project_no = (data["related_project_no"] or "").strip()
+    if "subject_rd" in data and data["subject_rd"] is not None:
+        new_rd = (data["subject_rd"] or "").strip()
+        other = ProductDistributionExecution.objects.filter(
+            related_project_no=row.related_project_no, subject_rd=new_rd, is_delete=0
+        ).exclude(id=execution_id).first()
+        if other:
+            raise ValueError(f"RD号：{new_rd} 已存在于项目中")
+        row.subject_rd = new_rd
+    if "subject_initials" in data and data["subject_initials"] is not None:
+        row.subject_initials = (data["subject_initials"] or "").strip()
+    if "screening_no" in data:
+        row.screening_no = _opt_str(data.get("screening_no"))
+    if "execution_date" in data:
+        row.execution_date = data["execution_date"]
+    if "exception_type" in data:
+        row.exception_type = _opt_str(data.get("exception_type"))
+    if "exception_description" in data:
+        row.exception_description = _opt_str(data.get("exception_description"))
+    if "remark" in data:
+        row.remark = _opt_str(data.get("remark"))
+    if "operator_name" in data and data["operator_name"] is not None:
+        row.operator_name = _opt_str(data["operator_name"]) or user_name
+    elif user_name is not None:
+        row.operator_name = user_name
+    row.updated_by = user_id
+    now_utc8 = _now_naive_utc8()
+    row.updated_at = now_utc8
+    row.save(using="default")
+    _raw_update_execution_times(execution_id, updated_at=now_utc8)
+
+    if "products" in data and data["products"] is not None:
+        now = _now_naive_utc8()
+        existing_ops = list(
+            ProductDistributionOperation.objects.filter(
+                execution_id=execution_id, is_delete=0
+            ).order_by("id")
+        )
+        existing_by_id = {op.id: op for op in existing_ops}
+        ids_in_payload = set()
+
+        for r in data["products"]:
+            op_id = r.get("id") if isinstance(r.get("id"), int) else None
+            row_p = _product_create_to_dict(r)
+
+            if op_id is not None and op_id in existing_by_id:
+                op = existing_by_id[op_id]
+                if _op_equals(op, row_p):
+                    ids_in_payload.add(op_id)
+                    continue
+                op.stage = row_p["stage"]
+                op.execution_cycle = row_p.get("execution_cycle")
+                op.product_code = row_p["product_code"]
+                op.product_name = row_p["product_name"]
+                op.bottle_sequence = row_p.get("bottle_sequence")
+                op.is_selected = row_p.get("is_selected", 1)
+                op.product_distribution = 1 if row_p.get("product_distribution") else 0
+                op.product_inspection = 1 if row_p.get("product_inspection") else 0
+                op.product_recovery = 1 if row_p.get("product_recovery") else 0
+                op.product_site_use = 1 if row_p.get("product_site_use") else 0
+                op.distribution_weight = row_p.get("distribution_weight")
+                op.inspection_weight = row_p.get("inspection_weight")
+                op.recovery_weight = row_p.get("recovery_weight")
+                op.diary_distribution = 1 if row_p.get("diary_distribution") else 0
+                op.diary_inspection = 1 if row_p.get("diary_inspection") else 0
+                op.diary_recovery = 1 if row_p.get("diary_recovery") else 0
+                op.usage_diagram_file_id = row_p.get("usage_diagram_file_id")
+                op.updated_by = user_id
+                op.updated_at = now
+                op.save(using="default")
+                _raw_update_operation_times(op.id, updated_at=now)
+                ids_in_payload.add(op_id)
+            else:
+                new_op = ProductDistributionOperation(
+                    execution_id=execution_id,
+                    stage=row_p["stage"],
+                    execution_cycle=row_p.get("execution_cycle"),
+                    product_code=row_p["product_code"],
+                    product_name=row_p["product_name"],
+                    bottle_sequence=row_p.get("bottle_sequence"),
+                    is_selected=row_p.get("is_selected", 1),
+                    product_distribution=1 if row_p.get("product_distribution") else 0,
+                    product_inspection=1 if row_p.get("product_inspection") else 0,
+                    product_recovery=1 if row_p.get("product_recovery") else 0,
+                    product_site_use=1 if row_p.get("product_site_use") else 0,
+                    distribution_weight=row_p.get("distribution_weight"),
+                    inspection_weight=row_p.get("inspection_weight"),
+                    recovery_weight=row_p.get("recovery_weight"),
+                    diary_distribution=1 if row_p.get("diary_distribution") else 0,
+                    diary_inspection=1 if row_p.get("diary_inspection") else 0,
+                    diary_recovery=1 if row_p.get("diary_recovery") else 0,
+                    usage_diagram_file_id=row_p.get("usage_diagram_file_id"),
+                    created_by=user_id,
+                    updated_by=user_id,
+                    created_at=now,
+                    updated_at=now,
+                )
+                new_op.save(using="default")
+                _raw_update_operation_times(new_op.id, now, now)
+
+        for op in existing_ops:
+            if op.id not in ids_in_payload:
+                op.is_delete = 1
+                op.save(using="default", update_fields=["is_delete"])
+
+    return execution_detail(execution_id)
+
+
+def execution_delete(execution_id: int) -> bool:
+    try:
+        row = ProductDistributionExecution.objects.get(id=execution_id, is_delete=0)
+    except ProductDistributionExecution.DoesNotExist:
+        return False
+    row.is_delete = 1
+    row.save(using="default", update_fields=["is_delete"])
+    return True

@@ -1,0 +1,717 @@
+{
+  "collected_at": "2026-03-11 15:58:47",
+  "total_resources": 47,
+  "summary": {
+    "by_status": {
+      "online": 16,
+      "reachable": 3,
+      "offline": 8,
+      "cert_invalid": 3,
+      "healthy": 1,
+      "registered": 15,
+      "token_valid": 1
+    },
+    "by_category": {
+      "网络与安全设备": 9,
+      "服务器与计算资源": 10,
+      "存储与数据资源": 2,
+      "终端与办公设备": 3,
+      "云服务与平台": 1,
+      "域名与公网入口": 4,
+      "身份与协同服务": 16,
+      "AI能力与大模型": 2
+    }
+  },
+  "resources": [
+    {
+      "id": "baohua-core-switch",
+      "name": "宝华核心交换机",
+      "category": "网络与安全设备",
+      "type": "core_switch",
+      "location": "192.168.10.254",
+      "status": "online",
+      "details": {
+        "model": "FutureMatrix S5735S-S24T4S-XA Routing Switch uptime is 13 weeks, 2 days, 18 hours, 6 minutes",
+        "uptime": "ES5D2T28S035 1(Standby)  : uptime is 13 weeks, 2 days, 18 hours, 2 minutes",
+        "arp_entries": 1062,
+        "interfaces": "display ip interface brief\r\n*down: administratively down\r\n^down: standby\r\n(l): loopback\r\n(s): spoofing\r\n(E): E-Trunk down\r\nThe number of interface that is UP in Physical is 7\r\nThe number of interface that is DOWN in Physical is 0\r\nThe number of interface that is UP in Protocol is 7\r\nThe number of interface that is DOWN in Protocol is 0\n\r\nInterface                         IP Address/Mask      Physical   Protocol  \r\nNULL0                             unassigned           up         up(s)     \r\nVlan"
+      },
+      "collected_at": "2026-03-11 15:58:09"
+    },
+    {
+      "id": "baohua-fw-main",
+      "name": "宝华防火墙主机",
+      "category": "网络与安全设备",
+      "type": "ping",
+      "location": "192.168.10.1",
+      "status": "online",
+      "details": {
+        "alive": true,
+        "rtt_ms": "7"
+      },
+      "collected_at": "2026-03-11 15:58:09"
+    },
+    {
+      "id": "baohua-fw-standby",
+      "name": "宝华防火墙备机",
+      "category": "网络与安全设备",
+      "type": "ping",
+      "location": "192.168.10.2",
+      "status": "online",
+      "details": {
+        "alive": true,
+        "rtt_ms": "14"
+      },
+      "collected_at": "2026-03-11 15:58:09"
+    },
+    {
+      "id": "baohua-wlc",
+      "name": "宝华无线控制器",
+      "category": "网络与安全设备",
+      "type": "ping",
+      "location": "192.168.20.254",
+      "status": "online",
+      "details": {
+        "alive": true,
+        "rtt_ms": "10"
+      },
+      "collected_at": "2026-03-11 15:58:09"
+    },
+    {
+      "id": "clinic-fw-main",
+      "name": "诊所主防火墙",
+      "category": "网络与安全设备",
+      "type": "ping",
+      "location": "192.168.99.2",
+      "status": "online",
+      "details": {
+        "alive": true,
+        "rtt_ms": "34"
+      },
+      "collected_at": "2026-03-11 15:58:09"
+    },
+    {
+      "id": "clinic-fw-standby",
+      "name": "诊所备用防火墙",
+      "category": "网络与安全设备",
+      "type": "ping",
+      "location": "192.168.99.7",
+      "status": "online",
+      "details": {
+        "alive": true,
+        "rtt_ms": "33"
+      },
+      "collected_at": "2026-03-11 15:58:09"
+    },
+    {
+      "id": "clinic-core-switch",
+      "name": "诊所核心交换机",
+      "category": "网络与安全设备",
+      "type": "ping",
+      "location": "192.168.99.1",
+      "status": "online",
+      "details": {
+        "alive": true,
+        "rtt_ms": "34"
+      },
+      "collected_at": "2026-03-11 15:58:09"
+    },
+    {
+      "id": "clinic-wlc",
+      "name": "诊所无线控制器",
+      "category": "网络与安全设备",
+      "type": "ping",
+      "location": "192.168.99.4",
+      "status": "online",
+      "details": {
+        "alive": true,
+        "rtt_ms": "47"
+      },
+      "collected_at": "2026-03-11 15:58:09"
+    },
+    {
+      "id": "baohua-fw-main-https",
+      "name": "宝华防火墙Web管理",
+      "category": "网络与安全设备",
+      "type": "https_check",
+      "location": "192.168.10.1:8443",
+      "status": "reachable",
+      "details": {
+        "open": true,
+        "port": 8443
+      },
+      "collected_at": "2026-03-11 15:58:09"
+    },
+    {
+      "id": "vm-host",
+      "name": "VM宿主机",
+      "category": "服务器与计算资源",
+      "type": "linux_server",
+      "location": "10.0.12.2",
+      "status": "online",
+      "details": {
+        "hostname": "localhost.localdomain",
+        "uptime": "8:01:01 up 93 days, 18:02:44, load average: 0.03, 0.03, 0.03",
+        "os": "cat: can't open '/etc/os-release': No such file or directory",
+        "memory": "sh: free: not found",
+        "disk_root": "Filesystem   Size   Used Available Use% Mounted on",
+        "cpus": "sh: nproc: not found",
+        "loadavg": "cat: can't open '/proc/loadavg': No such file or directory"
+      },
+      "collected_at": "2026-03-11 15:58:11"
+    },
+    {
+      "id": "gpu-4090",
+      "name": "4090 GPU服务器",
+      "category": "服务器与计算资源",
+      "type": "linux_server",
+      "location": "192.168.1.208",
+      "status": "offline",
+      "details": {},
+      "collected_at": "2026-03-11 15:58:14"
+    },
+    {
+      "id": "gpu-dell",
+      "name": "Dell GPU服务器",
+      "category": "服务器与计算资源",
+      "type": "linux_server",
+      "location": "10.0.12.22",
+      "status": "offline",
+      "details": {},
+      "collected_at": "2026-03-11 15:58:17"
+    },
+    {
+      "id": "api-platform",
+      "name": "API平台虚拟机",
+      "category": "服务器与计算资源",
+      "type": "linux_server",
+      "location": "10.0.12.30",
+      "status": "offline",
+      "details": {},
+      "collected_at": "2026-03-11 15:58:19"
+    },
+    {
+      "id": "vm-leader",
+      "name": "虚拟机(领导用)",
+      "category": "服务器与计算资源",
+      "type": "linux_server",
+      "location": "10.0.12.17",
+      "status": "offline",
+      "details": {},
+      "collected_at": "2026-03-11 15:58:22"
+    },
+    {
+      "id": "vm-penny",
+      "name": "虚拟机(penny用)",
+      "category": "服务器与计算资源",
+      "type": "linux_server",
+      "location": "10.0.12.18",
+      "status": "offline",
+      "details": {},
+      "collected_at": "2026-03-11 15:58:26"
+    },
+    {
+      "id": "vm-qiuguo",
+      "name": "虚拟机(秋果用)",
+      "category": "服务器与计算资源",
+      "type": "linux_server",
+      "location": "10.0.12.14",
+      "status": "offline",
+      "details": {},
+      "collected_at": "2026-03-11 15:58:30"
+    },
+    {
+      "id": "vm-jingang",
+      "name": "虚拟机(金刚用)",
+      "category": "服务器与计算资源",
+      "type": "linux_server",
+      "location": "10.0.12.15",
+      "status": "offline",
+      "details": {},
+      "collected_at": "2026-03-11 15:58:32"
+    },
+    {
+      "id": "nas-server",
+      "name": "NAS服务器",
+      "category": "存储与数据资源",
+      "type": "nas",
+      "location": "192.168.1.230",
+      "status": "online",
+      "details": {
+        "ping": {
+          "alive": true,
+          "rtt_ms": "7"
+        },
+        "web_ui": {
+          "status_code": 200,
+          "ok": true,
+          "url": "https://192.168.1.230:5001"
+        }
+      },
+      "collected_at": "2026-03-11 15:58:33"
+    },
+    {
+      "id": "domain-controller",
+      "name": "域控服务器",
+      "category": "服务器与计算资源",
+      "type": "windows_server",
+      "location": "10.0.12.12",
+      "status": "online",
+      "details": {
+        "ping": {
+          "alive": true,
+          "rtt_ms": "8"
+        },
+        "rdp_port": {
+          "open": true,
+          "port": 3389
+        }
+      },
+      "collected_at": "2026-03-11 15:58:33"
+    },
+    {
+      "id": "print-server",
+      "name": "打印机服务器",
+      "category": "服务器与计算资源",
+      "type": "windows_server",
+      "location": "10.0.12.13",
+      "status": "online",
+      "details": {
+        "ping": {
+          "alive": true,
+          "rtt_ms": "8"
+        },
+        "rdp_port": {
+          "open": false,
+          "port": 3389,
+          "error": "[WinError 10061] 由于目标计算机积极拒绝，无法连接。"
+        }
+      },
+      "collected_at": "2026-03-11 15:58:35"
+    },
+    {
+      "id": "db-read",
+      "name": "生产数据库(读)",
+      "category": "存储与数据资源",
+      "type": "postgresql",
+      "location": "192.168.1.248",
+      "status": "offline",
+      "details": {
+        "connected": false,
+        "error": "connection to server at \"192.168.1.248\", port 5432 failed: timeout expired\n"
+      },
+      "collected_at": "2026-03-11 15:58:40"
+    },
+    {
+      "id": "printer-small",
+      "name": "小打印机",
+      "category": "终端与办公设备",
+      "type": "printer",
+      "location": "192.168.1.254",
+      "status": "online",
+      "details": {
+        "ping": {
+          "alive": true,
+          "rtt_ms": "545"
+        },
+        "http": {
+          "status_code": 200,
+          "ok": true,
+          "url": "http://192.168.1.254"
+        },
+        "ipp_port": {
+          "open": true,
+          "port": 631
+        },
+        "jetdirect_port": {
+          "open": true,
+          "port": 9100
+        }
+      },
+      "collected_at": "2026-03-11 15:58:41"
+    },
+    {
+      "id": "printer-medical",
+      "name": "医美打印机",
+      "category": "终端与办公设备",
+      "type": "printer",
+      "location": "192.168.2.254",
+      "status": "online",
+      "details": {
+        "ping": {
+          "alive": true,
+          "rtt_ms": "47"
+        },
+        "http": {
+          "status_code": 200,
+          "ok": true,
+          "url": "http://192.168.2.254"
+        },
+        "ipp_port": {
+          "open": true,
+          "port": 631
+        },
+        "jetdirect_port": {
+          "open": true,
+          "port": 9100
+        }
+      },
+      "collected_at": "2026-03-11 15:58:44"
+    },
+    {
+      "id": "printer-large",
+      "name": "大打印机",
+      "category": "终端与办公设备",
+      "type": "printer",
+      "location": "192.168.1.170",
+      "status": "online",
+      "details": {
+        "ping": {
+          "alive": true,
+          "rtt_ms": "11"
+        },
+        "http": {
+          "status_code": 401,
+          "ok": true,
+          "url": "http://192.168.1.170"
+        },
+        "ipp_port": {
+          "open": true,
+          "port": 631
+        },
+        "jetdirect_port": {
+          "open": true,
+          "port": 9100
+        }
+      },
+      "collected_at": "2026-03-11 15:58:45"
+    },
+    {
+      "id": "volcengine-ecs",
+      "name": "火山云 ECS 生产节点",
+      "category": "云服务与平台",
+      "type": "cloud_ecs",
+      "location": "118.196.64.48",
+      "status": "online",
+      "details": {
+        "hostname": "iv-yef7pjxhxcay8n7blru6",
+        "uptime": "15:58:46 up 13 days,  6:13,  4 users,  load average: 0.25, 0.38, 0.37",
+        "free -h | head -3": "total        used        free      shared  buff/cache   available\nMem:            31Gi       1.8Gi        21Gi        53Mi       8.5Gi        29Gi\nSwap:             0B          0B          0B",
+        "df -h / | tail -1": "/dev/vda2        40G   12G   26G  32% /",
+        "cat /proc/loadavg": "0.25 0.38 0.37 1/314 1455149",
+        "docker ps --format '{{.Names}} {{.Status}}' 2>/dev/null || echo 'no docker'": "no docker",
+        "systemctl is-active nginx 2>/dev/null || echo 'unknown'": "active",
+        "curl -s -o /dev/null -w '%{http_code}' http://localhost/ 2>/dev/null || echo 'no curl'": "301"
+      },
+      "collected_at": "2026-03-11 15:58:45"
+    },
+    {
+      "id": "domain-utest-cc",
+      "name": "域名 utest.cc",
+      "category": "域名与公网入口",
+      "type": "domain",
+      "location": "utest.cc",
+      "status": "cert_invalid",
+      "details": {
+        "dns": {
+          "resolved": true,
+          "ips": [
+            "198.18.4.128"
+          ]
+        },
+        "ssl": {
+          "valid": false,
+          "error": "[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1081)"
+        }
+      },
+      "collected_at": "2026-03-11 15:58:45"
+    },
+    {
+      "id": "domain-www-utest",
+      "name": "域名 www.utest.cc",
+      "category": "域名与公网入口",
+      "type": "domain",
+      "location": "www.utest.cc",
+      "status": "cert_invalid",
+      "details": {
+        "dns": {
+          "resolved": true,
+          "ips": [
+            "198.18.4.129"
+          ]
+        },
+        "ssl": {
+          "valid": false,
+          "error": "[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1081)"
+        }
+      },
+      "collected_at": "2026-03-11 15:58:46"
+    },
+    {
+      "id": "domain-mini-utest",
+      "name": "域名 mini.utest.cc",
+      "category": "域名与公网入口",
+      "type": "domain",
+      "location": "mini.utest.cc",
+      "status": "cert_invalid",
+      "details": {
+        "dns": {
+          "resolved": true,
+          "ips": [
+            "198.18.4.130"
+          ]
+        },
+        "ssl": {
+          "valid": false,
+          "error": "[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1081)"
+        }
+      },
+      "collected_at": "2026-03-11 15:58:46"
+    },
+    {
+      "id": "domain-mini-chinanorm",
+      "name": "域名 mini.china-norm.com",
+      "category": "域名与公网入口",
+      "type": "domain",
+      "location": "mini.china-norm.com",
+      "status": "healthy",
+      "details": {
+        "dns": {
+          "resolved": true,
+          "ips": [
+            "198.18.4.131"
+          ]
+        },
+        "ssl": {
+          "valid": true,
+          "expires": "Aug 20 08:01:06 2026 GMT",
+          "days_left": 162,
+          "issuer": "Beijing Xinchacha Credit Management Co., Ltd.",
+          "subject": "*.china-norm.com"
+        }
+      },
+      "collected_at": "2026-03-11 15:58:46"
+    },
+    {
+      "id": "feishu-secretary",
+      "name": "飞书应用: 子衿(秘书)",
+      "category": "身份与协同服务",
+      "type": "feishu_app",
+      "location": "cli_a98b0babd020500e",
+      "status": "registered",
+      "details": {
+        "app_id": "cli_a98b0babd020500e"
+      },
+      "collected_at": "2026-03-11 15:58:46"
+    },
+    {
+      "id": "feishu-finance",
+      "name": "飞书应用: 管仲(财务)",
+      "category": "身份与协同服务",
+      "type": "feishu_app",
+      "location": "cli_a907cf1b70395bc8",
+      "status": "registered",
+      "details": {
+        "app_id": "cli_a907cf1b70395bc8"
+      },
+      "collected_at": "2026-03-11 15:58:46"
+    },
+    {
+      "id": "feishu-lab-personnel",
+      "name": "飞书应用: 共济(实验室)",
+      "category": "身份与协同服务",
+      "type": "feishu_app",
+      "location": "cli_a91faab3d338dcc8",
+      "status": "registered",
+      "details": {
+        "app_id": "cli_a91faab3d338dcc8"
+      },
+      "collected_at": "2026-03-11 15:58:46"
+    },
+    {
+      "id": "feishu-ethics",
+      "name": "飞书应用: 御史(伦理)",
+      "category": "身份与协同服务",
+      "type": "feishu_app",
+      "location": "cli_a918d3c80c38dbcc",
+      "status": "registered",
+      "details": {
+        "app_id": "cli_a918d3c80c38dbcc"
+      },
+      "collected_at": "2026-03-11 15:58:46"
+    },
+    {
+      "id": "feishu-control-plane",
+      "name": "飞书应用: 天工(统一管理)",
+      "category": "身份与协同服务",
+      "type": "feishu_app",
+      "location": "cli_a93a5f2021615bb5",
+      "status": "token_valid",
+      "details": {
+        "app_id": "cli_a93a5f2021615bb5",
+        "token_expires_in": 7200
+      },
+      "collected_at": "2026-03-11 15:58:46"
+    },
+    {
+      "id": "feishu-research",
+      "name": "飞书应用: 研究工作台",
+      "category": "身份与协同服务",
+      "type": "feishu_app",
+      "location": "cli_a91b8092be385bc9",
+      "status": "registered",
+      "details": {
+        "app_id": "cli_a91b8092be385bc9"
+      },
+      "collected_at": "2026-03-11 15:58:46"
+    },
+    {
+      "id": "feishu-execution",
+      "name": "飞书应用: 执行工作台",
+      "category": "身份与协同服务",
+      "type": "feishu_app",
+      "location": "cli_a91bc30b7e385ccd",
+      "status": "registered",
+      "details": {
+        "app_id": "cli_a91bc30b7e385ccd"
+      },
+      "collected_at": "2026-03-11 15:58:46"
+    },
+    {
+      "id": "feishu-quality",
+      "name": "飞书应用: 质量工作台",
+      "category": "身份与协同服务",
+      "type": "feishu_app",
+      "location": "cli_a91b3c828cf85cb0",
+      "status": "registered",
+      "details": {
+        "app_id": "cli_a91b3c828cf85cb0"
+      },
+      "collected_at": "2026-03-11 15:58:46"
+    },
+    {
+      "id": "feishu-hr",
+      "name": "飞书应用: HR工作台",
+      "category": "身份与协同服务",
+      "type": "feishu_app",
+      "location": "cli_a91b3db342b89bef",
+      "status": "registered",
+      "details": {
+        "app_id": "cli_a91b3db342b89bef"
+      },
+      "collected_at": "2026-03-11 15:58:46"
+    },
+    {
+      "id": "feishu-crm",
+      "name": "飞书应用: CRM工作台",
+      "category": "身份与协同服务",
+      "type": "feishu_app",
+      "location": "cli_a91b3fd427b89cd1",
+      "status": "registered",
+      "details": {
+        "app_id": "cli_a91b3fd427b89cd1"
+      },
+      "collected_at": "2026-03-11 15:58:46"
+    },
+    {
+      "id": "feishu-recruitment",
+      "name": "飞书应用: 招募工作台",
+      "category": "身份与协同服务",
+      "type": "feishu_app",
+      "location": "cli_a919aea7f4b85ccd",
+      "status": "registered",
+      "details": {
+        "app_id": "cli_a919aea7f4b85ccd"
+      },
+      "collected_at": "2026-03-11 15:58:46"
+    },
+    {
+      "id": "feishu-reception",
+      "name": "飞书应用: 前台工作台",
+      "category": "身份与协同服务",
+      "type": "feishu_app",
+      "location": "cli_a9133deb84b89ceb",
+      "status": "registered",
+      "details": {
+        "app_id": "cli_a9133deb84b89ceb"
+      },
+      "collected_at": "2026-03-11 15:58:46"
+    },
+    {
+      "id": "feishu-equipment",
+      "name": "飞书应用: 器衡(设备)",
+      "category": "身份与协同服务",
+      "type": "feishu_app",
+      "location": "cli_a91901398638dbb3",
+      "status": "registered",
+      "details": {
+        "app_id": "cli_a91901398638dbb3"
+      },
+      "collected_at": "2026-03-11 15:58:46"
+    },
+    {
+      "id": "feishu-material",
+      "name": "飞书应用: 度支(物料)",
+      "category": "身份与协同服务",
+      "type": "feishu_app",
+      "location": "cli_a919037696789bb5",
+      "status": "registered",
+      "details": {
+        "app_id": "cli_a919037696789bb5"
+      },
+      "collected_at": "2026-03-11 15:58:46"
+    },
+    {
+      "id": "feishu-facility",
+      "name": "飞书应用: 坤元(设施)",
+      "category": "身份与协同服务",
+      "type": "feishu_app",
+      "location": "cli_a919028098b8dbd3",
+      "status": "registered",
+      "details": {
+        "app_id": "cli_a919028098b8dbd3"
+      },
+      "collected_at": "2026-03-11 15:58:46"
+    },
+    {
+      "id": "feishu-evaluator",
+      "name": "飞书应用: 衡技(评估)",
+      "category": "身份与协同服务",
+      "type": "feishu_app",
+      "location": "cli_a9196e57e5f8dcca",
+      "status": "registered",
+      "details": {
+        "app_id": "cli_a9196e57e5f8dcca"
+      },
+      "collected_at": "2026-03-11 15:58:46"
+    },
+    {
+      "id": "ai-kimi",
+      "name": "Kimi/Moonshot推理服务",
+      "category": "AI能力与大模型",
+      "type": "llm_api",
+      "location": "https://api.moonshot.cn/v1",
+      "status": "reachable",
+      "details": {
+        "status_code": 401,
+        "ok": true,
+        "url": "https://api.moonshot.cn/v1/models"
+      },
+      "collected_at": "2026-03-11 15:58:47"
+    },
+    {
+      "id": "ai-ark",
+      "name": "火山方舟ARK推理服务",
+      "category": "AI能力与大模型",
+      "type": "llm_api",
+      "location": "https://ark.cn-beijing.volces.com/api/v3",
+      "status": "reachable",
+      "details": {
+        "status_code": 401,
+        "ok": true,
+        "url": "https://ark.cn-beijing.volces.com/api/v3/models"
+      },
+      "collected_at": "2026-03-11 15:58:47"
+    }
+  ]
+}

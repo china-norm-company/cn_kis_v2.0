@@ -1,0 +1,1217 @@
+{
+  "objects": [
+    {
+      "id": "obj-reg-print-small-office",
+      "asset_code": "PRT-OFFICE-001",
+      "name": "小打印机",
+      "type": "endpoint",
+      "subtype": "printer",
+      "zone": "办公输出域",
+      "location": "192.168.1.254",
+      "owner": "行政/IT",
+      "status": "warning",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "办公打印资源已登记，待接入在线状态、耗材余量和故障告警。登录账号通过凭据引用管理。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://printing/office-small-printer",
+        "login_user": "11111",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-print-aesthetic",
+      "asset_code": "PRT-MEDICAL-001",
+      "name": "医美打印机",
+      "type": "endpoint",
+      "subtype": "printer",
+      "zone": "诊疗输出域",
+      "location": "192.168.2.254",
+      "owner": "诊疗支持/IT",
+      "status": "warning",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "医美场景打印资源已登记，待接入在线状态、作业失败率和远程维护监控。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://printing/medical-printer",
+        "login_user": "11111",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-print-large-office",
+      "asset_code": "PRT-OFFICE-002",
+      "name": "大打印机",
+      "type": "endpoint",
+      "subtype": "printer",
+      "zone": "办公输出域",
+      "location": "192.168.1.170",
+      "owner": "行政/IT",
+      "status": "warning",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "大打印机已登记，建议补充墨粉、纸盒、错误码和在线率采集。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://printing/office-large-printer",
+        "login_user": "11111",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-vm-host-10-0-12-2",
+      "asset_code": "CMP-HOST-001",
+      "name": "VM服务器",
+      "type": "compute",
+      "subtype": "virtualization_host",
+      "zone": "生产计算域",
+      "location": "10.0.12.2",
+      "owner": "基础设施组",
+      "status": "warning",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "核心虚拟化承载节点，需优先接入 CPU/内存/磁盘/宿主机负载和虚拟机健康监控。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://infra/vm-host-10.0.12.2",
+        "login_user": "root",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-nas-192-168-1-230",
+      "asset_code": "STO-NAS-001",
+      "name": "NAS服务器",
+      "type": "storage",
+      "subtype": "nas",
+      "zone": "存储域",
+      "location": "192.168.1.230",
+      "owner": "基础设施组",
+      "status": "warning",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "关键存储节点，建议纳入容量、RAID、SMART、快照和备份任务告警。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://storage/nas-192.168.1.230",
+        "login_user": "chinanorm",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-domain-controller",
+      "asset_code": "SRV-AD-001",
+      "name": "域控服务器",
+      "type": "compute",
+      "subtype": "domain_controller",
+      "zone": "身份域",
+      "location": "10.0.12.12",
+      "owner": "基础设施组",
+      "status": "warning",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "核心身份基础设施，建议监控 AD 复制、DNS、登录失败率和系统补丁状态。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://infra/domain-controller-10.0.12.12",
+        "login_user": "administrator",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-print-server",
+      "asset_code": "SRV-PRN-001",
+      "name": "打印机服务器",
+      "type": "compute",
+      "subtype": "print_server",
+      "zone": "办公服务域",
+      "location": "10.0.12.13",
+      "owner": "基础设施组",
+      "status": "warning",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "打印服务虚拟机已登记，建议纳入打印队列堆积、服务可用性和驱动健康检查。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://infra/print-server-10.0.12.13",
+        "login_user": "administrator",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-gpu-4090",
+      "asset_code": "GPU-4090-001",
+      "name": "4090 GPU服务器",
+      "type": "compute",
+      "subtype": "gpu_server",
+      "zone": "AI算力域",
+      "location": "192.168.1.208",
+      "owner": "AI/平台组",
+      "status": "warning",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "高价值算力节点，需监控 GPU 温度、显存占用、驱动、容器任务和远程登录审计。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://ai/gpu-4090-192.168.1.208",
+        "login_user": "root",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-db-read",
+      "asset_code": "DB-READ-001",
+      "name": "数据库读账号接入点",
+      "type": "database",
+      "subtype": "read_only_account",
+      "zone": "数据服务域",
+      "location": "192.168.1.248",
+      "owner": "数据平台组",
+      "status": "warning",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "数据库访问入口已登记，建议纳入连接可用性、慢查询、账号审计和备份恢复演练。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://db/read-192.168.1.248",
+        "login_user": "fushuo_read",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-vm-leader",
+      "asset_code": "VM-USER-001",
+      "name": "虚拟机（领导用）",
+      "type": "compute",
+      "subtype": "user_vm",
+      "zone": "办公计算域",
+      "location": "10.0.12.17",
+      "owner": "IT支持",
+      "status": "warning",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "领导专用虚拟机已登记，建议纳入可用性、快照、补丁和终端安全巡检。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://vm/user-leader-10.0.12.17",
+        "login_user": "root",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-vm-penny",
+      "asset_code": "VM-USER-002",
+      "name": "虚拟机（penny用）",
+      "type": "compute",
+      "subtype": "user_vm",
+      "zone": "办公计算域",
+      "location": "10.0.12.18",
+      "owner": "IT支持",
+      "status": "warning",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "业务虚拟机已登记，建议纳入会话、磁盘、备份和可用性监控。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://vm/user-penny-10.0.12.18",
+        "login_user": "root",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-api-platform-vm",
+      "asset_code": "APP-API-001",
+      "name": "API平台虚拟机",
+      "type": "application",
+      "subtype": "api_platform",
+      "zone": "应用服务域",
+      "location": "10.0.12.30",
+      "owner": "平台组",
+      "status": "warning",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "关键 API 平台节点已登记，建议接入服务端口、日志、证书和接口可用性告警。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://app/api-platform-10.0.12.30",
+        "login_user": "root",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-vm-qiuguo",
+      "asset_code": "VM-USER-003",
+      "name": "虚拟机（秋果用）",
+      "type": "compute",
+      "subtype": "user_vm",
+      "zone": "办公计算域",
+      "location": "10.0.12.14",
+      "owner": "IT支持",
+      "status": "warning",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "业务虚拟机已登记，建议统一纳入快照、备份和登录审计。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://vm/user-qiuguo-10.0.12.14",
+        "login_user": "root",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-vm-jingang",
+      "asset_code": "VM-USER-004",
+      "name": "虚拟机（金刚用）",
+      "type": "compute",
+      "subtype": "user_vm",
+      "zone": "办公计算域",
+      "location": "10.0.12.15",
+      "owner": "IT支持",
+      "status": "warning",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "业务虚拟机已登记，建议补充系统资源和会话活跃度探测。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://vm/user-jingang-10.0.12.15",
+        "login_user": "root",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-gpu-dell",
+      "asset_code": "GPU-DEL-001",
+      "name": "GPU服务器",
+      "type": "compute",
+      "subtype": "gpu_server",
+      "zone": "AI算力域",
+      "location": "10.0.12.22",
+      "owner": "AI/平台组",
+      "status": "warning",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "GPU 算力节点已登记，建议接入 GPU 利用率、温度、电源和任务队列监控。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://ai/gpu-10.0.12.22",
+        "login_user": "dell",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-clinic-fw-main",
+      "asset_code": "NET-CLINIC-FW-001",
+      "name": "诊所主防火墙",
+      "type": "security_device",
+      "subtype": "firewall",
+      "zone": "诊所网络域",
+      "location": "192.168.99.2",
+      "owner": "网络组",
+      "status": "warning",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "诊所网络主防火墙已登记，需接入配置备份、会话数、CPU、链路状态和策略变更告警。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://network/clinic-fw-main",
+        "login_user": "admin1",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-clinic-fw-standby",
+      "asset_code": "NET-CLINIC-FW-002",
+      "name": "诊所备用防火墙",
+      "type": "security_device",
+      "subtype": "firewall",
+      "zone": "诊所网络域",
+      "location": "192.168.99.7",
+      "owner": "网络组",
+      "status": "warning",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "诊所网络备用防火墙已登记，需纳入 HA 状态、主备切换和配置漂移告警。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://network/clinic-fw-standby",
+        "login_user": "admin1",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-clinic-core-switch",
+      "asset_code": "NET-CLINIC-SW-001",
+      "name": "诊所核心交换机",
+      "type": "network_device",
+      "subtype": "core_switch",
+      "zone": "诊所网络域",
+      "location": "192.168.99.1",
+      "owner": "网络组",
+      "status": "warning",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "诊所核心交换机已登记，需接入端口状态、CPU、ARP 和配置变更监控。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://network/clinic-core-switch",
+        "login_user": "admin",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-clinic-wlc",
+      "asset_code": "NET-CLINIC-WLC-001",
+      "name": "诊所无线控制器",
+      "type": "network_device",
+      "subtype": "wireless_controller",
+      "zone": "诊所网络域",
+      "location": "192.168.99.4",
+      "owner": "网络组",
+      "status": "warning",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "诊所无线控制器已登记，建议纳入 AP 在线数、射频质量和告警同步。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://network/clinic-wlc",
+        "login_user": "admin",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-baohua-fw-standby",
+      "asset_code": "NET-BH-FW-002",
+      "name": "宝华防火墙备机",
+      "type": "security_device",
+      "subtype": "firewall",
+      "zone": "网络与安全域",
+      "location": "192.168.10.2",
+      "owner": "网络组",
+      "status": "warning",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "宝华防火墙备机已登记，建议与主防火墙一起纳入主备状态和策略漂移监控。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://network/baohua-fw-standby",
+        "login_user": "admin",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-baohua-wlc",
+      "asset_code": "NET-BH-WLC-001",
+      "name": "宝华无线控制器",
+      "type": "network_device",
+      "subtype": "wireless_controller",
+      "zone": "管理域",
+      "location": "192.168.20.254",
+      "owner": "网络组",
+      "status": "warning",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "宝华无线控制器已登记，需接入 AP 数量、射频指标和配置备份。",
+      "extra": {
+        "source": "user_inventory",
+        "credential_ref": "vault://network/baohua-wlc",
+        "login_user": "admin",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-volcengine-ecs",
+      "asset_code": "CLOUD-VOLC-001",
+      "name": "火山云 ECS 生产节点",
+      "type": "cloud_service",
+      "subtype": "ecs_server",
+      "zone": "云服务域",
+      "location": "118.196.64.48",
+      "owner": "平台组",
+      "status": "active",
+      "risk_level": "high",
+      "last_seen_at": "已验证可连接",
+      "summary": "当前工作台部署节点。已用于飞书回调、H5 入口、SSH 部署，需纳入主机/磁盘/证书/进程告警。",
+      "extra": {
+        "source": "deploy_history",
+        "credential_ref": "vault://cloud/volcengine-ecs-root",
+        "login_user": "root",
+        "monitoring_status": "partial"
+      }
+    },
+    {
+      "id": "obj-reg-domain-utest-root",
+      "asset_code": "DNS-UTEST-001",
+      "name": "域名 utest.cc",
+      "type": "domain",
+      "subtype": "public_domain",
+      "zone": "公网接入域",
+      "location": "utest.cc",
+      "owner": "平台组",
+      "status": "active",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "公网域名资源已登记，需纳入 DNS 解析、证书和可用性监控。",
+      "extra": {
+        "source": "docs",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-domain-www-utest",
+      "asset_code": "DNS-UTEST-002",
+      "name": "域名 www.utest.cc",
+      "type": "domain",
+      "subtype": "public_domain",
+      "zone": "公网接入域",
+      "location": "www.utest.cc",
+      "owner": "平台组",
+      "status": "active",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "API/静态资源域名已登记，需监控证书链和入口健康。",
+      "extra": {
+        "source": "docs",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-domain-mini-utest",
+      "asset_code": "DNS-UTEST-003",
+      "name": "域名 mini.utest.cc",
+      "type": "domain",
+      "subtype": "public_domain",
+      "zone": "公网接入域",
+      "location": "mini.utest.cc",
+      "owner": "平台组",
+      "status": "active",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "小程序/备用入口域名已登记，需接入证书和 DNS 巡检。",
+      "extra": {
+        "source": "docs",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-domain-mini-china-norm",
+      "asset_code": "DNS-CHINANORM-001",
+      "name": "域名 mini.china-norm.com",
+      "type": "domain",
+      "subtype": "public_domain",
+      "zone": "公网接入域",
+      "location": "mini.china-norm.com",
+      "owner": "平台组",
+      "status": "active",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "云托管绑定域名已登记，建议纳入证书、解析和回源可用性监控。",
+      "extra": {
+        "source": "docs",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-feishu-secretary",
+      "asset_code": "APP-FEISHU-001",
+      "name": "飞书应用：子衿",
+      "type": "identity_service",
+      "subtype": "feishu_oauth_app",
+      "zone": "身份与协同域",
+      "location": "cli_a98b0babd020500e",
+      "owner": "平台组",
+      "status": "active",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "秘书工作台 OAuth 与机器人应用，需监控 redirect、权限变更和调用配额。",
+      "extra": {
+        "source": "docs",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-feishu-finance",
+      "asset_code": "APP-FEISHU-002",
+      "name": "飞书应用：管仲",
+      "type": "identity_service",
+      "subtype": "feishu_oauth_app",
+      "zone": "身份与协同域",
+      "location": "cli_a907cf1b70395bc8",
+      "owner": "平台组",
+      "status": "active",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "财务工作台 OAuth 应用，需监控 redirect、权限和登录成功率。",
+      "extra": {
+        "source": "docs",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-feishu-lab-personnel",
+      "asset_code": "APP-FEISHU-003",
+      "name": "飞书应用：共济",
+      "type": "identity_service",
+      "subtype": "feishu_oauth_app",
+      "zone": "身份与协同域",
+      "location": "cli_a91faab3d338dcc8",
+      "owner": "平台组",
+      "status": "active",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "实验室人员工作台 OAuth 应用，建议纳入权限与 redirect 一致性巡检。",
+      "extra": {
+        "source": "docs",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-feishu-ethics",
+      "asset_code": "APP-FEISHU-004",
+      "name": "飞书应用：御史",
+      "type": "identity_service",
+      "subtype": "feishu_oauth_app",
+      "zone": "身份与协同域",
+      "location": "cli_a918d3c80c38dbcc",
+      "owner": "平台组",
+      "status": "active",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "伦理工作台 OAuth 应用，建议纳入应用配置漂移巡检。",
+      "extra": {
+        "source": "docs",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-feishu-control-plane",
+      "asset_code": "APP-FEISHU-005",
+      "name": "飞书应用：天工",
+      "type": "identity_service",
+      "subtype": "feishu_oauth_app",
+      "zone": "身份与协同域",
+      "location": "cli_a93a5f2021615bb5",
+      "owner": "平台组",
+      "status": "warning",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "天工独立 OAuth 应用已登记，当前需重点监控 redirect_uri、可见性和登录成功率。",
+      "extra": {
+        "source": "env",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-ai-kimi",
+      "asset_code": "AI-KIMI-001",
+      "name": "Kimi / Moonshot 推理服务",
+      "type": "ai_service",
+      "subtype": "llm_provider",
+      "zone": "AI能力域",
+      "location": "https://api.moonshot.cn/v1",
+      "owner": "AI/平台组",
+      "status": "warning",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "Kimi 推理服务已登记，默认模型 moonshot-v1-32k，需纳入额度、延迟、错误率和密钥轮换监控。",
+      "extra": {
+        "source": "env",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-reg-ai-ark",
+      "asset_code": "AI-ARK-001",
+      "name": "火山方舟 ARK 推理服务",
+      "type": "ai_service",
+      "subtype": "llm_provider",
+      "zone": "AI能力域",
+      "location": "https://ark.cn-beijing.volces.com/api/v3",
+      "owner": "AI/平台组",
+      "status": "warning",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "火山方舟推理服务已登记，需纳入 endpoint 健康、调用耗时、成本和密钥状态监控。",
+      "extra": {
+        "source": "env",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-lab-instrument-corneometer",
+      "asset_code": "LAB-INST-001",
+      "name": "Corneometer 皮肤水分测量仪",
+      "type": "instrument",
+      "subtype": "skin_analyzer",
+      "zone": "实验室检测域",
+      "location": "实验室",
+      "owner": "实验室",
+      "status": "active",
+      "risk_level": "low",
+      "last_seen_at": "",
+      "summary": "皮肤表面水分含量（角质层水分）测量仪，用于化妆品功效评估及受试者皮肤状态监测。",
+      "extra": {
+        "source": "feishu_wiki_IT管理",
+        "manufacturer": "Courage+Khazaka (C+K)",
+        "measurement": "皮肤水分含量（角质层）",
+        "standard": "GB/T 35954",
+        "monitoring_status": "planned",
+        "feishu_doc": "Corneometer仪器-皮肤表面的水分含量.txt"
+      }
+    },
+    {
+      "id": "obj-lab-instrument-cutometer",
+      "asset_code": "LAB-INST-002",
+      "name": "Cutometer 皮肤弹性测量仪",
+      "type": "instrument",
+      "subtype": "skin_analyzer",
+      "zone": "实验室检测域",
+      "location": "实验室",
+      "owner": "实验室",
+      "status": "active",
+      "risk_level": "low",
+      "last_seen_at": "",
+      "summary": "皮肤弹性和紧致度测量仪，通过负压吸引皮肤变形量评估皮肤弹性。",
+      "extra": {
+        "source": "feishu_wiki_IT管理",
+        "manufacturer": "Courage+Khazaka (C+K)",
+        "measurement": "皮肤弹性/紧致度",
+        "monitoring_status": "planned",
+        "feishu_doc": "Cutometer仪器-测量皮肤弹性和紧致度.txt"
+      }
+    },
+    {
+      "id": "obj-lab-instrument-dermalab",
+      "asset_code": "LAB-INST-003",
+      "name": "Dermalab 头皮水分测量仪",
+      "type": "instrument",
+      "subtype": "skin_analyzer",
+      "zone": "实验室检测域",
+      "location": "实验室",
+      "owner": "实验室",
+      "status": "active",
+      "risk_level": "low",
+      "last_seen_at": "",
+      "summary": "测量头皮水分的专业设备，用于头皮健康状态评估和相关产品功效验证。",
+      "extra": {
+        "source": "feishu_wiki_IT管理",
+        "measurement": "头皮水分",
+        "monitoring_status": "planned",
+        "feishu_doc": "Dermalab仪器-测量头皮水分的设备.txt"
+      }
+    },
+    {
+      "id": "obj-lab-instrument-primos",
+      "asset_code": "LAB-INST-004",
+      "name": "Primos 3D皮肤表面测量仪",
+      "type": "instrument",
+      "subtype": "skin_analyzer",
+      "zone": "实验室检测域",
+      "location": "实验室",
+      "owner": "实验室",
+      "status": "active",
+      "risk_level": "low",
+      "last_seen_at": "",
+      "summary": "3D皮肤表面形貌测量仪，可精确测量皱纹、粗糙度等皮肤表面参数。",
+      "extra": {
+        "source": "feishu_wiki_IT管理",
+        "manufacturer": "GFMesstechnik",
+        "measurement": "3D皮肤表面形貌/皱纹深度/粗糙度",
+        "monitoring_status": "planned",
+        "feishu_doc": "Primos仪器-3D皮肤表面测量仪器.txt"
+      }
+    },
+    {
+      "id": "obj-lab-instrument-sebumeter",
+      "asset_code": "LAB-INST-005",
+      "name": "Sebumeter 皮肤油脂测量仪",
+      "type": "instrument",
+      "subtype": "skin_analyzer",
+      "zone": "实验室检测域",
+      "location": "实验室",
+      "owner": "实验室",
+      "status": "active",
+      "risk_level": "low",
+      "last_seen_at": "",
+      "summary": "测量皮肤表面油脂分泌量，用于皮肤类型判断和控油产品功效评估。",
+      "extra": {
+        "source": "feishu_wiki_IT管理",
+        "manufacturer": "Courage+Khazaka (C+K)",
+        "measurement": "皮肤油脂分泌量",
+        "monitoring_status": "planned",
+        "feishu_doc": "Sebumeter仪器-测量皮肤表面油脂分泌量的设备.txt"
+      }
+    },
+    {
+      "id": "obj-lab-instrument-ultrascan",
+      "asset_code": "LAB-INST-006",
+      "name": "Ultrascan UC22 皮肤超声诊断仪",
+      "type": "instrument",
+      "subtype": "skin_analyzer",
+      "zone": "实验室检测域",
+      "location": "实验室",
+      "owner": "实验室",
+      "status": "active",
+      "risk_level": "low",
+      "last_seen_at": "",
+      "summary": "高频超声皮肤诊断仪，可无创检测皮肤各层厚度、密度等结构参数。",
+      "extra": {
+        "source": "feishu_wiki_IT管理",
+        "manufacturer": "Taberna pro medicum",
+        "measurement": "皮肤层次结构/厚度",
+        "monitoring_status": "planned",
+        "feishu_doc": "Ultrascan UC 22仪器-皮肤超声诊断仪.txt"
+      }
+    },
+    {
+      "id": "obj-lab-instrument-vapometer",
+      "asset_code": "LAB-INST-007",
+      "name": "Vapometer 经皮水分流失测量仪",
+      "type": "instrument",
+      "subtype": "skin_analyzer",
+      "zone": "实验室检测域",
+      "location": "实验室",
+      "owner": "实验室",
+      "status": "active",
+      "risk_level": "low",
+      "last_seen_at": "",
+      "summary": "测量经皮水分流失（TEWL），评估皮肤屏障功能完整性，用于保湿类产品功效验证。",
+      "extra": {
+        "source": "feishu_wiki_IT管理",
+        "manufacturer": "Delfin Technologies",
+        "measurement": "TEWL（经皮水分流失）",
+        "standard": "ISO 14184",
+        "monitoring_status": "planned",
+        "feishu_doc": "Vapometer仪器-测量经皮水分流失.txt"
+      }
+    },
+    {
+      "id": "obj-lab-instrument-visia-cr",
+      "asset_code": "LAB-INST-008",
+      "name": "VISIA-CR 面部皮肤分析系统",
+      "type": "instrument",
+      "subtype": "skin_analyzer",
+      "zone": "实验室检测域",
+      "location": "实验室",
+      "owner": "实验室",
+      "status": "active",
+      "risk_level": "low",
+      "last_seen_at": "",
+      "summary": "多光谱面部皮肤分析系统，可分析斑点、皱纹、纹理、毛孔、紫外线色斑等8项皮肤参数。",
+      "extra": {
+        "source": "feishu_wiki_IT管理",
+        "manufacturer": "Canfield Scientific",
+        "measurement": "面部皮肤多维参数分析",
+        "monitoring_status": "planned",
+        "feishu_doc": "VISIA-CR仪器-面部皮肤分析.txt"
+      }
+    },
+    {
+      "id": "obj-sys-lims",
+      "asset_code": "SYS-PROD-001",
+      "name": "LIMS 实验室信息管理系统",
+      "type": "saas",
+      "subtype": "production_system",
+      "zone": "业务应用域",
+      "location": "https://lims.china-norm.com",
+      "owner": "IT/实验室",
+      "status": "active",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "核心生产系统，管理实验室样品、检测、报告全流程。有年度维保合同（2025），需监控服务可用性和证书状态。",
+      "extra": {
+        "source": "feishu_wiki_IT管理",
+        "vendor": "牵翼网络",
+        "contract": "LIMS 2025年度维保合同",
+        "software_copyright": "已申请软著（检测设备管理系统）",
+        "monitoring_status": "needs_setup",
+        "health_check_url": ""
+      }
+    },
+    {
+      "id": "obj-sys-edc",
+      "asset_code": "SYS-PROD-002",
+      "name": "EDC 电子数据采集系统",
+      "type": "saas",
+      "subtype": "production_system",
+      "zone": "业务应用域",
+      "location": "",
+      "owner": "IT/研究",
+      "status": "active",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "临床试验电子数据采集（EDC），供应商为里恩/百奥知，有验收报告和SOP。",
+      "extra": {
+        "source": "feishu_wiki_IT管理",
+        "vendor": "里恩 / 百奥知",
+        "contract": "202411-0240-上海复硕-EDC-合同.pdf",
+        "monitoring_status": "needs_setup"
+      }
+    },
+    {
+      "id": "obj-sys-ctms",
+      "asset_code": "SYS-PROD-003",
+      "name": "CTMS 临床试验管理系统",
+      "type": "saas",
+      "subtype": "production_system",
+      "zone": "业务应用域",
+      "location": "",
+      "owner": "IT/执行",
+      "status": "building",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "临床试验管理系统，建设中（2024.12-2025.6 一期），供应商为万氚/里恩，每周建设例会。",
+      "extra": {
+        "source": "feishu_wiki_IT系统与信息化项目",
+        "vendor": "万氚信息 / 里恩",
+        "contract": "SOW工作说明-复硕正态-CTMS项目_250114.doc",
+        "monitoring_status": "building"
+      }
+    },
+    {
+      "id": "obj-sys-epro",
+      "asset_code": "SYS-PROD-004",
+      "name": "ePRO 电子患者报告系统",
+      "type": "saas",
+      "subtype": "production_system",
+      "zone": "业务应用域",
+      "location": "",
+      "owner": "IT/研究",
+      "status": "evaluating",
+      "risk_level": "low",
+      "last_seen_at": "",
+      "summary": "电子患者报告结果系统，正在评估选型（里恩/百奥知），暂未上线。",
+      "extra": {
+        "source": "feishu_wiki_IT系统与信息化项目",
+        "monitoring_status": "planned"
+      }
+    },
+    {
+      "id": "obj-sys-finebi",
+      "asset_code": "SYS-PROD-005",
+      "name": "帆软FineBI 数据可视化平台",
+      "type": "saas",
+      "subtype": "analytics",
+      "zone": "业务应用域",
+      "location": "",
+      "owner": "IT",
+      "status": "active",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "数据可视化与BI分析平台，有年费订阅合同（帆软BI产品服务销售合同20250512），需监控订阅到期。",
+      "extra": {
+        "source": "feishu_wiki_IT管理",
+        "vendor": "帆软软件",
+        "contract": "帆软BI产品服务销售合同-盖章版 20250512.pdf",
+        "contract_expire": "2026-05-12",
+        "monitoring_status": "needs_expiry_alert"
+      }
+    },
+    {
+      "id": "obj-sys-kingdee",
+      "asset_code": "SYS-PROD-006",
+      "name": "金蝶云 ERP/财务系统",
+      "type": "saas",
+      "subtype": "erp",
+      "zone": "业务应用域",
+      "location": "",
+      "owner": "IT/财务",
+      "status": "active",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "企业资源计划/财务系统，有采购合同（2022/2023），需监控服务续费状态。",
+      "extra": {
+        "source": "feishu_wiki_IT管理",
+        "vendor": "金蝶云科技",
+        "contract": "2023.3.8金蝶软件采购合同.pdf",
+        "monitoring_status": "needs_setup"
+      }
+    },
+    {
+      "id": "obj-sys-ekuaibao",
+      "asset_code": "SYS-PROD-007",
+      "name": "易快报 费用报销系统",
+      "type": "saas",
+      "subtype": "expense",
+      "zone": "业务应用域",
+      "location": "",
+      "owner": "IT/财务",
+      "status": "active",
+      "risk_level": "low",
+      "last_seen_at": "",
+      "summary": "员工费用报销和审批系统，持续续费使用（2018-2023合同记录）。",
+      "extra": {
+        "source": "feishu_wiki_IT管理",
+        "vendor": "合思信息技术（易快报）",
+        "monitoring_status": "needs_setup"
+      }
+    },
+    {
+      "id": "obj-sys-dif",
+      "asset_code": "SYS-PROD-008",
+      "name": "DIF 调研数据采集平台",
+      "type": "saas",
+      "subtype": "data_collection",
+      "zone": "业务应用域",
+      "location": "",
+      "owner": "IT/研究",
+      "status": "active",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "调研数据采集系统，有2024年DIF维保服务合同，曾发生平台崩溃事件（需监控）。",
+      "extra": {
+        "source": "feishu_wiki_IT管理",
+        "contract": "2024年DIF维保服务合同.pdf",
+        "incident": "DIF调研平台崩溃（故障复盘已记录）",
+        "monitoring_status": "needs_setup"
+      }
+    },
+    {
+      "id": "obj-sys-esign",
+      "asset_code": "SYS-PROD-009",
+      "name": "e签宝/天谷 电子签章系统",
+      "type": "saas",
+      "subtype": "esign",
+      "zone": "业务应用域",
+      "location": "",
+      "owner": "IT/法务",
+      "status": "active",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "电子签章系统，有验收报告（2025），集成飞书审批流，需监控合同到期和证书有效性。",
+      "extra": {
+        "source": "feishu_wiki_IT系统与信息化项目",
+        "vendor": "e签宝 / 天谷",
+        "contract": "e签宝 合同-含保密协议-双签扫描版.pdf",
+        "monitoring_status": "needs_setup"
+      }
+    },
+    {
+      "id": "obj-sys-utest",
+      "asset_code": "SYS-PROD-010",
+      "name": "UTEST 消费者测试平台",
+      "type": "saas",
+      "subtype": "self_developed",
+      "zone": "业务应用域",
+      "location": "https://utest.china-norm.com",
+      "owner": "IT",
+      "status": "active",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "自主开发的消费者测试数据采集平台（含小程序），已上线一期，二期规划中。",
+      "extra": {
+        "source": "feishu_wiki_IT系统与信息化项目",
+        "vendor": "自研",
+        "monitoring_status": "needs_setup"
+      }
+    },
+    {
+      "id": "obj-sys-rws",
+      "asset_code": "SYS-PROD-011",
+      "name": "RWS 受试者管理系统",
+      "type": "saas",
+      "subtype": "self_developed",
+      "zone": "业务应用域",
+      "location": "http://118.196.64.48/secretary/",
+      "owner": "IT",
+      "status": "active",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "自主开发的受试者（RWS）管理系统，已上线，含多个信息化子模块，软著已申请。",
+      "extra": {
+        "source": "feishu_wiki_IT管理",
+        "vendor": "自研（CN KIS平台）",
+        "monitoring_status": "partial"
+      }
+    },
+    {
+      "id": "obj-infra-domain-china-norm",
+      "asset_code": "INFRA-DOM-001",
+      "name": "域名 china-norm.com",
+      "type": "domain",
+      "subtype": "domain_name",
+      "zone": "公网接入域",
+      "location": "china-norm.com",
+      "owner": "IT",
+      "status": "active",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "公司主域名，承载官网和所有服务入口。历史续费记录显示由庞谷代管，需监控到期日。",
+      "extra": {
+        "source": "feishu_wiki_IT管理",
+        "registrar": "庞谷信息技术",
+        "contract": "2021.10.28庞谷中文域名新增付费.pdf",
+        "monitoring_status": "needs_whois_check",
+        "alert_days_before_expire": 60
+      }
+    },
+    {
+      "id": "obj-infra-ssl-official-site",
+      "asset_code": "INFRA-SSL-001",
+      "name": "官网 SSL 证书",
+      "type": "certificate",
+      "subtype": "ssl_tls",
+      "zone": "公网接入域",
+      "location": "https://china-norm.com",
+      "owner": "IT",
+      "status": "active",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "官网HTTPS证书，2023年7月购买（2023.7.26官网SSL证书合同），需定期监控证书到期。",
+      "extra": {
+        "source": "feishu_wiki_IT管理",
+        "contract": "2023.7.26官网SSL证书.pdf",
+        "monitoring_status": "needs_cert_check",
+        "alert_days_before_expire": 30
+      }
+    },
+    {
+      "id": "obj-infra-firewall-license",
+      "asset_code": "INFRA-FW-001",
+      "name": "防火墙 Licenses",
+      "type": "network",
+      "subtype": "firewall",
+      "zone": "内网安全域",
+      "location": "",
+      "owner": "IT",
+      "status": "active",
+      "risk_level": "high",
+      "last_seen_at": "",
+      "summary": "网络防火墙授权，2023年7月续费（2023.7.18防火墙Licenses续费合同），需监控授权到期。",
+      "extra": {
+        "source": "feishu_wiki_IT管理",
+        "contract": "2023.7.18防火墙Licenses续费.pdf",
+        "monitoring_status": "needs_expiry_alert",
+        "alert_days_before_expire": 60
+      }
+    },
+    {
+      "id": "obj-infra-isp-baohualink",
+      "asset_code": "INFRA-NET-001",
+      "name": "宝华网络 互联网专线",
+      "type": "network",
+      "subtype": "isp_link",
+      "zone": "公网接入域",
+      "location": "健康智谷办公室",
+      "owner": "IT",
+      "status": "active",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "公司互联网专线（宝华网络），2023年10月发生闪断故障（已复盘），需监控链路可用性。",
+      "extra": {
+        "source": "feishu_wiki_IT管理",
+        "incident": "2023.10.22宝华网络闪断故障",
+        "monitoring_status": "needs_setup"
+      }
+    },
+    {
+      "id": "obj-ai-ark-volc",
+      "asset_code": "AI-API-001",
+      "name": "火山方舟 ARK 大模型 API",
+      "type": "ai_api",
+      "subtype": "llm",
+      "zone": "AI服务域",
+      "location": "https://ark.cn-beijing.volces.com/api/v3",
+      "owner": "IT",
+      "status": "active",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "火山引擎方舟大模型API，用于天工平台AI对话能力（ARK_API_KEY已配置）。需监控余额和调用量。",
+      "extra": {
+        "source": "deploy/.env.volcengine.plan-a",
+        "vendor": "字节跳动·火山引擎",
+        "credential_ref": "env://ARK_API_KEY",
+        "monitoring_status": "needs_balance_check"
+      }
+    },
+    {
+      "id": "obj-ai-kimi-moonshot",
+      "asset_code": "AI-API-002",
+      "name": "Kimi / Moonshot AI API",
+      "type": "ai_api",
+      "subtype": "llm",
+      "zone": "AI服务域",
+      "location": "https://api.moonshot.cn/v1",
+      "owner": "IT",
+      "status": "active",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "Kimi大模型API（moonshot-v1-32k），备用AI对话，需监控余额和有效期。",
+      "extra": {
+        "source": "deploy/.env.volcengine.plan-a",
+        "vendor": "月之暗面（Moonshot AI）",
+        "credential_ref": "env://KIMI_API_KEY",
+        "monitoring_status": "needs_balance_check"
+      }
+    },
+    {
+      "id": "obj-iot-air-station",
+      "asset_code": "IOT-ENV-001",
+      "name": "空气电台 环境监测器",
+      "type": "iot",
+      "subtype": "environment_sensor",
+      "zone": "实验室环境域",
+      "location": "实验室",
+      "owner": "实验室",
+      "status": "active",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "实验室环境监测IoT设备，采集PM2.5/PM10/温度/湿度数据。UTEST小程序已实现设备绑定界面，待接入天工统一监控。",
+      "extra": {
+        "source": "UTEST受试者平台小程序原型",
+        "metrics": [
+          "PM2.5",
+          "PM10",
+          "温度",
+          "湿度"
+        ],
+        "protocol": "MQTT/HTTP",
+        "monitoring_status": "partial_prototype"
+      }
+    },
+    {
+      "id": "obj-iot-skin-tester",
+      "asset_code": "IOT-INST-001",
+      "name": "皮肤测试仪（IoT接入）",
+      "type": "iot",
+      "subtype": "measurement_device",
+      "zone": "实验室检测域",
+      "location": "实验室",
+      "owner": "实验室",
+      "status": "active",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "可接入网络的皮肤测试仪，UTEST小程序已实现设备绑定和检测流程原型（含历史数据查看），待正式接入天工。",
+      "extra": {
+        "source": "UTEST受试者平台小程序原型",
+        "protocol": "BLE/HTTP",
+        "monitoring_status": "partial_prototype"
+      }
+    },
+    {
+      "id": "obj-facility-lab-jiankang",
+      "asset_code": "FAC-LAB-001",
+      "name": "健康智谷实验室场地",
+      "type": "facility",
+      "subtype": "laboratory",
+      "zone": "场地资源域",
+      "location": "上海·健康智谷",
+      "owner": "行政/IT",
+      "status": "active",
+      "risk_level": "medium",
+      "last_seen_at": "",
+      "summary": "公司主要实验室场地（健康智谷），含多个检测房间（62间）。实验室房间属性表已在飞书记录。有网络和打印机租赁合同在此地。",
+      "extra": {
+        "source": "feishu_wiki_IT管理/实验室房间属性",
+        "room_count": 62,
+        "floors": [
+          "一楼",
+          "二楼"
+        ],
+        "feishu_sheet": "实验室房间属性 sheet (LQqGsoQydhM7I8tJocnc0w4KnPf)",
+        "monitoring_status": "partial"
+      }
+    }
+  ]
+}

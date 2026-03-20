@@ -1,0 +1,1080 @@
+{
+  "core_switch": {
+    "host": "192.168.10.254",
+    "model": "S5735S-S24T4S-XA",
+    "software_version": "5.170 (V200R022C00SPC500)",
+    "uptime": "13 weeks, 2 days, 12 hours, 25 minutes",
+    "stack_members": [
+      {
+        "slot": 0,
+        "role": "Master",
+        "mac": "3cc7-8688-f7a0",
+        "priority": 255,
+        "device_type": "S5735S-S24T4S-XA"
+      },
+      {
+        "slot": 1,
+        "role": "Standby",
+        "mac": "3cc7-8688-4380",
+        "priority": 100,
+        "device_type": "S5735S-S24T4S-XA"
+      }
+    ],
+    "cpu": {
+      "current_percent": 20,
+      "max_percent": 78,
+      "five_seconds": 20,
+      "one_minute": 20,
+      "five_minutes": 18
+    },
+    "memory": {
+      "total_bytes": 239075328,
+      "used_bytes": 130981640,
+      "used_percent": 54
+    },
+    "temperature": [
+      {
+        "slot": 0,
+        "status": "Normal",
+        "celsius": 32
+      },
+      {
+        "slot": 1,
+        "status": "Normal",
+        "celsius": 26
+      }
+    ],
+    "power": [
+      {
+        "slot": 0,
+        "id": "PWR1",
+        "online": false,
+        "mode": "",
+        "state": "-",
+        "watts": 0
+      },
+      {
+        "slot": 0,
+        "id": "PWR2",
+        "online": true,
+        "mode": "AC",
+        "state": "Supply",
+        "watts": 60.0
+      },
+      {
+        "slot": 1,
+        "id": "PWR1",
+        "online": false,
+        "mode": "",
+        "state": "-",
+        "watts": 0
+      },
+      {
+        "slot": 1,
+        "id": "PWR2",
+        "online": true,
+        "mode": "AC",
+        "state": "Supply",
+        "watts": 60.0
+      }
+    ]
+  },
+  "interfaces": {
+    "total": 36,
+    "up": 16,
+    "down": 19,
+    "hot_links": [
+      {
+        "name": "GE0/0/22",
+        "in": 40.8,
+        "out": 40.13
+      }
+    ],
+    "details": [
+      {
+        "name": "Eth-Trunk1",
+        "short_name": "Eth-Trunk1",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/1",
+        "short_name": "GE0/0/1",
+        "phy_status": "up",
+        "protocol_status": "up",
+        "in_utilization": 16.16,
+        "out_utilization": 1.58,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/2",
+        "short_name": "GE0/0/2",
+        "phy_status": "up",
+        "protocol_status": "up",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/3",
+        "short_name": "GE0/0/3",
+        "phy_status": "up",
+        "protocol_status": "up",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/4",
+        "short_name": "GE0/0/4",
+        "phy_status": "up",
+        "protocol_status": "up",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/5",
+        "short_name": "GE0/0/5",
+        "phy_status": "up",
+        "protocol_status": "up",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/6",
+        "short_name": "GE0/0/6",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/7",
+        "short_name": "GE0/0/7",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/8",
+        "short_name": "GE0/0/8",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/9",
+        "short_name": "GE0/0/9",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/10",
+        "short_name": "GE0/0/10",
+        "phy_status": "up",
+        "protocol_status": "up",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/11",
+        "short_name": "GE0/0/11",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/12",
+        "short_name": "GE0/0/12",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/13",
+        "short_name": "GE0/0/13",
+        "phy_status": "up",
+        "protocol_status": "up",
+        "in_utilization": 0.16,
+        "out_utilization": 1.83,
+        "in_errors": 5,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/14",
+        "short_name": "GE0/0/14",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/15",
+        "short_name": "GE0/0/15",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/16",
+        "short_name": "GE0/0/16",
+        "phy_status": "up",
+        "protocol_status": "up",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/17",
+        "short_name": "GE0/0/17",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/18",
+        "short_name": "GE0/0/18",
+        "phy_status": "up",
+        "protocol_status": "up",
+        "in_utilization": 1.42,
+        "out_utilization": 0.07,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/19",
+        "short_name": "GE0/0/19",
+        "phy_status": "up",
+        "protocol_status": "up",
+        "in_utilization": 0.07,
+        "out_utilization": 1.42,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/20",
+        "short_name": "GE0/0/20",
+        "phy_status": "up",
+        "protocol_status": "up",
+        "in_utilization": 9.32,
+        "out_utilization": 17.93,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/21",
+        "short_name": "GE0/0/21",
+        "phy_status": "up",
+        "protocol_status": "up",
+        "in_utilization": 6.95,
+        "out_utilization": 13.08,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/22",
+        "short_name": "GE0/0/22",
+        "phy_status": "up",
+        "protocol_status": "up",
+        "in_utilization": 40.8,
+        "out_utilization": 40.13,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/23",
+        "short_name": "GE0/0/23",
+        "phy_status": "up",
+        "protocol_status": "up",
+        "in_utilization": 0.0,
+        "out_utilization": 6.38,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/24",
+        "short_name": "GE0/0/24",
+        "phy_status": "up",
+        "protocol_status": "up",
+        "in_utilization": 7.53,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/25",
+        "short_name": "GE0/0/25",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/26",
+        "short_name": "GE0/0/26",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/27",
+        "short_name": "GE0/0/27",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet0/0/28",
+        "short_name": "GE0/0/28",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet1/0/1",
+        "short_name": "GE1/0/1",
+        "phy_status": "up",
+        "protocol_status": "up",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet1/0/2",
+        "short_name": "GE1/0/2",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet1/0/3",
+        "short_name": "GE1/0/3",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet1/0/4",
+        "short_name": "GE1/0/4",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet1/0/5",
+        "short_name": "GE1/0/5",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet1/0/6",
+        "short_name": "GE1/0/6",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      },
+      {
+        "name": "GigabitEthernet1/0/7",
+        "short_name": "GE1/0/7",
+        "phy_status": "down",
+        "protocol_status": "down",
+        "in_utilization": 0.0,
+        "out_utilization": 0.0,
+        "in_errors": 0,
+        "out_errors": 0,
+        "description": ""
+      }
+    ]
+  },
+  "vlans": [
+    {
+      "vlan_id": 10,
+      "name": "--     --          0          0",
+      "status": "up"
+    },
+    {
+      "vlan_id": 20,
+      "name": "--     --          0          0",
+      "status": "up"
+    },
+    {
+      "vlan_id": 30,
+      "name": "--     --          0          0",
+      "status": "up"
+    },
+    {
+      "vlan_id": 40,
+      "name": "--     --          0          0",
+      "status": "up"
+    },
+    {
+      "vlan_id": 50,
+      "name": "--     --          0          0",
+      "status": "up"
+    },
+    {
+      "vlan_id": 100,
+      "name": "--     --          0          0",
+      "status": "up"
+    }
+  ],
+  "arp": {
+    "summary": {
+      "total": 824,
+      "dynamic": 818,
+      "static": 0,
+      "interface": 6
+    },
+    "by_vlan": {
+      "VLAN30": {
+        "total": 205,
+        "active": 3,
+        "incomplete": 202
+      },
+      "VLAN40": {
+        "total": 108,
+        "active": 102,
+        "incomplete": 6
+      },
+      "VLAN50": {
+        "total": 11,
+        "active": 11,
+        "incomplete": 0
+      },
+      "VLAN100": {
+        "total": 27,
+        "active": 18,
+        "incomplete": 9
+      }
+    }
+  },
+  "routing": {
+    "total_routes": 16,
+    "default_gateway": "192.168.10.3",
+    "routes": [
+      {
+        "destination": "0.0.0.0/0",
+        "protocol": "Static",
+        "preference": 60,
+        "cost": 0,
+        "nexthop": "192.168.10.3",
+        "interface": "Vlanif10"
+      },
+      {
+        "destination": "10.0.12.0/23",
+        "protocol": "Direct",
+        "preference": 0,
+        "cost": 0,
+        "nexthop": "10.0.12.1",
+        "interface": "Vlanif50"
+      },
+      {
+        "destination": "10.0.12.1/32",
+        "protocol": "Direct",
+        "preference": 0,
+        "cost": 0,
+        "nexthop": "127.0.0.1",
+        "interface": "Vlanif50"
+      },
+      {
+        "destination": "10.0.16.0/21",
+        "protocol": "Direct",
+        "preference": 0,
+        "cost": 0,
+        "nexthop": "10.0.16.1",
+        "interface": "Vlanif30"
+      },
+      {
+        "destination": "10.0.16.1/32",
+        "protocol": "Direct",
+        "preference": 0,
+        "cost": 0,
+        "nexthop": "127.0.0.1",
+        "interface": "Vlanif30"
+      },
+      {
+        "destination": "10.0.24.0/21",
+        "protocol": "Direct",
+        "preference": 0,
+        "cost": 0,
+        "nexthop": "10.0.24.1",
+        "interface": "Vlanif40"
+      },
+      {
+        "destination": "10.0.24.1/32",
+        "protocol": "Direct",
+        "preference": 0,
+        "cost": 0,
+        "nexthop": "127.0.0.1",
+        "interface": "Vlanif40"
+      },
+      {
+        "destination": "127.0.0.0/8",
+        "protocol": "Direct",
+        "preference": 0,
+        "cost": 0,
+        "nexthop": "127.0.0.1",
+        "interface": "InLoopBack0"
+      },
+      {
+        "destination": "127.0.0.1/32",
+        "protocol": "Direct",
+        "preference": 0,
+        "cost": 0,
+        "nexthop": "127.0.0.1",
+        "interface": "InLoopBack0"
+      },
+      {
+        "destination": "192.168.1.0/24",
+        "protocol": "Direct",
+        "preference": 0,
+        "cost": 0,
+        "nexthop": "192.168.1.1",
+        "interface": "Vlanif100"
+      },
+      {
+        "destination": "192.168.1.1/32",
+        "protocol": "Direct",
+        "preference": 0,
+        "cost": 0,
+        "nexthop": "127.0.0.1",
+        "interface": "Vlanif100"
+      },
+      {
+        "destination": "192.168.10.0/24",
+        "protocol": "Direct",
+        "preference": 0,
+        "cost": 0,
+        "nexthop": "192.168.10.254",
+        "interface": "Vlanif10"
+      },
+      {
+        "destination": "192.168.10.254/32",
+        "protocol": "Direct",
+        "preference": 0,
+        "cost": 0,
+        "nexthop": "127.0.0.1",
+        "interface": "Vlanif10"
+      },
+      {
+        "destination": "192.168.11.0/24",
+        "protocol": "Static",
+        "preference": 60,
+        "cost": 0,
+        "nexthop": "192.168.1.251",
+        "interface": "Vlanif100"
+      },
+      {
+        "destination": "192.168.20.0/24",
+        "protocol": "Direct",
+        "preference": 0,
+        "cost": 0,
+        "nexthop": "192.168.20.1",
+        "interface": "Vlanif20"
+      },
+      {
+        "destination": "192.168.20.1/32",
+        "protocol": "Direct",
+        "preference": 0,
+        "cost": 0,
+        "nexthop": "127.0.0.1",
+        "interface": "Vlanif20"
+      }
+    ]
+  },
+  "lldp_neighbors": [
+    {
+      "local_interface": "GE0/0/1",
+      "neighbor_device": "USG6500E",
+      "neighbor_interface": "GE0/0/1",
+      "expire_seconds": 92
+    },
+    {
+      "local_interface": "GE0/0/2",
+      "neighbor_device": "FutureMatrix",
+      "neighbor_interface": "GE0/0/24",
+      "expire_seconds": 110
+    },
+    {
+      "local_interface": "GE0/0/3",
+      "neighbor_device": "FutureMatrix",
+      "neighbor_interface": "GE0/0/24",
+      "expire_seconds": 115
+    },
+    {
+      "local_interface": "GE0/0/4",
+      "neighbor_device": "FutureMatrix",
+      "neighbor_interface": "GE0/0/24",
+      "expire_seconds": 95
+    },
+    {
+      "local_interface": "GE0/0/5",
+      "neighbor_device": "FutureMatrix",
+      "neighbor_interface": "GE0/0/24",
+      "expire_seconds": 112
+    },
+    {
+      "local_interface": "GE0/0/13",
+      "neighbor_device": "FutureMatrix",
+      "neighbor_interface": "GE0/0/8",
+      "expire_seconds": 106
+    },
+    {
+      "local_interface": "GE0/0/13",
+      "neighbor_device": "f44c-7f7e-8260",
+      "neighbor_interface": "GE0/0/0",
+      "expire_seconds": 116
+    },
+    {
+      "local_interface": "GE0/0/13",
+      "neighbor_device": "SIP-T19P_E2",
+      "neighbor_interface": "805e-c0e1-be19",
+      "expire_seconds": 137
+    },
+    {
+      "local_interface": "GE0/0/13",
+      "neighbor_device": "SIP-T19P_E2",
+      "neighbor_interface": "805e-c0b5-f5ac",
+      "expire_seconds": 167
+    },
+    {
+      "local_interface": "GE0/0/13",
+      "neighbor_device": "SIP-T19P_E2",
+      "neighbor_interface": "805e-c0e1-bc26",
+      "expire_seconds": 132
+    },
+    {
+      "local_interface": "GE0/0/13",
+      "neighbor_device": "SIP-T19P_E2",
+      "neighbor_interface": "805e-c0e1-bdca",
+      "expire_seconds": 163
+    },
+    {
+      "local_interface": "GE0/0/13",
+      "neighbor_device": "SIP-T19P_E2",
+      "neighbor_interface": "805e-c0e1-bc01",
+      "expire_seconds": 169
+    },
+    {
+      "local_interface": "GE0/0/13",
+      "neighbor_device": "SIP-T19P_E2",
+      "neighbor_interface": "805e-c0e1-bc28",
+      "expire_seconds": 132
+    },
+    {
+      "local_interface": "GE0/0/13",
+      "neighbor_device": "SIP-T19P_E2",
+      "neighbor_interface": "805e-c0e1-bdcd",
+      "expire_seconds": 153
+    },
+    {
+      "local_interface": "GE0/0/13",
+      "neighbor_device": "SIP-T19P_E2",
+      "neighbor_interface": "805e-c0e5-c392",
+      "expire_seconds": 135
+    },
+    {
+      "local_interface": "GE0/0/13",
+      "neighbor_device": "SIP-T30",
+      "neighbor_interface": "805e-0c6e-a1c6",
+      "expire_seconds": 175
+    },
+    {
+      "local_interface": "GE0/0/20",
+      "neighbor_device": "FutureMatrix",
+      "neighbor_interface": "GE0/0/48",
+      "expire_seconds": 116
+    },
+    {
+      "local_interface": "GE0/0/21",
+      "neighbor_device": "8054-d972-ddd0",
+      "neighbor_interface": "MultiGE0/0/0",
+      "expire_seconds": 98
+    },
+    {
+      "local_interface": "GE0/0/21",
+      "neighbor_device": "8054-d972-c060",
+      "neighbor_interface": "MultiGE0/0/0",
+      "expire_seconds": 98
+    },
+    {
+      "local_interface": "GE0/0/21",
+      "neighbor_device": "8054-d972-df50",
+      "neighbor_interface": "MultiGE0/0/0",
+      "expire_seconds": 97
+    },
+    {
+      "local_interface": "GE0/0/21",
+      "neighbor_device": "fc73-fb62-7bc0",
+      "neighbor_interface": "GE0/0/0",
+      "expire_seconds": 100
+    },
+    {
+      "local_interface": "GE0/0/21",
+      "neighbor_device": "fc73-fb62-75c0",
+      "neighbor_interface": "GE0/0/0",
+      "expire_seconds": 97
+    },
+    {
+      "local_interface": "GE0/0/21",
+      "neighbor_device": "8054-d972-c6f0",
+      "neighbor_interface": "MultiGE0/0/0",
+      "expire_seconds": 97
+    },
+    {
+      "local_interface": "GE0/0/21",
+      "neighbor_device": "fc73-fb62-7d20",
+      "neighbor_interface": "GE0/0/0",
+      "expire_seconds": 99
+    },
+    {
+      "local_interface": "GE0/0/21",
+      "neighbor_device": "fc73-fb62-7ae0",
+      "neighbor_interface": "GE0/0/0",
+      "expire_seconds": 97
+    },
+    {
+      "local_interface": "GE0/0/21",
+      "neighbor_device": "fc73-fb62-71c0",
+      "neighbor_interface": "GE0/0/0",
+      "expire_seconds": 99
+    },
+    {
+      "local_interface": "GE0/0/21",
+      "neighbor_device": "fc73-fb62-7a60",
+      "neighbor_interface": "GE0/0/0",
+      "expire_seconds": 97
+    },
+    {
+      "local_interface": "GE0/0/21",
+      "neighbor_device": "fc73-fb62-7d40",
+      "neighbor_interface": "GE0/0/0",
+      "expire_seconds": 99
+    },
+    {
+      "local_interface": "GE0/0/22",
+      "neighbor_device": "AirEngine9700S-S",
+      "neighbor_interface": "GE0/0/1",
+      "expire_seconds": 114
+    }
+  ],
+  "discovered_devices": [
+    {
+      "name": "USG6500E",
+      "type": "firewall",
+      "connected_via": [
+        "GE0/0/1"
+      ],
+      "neighbor_ports": [
+        "GE0/0/1"
+      ],
+      "link_count": 1
+    },
+    {
+      "name": "FutureMatrix",
+      "type": "switch",
+      "connected_via": [
+        "GE0/0/3",
+        "GE0/0/13",
+        "GE0/0/20",
+        "GE0/0/2",
+        "GE0/0/5",
+        "GE0/0/4"
+      ],
+      "neighbor_ports": [
+        "GE0/0/8",
+        "GE0/0/48",
+        "GE0/0/24"
+      ],
+      "link_count": 6
+    },
+    {
+      "name": "f44c-7f7e-8260",
+      "type": "unknown",
+      "connected_via": [
+        "GE0/0/13"
+      ],
+      "neighbor_ports": [
+        "GE0/0/0"
+      ],
+      "link_count": 1
+    },
+    {
+      "name": "SIP-T19P_E2",
+      "type": "ip_phone",
+      "connected_via": [
+        "GE0/0/13"
+      ],
+      "neighbor_ports": [
+        "805e-c0e1-be19",
+        "805e-c0b5-f5ac",
+        "805e-c0e5-c392",
+        "805e-c0e1-bc26",
+        "805e-c0e1-bdca",
+        "805e-c0e1-bdcd",
+        "805e-c0e1-bc28",
+        "805e-c0e1-bc01"
+      ],
+      "link_count": 8
+    },
+    {
+      "name": "SIP-T30",
+      "type": "ip_phone",
+      "connected_via": [
+        "GE0/0/13"
+      ],
+      "neighbor_ports": [
+        "805e-0c6e-a1c6"
+      ],
+      "link_count": 1
+    },
+    {
+      "name": "8054-d972-ddd0",
+      "type": "unknown",
+      "connected_via": [
+        "GE0/0/21"
+      ],
+      "neighbor_ports": [
+        "MultiGE0/0/0"
+      ],
+      "link_count": 1
+    },
+    {
+      "name": "8054-d972-c060",
+      "type": "unknown",
+      "connected_via": [
+        "GE0/0/21"
+      ],
+      "neighbor_ports": [
+        "MultiGE0/0/0"
+      ],
+      "link_count": 1
+    },
+    {
+      "name": "8054-d972-df50",
+      "type": "unknown",
+      "connected_via": [
+        "GE0/0/21"
+      ],
+      "neighbor_ports": [
+        "MultiGE0/0/0"
+      ],
+      "link_count": 1
+    },
+    {
+      "name": "fc73-fb62-7bc0",
+      "type": "unknown",
+      "connected_via": [
+        "GE0/0/21"
+      ],
+      "neighbor_ports": [
+        "GE0/0/0"
+      ],
+      "link_count": 1
+    },
+    {
+      "name": "fc73-fb62-75c0",
+      "type": "unknown",
+      "connected_via": [
+        "GE0/0/21"
+      ],
+      "neighbor_ports": [
+        "GE0/0/0"
+      ],
+      "link_count": 1
+    },
+    {
+      "name": "8054-d972-c6f0",
+      "type": "unknown",
+      "connected_via": [
+        "GE0/0/21"
+      ],
+      "neighbor_ports": [
+        "MultiGE0/0/0"
+      ],
+      "link_count": 1
+    },
+    {
+      "name": "fc73-fb62-7d20",
+      "type": "unknown",
+      "connected_via": [
+        "GE0/0/21"
+      ],
+      "neighbor_ports": [
+        "GE0/0/0"
+      ],
+      "link_count": 1
+    },
+    {
+      "name": "fc73-fb62-7ae0",
+      "type": "unknown",
+      "connected_via": [
+        "GE0/0/21"
+      ],
+      "neighbor_ports": [
+        "GE0/0/0"
+      ],
+      "link_count": 1
+    },
+    {
+      "name": "fc73-fb62-71c0",
+      "type": "unknown",
+      "connected_via": [
+        "GE0/0/21"
+      ],
+      "neighbor_ports": [
+        "GE0/0/0"
+      ],
+      "link_count": 1
+    },
+    {
+      "name": "fc73-fb62-7a60",
+      "type": "unknown",
+      "connected_via": [
+        "GE0/0/21"
+      ],
+      "neighbor_ports": [
+        "GE0/0/0"
+      ],
+      "link_count": 1
+    },
+    {
+      "name": "fc73-fb62-7d40",
+      "type": "unknown",
+      "connected_via": [
+        "GE0/0/21"
+      ],
+      "neighbor_ports": [
+        "GE0/0/0"
+      ],
+      "link_count": 1
+    },
+    {
+      "name": "AirEngine9700S-S",
+      "type": "wireless_controller",
+      "connected_via": [
+        "GE0/0/22"
+      ],
+      "neighbor_ports": [
+        "GE0/0/1"
+      ],
+      "link_count": 1
+    }
+  ],
+  "firewall": {
+    "host": "192.168.10.1",
+    "model": "USG6500E",
+    "management_url": "https://192.168.10.1:8443",
+    "vrrp_vip": "192.168.10.3",
+    "connected_via": "GE0/0/1",
+    "data_source": "lldp_discovery"
+  },
+  "wireless_controller": {
+    "model": "AirEngine9700S-S",
+    "connected_via": "GE0/0/22",
+    "data_source": "lldp_discovery"
+  }
+}

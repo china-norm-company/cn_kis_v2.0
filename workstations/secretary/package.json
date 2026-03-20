@@ -1,0 +1,48 @@
+{
+  "name": "@cn-kis/secretary",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host --port 3001",
+    "build": "vite build",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit",
+    "test:ai-live": "playwright test e2e/05-ai-live-backend.spec.ts --config playwright.config.ts --project \"秘书台 E2E Desktop\"",
+    "test:ai-live:strict-chain": "AI_LIVE_REQUIRE_STRICT_EXECUTION_CHAIN=1 playwright test e2e/05-ai-live-backend.spec.ts --config playwright.config.ts --project \"秘书台 E2E Desktop\"",
+    "test:ai-live-headed": "playwright test e2e/06-chat-headed-live.spec.ts --config playwright.live.config.ts --project \"秘书台 Live Headed\" --headed",
+    "test:zijin-auth-headed": "playwright test e2e/08-zijin-primary-auth-headed.spec.ts --config playwright.live.config.ts --project \"子衿主授权 Live Headed\" --headed",
+    "test:zijin-auth-headed:suite1": "playwright test e2e/08-zijin-primary-auth-headed.spec.ts --config playwright.live.config.ts --project \"子衿主授权 Live Headed\" --headed --grep \"1. Preflight\"",
+    "test:zijin-auth-headed:suite3": "playwright test e2e/08-zijin-primary-auth-headed.spec.ts --config playwright.live.config.ts --project \"子衿主授权 Live Headed\" --headed --grep \"3. 真实\"",
+    "test:ai-live-regression": "pnpm run test:ai-live && pnpm run test:ai-live-headed",
+    "test:ai-live:release-gate": "pnpm run test:ai-live:strict-chain && pnpm run test:ai-live-headed",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@cn-kis/ui-kit": "workspace:*",
+    "@cn-kis/api-client": "workspace:*",
+    "@cn-kis/feishu-sdk": "workspace:*",
+    "@tanstack/react-query": "^5.17.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.21.0",
+    "recharts": "^2.12.0",
+    "lucide-react": "^0.562.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.33",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.11",
+    "vitest": "^1.2.0",
+    "@testing-library/react": "^14.1.0",
+    "@testing-library/jest-dom": "^6.2.0",
+    "jsdom": "^24.0.0"
+  }
+}

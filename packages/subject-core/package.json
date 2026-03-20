@@ -1,0 +1,22 @@
+{
+  "name": "@cn-kis/subject-core",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "CN KIS 三端共享受试者业务核心层",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "type-check": "tsc -p tsconfig.build.json --noEmit"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "peerDependencies": {
+    "react": "^18.2.0"
+  }
+}
