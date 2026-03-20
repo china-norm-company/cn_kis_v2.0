@@ -1,0 +1,84 @@
+# CN KIS V2.0 - 自托管 Runner 本地部署（在阿里云服务器上直接运行）
+# 适用于：安装了 self-hosted runner 后的自动化部署
+# 优点：完全免费、直接访问本地 Docker、无需 SSH 中转
+# 触发：develop 分支推送，或手动 workflow_dispatch
+
+name: Deploy V2 Backend (Self-hosted)
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - 'backend/**'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: '手动触发原因'
+        required: false
+        default: 'manual deploy'
+
+concurrency:
+  group: deploy-v2-self-hosted
+  cancel-in-progress: false
+
+jobs:
+  deploy-local:
+    runs-on: [self-hosted, aliyun]
+    timeout-minutes: 30
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔑 Write .env from secret
+        run: |
+          echo "${{ secrets.BACKEND_DOT_ENV }}" > backend/.env
+          echo "📏 .env size: $(wc -c < backend/.env) bytes"
+          # 安全校验
+          if ! grep -q "CELERY_PRODUCTION_TASKS_DISABLED=true" backend/.env; then
+            echo "❌ CELERY_PRODUCTION_TASKS_DISABLED=true 未设置！"
+            exit 1
+          fi
+          echo "✅ 安全开关已确认"
+
+      - name: 🐳 Build & Deploy Docker
+        run: |
+          chmod +x build_backend_image_only_under_root_path.sh
+          bash build_backend_image_only_under_root_path.sh
+
+      - name: 📊 Run migrations
+        run: |
+          sleep 5
+          CONTAINER_ID=$(docker ps -q --filter "publish=9001" | head -1)
+          if [ -n "$CONTAINER_ID" ]; then
+            docker exec "$CONTAINER_ID" python manage.py migrate --noinput
+            echo "✅ Migrations 完成"
+          else
+            echo "❌ 找不到运行中的容器"
+            exit 1
+          fi
+
+      - name: 🩺 Health check
+        run: |
+          sleep 3
+          HEALTH=$(curl -sf http://localhost:9001/api/v1/health 2>/dev/null || echo "FAIL")
+          if [[ "$HEALTH" == *"healthy"* ]]; then
+            echo "✅ 健康检查通过: $HEALTH"
+          else
+            echo "❌ 健康检查失败"
+            docker logs $(docker ps -q --filter "publish=9001" | head -1) --tail 30 2>/dev/null
+            exit 1
+          fi
+
+      - name: 📝 Summary
+        if: success()
+        run: |
+          echo "## ✅ V2 Backend 部署成功（Self-hosted）" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| 项目 | 值 |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| 分支 | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| 环境 | 阿里云测试 |" >> $GITHUB_STEP_SUMMARY
+          echo "| 健康检查 | http://test-guide.data-infact.com:9001/api/v1/health |" >> $GITHUB_STEP_SUMMARY

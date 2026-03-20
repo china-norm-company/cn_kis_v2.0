@@ -33,7 +33,10 @@ concurrency:
 
 jobs:
   deploy-backend:
-    runs-on: ubuntu-latest
+    # 使用自托管 Runner（在阿里云服务器上，免费且有直接部署权限）
+    # Runner 安装：ops/scripts/setup_self_hosted_runner.sh
+    # 若自托管 Runner 未就绪，可临时改为 ubuntu-latest（需要 GitHub Actions 分钟数）
+    runs-on: [self-hosted, aliyun]
     timeout-minutes: 20
 
     steps:
