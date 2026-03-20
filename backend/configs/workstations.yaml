@@ -1,0 +1,177 @@
+# ============================================================
+# 工作台注册表 — 唯一真相源 (Single Source of Truth)
+# ============================================================
+# 所有脚本（构建/部署/质量门禁/健康检查）必须从此文件读取工作台列表。
+# 新增工作台时只需修改此文件，其余脚本自动适配。
+#
+# 工作台总览（18 个）：
+#   业务工作台（15）：secretary finance research execution quality hr crm
+#                     recruitment equipment material facility evaluator lab-personnel ethics reception
+#   平台工作台（3）：control-plane admin digital-workforce
+#
+# OAuth 统一授权说明：
+#   所有工作台前端统一使用子衿 App ID（cli_a98b0babd020500e）生成 OAuth URL。
+#   后端通过 FEISHU_PRIMARY_AUTH_FORCE=True 确保 token 签发源一致。
+#   各工作台 app_id_env 字段仅用于工作台归属校验，OAuth 换 token 统一走子衿。
+#
+# 检查清单：新增工作台时需同时完成
+# - [ ] 本文件添加条目
+# - [ ] apps/{key}/.env 配置 VITE_FEISHU_APP_ID=cli_a98b0babd020500e
+# - [ ] 飞书后台为子衿应用（cli_a98b0babd020500e）添加新工作台的 redirect_uri
+# - [ ] backend/settings.py 添加工作台到 FEISHU_WORKSTATION_APP_IDS（若有独立 App）
+# - [ ] backend/urls.py 添加 API 路由（如需要）
+# - [ ] 运行 scripts/workstation_health_check.py 验证
+# ============================================================
+
+workstations:
+  # ============================================================
+  # 业务工作台（15 个）
+  # ============================================================
+
+  - key: secretary
+    name: "子衿·秘书台"
+    description: "系统总控门户与信息汇总中心：工作台门户（15个台入口）、飞书信息总览（邮件/日历/IM/任务展示）、管理驾驶舱、统一待办、通知中心、预警中心。AI 能力由中书台提供，系统治理由鹿鸣台负责。"
+    path: /secretary
+    app_id_env: FEISHU_APP_ID
+    port: 3001
+    package: "@cn-kis/secretary"
+
+  - key: finance
+    name: "管仲·财务台"
+    description: "报价、合同、发票、付款、应收账款、预算与成本分析"
+    path: /finance
+    app_id_env: FEISHU_APP_ID_FINANCE
+    port: 3004
+    package: "@cn-kis/finance"
+
+  - key: research
+    name: "采苓·研究台"
+    description: "研究者个人视角：方案管理、访视计划、受试者与样本、项目全貌、可行性评估"
+    path: /research
+    app_id_env: FEISHU_APP_ID_RESEARCH
+    port: 3002
+    package: "@cn-kis/research"
+
+  - key: execution
+    name: "维周·执行台"
+    description: "全局项目执行管理：调度排程、工单、访视执行、EDC/LIMS、项目变更"
+    path: /execution
+    app_id_env: FEISHU_APP_ID_EXECUTION
+    port: 3007
+    package: "@cn-kis/execution"
+
+  - key: quality
+    name: "怀瑾·质量台"
+    description: "偏差管理、CAPA、变更控制、数据疑问、SOP 库、质量审计"
+    path: /quality
+    app_id_env: FEISHU_APP_ID_QUALITY
+    port: 3003
+    package: "@cn-kis/quality"
+
+  - key: hr
+    name: "时雨·人事台"
+    description: "公司人力资源：员工档案、资质认证、能力评估、培训管理、绩效核算"
+    path: /hr
+    app_id_env: FEISHU_APP_ID_HR
+    port: 3005
+    package: "@cn-kis/hr"
+
+  - key: crm
+    name: "进思·客户台"
+    description: "客户档案、商务管线、合作关系管理"
+    path: /crm
+    app_id_env: FEISHU_APP_ID_CRM
+    port: 3006
+    package: "@cn-kis/crm"
+
+  - key: recruitment
+    name: "招招·招募台"
+    description: "受试者招募：招募计划、注册、预筛、筛查、入组、依从性、支付"
+    path: /recruitment
+    app_id_env: FEISHU_APP_ID_RECRUITMENT
+    port: 3009
+    package: "@cn-kis/recruitment"
+
+  - key: equipment
+    name: "器衡·设备台"
+    description: "设备台账、校准、维护、使用记录、检测方法"
+    path: /equipment
+    app_id_env: FEISHU_APP_ID_EQUIPMENT
+    port: 3010
+    package: "@cn-kis/equipment"
+
+  - key: material
+    name: "度支·物料台"
+    description: "药品/耗材/样本库存、批次、效期预警、出入库、储存合规"
+    path: /material
+    app_id_env: FEISHU_APP_ID_MATERIAL
+    port: 3011
+    package: "@cn-kis/material"
+
+  - key: facility
+    name: "坤元·设施台"
+    description: "场地/实验室管理、预约、环境监控、事件处理、清洁记录"
+    path: /facility
+    app_id_env: FEISHU_APP_ID_FACILITY
+    port: 3012
+    package: "@cn-kis/facility"
+
+  - key: evaluator
+    name: "衡技·评估台"
+    description: "评估人员面板：工单扫描、排班、知识库、成长记录"
+    path: /evaluator
+    app_id_env: FEISHU_APP_ID_EVALUATOR
+    port: 3013
+    package: "@cn-kis/evaluator"
+
+  - key: lab-personnel
+    name: "共济·人员台"
+    description: "实验室人员（≠公司HR）：人员档案、排班、工时、资质、风险、调度"
+    path: /lab-personnel
+    app_id_env: FEISHU_APP_ID_LAB_PERSONNEL
+    port: 3015
+    package: "@cn-kis/lab-personnel"
+
+  - key: ethics
+    name: "御史·伦理台"
+    description: "伦理合规：申请、审批、审查意见、监督、法规库、通信记录、合规培训"
+    path: /ethics
+    app_id_env: FEISHU_APP_ID_ETHICS
+    port: 3014
+    package: "@cn-kis/ethics"
+
+  - key: reception
+    name: "和序·接待台"
+    description: "受试者当日接待：排队叫号、签到/签出、访视导览、Kiosk 自助"
+    path: /reception
+    app_id_env: FEISHU_APP_ID_RECEPTION
+    port: 3016
+    package: "@cn-kis/reception"
+
+  # ============================================================
+  # 平台工作台（3 个）— 面向内部管理员/运营，非直接业务
+  # ============================================================
+
+  - key: control-plane
+    name: "天工·统管台"
+    description: "资源统一智能化管理：对象中心、事件中心、资源健康、今日运维、场景管理、依赖拓扑、工单中心。面向 IT 运维和系统架构师。"
+    path: /control-plane
+    app_id_env: FEISHU_APP_ID_CONTROL_PLANE
+    port: 3017
+    package: "@cn-kis/control-plane"
+
+  - key: admin
+    name: "鹿鸣·治理台"
+    description: "系统身份认证与权限治理：账号管理、角色管理、权限配置、会话管理、审计日志、工作台总览、AI 智能体状态、飞书集成监控、系统配置。仅系统管理员可访问。"
+    path: /admin
+    app_id_env: FEISHU_APP_ID
+    port: 3008
+    package: "@cn-kis/admin"
+
+  - key: digital-workforce
+    name: "中书·智能台"
+    description: "AI 智能中枢：多智能体对话（ARK/Kimi）、动作箱与执行回放、策略与偏好管理、Kimi Claw 任务委派、研究洞察生成、路径治理。所有 AI 驱动的决策与自动化在此集中运营。"
+    path: /digital-workforce
+    app_id_env: FEISHU_APP_ID
+    port: 3018
+    package: "@cn-kis/digital-workforce"

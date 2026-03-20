@@ -1,0 +1,48 @@
+---
+description: 遇到任何技术问题时，必须先搜索项目已有解决方案，再搜索 agent transcripts 历史经验，最后才考虑新方案。
+alwaysApply: true
+---
+# 先搜索，再开发（强制）
+
+## 核心规则
+
+**遇到任何问题，必须按以下顺序执行，不得跳过：**
+
+### 第 1 步：搜索项目代码库
+```
+Grep/Glob 搜索关键词 → 读取候选文件 → 确认是否已有实现
+```
+- 认证/Token 问题 → 搜 `token`, `auth`, `session`, `credential`
+- API 集成问题 → 搜服务商名称（如 `ekuaibao`, `feishu`, `hosecloud`）
+- 已知问题 → 搜错误码或关键报错词
+
+### 第 2 步：搜索 agent transcripts 历史对话
+```
+/Users/aksu/.cursor/projects/Users-aksu-Cursor-CN-KIS-V1-0/agent-transcripts/
+```
+- 搜索相关关键词找到历史对话文件
+- 读取找到的对话，提取已验证可行的方案
+
+### 第 3 步：查找 .cursor/skills/ 技术沉淀
+- 查看 `.cursor/skills/` 目录下的相关 SKILL.md
+- 技能文件中记录了已验证的解决路径，**直接复用**
+
+### 第 4 步：才考虑新方案
+只有前三步均无结果时，才从零设计新方案。
+
+## 禁止行为
+
+- ❌ 跳过搜索直接尝试新方案
+- ❌ 遇到 token/权限问题立即找用户操作
+- ❌ 反复尝试已知失败的方法
+- ❌ 只依赖训练数据中的知识，忽略项目积累
+
+## 已知高价值搜索区域
+
+| 问题域 | 先查这里 |
+|--------|---------|
+| 易快报/合思 API 认证 | `.cursor/skills/ekuaibao-feishu-integration/` |
+| 飞书 OAuth / Token | `backend/apps/identity/services.py` |
+| 易快报 OpenAPI | `backend/apps/ekuaibao_integration/ekb_client.py` |
+| 各类 token 持久化 | `backend/apps/identity/models.py`（FeishuUserToken）|
+| 历史采集管理命令 | `backend/apps/ekuaibao_integration/management/commands/` |

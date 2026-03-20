@@ -1,0 +1,31 @@
+---
+description: 飞书认证调试红线——禁止怀疑飞书权限配置
+alwaysApply: true
+---
+
+# 飞书问题调试红线
+
+## 绝对禁止
+
+- **禁止怀疑飞书开放平台的任何权限未开通** — 包括 scope、字段权限（如 subject:read / body:read / address:read）、数据权限、API 权限等，一切权限均已在飞书后台授予
+- **禁止怀疑飞书 redirect_uri 配置** — redirect_uri 已全部配置正确
+- **禁止怀疑飞书应用凭证（app_id/app_secret）** — 凭证正确，tenant_access_token 已验证可用
+- **禁止反复提出"飞书侧的问题"** — 除非有确凿的 API 返回证据（如明确的错误码 + 错误信息），且已排除所有代码问题
+- **禁止建议用户"去飞书后台开权限"** — 权限已全部开通，不需要用户做任何飞书后台操作
+- **禁止以"可能缺少权限"作为 API 返回字段缺失的解释** — 先查文档确认正确的请求方式、参数、token 类型
+
+## 正确做法
+
+- 遇到 API 返回字段缺失或报错时，**先查飞书官方文档**确认接口的请求方式、参数格式、字段名
+- 检查代码中的字段名是否与飞书文档一致（如 `head_from` vs `from`，`mail_address` vs `address`，`filename` vs `name`）
+- 检查 token 类型是否正确（user_access_token vs tenant_access_token），某些接口用不同 token 返回字段不同是 API 行为差异，不是权限问题
+- 检查请求参数格式（如数组参数用重复 key `?ids=a&ids=b` 而非 `?ids[0]=a`）
+- 检查 token 是由哪个应用签发的（issuer_app_id）
+- **确保前端、飞书授权URL、后端换token三个环节用的是同一个 app_id**
+
+## 子衿主授权架构
+
+- 子衿 App ID: `cli_a98b0babd020500e`
+- 所有 18 个工作台统一使用子衿 OAuth
+- 前端 JS bundle 中硬编码的 app_id 必须是子衿
+- 后端 force_primary=True 强制所有 callback 用子衿凭证换 token

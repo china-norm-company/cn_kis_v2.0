@@ -1,0 +1,22 @@
+# Default owners for everything
+* @china-norm-company/business-team
+
+# Authentication and identity — requires architecture review
+backend/apps/identity/ @china-norm-company/business-team
+backend/apps/secretary/feishu_fetcher.py @china-norm-company/business-team
+backend/apps/secretary/models.py @china-norm-company/business-team
+
+# Knowledge assets — requires architecture review
+backend/apps/knowledge/ @china-norm-company/business-team
+backend/apps/ekuaibao_integration/models.py @china-norm-company/business-team
+backend/apps/lims_integration/models.py @china-norm-company/business-team
+
+# Migration charter — requires lead approval
+docs/V2_MIGRATION_CHARTER.md @china-norm-company/business-team
+
+# SSOT workstations registry
+backend/configs/workstations.yaml @china-norm-company/business-team
+
+# Deployment configs
+ops/ @china-norm-company/business-team
+.github/workflows/ @china-norm-company/business-team

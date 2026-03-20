@@ -1,0 +1,113 @@
+# 部署后端到阿里云测试环境
+# 触发条件：push 到 develop 分支，且 backend/ 目录有改动
+#
+# 前置：在 GitHub Repo Settings → Secrets 中配置：
+#   ALIYUN_SSH_KEY      阿里云测试服务器 SSH 私钥
+#   BACKEND_DOT_ENV     测试环境 .env 文件内容（不含生产凭证）
+#
+# ⚠️ 安全约束（V2 迁移章程红线）：
+#   - 测试环境 .env 必须包含 CELERY_PRODUCTION_TASKS_DISABLED=true
+#   - 禁止在测试 .env 中使用生产飞书 App 凭证
+#   - 禁止测试环境连接生产数据库
+
+name: Deploy backend to Aliyun Test
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - 'backend/**'
+
+env:
+  REPO_DIR: /home/wuxianyu/cn_kis_v2
+
+concurrency:
+  group: deploy-backend-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check secrets
+        run: |
+          echo "Checking required GitHub Secrets..."
+          MISSING=""
+          if [ -z "${{ secrets.ALIYUN_SSH_KEY }}" ]; then
+            MISSING="${MISSING} ALIYUN_SSH_KEY"
+          else
+            echo "  ✅ ALIYUN_SSH_KEY is set"
+          fi
+          if [ -z "${{ secrets.BACKEND_DOT_ENV }}" ]; then
+            MISSING="${MISSING} BACKEND_DOT_ENV"
+          else
+            echo "  ✅ BACKEND_DOT_ENV is set"
+          fi
+          if [ -n "$MISSING" ]; then
+            echo "❌ Missing secrets:$MISSING"
+            exit 1
+          fi
+          echo "All secrets present."
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.ALIYUN_SSH_KEY }}" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H test-guide.data-infact.com >> ~/.ssh/known_hosts 2>/dev/null
+          echo "SSH configured"
+
+      - name: Sync backend to Aliyun
+        run: |
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+            --exclude='.env' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='.venv' \
+            --exclude='media/' \
+            --exclude='staticfiles/' \
+            backend/ \
+            wuxianyu@test-guide.data-infact.com:${{ env.REPO_DIR }}/backend/
+
+      - name: Write .env to server
+        run: |
+          echo "${{ secrets.BACKEND_DOT_ENV }}" | \
+            ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            wuxianyu@test-guide.data-infact.com \
+            "cat > ${{ env.REPO_DIR }}/backend/.env"
+
+      - name: Validate test env has production tasks disabled
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            wuxianyu@test-guide.data-infact.com \
+            "grep -q 'CELERY_PRODUCTION_TASKS_DISABLED=true' ${{ env.REPO_DIR }}/backend/.env || \
+            (echo '❌ CELERY_PRODUCTION_TASKS_DISABLED=true missing in .env' && exit 1)"
+          echo "✅ Production tasks are disabled in test env"
+
+      - name: Run migrations and restart
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            wuxianyu@test-guide.data-infact.com << 'EOF'
+            cd ${{ env.REPO_DIR }}/backend
+            source ../.venv/bin/activate
+            python manage.py migrate --noinput
+            python manage.py collectstatic --noinput
+            sudo systemctl restart cn-kis-v2-backend
+            sudo systemctl restart cn-kis-v2-celery-worker
+            sudo systemctl restart cn-kis-v2-celery-beat
+          EOF
+
+      - name: Health check
+        run: |
+          sleep 5
+          curl -f https://test-guide.data-infact.com/api/v1/health || \
+          curl -f http://test-guide.data-infact.com:9001/api/v1/health || \
+          (echo "❌ Health check failed" && exit 1)
+          echo "✅ Backend health check passed"

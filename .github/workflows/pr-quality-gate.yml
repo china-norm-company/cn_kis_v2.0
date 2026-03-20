@@ -1,0 +1,116 @@
+name: PR Quality Gate
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  validate-pr-template:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR description and checklist
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const body = pr.body || "";
+            const failures = [];
+            const warnings = [];
+
+            const filesResp = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+            const changedFiles = filesResp.data.map(f => f.filename);
+
+            // 检查是否触及 Wave 1 红线文件（认证权限域）
+            const touchesAuthScope = changedFiles.some((f) =>
+              f.startsWith('backend/apps/identity/') ||
+              f.startsWith('backend/apps/secretary/models.py') ||
+              f.startsWith('backend/apps/secretary/feishu_fetcher.py')
+            );
+
+            // 检查是否触及知识资产域
+            const touchesKnowledgeScope = changedFiles.some((f) =>
+              f.startsWith('backend/apps/knowledge/') ||
+              f.startsWith('backend/apps/ekuaibao_integration/models') ||
+              f.startsWith('backend/apps/lims_integration/models')
+            );
+
+            // 检查迁移章程是否被直接修改（需要特殊审批）
+            const touchesCharter = changedFiles.some((f) =>
+              f === 'docs/V2_MIGRATION_CHARTER.md'
+            );
+
+            // 1. 必须关联 Issue
+            const hasIssueLink =
+              /Closes\s+#\d+/i.test(body) ||
+              /Fixes\s+#\d+/i.test(body) ||
+              /Resolves\s+#\d+/i.test(body) ||
+              /#\d+/.test(body);
+            if (!hasIssueLink) {
+              failures.push("缺少 Issue 关联。请在 PR 中填写 `Closes #编号` 或至少包含 `#编号`。");
+            }
+
+            // 2. 必须勾选本地自测
+            if (!/- \[x\]\s*已完成本地自测/i.test(body)) {
+              failures.push("未勾选 `已完成本地自测`。");
+            }
+
+            // 3. 必须有测试步骤
+            const hasConcreteTestSteps =
+              /测试步骤与结果[\s\S]*1\.\s*\S+/m.test(body) ||
+              /测试步骤与结果[\s\S]*-\s+\S+/m.test(body);
+            if (!hasConcreteTestSteps) {
+              failures.push("测试步骤与结果为空，请至少填写 1 条可复现的测试步骤。");
+            }
+
+            // 4. 必须有风险点与回滚方案
+            const hasRiskDetail = /风险点[:：]\s*\S+/m.test(body);
+            const hasRollbackDetail = /回滚方案[:：]\s*\S+/m.test(body);
+            if (!hasRiskDetail || !hasRollbackDetail) {
+              failures.push("请补充 `风险点` 与 `回滚方案` 的具体内容。");
+            }
+
+            // 5. 认证权限域的增强门禁
+            if (touchesAuthScope) {
+              if (!/- \[x\]\s*本 PR 不破坏飞书主授权链路/i.test(body)) {
+                failures.push("本 PR 涉及认证/权限域，请勾选 `本 PR 不破坏飞书主授权链路`。");
+              }
+              if (!/- \[x\]\s*refresh_token 防覆盖逻辑已保留/i.test(body)) {
+                failures.push("本 PR 涉及认证/权限域，请勾选 `refresh_token 防覆盖逻辑已保留`。");
+              }
+            }
+
+            // 6. 知识资产域的增强门禁
+            if (touchesKnowledgeScope) {
+              if (!/- \[x\]\s*本 PR 不向生产知识资产执行无保护写操作/i.test(body)) {
+                failures.push("本 PR 涉及知识资产域，请勾选 `本 PR 不向生产知识资产执行无保护写操作`。");
+              }
+            }
+
+            // 7. 迁移章程变更需要特殊说明
+            if (touchesCharter) {
+              if (!/\[CHARTER\]/i.test(pr.title)) {
+                failures.push("迁移章程变更须在 PR 标题前加 `[CHARTER]` 前缀，并需要系统负责人 Review。");
+              }
+            }
+
+            if (failures.length > 0) {
+              core.setFailed(
+                "PR 质量门禁未通过：\n" +
+                  failures.map((f, i) => `${i + 1}. ${f}`).join("\n")
+              );
+            } else {
+              core.info("PR quality gate passed ✅");
+              if (warnings.length > 0) {
+                core.info("附加提示：\n" + warnings.map((w, i) => `${i + 1}. ${w}`).join("\n"));
+              }
+            }

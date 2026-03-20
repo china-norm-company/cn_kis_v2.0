@@ -1,0 +1,54 @@
+---
+description: 编写代码前必须先检查现有能力，禁止重复造轮子
+alwaysApply: true
+---
+
+# 代码复用原则（强制）
+
+## 核心规则
+
+**编写任何新代码之前，必须先做以下检查：**
+
+1. **搜索现有实现**：用 Grep/Glob/SemanticSearch 确认同类功能是否已存在
+2. **读取相关文件**：把候选文件读完，理解现有能力的边界
+3. **复用优先**：能调用现有函数/命令/服务的，绝不新建同类代码
+4. **扩展优先于新建**：现有代码不满足需求时，优先扩展参数/选项，而不是另写一个
+
+## 已知高复用区域（每次涉及必查）
+
+| 功能域 | 主文件 | 禁止重复写的内容 |
+|--------|--------|-----------------|
+| 飞书采集 | `secretary/feishu_fetcher.py` | `fetch_mails`, `fetch_calendar_events`, `fetch_im_messages`, `fetch_tasks`, `fetch_approvals` |
+| 飞书综合采集 | `secretary/feishu_comprehensive_collector.py` | `collect_all_users`, `collect_user`, `FeishuComprehensiveCollector` |
+| 飞书 API | `libs/feishu_client.py` | 所有飞书 Open API 封装 |
+| 知识入库 | `knowledge/ingestion_pipeline.py` | `run_pipeline`, `RawKnowledgeInput` |
+| 知识采集 | `knowledge/feishu_knowledge_fetcher.py` | `harvest_chat_messages`, `extract_meeting_knowledge` |
+| 知识文档提取 | `knowledge/feishu_doc_knowledge_extractor.py` | `harvest_feishu_document_knowledge` |
+| 邮件信号 | `secretary/mail_signal_ingest.py` | 邮件分类、信号解析 |
+
+## 检查步骤（每次写代码前执行）
+
+```
+Step 1: Grep/Glob 搜索关键词（如 "mail", "fetch", "harvest", "collect"）
+Step 2: 读取候选文件，确认函数签名和参数
+Step 3: 判断：可直接调用 → 调用；需扩展 → 扩展；确实缺失 → 新建
+Step 4: 新建代码时，在 docstring 注明"为何不复用现有 X"
+```
+
+## 违规示例
+
+```python
+# ❌ 错误：重写已有的邮件采集逻辑
+def my_collect_mail(token):
+    resp = requests.get("mail/v1/...")  # feishu_client.list_user_mails 已有！
+
+# ✅ 正确：复用现有实现
+from apps.secretary.feishu_fetcher import fetch_mails
+fetch_mails(user_token, open_id, limit=100)
+```
+
+## 已采集数据复用
+
+- `PersonalContext` 表已有 12,665 条记录（邮件 6,224、IM 3,033、任务 1,305、文档 1,241、日历 862）
+- 迁移前先查 `PersonalContext.objects.filter(source_type='mail')` 确认已有数据
+- 用 `content_hash` 字段做去重，不要重复写入相同内容

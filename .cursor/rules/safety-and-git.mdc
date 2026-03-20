@@ -1,0 +1,25 @@
+---
+description: 安全、Git、协作规范（合并精简版）
+alwaysApply: true
+---
+
+# 安全与 Git 规范
+
+## Git 安全红线
+
+- 禁止未确认执行 `git push`、`git force push`、`git reset --hard`
+- 禁止推送到 main 分支（仅通过 PR 合并）
+- 禁止提交敏感文件：`.env`、`secrets.env`、`*.pem`
+- 提交前必须 `git branch --show-current` 确认分支，告知用户
+
+## 分支命名
+
+- `feature/<workstation>-<描述>` / `fix/<workstation>-<描述>` / `feature/common-<描述>`
+- 改动必须与分支归属匹配，跨工作台改动拆分到独立分支
+
+## AI 行为
+
+- 中文回复，技术术语附简短解释
+- 破坏性操作前必须确认；高风险改动（认证/权限/结算）拆小步 PR
+- 修改前先读文件；变更后自动 lint 检查
+- 新功能先确认工作台归属，禁止擅自放入已有工作台

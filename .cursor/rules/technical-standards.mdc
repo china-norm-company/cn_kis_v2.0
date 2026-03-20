@@ -1,0 +1,31 @@
+---
+description: CN_KIS 技术规范体系（继承 cn_kis_test）
+alwaysApply: true
+---
+
+# 技术规范体系
+
+新开发必须遵循 `docs/TECHNICAL_STANDARDS.md` 及子规范。
+
+## 规范索引
+
+| 文档 | 内容 |
+|------|------|
+| TECHNICAL_STANDARDS.md | 系统架构、技术栈、模块、命名 |
+| DEVELOPMENT_FOUNDATION.md | 底层规范、开发前阅读、现有代码、质量门禁、定期检查与清理 |
+| API_STANDARDS.md | API 路由、响应、Schema |
+| DATABASE_STANDARDS.md | 表命名、字段、索引、迁移 |
+| FRONTEND_STANDARDS.md | 前端、组件库 |
+| DEPLOYMENT_STANDARDS.md | 部署、配置、服务 |
+
+## 来源
+
+- CN_Study_KIS_Test（cn_kis_test）系统
+- E2E 项目实践
+
+## 关键约定
+
+- API 响应：`{code, msg, data}`，统一用 D/L 封装
+- 表名：`{DB_PREFIX}_{entity}`，如 `t_protocol`
+- Schema：XxxIn / XxxOut
+- 模块：api.py + services/ + models.py

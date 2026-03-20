@@ -1,0 +1,38 @@
+# 项目核心上下文 — CN KIS V2.0
+
+## 架构
+
+- **飞书**：前端入口 + 基础业务（OAuth、审批、通知、多维表格）
+- **Django 后端**：专业功能（EDC、合规、权限、数据校验）
+- **AI 智能体**：火山引擎 ARK（`ep-xxx`，复杂任务）+ Kimi（`moonshot-v1-32k`，轻量任务），通过 `agent_gateway` 管理
+- **智能体 ≠ Aily**：Aily 仅是飞书对话入口
+
+## 飞书应用
+
+- 子衿（秘书台）`cli_a98b0babd020500e`，同时作为全部 18 工作台的 OAuth 主签发应用
+- **统一主授权**：`FEISHU_PRIMARY_AUTH_FORCE=1`，所有 callback 用子衿凭证换 token
+
+## 部署（双环境）
+
+- **测试**：阿里云 `test-guide.data-infact.com`（GitHub Actions 自动部署 → develop 分支）
+- **生产**：火山云 `118.196.64.48`（手动/受控部署，承载知识资产）
+- 智能体配置：`backend/configs/agents.yaml`
+
+## 易快报（合思费控）
+
+- 飞书版后端：`dd2.hosecloud.com`（corpId: `nYA6xdjChA7c00`）
+- 认证：飞书 OAuth code → ebridge → web session token
+- Token 持久化：`t_ekb_web_session`（`EkbWebSession` 模型）
+- 数据 API：`POST /api/flow/v1/flows/search`（34,723 条历史单据）
+
+## 关键约定
+
+- API 响应：`{code, msg, data}`
+- 表名：`{DB_PREFIX}_{entity}`
+- Schema：XxxIn / XxxOut
+- 模块：api.py + services/ + models.py
+- 迁移章程：`docs/V2_MIGRATION_CHARTER.md`（必读，四条红线）
+
+## V2 迁移状态
+
+当前波次：Wave 0（治理底座）完成，进行 Wave 1（认证权限底座）

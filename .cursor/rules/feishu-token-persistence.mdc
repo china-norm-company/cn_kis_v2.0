@@ -1,0 +1,101 @@
+---
+description: 飞书 token 持久化与续期规范（禁止反复要求重新登录）
+alwaysApply: true
+---
+
+# 飞书 Token 持久化规范（强制）
+
+## 核心原则
+
+**飞书 access_token（2h）+ refresh_token（30 天，每次刷新滚动续期）可以做到"一次授权，永续可用"，任何导致用户需要反复登录的实现都是错误的。**
+
+## 已确认的代码根因（两处，已修复）
+
+### 根因 1：`_save_feishu_user_token` 无条件用空字符串覆盖 refresh_token
+
+**位置**：`backend/apps/identity/services.py` → `_save_feishu_user_token()`
+
+**问题代码**（旧版，已修复）：
+```python
+defaults = {
+    'refresh_token': refresh_token,   # 当 OAuth 不返回 refresh_token 时，这里是 ''
+    'refresh_expires_at': ... if refresh_expires_in else None,  # None 破坏后续判断
+}
+FeishuUserToken.objects.update_or_create(account_id=account.id, defaults=defaults)
+# 结果：每次登录都用 '' 覆盖已有的非空 refresh_token
+```
+
+**正确代码**（已修复）：
+```python
+# 只在拿到非空 refresh_token 时才更新，防止用空值覆盖已有的有效 token
+effective_refresh = refresh_token if refresh_token else (
+    existing.refresh_token if existing else ''
+)
+# refresh_expires_at 不允许为 None，默认 30 天
+_refresh_exp_seconds = refresh_expires_in if refresh_expires_in else 2592000
+defaults = {
+    'refresh_token': effective_refresh,    # 绝不用空值覆盖
+    'refresh_expires_at': now + timedelta(seconds=_refresh_exp_seconds),  # 永远不为 None
+}
+```
+
+### 根因 2：`get_valid_user_token` 刷新后用空字符串覆盖 refresh_token
+
+**位置**：`backend/apps/secretary/feishu_fetcher.py` → `get_valid_user_token()`
+
+**问题代码**（旧版，已修复）：
+```python
+token_record.refresh_token = new_data.get('refresh_token', token_record.refresh_token)
+# 当 new_data['refresh_token'] = '' 时，get() 返回 ''，不是 default，仍然覆盖！
+```
+
+**正确代码**（已修复）：
+```python
+new_refresh = new_data.get('refresh_token', '')
+if new_refresh:  # 只有有新 refresh_token 才更新（滚动续期）
+    token_record.refresh_token = new_refresh
+```
+
+### 根因 3：pre-expiry 刷新窗口太小（5 分钟）
+
+**位置**：`backend/apps/secretary/feishu_fetcher.py`
+
+旧版 `buffer = timedelta(minutes=5)` 在大批量采集中来不及刷新。
+
+**正确**：`pre_expiry_buffer = timedelta(hours=1)`，同时在 refresh_token 剩余 < 7 天时主动续期。
+
+## 部署时必须同时运行的进程
+
+```bash
+# 1. Web 服务
+gunicorn wsgi:application --bind 0.0.0.0:8001
+
+# 2. Celery Worker（异步任务）
+celery -A celery_app worker --loglevel=info
+
+# 3. Celery Beat（定时调度，token 健康检查每 6h 运行）
+celery -A celery_app beat --loglevel=info
+```
+
+## 核心配置文件
+
+| 文件 | 关键内容 |
+|------|---------|
+| `backend/config/celery_config.py` | **必须用小写** `broker_url`（Celery 5 废弃大写 `CELERY_BROKER_URL`） |
+| `backend/apps/identity/services.py` → `_save_feishu_user_token` | 防覆盖保存逻辑，含 `refresh_len` 审计日志 |
+| `backend/apps/secretary/feishu_fetcher.py` → `get_valid_user_token` | pre-expiry 1h 刷新，7 天内主动续期，新 refresh_token 强制滚动保存 |
+| `backend/apps/secretary/management/commands/batch_refresh_tokens.py` | 批量刷新命令，向无法刷新的账号推送飞书授权消息 |
+
+## 监控
+
+- 每次 OAuth 登录后日志应有 `feishu_token_saved ... refresh_len=NNN`，`refresh_len=0` 说明本次登录没有拿到 refresh_token（正常一两次，若持续为 0 需排查）
+- `feishu_oauth_token_obtained ... refresh_len=0` 说明飞书 v2 OAuth 响应里没有 refresh_token
+
+## 禁止的行为
+
+- ❌ `_save_feishu_user_token` 无条件写 `refresh_token` 字段（包括空字符串）
+- ❌ 刷新 token 时 `token_record.refresh_token = new_data.get('refresh_token', ...)` 用 get 默认值覆盖
+- ❌ `refresh_expires_at = None`（会导致后续判断逻辑失效）
+- ❌ Celery Beat 未启动（定时健康检查不运行）
+- ❌ 把"用户重新登录"当成 token 失效的默认解法
+

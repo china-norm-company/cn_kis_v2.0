@@ -1,0 +1,29 @@
+# V2 迁移红线（强制）
+
+## 核心原则
+
+本仓库所有代码改动必须遵守 `docs/V2_MIGRATION_CHARTER.md` 中定义的四条红线：
+
+1. **飞书统一认证与 Token 持久化**：不得破坏主授权链路，refresh_token 不得空值覆盖
+2. **权限模型不退化**：5 维权限（工作台/菜单/动作/项目/数据类型）只增强，不退化
+3. **知识资产绝不丢失**：PersonalContext/KnowledgeEntry/KnowledgeEntity 等生产资产受保护
+4. **双环境职责不混淆**：测试（阿里云）永不写入生产资产，永不使用生产凭证
+
+## 违规示例
+
+```
+❌ 在测试环境使用生产 FEISHU_APP_ID
+❌ _save_feishu_user_token 用空字符串覆盖 refresh_token
+❌ V2 初期向生产知识资产执行无保护写操作
+❌ 改动 identity 模型且删除已有字段
+❌ 绕过 PR 直接推送 main 分支
+```
+
+## 合规示例
+
+```
+✅ 新功能以新增方式实现，不删除旧接口
+✅ 迁移 FeishuUserToken 时保留防覆盖逻辑
+✅ 测试环境 .env 中 CELERY_PRODUCTION_TASKS_DISABLED=true
+✅ 所有脚本从 backend/configs/workstations.yaml 读取工作台列表
+```
