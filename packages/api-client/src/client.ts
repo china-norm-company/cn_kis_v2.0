@@ -29,7 +29,7 @@ async function retryRequest(instance: AxiosInstance, config: AxiosRequestConfig)
  */
 export function createApiClient(config: ApiClientConfig = {}): AxiosInstance {
   const {
-    baseURL: rawBaseURL = '/api/v1',
+    baseURL: rawBaseURL = '/v2/api/v1',
     timeout = 30000,
     getToken = () => localStorage.getItem('auth_token'),
     onUnauthorized,

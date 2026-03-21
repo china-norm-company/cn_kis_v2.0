@@ -1280,7 +1280,7 @@ VALID_WORKSTATION_KEYS = {
     'secretary', 'finance', 'research', 'execution', 'quality',
     'hr', 'crm', 'recruitment', 'equipment', 'material',
     'facility', 'evaluator', 'lab-personnel', 'ethics', 'reception',
-    'control-plane', 'admin', 'digital-workforce',
+    'control-plane', 'admin', 'digital-workforce', 'iam', 'data-platform',
 }
 
 VALID_MODES = {'blank', 'pilot', 'full'}

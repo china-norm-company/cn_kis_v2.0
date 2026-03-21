@@ -73,24 +73,24 @@ SYSTEM_ROLES = [
 # 此常量被 apps/identity/api.py 中的 _build_user_profile 直接引用
 # ============================================================================
 ROLE_WORKBENCH_MAP = {
-    # L10: 全部 18 个工作台
+    # L10: 全部 20 个工作台
     'superadmin': [
         'secretary', 'finance', 'research', 'execution', 'quality',
         'hr', 'crm', 'recruitment', 'equipment', 'material',
         'facility', 'evaluator', 'lab-personnel', 'ethics', 'reception',
-        'control-plane', 'admin', 'digital-workforce',
+        'control-plane', 'admin', 'digital-workforce', 'iam', 'data-platform',
     ],
     'admin': [
         'secretary', 'finance', 'research', 'execution', 'quality',
         'hr', 'crm', 'recruitment', 'equipment', 'material',
         'facility', 'evaluator', 'lab-personnel', 'ethics', 'reception',
-        'control-plane', 'admin', 'digital-workforce',
+        'control-plane', 'admin', 'digital-workforce', 'iam', 'data-platform',
     ],
     # L8: 全局+分管
-    'general_manager':   ['secretary', 'digital-workforce', 'research', 'execution', 'quality', 'finance', 'hr', 'crm', 'recruitment', 'control-plane'],
+    'general_manager':   ['secretary', 'digital-workforce', 'research', 'execution', 'quality', 'finance', 'hr', 'crm', 'recruitment', 'control-plane', 'data-platform'],
     'sales_director':    ['secretary', 'crm', 'finance'],
     'project_director':  ['secretary', 'research', 'execution', 'quality', 'recruitment'],
-    'tech_director':     ['secretary', 'research', 'execution', 'control-plane'],
+    'tech_director':     ['secretary', 'research', 'execution', 'control-plane', 'data-platform'],
     'research_director': ['secretary', 'research', 'quality'],
     # L6: 职能+秘书
     'sales_manager':       ['secretary', 'crm'],
@@ -98,7 +98,7 @@ ROLE_WORKBENCH_MAP = {
     'quality_manager':     ['secretary', 'quality'],
     'finance_manager':     ['secretary', 'finance'],
     'hr_manager':          ['secretary', 'hr'],
-    'data_manager':        ['secretary', 'research', 'control-plane'],
+    'data_manager':        ['secretary', 'research', 'control-plane', 'data-platform'],
     'research_manager':    ['secretary', 'research', 'execution', 'quality', 'recruitment'],
     'recruitment_manager': ['secretary', 'recruitment'],
     # L5
@@ -109,8 +109,8 @@ ROLE_WORKBENCH_MAP = {
     # L4
     'sales':             ['secretary', 'crm'],
     'business_assistant': ['secretary', 'crm'],
-    'it_specialist':     ['secretary', 'control-plane'],
-    'data_analyst':      ['secretary', 'research'],
+    'it_specialist':     ['secretary', 'control-plane', 'iam', 'data-platform'],
+    'data_analyst':      ['secretary', 'research', 'data-platform'],
     # L3
     'crc':               ['secretary', 'execution', 'reception'],
     'receptionist':      ['secretary', 'reception'],

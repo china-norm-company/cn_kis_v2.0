@@ -12,12 +12,13 @@ const navGroups = [
     ],
   },
   {
-    label: '身份与权限',
+    label: '用户与权限',
     items: [
       { path: '/accounts', label: '账号管理', icon: Users, permissions: ['system.account.manage'] },
       { path: '/roles', label: '角色管理', icon: Shield, permissions: ['system.role.manage'] },
       { path: '/permissions', label: '权限管理', icon: Lock, permissions: ['system.role.manage'] },
       { path: '/sessions', label: '会话管理', icon: Key, permissions: ['system.account.manage'] },
+      { path: '/iam', label: '权控台（独立）', icon: ExternalLink, externalHref: 'WORKSTATION:iam', permissions: ['system.role.manage'] as string[] },
     ],
   },
   {
@@ -32,6 +33,7 @@ const navGroups = [
     label: '数字员工',
     items: [
       { path: '/digital-workforce', label: '数字员工中心', icon: ExternalLink, externalHref: 'WORKSTATION:digital-workforce#/portal', permissions: ['system.role.manage'] as string[] },
+      { path: '/data-platform', label: '数据台（独立）', icon: ExternalLink, externalHref: 'WORKSTATION:data-platform', permissions: ['system.role.manage'] as string[] },
     ],
   },
   {

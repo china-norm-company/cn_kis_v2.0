@@ -13,8 +13,8 @@ export default defineConfig({
     host: true,
     port: 3002,
     proxy: {
-      '/api': {
-        target: 'http://localhost:8001',
+      '/v2/api': {
+        target: 'http://localhost:8002',
         changeOrigin: true,
       },
       // AI 解析服务代理（与 KIS 一致：/aiapi -> ProtocolExtractV2 服务，默认用 KIS 同一地址）

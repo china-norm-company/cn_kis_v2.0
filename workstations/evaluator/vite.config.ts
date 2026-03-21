@@ -13,13 +13,13 @@ export default defineConfig({
     port: 3013,
     host: true,
     proxy: {
-      '/api': {
-        target: 'http://localhost:8001',
+      '/v2/api': {
+        target: 'http://localhost:8002',
         changeOrigin: true,
         timeout: 300000, // 5 分钟，图片识别 OCR+LLM 耗时较长，避免被代理断开
       },
       '/media': {
-        target: 'http://localhost:8001',
+        target: 'http://localhost:8002',
         changeOrigin: true,
       },
     },

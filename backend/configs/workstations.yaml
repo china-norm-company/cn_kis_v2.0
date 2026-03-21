@@ -4,10 +4,10 @@
 # 所有脚本（构建/部署/质量门禁/健康检查）必须从此文件读取工作台列表。
 # 新增工作台时只需修改此文件，其余脚本自动适配。
 #
-# 工作台总览（18 个）：
+# 工作台总览（20 个）：
 #   业务工作台（15）：secretary finance research execution quality hr crm
 #                     recruitment equipment material facility evaluator lab-personnel ethics reception
-#   平台工作台（3）：control-plane admin digital-workforce
+#   平台工作台（5）：control-plane admin digital-workforce iam data-platform
 #
 # OAuth 统一授权说明：
 #   所有工作台前端统一使用子衿 App ID（cli_a98b0babd020500e）生成 OAuth URL。
@@ -149,7 +149,7 @@ workstations:
     package: "@cn-kis/reception"
 
   # ============================================================
-  # 平台工作台（3 个）— 面向内部管理员/运营，非直接业务
+  # 平台工作台（5 个）— 面向内部管理员/运营，非直接业务
   # ============================================================
 
   - key: control-plane
@@ -175,3 +175,19 @@ workstations:
     app_id_env: FEISHU_APP_ID
     port: 3018
     package: "@cn-kis/digital-workforce"
+
+  - key: iam
+    name: "枢衡·权控台"
+    description: "独立身份与权限管理中枢：用户全生命周期管理、角色权限矩阵、会话/Token 健康监控、登录活动审计、功能使用分析、AI 消耗统计、业务吞吐量仪表盘。从子衿台独立，专注安全治理。仅系统管理员可访问。"
+    path: /iam
+    app_id_env: FEISHU_APP_ID
+    port: 3019
+    package: "@cn-kis/iam"
+
+  - key: data-platform
+    name: "洞明·数据台"
+    description: "数据中台可视化管理：数据目录与资产地图、数据血缘图谱、Pipeline 健康监控、数据质量看板、备份与恢复管理、存储容量规划、知识库资产管理、跨工作台数据关系拓扑。消除数据黑盒，面向数据管理员与架构师。"
+    path: /data-platform
+    app_id_env: FEISHU_APP_ID
+    port: 3020
+    package: "@cn-kis/data-platform"

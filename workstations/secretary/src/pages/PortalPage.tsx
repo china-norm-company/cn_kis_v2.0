@@ -27,6 +27,8 @@ const workstations = [
   { key: 'control-plane', name: '天工·统管台', path: '/control-plane/', icon: '工', color: 'bg-slate-700' },
   { key: 'digital-workforce', name: '中书·智能台', path: '/digital-workforce/', icon: '书', color: 'bg-violet-700' },
   { key: 'admin', name: '鹿鸣·治理台', path: '/admin/', icon: '鸣', color: 'bg-stone-600' },
+  { key: 'iam', name: '枢衡·权控台', path: '/iam/', icon: '枢', color: 'bg-emerald-700' },
+  { key: 'data-platform', name: '洞明·数据台', path: '/data-platform/', icon: '洞', color: 'bg-purple-700' },
 ]
 
 const clawFetcher = (key: string) => clawRegistryApi.getByWorkstation(key)
@@ -35,7 +37,7 @@ export function PortalPage() {
   const ctx = useFeishuContext()
   const { canAccessWorkbench } = ctx
   const filterFn = typeof canAccessWorkbench === 'function' ? canAccessWorkbench : () => true
-  const platformKeys = ['control-plane', 'admin', 'digital-workforce']
+  const platformKeys = ['control-plane', 'admin', 'digital-workforce', 'iam', 'data-platform']
   const visible = workstations.filter((ws) =>
     platformKeys.includes(ws.key) ? (ctx.isAdmin ?? false) : filterFn(ws.key),
   )
