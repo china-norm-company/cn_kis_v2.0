@@ -14,15 +14,28 @@
 
 所有脚本（构建/部署/质量门禁/健康检查）必须从此文件读取工作台列表，禁止硬编码工作台列表。
 
-## 三、OAuth 统一授权
+## 三、OAuth 授权架构（双轨）
 
-所有工作台统一使用子衿应用签发 OAuth token：
+### 轨道一：子衿统一授权（18 个工作台）
 
 - **子衿 App ID**：`cli_a98b0babd020500e`
+- **范围**：15 个业务工作台 + admin + digital-workforce + control-plane
 - **后端配置**：`FEISHU_PRIMARY_AUTH_FORCE=1`
 - **原因**：统一签发可确保 token 包含完整 scope，支持飞书知识采集与持续授权
 
-> 禁止任何工作台使用自己的 App ID 单独完成 OAuth 换 token，这会导致 scope 不完整。
+### 轨道二：独立授权平台工作台（深度解耦）
+
+以下两个工作台是**独立的飞书网页应用**，与子衿完全隔离：
+
+| 工作台 | App ID |
+|---|---|
+| 枢衡·权控台（iam） | `cli_a937515668b99cc9` |
+| 洞明·数据台（data-platform） | `cli_a93753da2c381cef` |
+
+**解耦原则**：子衿出现任何故障（封禁/过期/宕机），枢衡和洞明的管理人员仍可独立登录进行运维操作。
+
+> 禁止任何业务工作台使用自己的 App ID 单独完成 OAuth 换 token（会导致 scope 不完整）。
+> 枢衡/洞明作为平台管理工具，不需要完整业务 scope，独立授权是设计要求。
 
 ## 四、18 个工作台定义
 
@@ -77,7 +90,9 @@
 ```
 ❌ 将工作台挂靠在另一个工作台下（如秘书台内嵌研究台功能）
 ❌ 硬编码工作台列表（必须从 workstations.yaml 读取）
-❌ 工作台使用自己的 App ID 独立完成 OAuth
+❌ 业务工作台使用自己的 App ID 独立完成 OAuth（scope 不完整）
+❌ 将 iam / data-platform 的 VITE_FEISHU_APP_ID 改回子衿 App ID
+❌ 将 iam / data-platform 从 FEISHU_APP_CREDENTIALS 中移除
 ❌ 跨工作台直接调用其他工作台的内部 API
 ❌ 擅自扩大工作台职责范围
 ```

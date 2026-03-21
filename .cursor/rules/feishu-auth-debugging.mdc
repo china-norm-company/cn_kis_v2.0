@@ -23,9 +23,28 @@ alwaysApply: true
 - 检查 token 是由哪个应用签发的（issuer_app_id）
 - **确保前端、飞书授权URL、后端换token三个环节用的是同一个 app_id**
 
-## 子衿主授权架构
+## 授权架构（三层）
 
+### 子衿统一授权（18 个工作台）
 - 子衿 App ID: `cli_a98b0babd020500e`
-- 所有 18 个工作台统一使用子衿 OAuth
-- 前端 JS bundle 中硬编码的 app_id 必须是子衿
-- 后端 force_primary=True 强制所有 callback 用子衿凭证换 token
+- 15 个业务工作台 + admin + digital-workforce + control-plane 统一使用子衿 OAuth
+- 前端 JS bundle 中 `VITE_FEISHU_APP_ID=cli_a98b0babd020500e`
+- 后端 `force_primary=True`：这些工作台的 App ID 不在 `FEISHU_APP_CREDENTIALS` 里时，自动 fallback 到子衿凭证换 token
+
+### 独立授权平台工作台（深度解耦）
+以下两个工作台使用**各自独立的飞书应用**，与子衿完全解耦：
+
+| 工作台 | App ID | 说明 |
+|---|---|---|
+| 枢衡·权控台（iam） | `cli_a937515668b99cc9` | 独立应用，自己的 App Secret 换 token |
+| 洞明·数据台（data-platform） | `cli_a93753da2c381cef` | 独立应用，自己的 App Secret 换 token |
+
+- 这两个 App ID 已注册进 `FEISHU_APP_CREDENTIALS`
+- `force_primary` 逻辑：App ID 在 CREDENTIALS 里 → **不 fallback**，直接用自己的 Secret
+- 子衿出故障时，枢衡/洞明仍可独立登录
+- Redirect URI 各自独立：`/iam/` 和 `/data-platform/`
+
+### 禁止事项（新增）
+- ❌ 将 iam / data-platform 的 `VITE_FEISHU_APP_ID` 改回子衿 App ID
+- ❌ 将 iam / data-platform 从 `FEISHU_APP_CREDENTIALS` 中移除
+- ❌ 对 iam / data-platform 的凭证使用 `FEISHU_PRIMARY_APP_ID` 覆盖

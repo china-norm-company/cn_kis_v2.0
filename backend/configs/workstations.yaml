@@ -180,7 +180,7 @@ workstations:
     name: "枢衡·权控台"
     description: "独立身份与权限管理中枢：用户全生命周期管理、角色权限矩阵、会话/Token 健康监控、登录活动审计、功能使用分析、AI 消耗统计、业务吞吐量仪表盘。从子衿台独立，专注安全治理。仅系统管理员可访问。"
     path: /iam
-    app_id_env: FEISHU_APP_ID
+    app_id_env: FEISHU_APP_ID_IAM
     port: 3019
     package: "@cn-kis/iam"
 
@@ -188,6 +188,6 @@ workstations:
     name: "洞明·数据台"
     description: "数据中台可视化管理：数据目录与资产地图、数据血缘图谱、Pipeline 健康监控、数据质量看板、备份与恢复管理、存储容量规划、知识库资产管理、跨工作台数据关系拓扑。消除数据黑盒，面向数据管理员与架构师。"
     path: /data-platform
-    app_id_env: FEISHU_APP_ID
+    app_id_env: FEISHU_APP_ID_DATA_PLATFORM
     port: 3020
     package: "@cn-kis/data-platform"
