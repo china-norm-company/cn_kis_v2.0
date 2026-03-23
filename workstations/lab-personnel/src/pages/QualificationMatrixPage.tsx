@@ -108,14 +108,14 @@ export function QualificationMatrixPage() {
                 </tr>
               </thead>
               <tbody>
-                {matrix.staff.map(s => (
+                {(matrix.staff ?? []).map(s => (
                   <tr key={s.id} className="hover:bg-slate-50">
                     <td className="px-3 py-2 border-b border-slate-100 font-medium text-slate-700 sticky left-0 bg-white">{s.name}</td>
                     {filteredMethods.map(m => {
-                      const level = matrix.matrix[String(s.id)]?.[String(m.id)] || ''
+                      const level = matrix.matrix?.[String(s.id)]?.[String(m.id)] || ''
                       return (
                         <td key={m.id} className="px-2 py-2 border-b border-slate-100 text-center" data-cell data-cell-type="method" data-status={level === 'independent' || level === 'mentor' ? 'pass' : level === '' ? 'warning' : 'learning'}>
-                          <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${LEVEL_COLORS[level]}`}>
+                          <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${LEVEL_COLORS[level] ?? LEVEL_COLORS['']}`}>
                             {LEVEL_LABELS[level] || '-'}
                           </span>
                         </td>
@@ -197,8 +197,8 @@ export function QualificationMatrixPage() {
                 <tr key={q.id} className="border-b border-slate-100 hover:bg-slate-50">
                   <td className="px-4 py-3 font-medium text-slate-700">{q.staff_name}</td>
                   <td className="px-4 py-3"><span className="text-slate-800">{q.method_name}</span> <span className="text-slate-400 text-xs">{q.method_code}</span></td>
-                  <td className="px-4 py-3"><span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${LEVEL_COLORS[q.level]}`}>{q.level_display}</span></td>
-                  <td className="px-4 py-3 text-slate-600">{q.total_executions}</td>
+                  <td className="px-4 py-3"><span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${LEVEL_COLORS[q.level] ?? LEVEL_COLORS['']}`}>{q.level_display ?? LEVEL_LABELS[q.level] ?? '-'}</span></td>
+                  <td className="px-4 py-3 text-slate-600">{q.total_executions ?? 0}</td>
                   <td className="px-4 py-3 text-slate-500">{q.last_execution_date || '-'}</td>
                   <td className="px-4 py-3 text-slate-500">{q.expiry_date || '永久'}</td>
                 </tr>

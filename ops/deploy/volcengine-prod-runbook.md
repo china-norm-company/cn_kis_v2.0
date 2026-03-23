@@ -4,6 +4,18 @@
 
 ---
 
+## 端口与进程说明
+
+| 服务 | 端口 | 数据库 | 部署路径 |
+|------|------|--------|---------|
+| V1.0 gunicorn | 8001 | cn_kis | /opt/cn-kis/ |
+| V2.0 gunicorn | **8002** | cn_kis_v2 | /opt/cn-kis-v2/ |
+| Nginx → V2 upstream | 8002 | — | /etc/nginx/sites-available/cn-kis.conf |
+
+> V1 和 V2 共存于同一台服务器，通过 Nginx 路由分离。切换流量只需将 Nginx upstream 指向 8002。
+
+---
+
 ## 前置条件
 
 在执行生产部署之前，必须：
@@ -13,6 +25,23 @@
 - [ ] 知识资产完整性校验通过（Wave 3 后）
 - [ ] PR 已合并到 `main` 分支
 - [ ] 至少一位系统负责人 Sign-off
+
+### 生产环境 .env 强制核对（切换前必做）
+
+```bash
+# 在服务器上执行：
+grep "CELERY_PRODUCTION_TASKS_DISABLED" /opt/cn-kis-v2/backend/.env
+# ✅ 应输出空（不存在）或 =false；若输出 =true 必须删除该行
+
+grep "ENVIRONMENT" /opt/cn-kis-v2/backend/.env
+# ✅ 应为 production 或不存在
+
+grep "REDIS_URL" /opt/cn-kis-v2/backend/.env
+# ✅ 应为 redis://localhost:6379/0（不是 /1）
+
+grep "VOLCENGINE_KB_COLLECTION" /opt/cn-kis-v2/backend/.env
+# ✅ 应为 cn_kis_v2（不是 cn_kis_v2_test）
+```
 
 ---
 

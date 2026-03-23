@@ -174,11 +174,36 @@ def get_qualification_matrix() -> dict:
 
         staff_list.append(staff_entry)
 
+    # 为前端矩阵视图构建 staff[] + matrix{} 格式（与 QualificationMatrix TS 类型对齐）
+    staff_for_matrix = [
+        {'id': s['staff_id'], 'name': s['name'], 'level': s.get('level', '')}
+        for s in staff_list
+    ]
+    matrix_dict = {}
+    for s in staff_list:
+        matrix_dict[str(s['staff_id'])] = {
+            str(mq['method_id']): mq.get('level', '') or ''
+            for mq in s.get('method_qualifications', [])
+        }
+
+    # single_point_risks 字段名与前端 TS 类型对齐：independent_count → qualified_count
+    risks_normalized = [
+        {
+            'method_id': r['method_id'],
+            'method_name': r['method_name'],
+            'qualified_count': r.get('independent_count', 0),
+            'staff_names': r.get('staff_names', []),
+        }
+        for r in single_point_risks
+    ]
+
     return {
         'staff_list': staff_list,
+        'staff': staff_for_matrix,
+        'matrix': matrix_dict,
         'methods': [{'id': m.id, 'name': m.name, 'code': m.code} for m in methods],
         'equipments': [{'id': e.id, 'name': e.name, 'code': e.code} for e in equipment_items],
-        'single_point_risks': single_point_risks,
+        'single_point_risks': risks_normalized,
     }
 
 
