@@ -103,6 +103,8 @@ export type {
 export { workorderApi } from './modules/workorder'
 export { edcApi } from './modules/edc'
 export { subjectApi } from './modules/subject'
+export { mySubjectApi } from './modules/my-subject'
+export type { MyHomeDashboardData, MyHomeDashboardProject } from './modules/my-subject'
 export { protocolApi } from './modules/protocol'
 export { resourceApi } from './modules/resource'
 export { qualityApi } from './modules/quality'

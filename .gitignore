@@ -18,9 +18,16 @@ deploy/.env.volcengine.plan-a
 # ============================================================
 __pycache__/
 *.py[cod]
+<<<<<<< HEAD
 *$py.class
 *.so
 *.egg
+=======
+.venv/
+venv/
+.python-version
+**/.python-version
+>>>>>>> a9184b0 (feat(wechat): AE quality tracking, mini 4-level severity, check-in v1.1 and docs)
 *.egg-info/
 dist/
 build/
@@ -117,3 +124,6 @@ test_quick.py
 
 # turbo
 .turbo
+
+# Windows uv backend launcher (local / machine-specific)
+start_backend_uv.bat

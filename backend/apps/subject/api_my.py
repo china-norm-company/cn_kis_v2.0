@@ -7,9 +7,14 @@
 """
 from ninja import Router, Schema, Body
 from typing import Optional
-from datetime import date, timedelta
+from datetime import date, datetime as dt_datetime, timedelta
+import logging
+
+from django.db import transaction
 from django.utils import timezone
 from django.db.models import Q
+
+logger = logging.getLogger(__name__)
 from apps.identity.decorators import require_permission, _get_account_from_request
 from apps.identity.phone_session import get_phone_from_request
 from .services.identity_provider_service import (
@@ -53,6 +58,11 @@ class MyProfileUpdateIn(Schema):
     consent_data_sharing: Optional[bool] = None
     consent_rwe_usage: Optional[bool] = None
     consent_follow_up: Optional[bool] = None
+
+
+class MyWechatDisplayNameIn(Schema):
+    """登录后可选：同步微信昵称到账号 display_name，仅影响问候展示优先级中的 wechat_nickname 档（§2.2）。"""
+    display_name: str
 
 
 class MyAppointmentIn(Schema):
@@ -496,6 +506,14 @@ def get_my_profile(request):
     from django.utils import timezone
 
     profile = get_profile_dict(subject.id, include_sensitive=False)
+    from .models import Subject
+    from .services.home_dashboard_service import compute_subject_display_name
+
+    sub_full = Subject.objects.filter(pk=subject.id, is_deleted=False).select_related('account').first()
+    display_name, display_name_source = ('受试者', 'fallback')
+    if sub_full:
+        display_name, display_name_source = compute_subject_display_name(sub_full, timezone.localdate())
+
     data = {
         'subject_id': subject.id,
         'subject_no': subject.subject_no,
@@ -504,6 +522,8 @@ def get_my_profile(request):
         'age': subject.age,
         'phone': subject.phone,
         'profile': profile,
+        'display_name': display_name,
+        'display_name_source': display_name_source,
     }
     # 无入组时，从预约记录取项目名称供小程序首页展示
     next_appt = SubjectAppointment.objects.filter(
@@ -528,10 +548,57 @@ def update_my_profile(request, data: MyProfileUpdateIn):
     return {'code': 200, 'msg': 'OK', 'data': None}
 
 
+@router.post('/profile/wechat-display-name', summary='（可选）同步微信昵称用于问候展示')
+@require_permission('my.profile.update')
+def post_my_wechat_display_name(request, data: MyWechatDisplayNameIn):
+    """写入关联账号的 display_name，不阻塞登录；无档案/预约名时仍优先于 fallback（附录 A §4）。"""
+    from .models import Subject
+
+    subject = _get_subject_from_request(request)
+    if not subject:
+        return 404, {'code': 404, 'msg': '未找到受试者信息', 'data': None}
+    sub_full = Subject.objects.filter(pk=subject.id, is_deleted=False).select_related('account').first()
+    if not sub_full or not sub_full.account_id:
+        return 400, {'code': 400, 'msg': '当前受试者未关联登录账号，无法保存称呼', 'data': None}
+    raw = (data.display_name or '').strip()
+    if not raw:
+        return 400, {'code': 400, 'msg': 'display_name 不能为空', 'data': None}
+    acc = sub_full.account
+    acc.display_name = raw[:100]
+    acc.save(update_fields=['display_name'])
+    return {'code': 200, 'msg': 'OK', 'data': None}
+
+
+@router.get('/home-dashboard', summary='首页聚合（主项目+多项目卡片，附录 A）')
+@require_permission('my.profile.read')
+def get_home_dashboard(request, date: Optional[str] = None):
+    """小程序首页一次拉齐：问候展示名、多项目块、入组/SC/当日队列签到态（GET /api/v1/my/home-dashboard）。"""
+    subject = _get_subject_from_request(request)
+    if not subject:
+        return 404, {'code': 404, 'msg': '未找到受试者信息', 'data': None}
+
+    as_of = timezone.localdate()
+    if date and str(date).strip():
+        try:
+            as_of = dt_datetime.strptime(str(date).strip()[:10], '%Y-%m-%d').date()
+        except ValueError:
+            return 400, {'code': 400, 'msg': 'date 参数须为 YYYY-MM-DD', 'data': None}
+
+    from .models import Subject
+    from .services.home_dashboard_service import build_home_dashboard_data
+
+    sub = Subject.objects.filter(pk=subject.id).select_related('account').first()
+    if not sub:
+        return 404, {'code': 404, 'msg': '未找到受试者信息', 'data': None}
+
+    data = build_home_dashboard_data(sub, as_of)
+    return {'code': 200, 'msg': 'OK', 'data': data}
+
+
 # ============================================================================
 # 我的项目
 # ============================================================================
-@router.get('/enrollments', summary='我参与的项目')
+@router.get('/enrollments', summary='我参与的项目', response={200: dict, 404: dict})
 @require_permission('my.profile.read')
 def get_my_enrollments(request):
     """查看受试者参与的所有项目（含访视计划ID）。
@@ -995,9 +1062,15 @@ class MyAEReportIn(Schema):
     symptom_description: str
     severity: str = 'mild'
     occur_date: Optional[str] = None
+    # 多项目并存时由小程序传入；不传则取最近一条「已入组」记录
+    enrollment_id: Optional[int] = None
 
 
-@router.post('/report-ae', summary='受试者自助上报不良反应')
+@router.post(
+    '/report-ae',
+    summary='受试者自助上报不良反应',
+    response={200: dict, 400: dict, 404: dict},
+)
 @require_permission('my.profile.update')
 def report_adverse_event(request, data: MyAEReportIn):
     """受试者通过小程序直接上报 AE，自动创建 safety.AdverseEvent 记录"""
@@ -1006,11 +1079,21 @@ def report_adverse_event(request, data: MyAEReportIn):
         return 404, {'code': 404, 'msg': '未找到受试者信息'}
 
     from apps.subject.models import Enrollment
-    enrollment = Enrollment.objects.filter(
-        subject=subject, status='enrolled',
-    ).first()
+    qs = Enrollment.objects.filter(subject=subject, status='enrolled')
+    if data.enrollment_id is not None:
+        enrollment = qs.filter(id=data.enrollment_id).first()
+        if not enrollment:
+            return 400, {
+                'code': 400,
+                'msg': '无效的入组记录或该项目尚未完成入组，请重新选择项目后再试',
+            }
+    else:
+        enrollment = qs.order_by('-enrolled_at', '-id').first()
     if not enrollment:
-        return 400, {'code': 400, 'msg': '未找到有效入组记录'}
+        return 400, {
+            'code': 400,
+            'msg': '未找到有效入组记录：您可能仍处于「待入组审批」或未入组，完成后即可上报',
+        }
 
     from apps.safety.services import create_adverse_event
     from datetime import date as date_type
@@ -1021,7 +1104,7 @@ def report_adverse_event(request, data: MyAEReportIn):
         severity=data.severity,
         start_date=start_date,
         relation='possible',
-        is_sae=(data.severity == 'severe'),
+        is_sae=(data.severity in ('severe', 'very_severe')),
     )
     return {'code': 200, 'msg': '上报成功', 'data': {
         'id': ae.id, 'severity': ae.severity, 'status': ae.status,
@@ -1520,9 +1603,18 @@ def my_scan_checkin(request, data: Optional[ScanCheckinIn] = Body(default=None))
     ).first()
 
     if not existing:
-        # 首次：签到
-        from .services.reception_service import quick_checkin
-        result = quick_checkin(subject.id, method='qr_scan', location=location)
+        # 首次：签到（工单执行 + 接待看板镜像，同事务；附录 B）
+        from .services import reception_service as reception_svc
+        with transaction.atomic():
+            appt_ctx = reception_svc.resolve_today_appointment_for_quick_checkin(
+                subject.id, None, today
+            )
+            result = reception_svc.quick_checkin(
+                subject.id, method='qr_scan', location=location
+            )
+            reception_svc.mirror_reception_board_after_miniprogram_checkin(
+                subject.id, today, appt_ctx
+            )
         return {'code': 200, 'msg': '签到成功', 'data': {**result, 'action': 'checkin'}}
 
     if existing.status == CheckinStatus.CHECKED_OUT:
@@ -1537,9 +1629,21 @@ def my_scan_checkin(request, data: Optional[ScanCheckinIn] = Body(default=None))
             },
         }
 
-    # 已签到或执行中：签出
-    from .services.reception_service import quick_checkout
-    result = quick_checkout(existing.id)
+    # 已签到或执行中：签出（工单执行 + 接待看板镜像；无看板记录时跳过镜像）
+    from .services import reception_service as reception_svc
+    with transaction.atomic():
+        result = reception_svc.quick_checkout(existing.id)
+        try:
+            reception_svc.board_checkout(subject.id, target_date=today)
+        except ValueError as e:
+            msg = str(e)
+            if '接待看板' in msg and ('签到' in msg or '请先签到' in msg):
+                logger.info(
+                    '小程序签出：无接待看板当日签到记录，跳过看板镜像 subject_id=%s',
+                    subject.id,
+                )
+            else:
+                raise
     return {'code': 200, 'msg': '签出成功', 'data': {**result, 'action': 'checkout'}}
 
 
@@ -1685,20 +1789,42 @@ def get_upcoming_visits(request, days: int = 30):
     today = timezone.now().date()
     end = today + timedelta(days=days)
 
-    appts = SubjectAppointment.objects.filter(
-        subject=subject,
-        appointment_date__gte=today,
-        appointment_date__lte=end,
-        status__in=['pending', 'confirmed'],
-    ).order_by('appointment_date', 'appointment_time')
+    appts = list(
+        SubjectAppointment.objects.filter(
+            subject=subject,
+            appointment_date__gte=today,
+            appointment_date__lte=end,
+            status__in=['pending', 'confirmed'],
+        ).order_by('appointment_date', 'appointment_time')
+    )
 
-    items = [{
-        'id': a.id,
-        'date': a.appointment_date.isoformat(),
-        'time': a.appointment_time.isoformat() if a.appointment_time else None,
-        'purpose': a.purpose,
-        'status': a.status,
-    } for a in appts]
+    # 排除「今天但预约时点已过」的条目，避免首页「下次访视」展示过期时段（仍保留无具体时间的当日预约）
+    now_local = timezone.localtime(timezone.now())
+    today_local = now_local.date()
+    now_t = now_local.time()
+    upcoming: list = []
+    for a in appts:
+        d = a.appointment_date
+        if d > today_local:
+            upcoming.append(a)
+        elif d < today_local:
+            continue
+        else:
+            if a.appointment_time is None or a.appointment_time >= now_t:
+                upcoming.append(a)
+
+    items = []
+    for a in upcoming:
+        tstr = None
+        if a.appointment_time:
+            tstr = a.appointment_time.strftime('%H:%M')
+        items.append({
+            'id': a.id,
+            'date': a.appointment_date.isoformat(),
+            'time': tstr,
+            'purpose': a.purpose,
+            'status': a.status,
+        })
 
     return {'code': 200, 'msg': 'OK', 'data': {'items': items, 'total': len(items)}}
 

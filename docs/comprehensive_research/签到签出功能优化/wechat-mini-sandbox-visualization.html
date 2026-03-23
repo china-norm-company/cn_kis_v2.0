@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>微信小程序开发沙盘 · 三维可视化</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --bg: #1a1d24;
+      --card: #252830;
+      --border: #3d4350;
+      --text: #e6e8ec;
+      --dim: #9ca3af;
+      --s0: #6b7280;
+      --s1: #f59e0b;
+      --s2: #3b82f6;
+      --s5: #10b981;
+      --s7: #3b82f6;
+      --p1: #f97316;
+      --p2: #8b5cf6;
+      --mobile: #0ea5e9;
+      --core: #f59e0b;
+      --support: #22c55e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .header {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+    .header .sub { color: var(--dim); font-size: 0.85rem; }
+    .stats {
+      display: flex;
+      gap: 16px;
+      font-size: 0.8rem;
+      color: var(--dim);
+    }
+    .stats span { color: var(--text); font-weight: 500; }
+    .tabs {
+      display: flex;
+      gap: 4px;
+      padding: 0 20px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .tabs button {
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .tabs button:hover { background: #2d323d; }
+    .tabs button.active { background: var(--mobile); border-color: var(--mobile); color: #fff; }
+    .panels { padding: 20px; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .panel h2 { font-size: 0.95rem; margin: 0 0 12px; color: var(--dim); }
+    .dimension-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--dim); font-weight: 500; }
+    .stage-s0 { color: var(--s0); }
+    .stage-s1 { color: var(--s1); }
+    .stage-s2 { color: #3b82f6; }
+    .stage-s3 { color: #a78bfa; }
+    .stage-s5 { color: var(--s5); }
+    .stage-s6 { color: #e879f9; }
+    .stage-s7 { color: var(--s7); }
+    .owner { color: var(--dim); }
+    .no-owner { color: var(--s0); font-style: italic; }
+    .priority-p1 { border-left: 3px solid var(--p1); }
+    .priority-p2 { border-left: 3px solid var(--p2); }
+    .mermaid { background: var(--card); border-radius: 8px; padding: 16px; overflow: auto; }
+    .mermaid svg { max-width: 100%; }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-top: 12px;
+      font-size: 0.8rem;
+      color: var(--dim);
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .legend-dot.s0 { background: var(--s0); }
+    .legend-dot.s1 { background: var(--s1); }
+    .legend-dot.s2 { background: var(--s2); }
+    .legend-dot.s5 { background: var(--s5); }
+    .legend-dot.s7 { background: var(--s7); }
+    .legend-dot.p1 { background: var(--p1); }
+    .legend-dot.p2 { background: var(--p2); }
+    .legend-dot.mobile { background: var(--mobile); }
+    .pipeline {
+      display: flex;
+      align-items: stretch;
+      gap: 4px;
+      margin-top: 12px;
+      font-size: 0.75rem;
+    }
+    .pipeline-stage {
+      flex: 1;
+      min-width: 0;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px;
+      text-align: center;
+    }
+    .pipeline-stage .label { color: var(--dim); margin-bottom: 6px; }
+    .pipeline-stage .items { color: var(--text); word-break: break-all; }
+    .sidebar {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 280px;
+      max-width: 90vw;
+      height: 100vh;
+      background: var(--card);
+      border-left: 1px solid var(--border);
+      padding: 16px;
+      overflow-y: auto;
+      transform: translateX(100%);
+      transition: transform 0.2s;
+      z-index: 10;
+    }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar h3 { margin: 0 0 12px; font-size: 0.95rem; }
+    .sidebar .meta { font-size: 0.8rem; color: var(--dim); margin-bottom: 8px; }
+    .sidebar .kpi { list-style: none; padding: 0; margin: 0; }
+    .sidebar .kpi li { padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+    .graph-wrap { position: relative; }
+    .graph-wrap .node-click-hint { position: absolute; bottom: 8px; left: 8px; font-size: 0.75rem; color: var(--dim); }
+    @media (max-width: 900px) {
+      .pipeline { flex-direction: column; }
+      .sidebar { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div>
+      <h1>微信小程序开发沙盘</h1>
+      <p class="sub">三维视角：功能与分工 · 工作台联动 · 落地阶段 · 时间计划（核心项 3 月底；简单问卷 4/12 体验测试、4/19 上线）</p>
+    </div>
+    <div class="stats">
+      <span>已分工 9</span> · <span>未分工 若干</span> ·
+      <span>S8 上线测试 · 登录/扫码（正式版·项目实测）</span> · <span>S2 本地联调 · 日记/样品</span> · <span>S3 真机 · 消息通知</span> · <span>S1 功能优化 · 项目报名/知情同意等</span> · <span>问卷（曹燕宁）S0 · 4/19 上线目标</span>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <button type="button" class="active" data-panel="overview">总览</button>
+    <button type="button" data-panel="dim1">维度一：功能与分工</button>
+    <button type="button" data-panel="dim2">维度二：工作台联动</button>
+    <button type="button" data-panel="dim3">维度三：落地阶段</button>
+    <button type="button" data-panel="timeline">时间计划与进度对标</button>
+    <button type="button" data-panel="login-checkin">登录与扫码签到说明</button>
+  </div>
+
+  <main class="panels">
+    <!-- 总览：联动关系图 + 分工摘要 -->
+    <section id="overview" class="panel active">
+      <div class="dimension-card">
+        <h2>功能 ↔ 工作台 联动关系</h2>
+        <div class="mermaid" id="mermaid-graph">
+flowchart TB
+  subgraph 移动端
+    WX[微信小程序]
+  end
+  subgraph P1功能
+    C[扫码签到/签出<br/>孙华 · S8·项目实测]
+    D[每日日记<br/>吕玥 · S2]
+    P[我的产品<br/>伍虹宇 · S2]
+    Q[问卷<br/>曹燕宁 · S0]
+    AE[不良反应<br/>孙华 · S3]
+    IC[知情同意<br/>Penny · S1]
+    MN[消息通知<br/>孙华 · S3]
+  end
+  subgraph P2功能
+    R[项目发现和报名<br/>杨红玉 · S1]
+  end
+  subgraph 执行核心
+    ZP[招招·招募台]
+    HP[和序·接待台]
+  end
+  subgraph 资源支撑
+    CP[采苓·研究台]
+    DP[度支·物料台]
+    VP[维周·执行台]
+    QP[怀瑾·质量台]
+    EP[御史·伦理台]
+  end
+  WX --> C
+  WX --> D
+  WX --> P
+  WX --> Q
+  WX --> AE
+  WX --> IC
+  WX --> MN
+  WX --> R
+  C -->|签到/队列| HP
+  C -->|预约/入组| ZP
+  D --> CP
+  D --> VP
+  P --> DP
+  Q --> CP
+  Q --> ZP
+  AE --> QP
+  AE --> CP
+  IC --> CP
+  IC --> EP
+  IC --> ZP
+  R --> ZP
+  R --> CP
+        </div>
+        <p class="node-click-hint">上图展示已分工功能与主联动工作台；点击下方维度可查看完整矩阵。</p>
+      </div>
+      <div class="dimension-card">
+        <h2>分工与阶段摘要</h2>
+        <table>
+          <thead>
+            <tr><th>功能</th><th>负责人</th><th>优先级</th><th>当前阶段</th></tr>
+          </thead>
+          <tbody>
+            <tr class="priority-p1"><td>扫码签到/签出</td><td class="owner">孙华</td><td>P1</td><td class="stage-s6">S8 上线测试（正式版已发布·项目实测）</td></tr>
+            <tr class="priority-p1"><td>每日日记</td><td class="owner">吕玥</td><td>P1</td><td class="stage-s2">S2 本地联调</td></tr>
+            <tr class="priority-p1"><td>我的产品</td><td class="owner">伍虹宇</td><td>P1</td><td class="stage-s2">S2 本地联调</td></tr>
+            <tr class="priority-p1"><td>问卷</td><td class="owner">曹燕宁</td><td>P1</td><td class="stage-s0">S0 需求</td></tr>
+            <tr class="priority-p2"><td>项目发现和报名</td><td class="owner">杨红玉</td><td>P2</td><td class="stage-s1">S1 功能优化</td></tr>
+            <tr><td>不良反应上报</td><td class="owner">孙华</td><td>P1</td><td class="stage-s3">S3 真机测试</td></tr>
+            <tr><td>知情同意签订</td><td class="owner">Penny</td><td>P1</td><td class="stage-s1">S1 功能优化</td></tr>
+            <tr class="priority-p1"><td>登录+绑定</td><td class="owner">孙华</td><td>P1</td><td class="stage-s6">S8 上线测试（正式版已发布·项目实测）</td></tr>
+            <tr><td>消息通知、排队叫号等</td><td class="owner">孙华（消息通知）</td><td>P1/P2</td><td class="stage-s3">S3 真机测试</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 维度一：功能 + 负责人 + 优先级 + 阶段 -->
+    <section id="dim1" class="panel">
+      <div class="dimension-card">
+        <h2>功能与开发优先级 · 负责人 · 当前阶段</h2>
+        <table>
+          <thead>
+            <tr><th>功能</th><th>负责人</th><th>优先级</th><th>当前阶段</th><th>备注</th></tr>
+          </thead>
+          <tbody>
+            <tr class="priority-p1"><td>登录 + 绑定</td><td class="owner">孙华</td><td>P1</td><td class="stage-s6">S8 上线测试</td><td>已发布微信小程序正式版；与签到一并进入项目实测</td></tr>
+            <tr class="priority-p1"><td>扫码签到/签出</td><td class="owner">孙华</td><td>P1</td><td class="stage-s6">S8 上线测试</td><td>已发布正式版；招募台、接待台联调完成，项目实测中</td></tr>
+            <tr class="priority-p1"><td>每日日记</td><td class="owner">吕玥</td><td>P1</td><td class="stage-s2">S2 本地联调</td><td>尚未工作台联动</td></tr>
+            <tr class="priority-p1"><td>不良反应上报</td><td class="owner">孙华</td><td>P1</td><td class="stage-s3">S3 真机测试</td><td>质量台联动见不良反应功能优化文档</td></tr>
+            <tr class="priority-p1"><td>消息通知能力</td><td class="owner">孙华</td><td>P1</td><td class="stage-s3">S3 真机测试</td><td>负责人孙华；真机测试阶段</td></tr>
+            <tr class="priority-p1"><td>我的产品/样品</td><td class="owner">伍虹宇</td><td>P1</td><td class="stage-s2">S2 本地联调</td><td>与物料台联调中</td></tr>
+            <tr class="priority-p1"><td>知情同意签订</td><td class="owner">Penny</td><td>P1</td><td class="stage-s1">S1 功能优化</td><td>功能优化阶段</td></tr>
+            <tr class="priority-p1"><td>简单问卷</td><td class="owner">曹燕宁</td><td>P1</td><td class="stage-s0">S0 需求</td><td>需求/范围在 S0 收敛；体验测试计划 4/12，上线 4/19；尚未工作台联动</td></tr>
+            <tr class="priority-p2"><td>排队叫号</td><td class="no-owner">未分工</td><td>P2</td><td>—</td><td>—</td></tr>
+            <tr class="priority-p2"><td>访视导检</td><td class="no-owner">未分工</td><td>P2</td><td>—</td><td>—</td></tr>
+            <tr class="priority-p2"><td>项目发现和报名</td><td class="owner">杨红玉</td><td>P2</td><td class="stage-s1">S1 功能优化</td><td>功能优化阶段</td></tr>
+          </tbody>
+        </table>
+        <div class="legend">
+          <div class="legend-item"><span class="legend-dot p1"></span> P1 第一优先级</div>
+          <div class="legend-item"><span class="legend-dot p2"></span> P2 第二优先级</div>
+          <div class="legend-item"><span class="legend-dot s0"></span> S0 需求</div>
+          <div class="legend-item"><span class="legend-dot s1"></span> S1 功能优化</div>
+          <div class="legend-item"><span class="legend-dot s5"></span> S6 体验测试</div>
+          <div class="legend-item"><span class="legend-dot mobile"></span> S7 微信审核正式版</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 维度二：工作台联动矩阵 -->
+    <section id="dim2" class="panel">
+      <div class="dimension-card">
+        <h2>功能与飞书 15 工作台协同（主联动）</h2>
+        <table>
+          <thead>
+            <tr><th>功能</th><th>负责人</th><th>主联动工作台</th><th>说明</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>登录+绑定</td><td>孙华</td><td>招募台、接待台</td><td>预约/手机号、签到身份</td></tr>
+            <tr><td>扫码签到/签出</td><td>孙华</td><td><strong>接待台</strong>、招募台</td><td>大屏码、队列、预约/入组</td></tr>
+            <tr><td>每日日记</td><td>吕玥</td><td>研究台、执行台</td><td>方案/CRF、访视、依从性</td></tr>
+            <tr><td>我的产品/样品</td><td>伍虹宇</td><td><strong>物料台</strong></td><td>库存/签收</td></tr>
+            <tr><td>问卷</td><td>曹燕宁</td><td>研究台、招募台、评估台</td><td>CRF/方案、筛选、评估</td></tr>
+            <tr><td>项目发现和报名</td><td>杨红玉</td><td><strong>招募台</strong>、研究台</td><td>协议、招募触达</td></tr>
+            <tr><td>排队叫号</td><td>—</td><td><strong>接待台</strong>、执行台</td><td>排程</td></tr>
+            <tr><td>知情同意</td><td>Penny</td><td>研究台、伦理台、招募台</td><td>协议/ICF、批件</td></tr>
+            <tr><td>不良反应</td><td>孙华</td><td>质量台、研究台</td><td>CAPA、方案/AE</td></tr>
+            <tr><td>消息通知</td><td>孙华</td><td>秘书台、接待台、招募台</td><td>到号/导引、招募提醒</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:0.8rem; color:var(--dim); margin-top:8px;">图例：<strong>加粗</strong>为该功能主责工作台；其余为数据来源或联动方。</p>
+      </div>
+    </section>
+
+    <!-- 维度三：落地阶段管道 -->
+    <section id="dim3" class="panel">
+      <div class="dimension-card">
+        <h2>落地阶段管道（S0→S9）</h2>
+        <p style="font-size:0.8rem; color:var(--dim); margin-bottom:4px;">S0 需求 → S1 功能开发 → S2 本地联调 → S3 真机测试 → <strong>S4 合并代码和部署</strong> → S5 体验版发布（微信公众平台上传体验版）→ S6 体验测试 → <strong>S7 微信审核正式版</strong> → <strong>S8 上线测试</strong> → <strong>S9 正式上线</strong></p>
+        <p style="font-size:0.75rem; color:var(--dim); margin-bottom:8px;">业务人员注意：S3 真机验证通过后进入 <strong>S4 合并代码和部署</strong>（合并到目标分支、构建并部署至预定环境）；<strong>S4 完成后</strong>再进入 <strong>S5</strong> 在微信公众平台上传体验版。S6 体验测试通过后进入 <strong>S7</strong> 提交微信审核、获取正式版包；<strong>S8</strong> 为上线测试与项目实测；<strong>S9</strong> 为对外正式上线里程碑。</p>
+        <div class="pipeline">
+          <div class="pipeline-stage"><div class="label">S0 需求</div><div class="items">问卷(曹燕宁)<br/>项目报名等</div></div>
+          <div class="pipeline-stage"><div class="label">S1 功能优化</div><div class="items">项目发现和报名(杨红玉)<br/>知情同意(Penny)</div></div>
+          <div class="pipeline-stage"><div class="label">S2 本地联调</div><div class="items">每日日记(吕玥)<br/>我的产品(伍虹宇)</div></div>
+          <div class="pipeline-stage"><div class="label">S3 真机测试</div><div class="items">不良反应(孙华)<br/>消息通知(孙华)</div></div>
+          <div class="pipeline-stage" style="border-color:var(--p2);"><div class="label">S4 合并代码和部署</div><div class="items">合并目标分支<br/>构建 / 部署</div></div>
+          <div class="pipeline-stage"><div class="label">S5 体验版发布</div><div class="items">微信上传体验版</div></div>
+          <div class="pipeline-stage" style="border-color:var(--s5);"><div class="label">S6 体验测试</div><div class="items">—</div></div>
+          <div class="pipeline-stage" style="border-color:var(--mobile);"><div class="label">S7 微信审核正式版</div><div class="items">提审 / 过审 / 正式版包</div></div>
+          <div class="pipeline-stage"><div class="label">S8 上线测试</div><div class="items">登录+绑定(孙华)<br/>扫码签到/签出(孙华)<br/><small>正式版已发布·项目实测</small></div></div>
+          <div class="pipeline-stage"><div class="label">S9 正式上线</div><div class="items">—</div></div>
+        </div>
+        <div class="legend">
+          <div class="legend-item"><span class="legend-dot s0"></span> S0 需求</div>
+          <div class="legend-item"><span class="legend-dot s1"></span> S1 功能开发/优化</div>
+          <div class="legend-item"><span class="legend-dot s2"></span> S2 本地联调</div>
+          <div class="legend-item"><span class="legend-dot p2"></span> S4 合并代码和部署</div>
+          <div class="legend-item"><span class="legend-dot s5"></span> S6 体验版测试</div>
+          <div class="legend-item"><span class="legend-dot mobile"></span> S7 微信审核正式版</div>
+          <div class="legend-item"><span class="legend-dot s7"></span> S9 正式上线</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 时间计划与进度对标 -->
+    <section id="timeline" class="panel">
+      <div class="dimension-card">
+        <h2>目标：3 月底核心能力闭环；简单问卷按 4 月窗口体验与上线</h2>
+        <p style="font-size:0.85rem; color:var(--dim); margin-bottom:12px;">核心 7 项：登录、扫码签到/签出、每日日记、不良反应、我的样品、知情同意、简单问卷。流水线后段：<strong>S7 微信审核正式版</strong> → <strong>S8 上线测试</strong> → <strong>S9 正式上线</strong>；登录与扫码已进入 <strong>S8</strong>（正式版已发布，项目实测中）。S3 之后为 <strong>S4 合并代码和部署</strong>，再进入 <strong>S5 体验版发布</strong>。<strong>问卷/简单问卷（曹燕宁）</strong>归在 <strong>S0 需求</strong>；体验与上线窗口仍为 <strong>4/12</strong>、<strong>4/19</strong>。历史排期中的 3/23 体验版窗口仍可作为参考里程碑。</p>
+        <table>
+          <thead>
+            <tr><th>时间段</th><th>计划要点</th><th>里程碑</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>3/15–3/21（本周）</strong></td><td><strong>每日日记（吕玥）、我的样品（伍虹宇）</strong>：S2 本地联调。<strong>消息通知、不良反应（孙华）</strong>：S3 真机测试。<strong>项目发现和报名（杨红玉）、知情同意（Penny）</strong>：S1 功能优化。<strong>登录+绑定、扫码签到/签出（孙华）</strong>：已进入 <strong>S8 上线测试</strong>（正式版已发布，项目实测）。<strong>问卷/简单问卷（曹燕宁）</strong>：<strong>S0 需求</strong>；体验窗口 <strong>4/12</strong>、上线 <strong>4/19</strong>。</td><td>登录/扫码 S8 实测；项目报名/知情同意 S1；日记/样品 S2；消息/AE S3；问卷 S0</td></tr>
+            <tr><td><strong>3/20–3/23</strong></td><td>核心项推进 S2–S5（含 <strong>S4 合并部署</strong> 后上传体验版）；<strong>3/23 前</strong>尽量完成 S4/S5；<strong>S6 体验测试</strong>；随后进入 <strong>S7 微信审核正式版</strong>。</td><td><strong>3/23 体验版里程碑</strong>（与问卷 4 月节奏并行）</td></tr>
+            <tr><td><strong>3/23–3/31</strong></td><td>S6 体验测试 → <strong>S7 审核正式版</strong> → <strong>S8 上线测试</strong>（项目实测）→ 趋近 <strong>S9 正式上线</strong>。</td><td>3 月底核心闭环；问卷 4/12–4/19 单独跟踪</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="dimension-card">
+        <h2>进度对标表（请按日/周更新「实际阶段」）</h2>
+        <table>
+          <thead>
+            <tr><th>功能</th><th>负责人</th><th>目标（里程碑）</th><th>计划 S5</th><th>计划 S6</th><th>计划 S9</th><th>实际阶段</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>登录+绑定</td><td>孙华</td><td>S9</td><td>3/23 前</td><td>3/25 前</td><td>3/31</td><td class="stage-s6">S8 上线测试（正式版·项目实测）</td></tr>
+            <tr><td>扫码签到/签出</td><td>孙华</td><td>S9</td><td>已 S5</td><td>S6 已完成</td><td>3/31</td><td class="stage-s6">S8 上线测试（正式版·项目实测）</td></tr>
+            <tr><td>每日日记</td><td>吕玥</td><td>S9</td><td><strong>3/18</strong></td><td><strong>3/20</strong></td><td>3/31</td><td class="stage-s2">S2 本地联调</td></tr>
+            <tr><td>不良反应上报</td><td>孙华</td><td>S9</td><td><strong>3/20</strong></td><td><strong>3/25</strong></td><td>3/31</td><td class="stage-s3">S3 真机测试</td></tr>
+            <tr><td>我的样品</td><td>伍虹宇</td><td>S9</td><td><strong>3/18</strong></td><td><strong>3/20</strong></td><td>3/31</td><td class="stage-s2">S2 本地联调</td></tr>
+            <tr><td>知情同意签订</td><td>Penny</td><td>S9</td><td><strong>3/22</strong></td><td><strong>3/23</strong></td><td>3/31</td><td class="stage-s1">S1 功能优化</td></tr>
+            <tr><td>简单问卷</td><td>曹燕宁</td><td>上线 4/19</td><td>按核心窗口</td><td><strong>4/12</strong></td><td><strong>4/19</strong></td><td class="stage-s0">S0 需求</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:0.8rem; color:var(--dim); margin-top:8px;">S0=需求 · S4=合并代码和部署 · S5=体验版发布 · S6=体验测试 · S7=微信审核正式版 · S8=上线测试 · S9=正式上线。问卷（曹燕宁）需求在 <strong>S0</strong>；体验测试窗口锚定 <strong>S6</strong>（<strong>4/12</strong>），计划上线 <strong>4/19</strong>（对齐 <strong>S9</strong> 或业务窗口）。</p>
+      </div>
+      <div class="dimension-card">
+        <h2>风险与应对</h2>
+        <table>
+          <thead>
+            <tr><th>风险</th><th>应对</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>不良反应、消息通知、知情同意节奏不一</td><td>不良反应与消息通知均在 <strong>S3 真机测试</strong>；知情同意 <strong>S1 功能优化</strong>；与工作台并行，必要时最小可用</td></tr>
+            <tr><td>多功能同时联调</td><td>研究台/执行台/物料台（每日日记 S2、我的样品 S2）；接待台/招募台（登录/扫码 <strong>S8 项目实测</strong>）；伦理台/研究台（知情同意 S1）；质量台（不良反应、消息通知 <strong>S3 真机</strong>）</td></tr>
+            <tr><td>体验版发布后测试与审核窗口</td><td>流水线 <strong>S7 审核正式版 → S8 上线测试 → S9 正式上线</strong>；登录/扫码已进入 S8 实测；S4 合并部署与 S5 体验版发布需预留窗口；简单问卷按 <strong>4/12、4/19</strong> 单独排期</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 登录与扫码签到说明：操作步骤 + 与招募台/接待台逻辑关系（沙盘模块置末） -->
+    <section id="login-checkin" class="panel">
+      <div class="dimension-card">
+        <h2>登录 + 扫码签到：具体操作流程</h2>
+        <ol style="margin:0 0 12px 1.2em; padding:0; font-size:0.9rem; line-height:1.6;">
+          <li><strong>登录</strong>：用户打开小程序后，通过微信授权或手机号登录；未绑定手机号时需先完成「绑定手机号」。</li>
+          <li><strong>绑定</strong>：将微信身份与系统内受试者/访客身份绑定（手机号、预约/入组信息），供后续签到与工作台识别。</li>
+          <li><strong>扫码签到</strong>：到实验室后扫描接待台-大屏投影现场展示的「当日二维码」（大屏/电脑），小程序上报签到事件，接待台队列与叫号系统可识别到实验室状态。</li>
+          <li><strong>扫码签出</strong>：离开实验室时扫描「当日二维码」，更新到访状态，便于队列与后续访视统计。</li>
+        </ol>
+        <p style="font-size:0.85rem; color:var(--dim); margin:0;">上述流程目前处于<strong>S8 上线测试</strong>：已发布微信小程序<strong>正式版</strong>，与招募台、接待台进入<strong>项目实测</strong>。</p>
+      </div>
+      <div class="dimension-card">
+        <h2>与招募台、接待台的逻辑关系</h2>
+        <div class="mermaid" id="mermaid-login-checkin">
+flowchart LR
+  subgraph 小程序端
+    A[登录/绑定]
+    B[扫码签到/签出]
+  end
+  subgraph 招招·招募台
+    Z1[预约/入组数据]
+    Z2[身份与项目关联]
+  end
+  subgraph 和序·接待台
+    H1[队列与叫号]
+    H2[大屏当日二维码]
+    H3[到实验室/离开实验室状态]
+  end
+  A -->|读取预约与入组| Z1
+  A -->|绑定身份| Z2
+  B -->|扫描码来源| H2
+  B -->|上报签到/签出| H1
+  B -->|更新到访/离场状态| H3
+  Z1 -->|预约列表、受试者标识| A
+  H1 -->|到号/排队状态| 小程序端
+        </div>
+        <table style="margin-top:16px;">
+          <thead>
+            <tr><th>工作台</th><th>与登录/绑定的关系</th><th>与扫码签到/签出的关系</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>招招·招募台</strong></td><td>提供预约、入组数据，用于绑定时的身份与项目关联；小程序拉取「我的预约」等。</td><td>签到后可回写/同步「到实验室」状态，便于招募侧统计到访与依从性。</td></tr>
+            <tr><td><strong>和序·接待台</strong></td><td>接待台需识别「谁来了」：依赖登录+绑定后的身份与手机号，用于队列、叫号与现场核验。</td><td>接待台通过大屏投影提供「当日二维码」；小程序扫码后上报，接待台更新队列、大屏与叫号；核心联动方。</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:0.8rem; color:var(--dim); margin-top:8px;">总结：登录+绑定解决「是谁」；扫码签到/签出解决「何时到实验室/何时离开」；招募台侧重预约与入组数据，接待台侧重现场队列与到实验室状态。</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'dark',
+      themeVariables: {
+        primaryColor: '#0ea5e9',
+        primaryTextColor: '#e6e8ec',
+        primaryBorderColor: '#3d4350',
+        lineColor: '#6b7280',
+        secondaryColor: '#252830',
+        tertiaryColor: '#1a1d24'
+      }
+    });
+    document.querySelectorAll('.tabs button').forEach(btn => {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        this.classList.add('active');
+        var id = this.getAttribute('data-panel');
+        if (id) document.getElementById(id).classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>

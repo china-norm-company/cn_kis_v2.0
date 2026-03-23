@@ -71,6 +71,31 @@ export interface UserInfo {
   roles?: string[]
   /** 主角色（优先级最高的角色） */
   primary_role?: string
+  /** 问候展示名（GET /my/profile 的 display_name，与 home-dashboard 规则一致） */
+  displayName?: string
+  displayNameSource?: string
+}
+
+/** /my/profile 中与问候相关的字段（§2.2、附录 A §4） */
+export type MyProfileGreetingFields = {
+  subject_id?: number
+  subject_no?: string
+  name?: string
+  display_name?: string
+  display_name_source?: string
+  project_name_from_appointment?: string
+}
+
+export function mergeMyProfileGreetingIntoUser(base: UserInfo, p: MyProfileGreetingFields): void {
+  if (p.subject_no != null && p.subject_no !== '') base.subjectNo = p.subject_no
+  if (p.name != null && p.name !== '') base.name = p.name
+  if (p.subject_id != null) base.subjectId = p.subject_id
+  const dn = typeof p.display_name === 'string' ? p.display_name.trim() : ''
+  if (dn) {
+    base.displayName = dn
+    base.displayNameSource =
+      typeof p.display_name_source === 'string' ? p.display_name_source : undefined
+  }
 }
 
 function isUserInfo(value: unknown): value is UserInfo {
@@ -270,12 +295,9 @@ export async function wechatLogin(phoneCode?: string): Promise<UserInfo | null> 
     }, traceId)
 
     try {
-      const profileRes = await get<{ subject_id?: number; subject_no?: string; name?: string; project_name_from_appointment?: string }>('/my/profile', { silent: true })
+      const profileRes = await get<MyProfileGreetingFields>('/my/profile', { silent: true })
       if (profileRes.code === 200 && profileRes.data) {
-        const p = profileRes.data
-        normalizedUser.subjectNo = p.subject_no || normalizedUser.subjectNo
-        normalizedUser.name = p.name || normalizedUser.name
-        normalizedUser.subjectId = p.subject_id
+        mergeMyProfileGreetingIntoUser(normalizedUser, profileRes.data)
       }
       const enrollRes = await get<{ items: Array<{ protocol_id?: number; protocol_title?: string; plan_id?: number; enrolled_at?: string; id?: number; status?: string }> }>('/my/enrollments', { silent: true })
       if (enrollRes.code === 200 && enrollRes.data?.items?.length) {
@@ -359,6 +381,15 @@ export async function smsCodeLogin(phone: string, code: string): Promise<UserInf
       roles: Array.isArray(payload.roles) ? payload.roles : [],
     }, traceId)
 
+    try {
+      const profileRes = await get<MyProfileGreetingFields>('/my/profile', { silent: true })
+      if (profileRes.code === 200 && profileRes.data) {
+        mergeMyProfileGreetingIntoUser(normalizedUser, profileRes.data)
+      }
+    } catch {
+      // 静默，不阻塞验证码登录
+    }
+
     Taro.setStorageSync('userInfo', JSON.stringify(normalizedUser))
     Taro.removeStorageSync('last_login_error')
     appendLoginTrace(traceId, 'success', `登录成功，account=${normalizedUser.id || 'unknown'} roles=${JSON.stringify(normalizedUser.roles)}`)
@@ -378,12 +409,9 @@ export async function refreshUserInfo(): Promise<UserInfo | null> {
   if (!base.id) return base
 
   try {
-    const profileRes = await get<{ subject_id?: number; subject_no?: string; name?: string; project_name_from_appointment?: string }>('/my/profile', { silent: true })
+    const profileRes = await get<MyProfileGreetingFields>('/my/profile', { silent: true })
     if (profileRes.code === 200 && profileRes.data) {
-      const p = profileRes.data
-      base.subjectNo = p.subject_no || base.subjectNo
-      base.name = p.name || base.name
-      base.subjectId = p.subject_id
+      mergeMyProfileGreetingIntoUser(base, profileRes.data)
     }
     const enrollRes = await get<{ items: Array<{ protocol_id?: number; protocol_title?: string; plan_id?: number; enrolled_at?: string; id?: number; status?: string }> }>('/my/enrollments', { silent: true })
     if (enrollRes.code === 200 && enrollRes.data?.items?.length) {
@@ -402,6 +430,26 @@ export async function refreshUserInfo(): Promise<UserInfo | null> {
     return base
   } catch {
     return base
+  }
+}
+
+/**
+ * 登录后可选：用户点击后唤起微信昵称并写入后端，失败或拒绝均静默，不影响登录（§2.2）。
+ */
+export async function optionalSyncWechatNicknameFromWechat(): Promise<void> {
+  if (!isLoggedIn()) return
+  if (typeof Taro.getUserProfile !== 'function') return
+  try {
+    const res = await Taro.getUserProfile({ desc: '用于首页问候称呼' })
+    const nick = res.userInfo?.nickName?.trim()
+    if (!nick) return
+    await post<{ code?: number }>(
+      '/my/profile/wechat-display-name',
+      { display_name: nick },
+      { auth: true, silent: true }
+    )
+  } catch {
+    // 静默
   }
 }
 
@@ -518,12 +566,9 @@ export async function bindPhone(phone: string): Promise<UserInfo | null> {
     subjectId: data.subject_id,
   }
   try {
-    const profileRes = await get<{ subject_id?: number; subject_no?: string; name?: string; project_name_from_appointment?: string }>('/my/profile', { silent: true })
+    const profileRes = await get<MyProfileGreetingFields>('/my/profile', { silent: true })
     if (profileRes.code === 200 && profileRes.data) {
-      const p = profileRes.data
-      base.subjectNo = p.subject_no || base.subjectNo
-      base.name = p.name || base.name
-      base.subjectId = p.subject_id
+      mergeMyProfileGreetingIntoUser(base, profileRes.data)
     }
     const enrollRes = await get<{ items: Array<{ protocol_id?: number; protocol_title?: string; plan_id?: number; enrolled_at?: string; id?: number; status?: string }> }>('/my/enrollments', { silent: true })
     if (enrollRes.code === 200 && enrollRes.data?.items?.length) {

@@ -280,6 +280,14 @@
   color: #5f7088;
 }
 
+.home-top-card__nickname-sync {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #3b6cff;
+  text-decoration: underline;
+}
+
 .home-top-card__quote {
   display: block;
   margin-top: 8rpx;
@@ -489,6 +497,60 @@
 .badge-waiting {
   background: #e8eaf6;
   color: #4a4a8a;
+}
+
+.badge-sm {
+  min-height: 36rpx;
+  padding: 0 12rpx;
+  font-size: 18rpx;
+}
+
+.home-dashboard-block {
+  padding-top: 4rpx;
+}
+
+.home-project-more {
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 2rpx solid #eef2f8;
+}
+
+.home-project-more__toggle {
+  padding: 12rpx 0;
+}
+
+.home-project-more__toggle-text {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #2b6cb0;
+}
+
+.home-project-more__list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.home-project-subcard {
+  background: #f8fafc;
+  border-radius: 16rpx;
+  padding: 16rpx;
+  border: 2rpx solid #e8eef8;
+}
+
+.home-project-subcard__bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 8rpx;
+}
+
+.home-project-subcard__title {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #1d2f48;
+  flex: 1;
 }
 
 .pending-card {

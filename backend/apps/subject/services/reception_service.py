@@ -644,6 +644,24 @@ def _ensure_project_sc_on_checkin(
             )
 
 
+def resolve_today_appointment_for_quick_checkin(
+    subject_id: int,
+    project_code: Optional[str] = None,
+    target_date: Optional[date] = None,
+) -> Optional[SubjectAppointment]:
+    """与 quick_checkin 选取当日预约规则一致（CONFIRMED/PENDING）。在预约被标为 COMPLETED 之前调用，供小程序看板镜像带上下文。"""
+    day = target_date or timezone.localdate()
+    pc = (project_code or '').strip() or None
+    appt_qs = SubjectAppointment.objects.filter(
+        subject_id=subject_id,
+        appointment_date=day,
+        status__in=[AppointmentStatus.CONFIRMED, AppointmentStatus.PENDING],
+    )
+    if pc:
+        return appt_qs.filter(project_code=pc).first() or appt_qs.first()
+    return appt_qs.first()
+
+
 @transaction.atomic
 def quick_checkin(
     subject_id: int,
@@ -687,15 +705,7 @@ def quick_checkin(
         created_by_id=operator_id,
     )
 
-    # 优先用 project_code 定位预约；否则取当日第一条
-    appt_qs = SubjectAppointment.objects.filter(
-        subject_id=subject_id, appointment_date=today,
-        status__in=[AppointmentStatus.CONFIRMED, AppointmentStatus.PENDING],
-    )
-    if pc:
-        appt = appt_qs.filter(project_code=pc).first() or appt_qs.first()
-    else:
-        appt = appt_qs.first()
+    appt = resolve_today_appointment_for_quick_checkin(subject_id, pc, today)
     if appt:
         appt.status = AppointmentStatus.COMPLETED
         appt.save(update_fields=['status', 'update_time'])
@@ -1371,6 +1381,53 @@ def _ensure_board_project_sc_on_checkin(
             project_code=project_code,
             defaults={'sc_number': ''},
         )
+
+
+def mirror_reception_board_after_miniprogram_checkin(
+    subject_id: int,
+    target_date: date,
+    appt: Optional[SubjectAppointment],
+) -> dict:
+    """小程序 quick_checkin 成功后镜像接待看板（附录 B）。appt 须为签到前 resolve 的当日预约，可为 None（无预约签到）。"""
+    now = timezone.now()
+    defaults: dict = {'checkin_time': now}
+    if appt is not None:
+        defaults['appointment_id'] = appt.id
+
+    rec, created = ReceptionBoardCheckin.objects.update_or_create(
+        subject_id=subject_id,
+        checkin_date=target_date,
+        defaults=defaults,
+    )
+
+    if appt is not None:
+        proj = (appt.project_code or '').strip()
+        visit_point_raw = (getattr(appt, 'visit_point', '') or '').strip()
+        vp_upper = visit_point_raw.upper()
+        if proj:
+            if created:
+                if vp_upper == 'V1':
+                    ReceptionBoardProjectSc.objects.get_or_create(
+                        subject_id=subject_id,
+                        project_code=proj,
+                        defaults={'sc_number': _next_board_sc_number_for_project(proj)},
+                    )
+                else:
+                    ReceptionBoardProjectSc.objects.get_or_create(
+                        subject_id=subject_id,
+                        project_code=proj,
+                        defaults={'sc_number': ''},
+                    )
+            else:
+                _ensure_board_project_sc_on_checkin(subject_id, proj, visit_point_raw)
+
+    return {
+        'id': rec.id,
+        'subject_id': rec.subject_id,
+        'checkin_date': str(rec.checkin_date),
+        'checkin_time': rec.checkin_time.isoformat() if rec.checkin_time else None,
+        'checkout_time': rec.checkout_time.isoformat() if rec.checkout_time else None,
+    }
 
 
 @transaction.atomic

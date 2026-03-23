@@ -13,15 +13,9 @@ from typing import Optional
 from django.utils import timezone
 from django.db.models import Avg, F
 
+from libs.time_format import format_local_hhmm
+
 logger = logging.getLogger(__name__)
-
-
-def _format_checkin_local_hm(dt) -> str:
-    """签到时间格式化为默认时区（Asia/Shanghai）HH:mm，与接待台 Web 的 toLocaleTimeString 一致。"""
-    if not dt:
-        return ''
-    return timezone.localtime(dt).strftime('%H:%M')
-
 
 # 过号顺延位数（插在即将被叫的下一位之后 N 位）
 MISSED_CALL_DELAY_SLOTS = 3
@@ -135,7 +129,7 @@ def call_next(station_id: str = 'default', project_code: Optional[str] = None) -
         'name': subject.name,
         'sc_number': sc_number,
         'checkin_id': next_checkin.id,
-        'checkin_time': _format_checkin_local_hm(next_checkin.checkin_time),
+        'checkin_time': format_local_hhmm(next_checkin.checkin_time),
     }
 
     try:
@@ -230,7 +224,7 @@ def get_queue_position(subject_id: int) -> dict:
         'ahead_count': ahead_count,
         'wait_minutes': avg_wait,
         'status': 'waiting',
-        'checkin_time': _format_checkin_local_hm(checkin.checkin_time),
+        'checkin_time': format_local_hhmm(checkin.checkin_time),
     }
 
 
@@ -254,7 +248,7 @@ def get_display_board(target_date=None) -> dict:
         entry = {
             'subject_no_tail': ci.subject.subject_no[-4:] if ci.subject.subject_no else str(ci.subject_id),
             'name_masked': ci.subject.name[0] + '**' if ci.subject.name else '***',
-            'checkin_time': _format_checkin_local_hm(ci.checkin_time),
+            'checkin_time': format_local_hhmm(ci.checkin_time),
             'status': ci.status,
         }
         if ci.status == 'in_progress':

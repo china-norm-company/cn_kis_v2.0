@@ -5,7 +5,12 @@ import { MiniPage, MiniEmpty } from '../../components/ui'
 import { PAGE_COPY } from '../../constants/copy'
 import './index.scss'
 
-const SEVERITY_LABELS: Record<string, string> = { mild: '轻度', moderate: '中度', severe: '重度' }
+const SEVERITY_LABELS: Record<string, string> = {
+  mild: '轻微',
+  moderate: '中度',
+  severe: '严重',
+  very_severe: '非常严重',
+}
 const STATUS_LABELS: Record<string, string> = {
   reported: '已上报', under_review: '审核中', approved: '已确认', following: '随访中', closed: '已关闭',
 }
@@ -83,7 +88,7 @@ export default function AEHistoryPage() {
                 </Text>
                 <View className='report-history-extra'>
                   <Text className='report-history-extra-text'>
-                    严重程度: {SEVERITY_LABELS[r.severity]}
+                    严重程度: {SEVERITY_LABELS[r.severity] ?? r.severity}
                   </Text>
                   <Text className='report-history-extra-text'>
                     发生日期: {r.start_date}
