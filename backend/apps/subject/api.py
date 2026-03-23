@@ -73,6 +73,7 @@ class SubjectQueryParams(Schema):
     status: Optional[str] = None
     phone: Optional[str] = None
     search: Optional[str] = None
+    keyword: Optional[str] = None  # 与前端 recruitment 台一致，等价于 search
     page: int = 1
     page_size: int = 20
 
@@ -119,7 +120,7 @@ def list_subjects(request, params: SubjectQueryParams = Query(...)):
     result = svc_list_subjects(
         status=params.status,
         phone=params.phone,
-        search=params.search,
+        search=params.search or params.keyword,
         page=params.page,
         page_size=params.page_size,
         account=account,
