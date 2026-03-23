@@ -18,7 +18,10 @@ import { SchedulingWorkflowProgress } from '../components/ProjectFullLink/Schedu
 import type { SchedulingApprovalRecord, SchedulingWorkflowStatus } from '../lib/schedulerApprovalTypes'
 import { convertParsedDataToVisitPlan } from '../utils/visitPlanConverter'
 
-type JSONObject = Record<string, unknown>
+type JSONValue = string | number | boolean | null | JSONObject | JSONValue[]
+interface JSONObject {
+  [key: string]: JSONValue
+}
 
 /** 从 localStorage 读取排程项目（与 KIS 一致） */
 function getSchedulerProject(projectId: number, protocolId: number): {

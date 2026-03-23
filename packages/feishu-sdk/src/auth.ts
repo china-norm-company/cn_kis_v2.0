@@ -70,7 +70,6 @@ export class AuthError extends Error {
  * 确保 user_access_token 包含读取聊天、日历、邮件、任务等所需权限。
  */
 const DEFAULT_USER_SCOPES = [
-  'offline_access',
   'contact:user.base:readonly',
   'contact:user.email:readonly',
   'im:chat:readonly',
@@ -237,7 +236,8 @@ export class FeishuAuth {
           {
             code: this.normalizeOAuthCode(code),
             app_id: this.config.appId,
-            state: state || undefined,
+            redirect_uri: this.config.redirectUri,
+            state: state || this.getSessionValue(OAUTH_STATE_KEY) || undefined,
             workstation: this.config.workstation,
             trace_id: this.getSessionValue(OAUTH_TRACE_ID_KEY) || undefined,
           },

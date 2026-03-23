@@ -3,8 +3,8 @@ import type { FeishuAuthConfig } from './auth'
 /** 火山云重定向源（固定域名），不随本机/本地环境变化，避免 20029 */
 const VOLCENGINE_REDIRECT_BASE = 'http://118.196.64.48'
 
-/** 子衿（秘书台）统一 App ID，开发环境下未配置 VITE_FEISHU_APP_ID 时回退使用，与 docs/CONFIG_MANAGEMENT.md 一致 */
-const PRIMARY_APP_ID_FALLBACK = 'cli_a907f21f0723dbce'
+/** 子衿（全工作台统一）App ID，未配置 VITE_FEISHU_APP_ID 时回退使用，与后端 FEISHU_APP_ID 一致 */
+const PRIMARY_APP_ID_FALLBACK = 'cli_a98b0babd020500e'
 
 export function createWorkstationFeishuConfig(workstation: string): FeishuAuthConfig {
   const devBypass = (import.meta as any).env?.VITE_DEV_AUTH_BYPASS === '1'
