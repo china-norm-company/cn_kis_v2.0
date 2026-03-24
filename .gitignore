@@ -94,6 +94,7 @@ backend/data/
 
 # 截图测试产物（二进制，不纳入版本管理）
 tests/ui-acceptance/screenshots-*/
+tests/ui-acceptance/screenshots/
 
 # 项目副本（误操作生成，不提交）
 cn_kis_v2.0/
