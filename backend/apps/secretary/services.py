@@ -48,13 +48,12 @@ logger = logging.getLogger(__name__)
 
 # 八源权限预检能力键（与 plan 一致）
 # 前 4 项：API 实探；后 4 项：先 API 实探 wiki，其余用 scope 字符串校验
-PREFLIGHT_CAPABILITIES = ('mail', 'im', 'calendar', 'task', 'wiki', 'docx', 'drive_file', 'minutes')
+PREFLIGHT_CAPABILITIES = ('mail', 'im', 'calendar', 'task', 'wiki', 'docx', 'drive_file')
 
 # 后 4 项预检所需的 feishu_scope 关键字映射（子串匹配即视为已授权）
 PREFLIGHT_SCOPE_REQUIRED = {
     'docx': 'docx:document',
     'drive_file': 'drive:file',
-    'minutes': 'minutes:media:readonly',
 }
 
 # 缓存有效期（分钟）
@@ -2622,7 +2621,7 @@ def run_feishu_preflight(account: Account) -> Dict[str, Any]:
     if not result['passed']:
         missing_labels = {
             'mail': '邮件', 'im': 'IM消息', 'calendar': '日历', 'task': '任务',
-            'wiki': '知识库', 'docx': '文档', 'drive_file': '云盘文件', 'minutes': '会议纪要',
+            'wiki': '知识库', 'docx': '文档', 'drive_file': '云盘文件',
         }
         missing_cn = [missing_labels.get(k, k) for k in result['missing']]
         result['message'] = '部分飞书权限不可用，请使用子衿重新授权：' + '、'.join(missing_cn)
