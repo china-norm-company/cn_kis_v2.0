@@ -297,21 +297,30 @@ def feishu_oauth_login(
     code = _normalize_oauth_code(code)
 
     # 使用 v2 OAuth token 端点换取 user_access_token
-    # redirect_uri 必须与授权 URL 中的完全一致（飞书 20071 校验）
+    # redirect_uri 规则：
+    #   - 浏览器 OAuth：前端传入实际使用的 redirect_uri（window.location.origin + /login），后端直接使用
+    #   - 飞书内 JSSDK：前端不传 redirect_uri，code 由 requestAuthCode 获取，exchange 时不能带 redirect_uri
+    # 不在后端自行推断 redirect_uri，避免 http vs https、IP vs 域名 不一致导致 20071
     _app_id = app_id or settings.FEISHU_APP_ID
     _app_secret = app_secret or settings.FEISHU_APP_SECRET
-    _redirect_uri = redirect_uri or _resolve_redirect_uri(state_payload)
+
+    # 直接使用前端传来的 redirect_uri；JSSDK 流程前端不传，此处为 None
+    _redirect_uri = redirect_uri or None
+
+    body = {
+        'grant_type': 'authorization_code',
+        'client_id': _app_id,
+        'client_secret': _app_secret,
+        'code': code,
+    }
+    if _redirect_uri:
+        body['redirect_uri'] = _redirect_uri
+
     try:
         resp = httpx.post(
             'https://open.feishu.cn/open-apis/authen/v2/oauth/token',
             headers={'Content-Type': 'application/json; charset=utf-8'},
-            json={
-                'grant_type': 'authorization_code',
-                'client_id': _app_id,
-                'client_secret': _app_secret,
-                'code': code,
-                'redirect_uri': _redirect_uri,
-            },
+            json=body,
             timeout=15.0,
         )
         token_data = resp.json()
