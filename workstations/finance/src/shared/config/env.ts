@@ -4,13 +4,13 @@
  * 主要导出：getApiMode、getApiBaseUrl、envConfig、ApiMode。被 client、mode、authService 等使用。
  * 依赖：无（仅 import.meta.env）。被 api/client、api/mode、auth、vite 代理等引用。
  * 涉及后端接口：getApiBaseUrl 作为所有 apiClient 与登录请求的 BaseURL。
- * 联调注意点：VITE_API_MODE=real 且 VITE_API_BASE_URL 指向后端（如 http://localhost:8000/api）；开发用 /api 时由 Vite proxy 转发。
+ * 联调注意点：开发用 /api 时由 Vite proxy 转发至 localhost:8001；离线开发可设 VITE_API_MODE=mock。
  */
 export type ApiMode = "mock" | "real";
 
-const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000/api/v1";
-// 本地未配置时默认 mock；生产构建未配置时默认 real，否则发票走 localStorage、无法团队共享
-const DEFAULT_API_MODE_DEV: ApiMode = "mock";
+const DEFAULT_API_BASE_URL = "http://127.0.0.1:8001/api/v1";
+// 本地未配置时默认 real（与其余工作台一致，数据走 Django→PostgreSQL）；离线可设 VITE_API_MODE=mock
+const DEFAULT_API_MODE_DEV: ApiMode = "real";
 const DEFAULT_API_MODE_PROD: ApiMode = "real";
 
 const sanitizeBaseUrl = (baseUrl: string): string =>

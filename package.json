@@ -24,6 +24,7 @@
     "dev:lab-personnel": "pnpm --filter @cn-kis/lab-personnel dev",
     "dev:ethics": "pnpm --filter @cn-kis/ethics dev",
     "dev:reception": "pnpm --filter @cn-kis/reception dev",
+    "dev:all": "bash scripts/start-all-workstations.sh",
     "build:all": "pnpm -r build",
     "build:secretary": "pnpm --filter @cn-kis/secretary build",
     "build:research": "pnpm --filter @cn-kis/research build",

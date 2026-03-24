@@ -147,7 +147,7 @@ def _build_user_profile(account) -> dict:
     返回数据新增 workstation_modes 字段：{workstation: mode, ...}
     """
     from .authz import get_authz_service
-    from .management.commands.seed_roles import ROLE_WORKBENCH_MAP
+    from .role_workbench import ROLE_WORKBENCH_MAP
 
     authz = get_authz_service()
 
@@ -1243,11 +1243,16 @@ def list_accounts(request, page: int = 1, page_size: int = 50, keyword: Optional
     offset = (page - 1) * page_size
     items = list(qs[offset:offset + page_size])
 
-    # 批量获取角色
+    # 批量获取角色（与前端约定：{ name, display_name }[]；按 role.name 去重，避免项目级多行重复）
     account_ids = [a.id for a in items]
-    role_map = {}
+    role_map = {}  # account_id -> { role_name: { name, display_name } }
     for ar in AccountRole.objects.filter(account_id__in=account_ids).select_related('role'):
-        role_map.setdefault(ar.account_id, []).append(ar.role.display_name)
+        r = ar.role
+        bucket = role_map.setdefault(ar.account_id, {})
+        bucket[r.name] = {
+            'name': r.name,
+            'display_name': (r.display_name or '').strip() or r.name,
+        }
 
     data = [
         {
@@ -1258,7 +1263,7 @@ def list_accounts(request, page: int = 1, page_size: int = 50, keyword: Optional
             'avatar': a.avatar,
             'account_type': a.account_type,
             'status': a.status,
-            'roles': role_map.get(a.id, []),
+            'roles': list(role_map.get(a.id, {}).values()),
             'last_login_time': a.last_login_time.isoformat() if a.last_login_time else None,
             'create_time': a.create_time.isoformat(),
         }

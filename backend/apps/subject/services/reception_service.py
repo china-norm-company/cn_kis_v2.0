@@ -27,6 +27,25 @@ from ..models_execution import (
 logger = logging.getLogger(__name__)
 
 
+def _local_today() -> date:
+    """
+    当前「本地」日历日。
+
+    在 USE_TZ=True 时，timezone.now() 应为 aware；若环境异常得到 naive，
+    再调用 timezone.localdate() 会触发
+    ValueError: localtime() cannot be applied to a naive datetime。
+    此处对 naive+USE_TZ 退化为 date.today()，其余走 localtime。
+    """
+    from django.conf import settings
+
+    now = timezone.now()
+    if timezone.is_naive(now):
+        if getattr(settings, 'USE_TZ', True):
+            return date.today()
+        return now.date()
+    return timezone.localtime(now).date()
+
+
 def _queue_status_rank(status: str) -> int:
     ranks = {
         'waiting': 0,
@@ -128,7 +147,7 @@ def get_today_queue(
     source: execution=工单执行（SubjectCheckin+SubjectProjectSC），board=接待看板（ReceptionBoardCheckin+ReceptionBoardProjectSc）
     两套数据完全独立，SC/RD号、签到签出时间互不影响。
     """
-    today = target_date or timezone.localdate()
+    today = target_date or _local_today()
     use_board = (source or 'execution').strip().lower() == 'board'
 
     appointments_qs = SubjectAppointment.objects.filter(
@@ -391,7 +410,7 @@ def get_today_queue_export(
 
 def get_appointment_calendar(target_month: Optional[str] = None) -> dict:
     """按月返回每天的预约数，供接待台月历展示。"""
-    today = timezone.localdate()
+    today = _local_today()
     year = today.year
     month = today.month
 
@@ -448,7 +467,7 @@ def get_appointment_calendar(target_month: Optional[str] = None) -> dict:
 
 def get_today_stats(target_date: Optional[date] = None, project_code: Optional[str] = None) -> dict:
     """今日统计：预约数/已签到/执行中/已签出/缺席。支持按 project_code 过滤。"""
-    today = target_date or timezone.localdate()
+    today = target_date or _local_today()
 
     appt_qs = SubjectAppointment.objects.filter(
         appointment_date=today,
@@ -637,7 +656,7 @@ def quick_checkin(
     快速签到：创建 SubjectCheckin 记录 + 触发通知。
     project_code: 多项目同天时，指定为哪个项目生成 SC 号；已有签到时，仍会为该项目确保 SC 记录。
     """
-    today = timezone.localdate()
+    today = _local_today()
     pc = (project_code or '').strip() or None
 
     existing = SubjectCheckin.objects.filter(
@@ -748,7 +767,7 @@ ENROLLMENT_STATUS_ABSENT = '缺席'
 
 def _has_execution_checkin_today(subject_id: int) -> bool:
     """当日是否有过执行台签到记录（含已签出），用于非「缺席」入组情况的前置条件。"""
-    today = timezone.localdate()
+    today = _local_today()
     return SubjectCheckin.objects.filter(subject_id=subject_id, checkin_date=today).exists()
 
 
@@ -877,7 +896,7 @@ def quick_checkout(checkin_id: int) -> dict:
 
 def get_pending_alerts(target_date: Optional[date] = None) -> dict:
     """待处理提醒：超时/缺席/ICF待签署"""
-    today = target_date or timezone.localdate()
+    today = target_date or _local_today()
     now = timezone.now()
     alerts = []
 
@@ -967,7 +986,7 @@ def register_walk_in(
     from ..models import AuthLevel
 
     phone = (phone or '').strip()
-    today = timezone.localdate()
+    today = _local_today()
 
     subject = Subject.objects.filter(phone=phone, is_deleted=False).first()
     is_new_subject = False
@@ -1086,7 +1105,7 @@ def get_flowcard_progress(checkin_id: int) -> dict:
 
 def get_analytics(target_date: Optional[date] = None, days: int = 7) -> dict:
     """接待分析指标聚合。"""
-    today = target_date or timezone.localdate()
+    today = target_date or _local_today()
     start = today - timedelta(days=max(days - 1, 0))
 
     appointments = SubjectAppointment.objects.filter(
@@ -1247,7 +1266,7 @@ def scan_checkin_or_checkout(subject_id: int, qr_content: str = '') -> dict:
         if not valid:
             raise ValueError(err)
 
-    today = timezone.localdate()
+    today = _local_today()
     existing = SubjectCheckin.objects.filter(
         subject_id=subject_id, checkin_date=today,
     ).select_related('subject').first()
@@ -1303,7 +1322,7 @@ def _checkin_to_dict(checkin: SubjectCheckin) -> dict:
 # ============================================================================
 def get_board_checkins(target_date: Optional[date] = None) -> list[dict]:
     """按日期返回接待看板签到记录，供前端与今日队列合并展示。"""
-    day = target_date or timezone.localdate()
+    day = target_date or _local_today()
     qs = ReceptionBoardCheckin.objects.filter(checkin_date=day).select_related('subject')
     return [
         {
@@ -1363,7 +1382,7 @@ def board_checkin(
     """接待看板签到：创建或更新 ReceptionBoardCheckin，分配 SC 号（ReceptionBoardProjectSc），不影响工单执行。
     project_code: 多项目同天时，指定为哪个项目生成 SC 号；已有签到时，仍会为该项目确保 SC 记录。
     """
-    day = target_date or timezone.localdate()
+    day = target_date or _local_today()
     now = timezone.now()
     pc = (project_code or '').strip() or None
 
@@ -1426,7 +1445,7 @@ def board_checkin(
 
 def board_checkout(subject_id: int, target_date: Optional[date] = None) -> dict:
     """接待看板签出：更新 ReceptionBoardCheckin 的签出时间，不影响工单执行。"""
-    day = target_date or timezone.localdate()
+    day = target_date or _local_today()
     now = timezone.now()
     rec = ReceptionBoardCheckin.objects.filter(subject_id=subject_id, checkin_date=day).first()
     if not rec:

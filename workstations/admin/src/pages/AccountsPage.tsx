@@ -16,7 +16,8 @@ interface AccountItem {
   avatar: string | null
   account_type: string
   status: string
-  roles: AccountRoleRow[]
+  /** 后端约定为对象列表；历史接口可能为 display_name 字符串列表 */
+  roles: AccountRoleRow[] | string[]
   last_login_time: string | null
   create_time: string
 }
@@ -26,6 +27,19 @@ interface RoleItem {
   display_name: string
   level: number
   category: string
+}
+
+/** 后端曾返回 string[]，现约定为 { name, display_name }[]；兼容两种格式 */
+function normalizeAccountRoles(roles: AccountRoleRow[] | string[]): AccountRoleRow[] {
+  if (!Array.isArray(roles)) return []
+  return roles.map((r) => {
+    if (typeof r === 'string') {
+      return { name: r, display_name: r }
+    }
+    const name = r?.name ?? ''
+    const displayName = (r?.display_name ?? '').trim() || name
+    return { name, display_name: displayName }
+  })
 }
 
 export function AccountsPage() {
@@ -165,12 +179,12 @@ export function AccountsPage() {
                 <td className="px-4 py-3 text-slate-600">{a.username}</td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">
-                    {a.roles.map((r) => (
+                    {normalizeAccountRoles(a.roles).map((r, idx) => (
                       <span
-                        key={r.name}
+                        key={`${a.id}-${r.name || 'role'}-${idx}`}
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs"
                       >
-                        {r.display_name || r.name}
+                        {r.display_name || r.name || '（未命名角色）'}
                         <button
                           type="button"
                           onClick={() => setRoleToRemove({ account: a, roleName: r.name })}
@@ -283,8 +297,8 @@ export function AccountsPage() {
             <h3 className="text-base font-semibold text-slate-800 mb-2">确认移除角色</h3>
             <p className="text-sm text-slate-600 mb-4">
               从「{roleToRemove.account.display_name || roleToRemove.account.username}」移除角色「
-              {roleToRemove.account.roles.find((x) => x.name === roleToRemove.roleName)?.display_name
-                || roleToRemove.roleName}
+              {normalizeAccountRoles(roleToRemove.account.roles).find((x) => x.name === roleToRemove.roleName)
+                ?.display_name || roleToRemove.roleName}
               」？
             </p>
             <div className="flex justify-end gap-2">

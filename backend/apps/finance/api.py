@@ -27,6 +27,7 @@ from .schema import (
     FinReportCreateIn,
     CustomerQueryParams, CustomerCreateIn, CustomerUpdateIn,
     InvoiceRequestQueryParams, InvoiceRequestCreateIn, InvoiceRequestUpdateIn,
+    OverdueReminderBatchSendIn,
 )
 from apps.identity.decorators import _get_account_from_request, require_permission, require_any_permission
 from apps.identity.filters import get_visible_object
@@ -625,6 +626,7 @@ from .api_legacy_invoices import (
     get_legacy_invoice,
     update_legacy_invoice,
     delete_legacy_invoice,
+    list_overdue_reminders_payload,
     LegacyInvoiceQueryParams,
     LegacyInvoiceCreateIn,
     LegacyInvoiceUpdateIn,
@@ -644,6 +646,47 @@ def list_legacy_invoices_route(request, params: LegacyInvoiceQueryParams = Query
 def create_legacy_invoice_route(request, data: LegacyInvoiceCreateIn):
     """与前端「发票管理（新）」对接。"""
     return create_legacy_invoice(request, data)
+
+
+@router.get('/overdue-reminders', summary='逾期催款提醒（基于新发票台账）')
+@require_permission('finance.invoice.read')
+def list_overdue_reminders_route(
+    request,
+    page: int = 1,
+    page_size: int = 20,
+    customer_name: Optional[str] = None,
+    sales_manager: Optional[str] = None,
+    min_overdue_days: Optional[int] = None,
+):
+    return list_overdue_reminders_payload(
+        page=page,
+        page_size=page_size,
+        customer_name=customer_name,
+        sales_manager=sales_manager,
+        min_overdue_days=min_overdue_days,
+    )
+
+
+@router.post('/overdue-reminders/batch-send', summary='批量催款（占位，可后续接飞书）')
+@require_permission('finance.invoice.read')
+def overdue_reminders_batch_send(request, data: OverdueReminderBatchSendIn):
+    ids = list(data.reminder_ids or [])
+    return {
+        'code': 200,
+        'msg': 'OK',
+        'success': True,
+        'data': {
+            'success_count': len(ids),
+            'failed_count': 0,
+            'failed_ids': [],
+        },
+    }
+
+
+@router.post('/overdue-reminders/{reminder_id}/send', summary='单笔催款（占位）')
+@require_permission('finance.invoice.read')
+def overdue_reminder_send(request, reminder_id: int):
+    return {'code': 200, 'msg': 'OK', 'success': True, 'data': {'sent': True}}
 
 
 @router.get('/invoices/list', summary='发票列表')
@@ -971,18 +1014,38 @@ def credit_invoice(request, invoice_id: int):
 # ============================================================================
 # 回款 API
 # ============================================================================
-@router.get('/payments/list', summary='回款列表')
-@require_permission('finance.payment.read')
-def list_payments(request, data: PaymentQueryParams = Query(...)):
+def _list_payments_response(request, data: PaymentQueryParams):
     account = _get_account_from_request(request)
-    result = services.list_payments(status=data.status, invoice_id=data.invoice_id, page=data.page, page_size=data.page_size, account=account)
+    result = services.list_payments(
+        status=data.status,
+        invoice_id=data.invoice_id,
+        page=data.page,
+        page_size=data.page_size,
+        account=account,
+        start_date=data.start_date,
+        end_date=data.end_date,
+    )
     return {
         'code': 200, 'msg': 'OK',
+        'success': True,
         'data': {
             'items': [_payment_to_dict(p) for p in result['items']],
             'total': result['total'], 'page': result['page'], 'page_size': result['page_size'],
         },
     }
+
+
+@router.get('/payments', summary='回款列表（与 /payments/list 一致）')
+@require_permission('finance.payment.read')
+def list_payments_root(request, data: PaymentQueryParams = Query(...)):
+    """兼容前端 GET /finance/payments。"""
+    return _list_payments_response(request, data)
+
+
+@router.get('/payments/list', summary='回款列表')
+@require_permission('finance.payment.read')
+def list_payments(request, data: PaymentQueryParams = Query(...)):
+    return _list_payments_response(request, data)
 
 
 @router.get('/payments/stats', summary='回款统计')

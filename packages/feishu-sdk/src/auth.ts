@@ -237,6 +237,8 @@ export class FeishuAuth {
           {
             code: this.normalizeOAuthCode(code),
             app_id: this.config.appId,
+            /** 必须与授权 URL 中的 redirect_uri 完全一致，否则飞书换 token 返回 20024 invalid_grant */
+            redirect_uri: this.config.redirectUri,
             state: state || undefined,
             workstation: this.config.workstation,
             trace_id: this.getSessionValue(OAUTH_TRACE_ID_KEY) || undefined,
