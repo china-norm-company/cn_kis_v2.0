@@ -468,6 +468,7 @@ def feishu_oauth_login(
         account, open_id, access_token, refresh_token, expires_in, refresh_expires_in,
         issuer_app_id=app_id or '',
         issuer_app_name=_issuer_app_name(app_id),
+        feishu_scope=token_scope or '',
     )
 
     return account
@@ -535,6 +536,7 @@ def _save_feishu_user_token(
     *,
     issuer_app_id: str = '',
     issuer_app_name: str = '',
+    feishu_scope: str = '',
 ):
     """
     存储飞书用户 Token 到 t_feishu_user_token
@@ -548,6 +550,7 @@ def _save_feishu_user_token(
     1. refresh_token 为空时，绝对不能覆盖已有的非空 refresh_token（防止登录覆盖）
     2. refresh_expires_at 不应为 None，应默认 30 天
     3. 每次保存必须写入日志，含 refresh_len 用于审计
+    4. feishu_scope 仅在非空时更新，保留历史 scope（refresh 不会带回 scope 字段）
     """
     try:
         from apps.secretary.models import FeishuUserToken
@@ -566,6 +569,11 @@ def _save_feishu_user_token(
         if not refresh_token and existing and existing.refresh_expires_at:
             effective_refresh_expires_at = existing.refresh_expires_at
 
+        # scope 仅在飞书返回非空值时更新（token refresh 不返回 scope，不能用空值覆盖）
+        effective_scope = feishu_scope if feishu_scope else (
+            getattr(existing, 'feishu_scope', '') or '' if existing else ''
+        )
+
         defaults = {
             'open_id': open_id,
             'access_token': access_token,
@@ -574,6 +582,7 @@ def _save_feishu_user_token(
             'refresh_expires_at': effective_refresh_expires_at,
             'issuer_app_id': issuer_app_id or '',
             'issuer_app_name': issuer_app_name or '',
+            'feishu_scope': effective_scope,
             'requires_reauth': False,
         }
         if existing and (existing.issuer_app_id or '').strip() and existing.issuer_app_id != (issuer_app_id or ''):
@@ -585,9 +594,10 @@ def _save_feishu_user_token(
         FeishuUserToken.objects.update_or_create(account_id=account.id, defaults=defaults)
         logger.info(
             'feishu_token_saved account_id=%s open_id=%s issuer=%s '
-            'access_expires_in=%s refresh_len=%s refresh_exp_days=%s',
+            'access_expires_in=%s refresh_len=%s refresh_exp_days=%s scope_len=%s',
             account.id, (open_id or '')[:20], issuer_app_id or '-',
             expires_in, len(effective_refresh), _refresh_exp_seconds // 86400,
+            len(effective_scope),
         )
     except Exception as e:
         import logging

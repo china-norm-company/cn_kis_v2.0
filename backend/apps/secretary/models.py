@@ -42,7 +42,20 @@ class FeishuUserToken(models.Model):
     # 子衿主授权：签发来源与预检可观测
     issuer_app_id = models.CharField('签发应用 App ID', max_length=64, blank=True, default='')
     issuer_app_name = models.CharField('签发应用名称', max_length=64, blank=True, default='')
-    granted_capabilities = models.JSONField('预检通过的能力(mail/im/calendar/task)', default=dict, blank=True)
+    feishu_scope = models.TextField(
+        '飞书授权 Scope',
+        blank=True,
+        default='',
+        help_text='OAuth 授权时飞书实际返回的 scope 字符串（空格分隔），'
+                  '可与 DEFAULT_USER_SCOPES 对比检测缺失权限。'
+                  '刷新 token 不会增加新 scope，需重新登录才能获得新增权限。',
+    )
+    granted_capabilities = models.JSONField(
+        '预检通过的能力',
+        default=dict,
+        blank=True,
+        help_text='预检结果字典，键：mail/im/calendar/task/wiki/docx/drive_file/minutes，值：bool',
+    )
     requires_reauth = models.BooleanField('需要重授权', default=False)
     last_preflight_at = models.DateTimeField('最近预检时间', null=True, blank=True)
     last_error_code = models.CharField('最近错误码', max_length=32, blank=True, default='')
