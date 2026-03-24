@@ -253,7 +253,7 @@ FEISHU_APP_ID_RECEPTION = os.getenv('FEISHU_APP_ID_RECEPTION', '')
 FEISHU_APP_SECRET_RECEPTION = os.getenv('FEISHU_APP_SECRET_RECEPTION', '')
 FEISHU_APP_ID_CONTROL_PLANE = os.getenv('FEISHU_APP_ID_CONTROL_PLANE', '')
 FEISHU_APP_SECRET_CONTROL_PLANE = os.getenv('FEISHU_APP_SECRET_CONTROL_PLANE', '')
-FEISHU_APP_ID_DEV_ASSISTANT = os.getenv('FEISHU_APP_ID_DEV_ASSISTANT', 'cli_a98b0babd020500e')
+FEISHU_APP_ID_DEV_ASSISTANT = os.getenv('FEISHU_APP_ID_DEV_ASSISTANT', 'cli_a907f21f0723dbce')
 FEISHU_APP_SECRET_DEV_ASSISTANT = os.getenv('FEISHU_APP_SECRET_DEV_ASSISTANT', '')
 
 # 凭证映射（OAuth 回调查找）
@@ -287,7 +287,7 @@ FEISHU_APP_CREDENTIALS = _build_feishu_credentials()
 
 # ★ 主授权配置（V2 迁移章程红线）
 _primary_from_env = os.getenv('FEISHU_PRIMARY_APP_ID', '')
-FEISHU_PRIMARY_APP_ID = _primary_from_env or FEISHU_APP_ID or 'cli_a98b0babd020500e'
+FEISHU_PRIMARY_APP_ID = _primary_from_env or FEISHU_APP_ID or 'cli_a907f21f0723dbce'
 if not _primary_from_env:
     import logging as _logging
     _logging.getLogger(__name__).warning(

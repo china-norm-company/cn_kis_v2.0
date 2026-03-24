@@ -30,7 +30,7 @@ const LIVE_TOKEN =
   process.env.AI_LIVE_AUTH_TOKEN ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJ1c2VybmFtZSI6ImZlaXNodV9vdV9lODIwNDdmYjE4ZGUyIiwiYWNjb3VudF90eXBlIjoiaW50ZXJuYWwiLCJyb2xlcyI6WyJhZG1pbiIsInZpZXdlciJdLCJleHAiOjE4MDQ5MjQwNzUsImlhdCI6MTc3MzM4ODA3NX0.JwkQFesL9TyVh4nPUA-X_tVRY1aqISNE_6ax6bMiV54'
 
-const PRIMARY_APP_ID = 'cli_a98b0babd020500e'
+const PRIMARY_APP_ID = 'cli_a907f21f0723dbce'
 
 const ALL_18_KEYS = [
   'secretary', 'finance', 'research', 'execution', 'quality',

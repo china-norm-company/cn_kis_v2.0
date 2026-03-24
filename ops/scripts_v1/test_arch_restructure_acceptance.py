@@ -21,7 +21,7 @@ import sys
 import json
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ZIJIN_APP_ID = 'cli_a98b0babd020500e'
+ZIJIN_APP_ID = 'cli_a907f21f0723dbce'
 
 ALL_18_KEYS = [
     'secretary', 'finance', 'research', 'execution', 'quality',
@@ -148,7 +148,7 @@ def test_settings_py(t: TestResult):
             t.check(key in keys, f'WORKSTATION_APP_IDS 包含 {key}')
 
     t.check("FEISHU_PRIMARY_APP_ID" in content, 'FEISHU_PRIMARY_APP_ID 已定义')
-    t.check("cli_a98b0babd020500e" in content, 'FEISHU_PRIMARY_APP_ID 默认值为子衿')
+    t.check("cli_a907f21f0723dbce" in content, 'FEISHU_PRIMARY_APP_ID 默认值为子衿')
     t.check("FEISHU_PRIMARY_AUTH_FORCE" in content, 'FEISHU_PRIMARY_AUTH_FORCE 开关存在')
 
 
@@ -367,7 +367,7 @@ def test_docs_consistency(t: TestResult):
 
     ctx = read('.cursor/rules/00-project-context.mdc')
     if ctx:
-        t.check('cli_a98b0babd020500e' in ctx, '00-project-context 子衿 App ID 正确')
+        t.check('cli_a907f21f0723dbce' in ctx, '00-project-context 子衿 App ID 正确')
         t.check('cli_a907f21f0723dbce' not in ctx, '00-project-context 无旧错误 App ID')
 
 

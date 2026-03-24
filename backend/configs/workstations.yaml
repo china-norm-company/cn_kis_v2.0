@@ -10,14 +10,14 @@
 #   平台工作台（3）：control-plane admin digital-workforce
 #
 # OAuth 统一授权说明：
-#   所有工作台前端统一使用子衿 App ID（cli_a98b0babd020500e）生成 OAuth URL。
+#   所有工作台前端统一使用子衿 App ID（cli_a907f21f0723dbce）生成 OAuth URL。
 #   后端通过 FEISHU_PRIMARY_AUTH_FORCE=True 确保 token 签发源一致。
 #   各工作台 app_id_env 字段仅用于工作台归属校验，OAuth 换 token 统一走子衿。
 #
 # 检查清单：新增工作台时需同时完成
 # - [ ] 本文件添加条目
-# - [ ] apps/{key}/.env 配置 VITE_FEISHU_APP_ID=cli_a98b0babd020500e
-# - [ ] 飞书后台为子衿应用（cli_a98b0babd020500e）添加新工作台的 redirect_uri
+# - [ ] apps/{key}/.env 配置 VITE_FEISHU_APP_ID=cli_a907f21f0723dbce
+# - [ ] 飞书后台为子衿应用（cli_a907f21f0723dbce）添加新工作台的 redirect_uri
 # - [ ] backend/settings.py 添加工作台到 FEISHU_WORKSTATION_APP_IDS（若有独立 App）
 # - [ ] backend/urls.py 添加 API 路由（如需要）
 # - [ ] 运行 scripts/workstation_health_check.py 验证
