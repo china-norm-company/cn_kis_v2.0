@@ -258,6 +258,10 @@ export type {
   CleaningItem,
   CleaningStats,
   CleaningCreateIn,
+  VenueUsageScheduleItem,
+  VenueUsageScheduleCreateIn,
+  VenueMonitorItem,
+  AccountForMonitor,
 } from './modules/facility'
 
 // 管理驾驶舱（A1/A2/A3/E1）

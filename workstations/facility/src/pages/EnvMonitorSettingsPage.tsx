@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { facilityApi } from '@cn-kis/api-client'
 import type {
   VenueUsageScheduleItem,
+  VenueUsageScheduleCreateIn,
   VenueMonitorItem,
   VenueItem,
   AccountForMonitor,
@@ -55,8 +56,7 @@ export function EnvMonitorSettingsPage() {
   const accounts = ((accountsData as any)?.data as { items: AccountForMonitor[] } | undefined)?.items ?? []
 
   const createScheduleMutation = useMutation({
-    mutationFn: (data: { venue_id: number; schedule_type: string; days_of_week?: number[]; specific_date?: string; start_time: string; end_time: string; is_enabled: boolean }) =>
-      facilityApi.createVenueUsageSchedule(data),
+    mutationFn: (data: VenueUsageScheduleCreateIn) => facilityApi.createVenueUsageSchedule(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['facility', 'usage-schedules'] })
       setShowScheduleModal(false)
@@ -320,7 +320,7 @@ function ScheduleModal({
 }: {
   venues: VenueItem[]
   onClose: () => void
-  onSubmit: (data: { venue_id: number; schedule_type: string; days_of_week?: number[]; specific_date?: string; start_time: string; end_time: string; is_enabled: boolean }) => void
+  onSubmit: (data: VenueUsageScheduleCreateIn) => void
   isSubmitting?: boolean
   error: string
 }) {
