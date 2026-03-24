@@ -75,7 +75,7 @@ async function waitForUrlMatch(page, predicate, timeoutMs, desc) {
 
 /** 检查页面是否含错误文字，返回错误文字或 null */
 async function checkPageError(page) {
-  const text = await page.evaluate(() => document.body.innerText || '')
+  const text = await page.evaluate(() => document.body ? (document.body.innerText || '') : '').catch(() => '')
   const patterns = [
     /错误码[：:\s]*(\d{4,5})/,
     /AUTH_STATE_INVALID/,
@@ -170,11 +170,11 @@ async function main() {
     const spaDeadline = Date.now() + 12000
     let finalUrl = page.url()
     while (Date.now() < spaDeadline) {
-      await page.waitForTimeout(1000)
-      finalUrl = page.url()
+    await page.waitForTimeout(1000)
+    finalUrl = page.url()
       // 已离开 /login 页面 → SPA 处理完成并跳转到工作台
       if (!finalUrl.includes('/login')) break
-      // 检查页面有无错误文字（登录失败等）
+      // 检查页面有无错误文字（登录失败等），捕获导航期间的 null body
       const err = await checkPageError(page)
       if (err) break
     }
