@@ -1,0 +1,94 @@
+---
+description: 部署前测试验收规范（强制）——所有服务器改动必须先测试再部署
+globs:
+alwaysApply: true
+---
+
+# 部署前测试验收规范（强制）
+
+## 核心原则
+
+**任何涉及服务器的改动，必须先完成测试验收，再执行部署。禁止直接部署未经验证的代码。**
+
+## 必须遵守的三步流程
+
+```
+1. 本地/测试环境验证  →  2. Headed 浏览器验收  →  3. 部署到服务器
+```
+
+### 第 1 步：本地验证
+
+改动类型 | 最低验证要求
+---------|------------
+前端 scope / OAuth 参数 | 构建后用 headed 浏览器打开授权 URL，截图确认无错误码
+前端 UI 改动 | 本地 `pnpm dev` 截图确认页面正常
+后端 API 新增 | `python manage.py check` 无错误，可用 curl 或 Django shell 验证逻辑
+数据库 migration | `python manage.py showmigrations` 确认链路完整，`migrate --noinput` 无报错
+配置文件改动 | `python manage.py check` 通过
+
+### 第 2 步：Headed 浏览器验收（强制）
+
+以下改动**必须**用 Playwright headed 模式（`headless: false`）完成截图验收：
+
+- 飞书 OAuth scope 列表改动
+- 登录/授权流程改动
+- 前端页面关键路径改动
+- 飞书 API 集成改动
+
+**验收工具**：
+```bash
+# 写测试脚本放到 tests/ui-acceptance/ 目录
+node tests/ui-acceptance/<test-name>.mjs
+# 截图保存到 tests/ui-acceptance/screenshots-<test-name>/
+```
+
+**验收标准**：
+- OAuth 页面：截图显示飞书登录/授权界面，**无错误码（如 20043）**
+- UI 页面：截图无红屏、无 JS 报错
+- 所有截图保存存档作为验收凭证
+
+### 第 3 步：部署到服务器
+
+只有在第 1、2 步验证通过后，才能执行：
+```bash
+# 前端
+rsync -avz --delete -e "ssh -i ~/.ssh/openclaw1.1.pem" dist/ root@118.196.64.48:/var/www/...
+
+# 后端
+scp -i ~/.ssh/openclaw1.1.pem files root@118.196.64.48:/opt/cn-kis-v2/backend/...
+kill -HUP <gunicorn-master-pid>  # 优雅重载
+```
+
+## 关于飞书 OAuth Scope 的特别规定
+
+飞书 scope 名称容易出错（例：`minutes:media:readonly` 不存在，错误码 20043）。
+
+**每次修改 scope 列表后必须：**
+1. 用 `tests/ui-acceptance/test-im-scopes.mjs` 或类似脚本测试授权 URL
+2. Headed 截图确认页面正常（飞书扫码登录页面显示 = 通过）
+3. 确认通过后再 `pnpm build` + `rsync` 部署
+
+**已验证的 scope 记录**（2026-03-24）：
+
+| scope | 状态 | 备注 |
+|-------|------|------|
+| `minutes:media:readonly` | ❌ **无效** | 错误码 20043，已移除 |
+| `im:message.group_msg:readonly` | ✅ 有效 | headed 测试截图确认 |
+| `im:message.p2p_msg:readonly` | ✅ 有效 | headed 测试截图确认 |
+| 其余 23 项（完整列表） | ✅ 有效 | headed 测试截图确认 |
+
+## AI 的禁止行为
+
+- ❌ **未经测试直接执行 scp / rsync / kill -HUP 到生产服务器**
+- ❌ 未跑 Playwright headed 测试直接修改 OAuth scope 并部署
+- ❌ 以"应该没问题"为由跳过测试步骤
+- ❌ 仅用 curl 测试飞书授权页面（飞书页面需要 JS 渲染，curl 无效）
+- ❌ 浏览器测试未截图就声称"测试通过"
+
+## 参考
+
+- 测试脚本目录：`tests/ui-acceptance/`
+- 截图存档目录：`tests/ui-acceptance/screenshots-*/`
+- 服务器 SSH：`ssh -i ~/.ssh/openclaw1.1.pem root@118.196.64.48`
+- V2 后端路径：`/opt/cn-kis-v2/backend/`
+- V2 前端路径：`/var/www/cn-kis/secretary/`
