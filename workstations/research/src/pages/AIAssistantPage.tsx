@@ -51,17 +51,32 @@ export default function AIAssistantPage() {
 
   const { data: agentsRes } = useQuery({
     queryKey: ['agents', 'list'],
-    queryFn: () => api.get<Agent[]>('/agents/list'),
+    queryFn: () => api.get<Agent[] | { items: Agent[] }>('/agents/list'),
   })
 
   const { data: sessionsRes } = useQuery({
     queryKey: ['agents', 'sessions'],
-    queryFn: () => api.get<Session[]>('/agents/sessions'),
+    queryFn: () => api.get<Session[] | { items: Session[] }>('/agents/sessions'),
   })
 
-  const agents = (agentsRes?.data ?? []) as Agent[]
+  // 后端返回 data: { items: Agent[] }，兼容 data 为数组的旧格式；接口字段为 agent_id/name，统一为 id/display_name 供下游使用
+  const rawAgents = agentsRes?.data
+  const agentsList = Array.isArray(rawAgents) ? rawAgents : (rawAgents as { items?: Agent[] } | undefined)?.items ?? []
+  const agents: Agent[] = (agentsList as any[]).map((a) => ({
+    ...a,
+    id: a.id ?? a.agent_id ?? a.name,
+    display_name: a.display_name ?? a.name ?? a.id ?? a.agent_id ?? '',
+  }))
   const managerAgents = agents.filter(a => MANAGER_AGENTS.includes(a.id || a.name))
-  const sessions = (sessionsRes?.data ?? []) as Session[]
+  // 接口返回 data: { items: Session[] }，兼容 data 为数组的旧格式
+  const rawSessions = sessionsRes?.data
+  const sessionsList = Array.isArray(rawSessions) ? rawSessions : (rawSessions?.items ?? [])
+  const sessions = (sessionsList as any[]).map((s) => ({
+    session_id: s.session_id,
+    agent_id: s.agent_id ?? '',
+    create_time: s.create_time ?? s.created_at ?? '',
+    message_count: s.message_count ?? s.call_count ?? 0,
+  })) as Session[]
 
   const chatMutation = useMutation({
     mutationFn: async (message: string) => {
@@ -302,7 +317,7 @@ export default function AIAssistantPage() {
                   }`}
                 >
                   <div className="font-medium text-slate-700">{s.agent_id}</div>
-                  <div className="text-slate-400">{s.message_count} 条消息 · {new Date(s.create_time).toLocaleDateString()}</div>
+                  <div className="text-slate-400">{s.message_count} 条消息{s.create_time ? ` · ${new Date(s.create_time).toLocaleDateString()}` : ''}</div>
                 </button>
               ))}
             </div>

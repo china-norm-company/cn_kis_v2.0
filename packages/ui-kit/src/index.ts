@@ -44,11 +44,7 @@ export { ClawQuickPanel, useClawQuickActions } from './components/ClawQuickPanel
 export type { ClawQuickPanelProps, QuickAction } from './components/ClawQuickPanel'
 
 export { DigitalWorkerSuggestionBar } from './components/DigitalWorkerSuggestionBar'
-export type {
-  DigitalWorkerSuggestionBarProps,
-  SuggestionItem as UISuggestionItem,
-  SuggestionAction,
-} from './components/DigitalWorkerSuggestionBar'
+export type { DigitalWorkerSuggestionBarProps, SuggestionItem as UISuggestionItem, SuggestionAction } from './components/DigitalWorkerSuggestionBar'
 
 export { DigitalWorkerActionCard } from './components/DigitalWorkerActionCard'
 export type { DigitalWorkerActionCardProps, ActionItem } from './components/DigitalWorkerActionCard'
@@ -69,6 +65,7 @@ export {
   MobileWorkstationLayout,
   type MobileWorkstationLayoutProps,
   type MobileWorkstationNavItem,
+  type MobileWorkstationNavSection,
 } from './components/MobileWorkstationLayout'
 
 // LIMS 数据来源标识
