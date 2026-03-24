@@ -135,7 +135,7 @@ fi
 echo "[5/6] 认证回调行为检查..."
 callback_resp="$(curl -s -X POST "$BASE_URL/api/v1/auth/feishu/callback" \
   -H "Content-Type: application/json" \
-  -d '{"code":"test invalid code","workstation":"secretary","app_id":"cli_a907f21f0723dbce"}' || true)"
+  -d '{"code":"test invalid code","workstation":"secretary","app_id":"cli_a98b0babd020500e"}' || true)"
 if [[ "$callback_resp" == *"AUTH_OAUTH_FAILED"* && "$callback_resp" == *"error_code"* ]]; then
   pass "认证回调返回结构化错误（非旧版 None）"
 else

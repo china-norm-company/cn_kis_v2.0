@@ -11,6 +11,7 @@
 secrets.env
 deploy/secrets.env
 **/secrets.env
+deploy/.env.volcengine.plan-a
 
 # ============================================================
 # Python 后端

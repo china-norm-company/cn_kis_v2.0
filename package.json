@@ -47,7 +47,8 @@
     "type-check": "pnpm -r type-check",
     "clean": "pnpm -r exec rm -rf dist node_modules",
     "e2e": "playwright test",
-    "e2e:headed": "HEADED=1 playwright test"
+    "e2e:headed": "HEADED=1 playwright test",
+    "deploy:volcengine": "ALLOW_LEGACY_SERVER_DEPLOY=true bash deploy/deploy_volcengine.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
