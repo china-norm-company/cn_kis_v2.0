@@ -8,12 +8,11 @@
 import { apiClient } from "@/shared/api/client";
 import { createMockAdapterCaller } from "@/shared/api/mock-adapter";
 import { getApiMode } from "@/shared/config/env";
-import type { Invoice, InvoiceStatus } from "@/entities/finance/domain";
+import type { Invoice, InvoiceStatus, InvoiceType } from "@/entities/finance/domain";
 
-// 财务模块：即使real模式也允许fallback到mock（因为后端API可能还未实现）
-// 但飞书消息发送仍使用real模式
-const callWithMock = createMockAdapterCaller({ 
-  fallbackToMockOnError: true // 允许fallback，确保后端不可用时仍可使用mock数据
+// 开发：后端不可用时可回落 mock。生产：禁止回落，否则每人仍只看到本机 localStorage，团队共享失效
+const callWithMock = createMockAdapterCaller({
+  fallbackToMockOnError: import.meta.env.DEV,
 });
 
 // ============= 后端响应类型 =============
@@ -45,6 +44,8 @@ interface InvoiceResponse {
   payment_month?: string;
   status: string;
   lims_report_submitted_at?: string;
+  electronic_invoice_file?: string;
+  electronic_invoice_file_name?: string;
   created_at: string;
   updated_at: string;
 }
@@ -66,7 +67,7 @@ export interface CreateInvoiceRequest {
   invoice_currency?: string;
   invoice_amount_tax_included?: number;
   revenue_amount: number;
-  invoice_type: '专票' | '普票' | '全电专票' | '全电普票';
+  invoice_type: InvoiceType;
   company_name: string;
   project_code: string;              // 主项目编号（兼容字段）
   project_id?: number;
@@ -338,7 +339,7 @@ export const invoicesApi = {
           invoice_currency: item.invoice_currency,
           invoice_amount_tax_included: item.invoice_amount_tax_included,
           revenue_amount: item.revenue_amount,
-          invoice_type: item.invoice_type as '专票' | '普票' | '全电专票' | '全电普票',
+          invoice_type: item.invoice_type as '全电专票' | '全电普票' | '形式发票',
           company_name: item.company_name,
           project_code: item.project_code,
           project_id: item.project_id,
@@ -355,6 +356,8 @@ export const invoicesApi = {
           payment_month: item.payment_month,
           status: item.status as InvoiceStatus,
           lims_report_submitted_at: item.lims_report_submitted_at,
+          electronic_invoice_file: item.electronic_invoice_file,
+          electronic_invoice_file_name: item.electronic_invoice_file_name,
           created_at: item.created_at,
           updated_at: item.updated_at,
         }));
@@ -388,7 +391,7 @@ export const invoicesApi = {
           invoice_currency: item.invoice_currency,
           invoice_amount_tax_included: item.invoice_amount_tax_included,
           revenue_amount: item.revenue_amount,
-          invoice_type: item.invoice_type as '专票' | '普票' | '全电专票' | '全电普票',
+          invoice_type: item.invoice_type as '全电专票' | '全电普票' | '形式发票',
           company_name: item.company_name,
           project_code: item.project_code,
           project_id: item.project_id,
@@ -405,6 +408,8 @@ export const invoicesApi = {
           payment_month: item.payment_month,
           status: item.status as InvoiceStatus,
           lims_report_submitted_at: item.lims_report_submitted_at,
+          electronic_invoice_file: item.electronic_invoice_file,
+          electronic_invoice_file_name: item.electronic_invoice_file_name,
           created_at: item.created_at,
           updated_at: item.updated_at,
         } as Invoice;

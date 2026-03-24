@@ -21,14 +21,14 @@ export interface InvoiceRequestItem {
 }
 
 /** 发票类型 */
-export type InvoiceRequestInvoiceType = 'vat_special' | 'proforma';
+export type InvoiceRequestInvoiceType = 'full_elec_special' | 'full_elec_normal' | 'proforma';
 
 /** 开票申请 */
 export interface InvoiceRequest extends BaseEntity {
   // 基本信息
   request_date: string;          // 申请日期 (YYYY-MM-DD)
   customer_name: string;         // 客户名称
-  invoice_type?: InvoiceRequestInvoiceType;  // 发票类型：vat_special=增值税专用发票, proforma=形式发票
+  invoice_type?: InvoiceRequestInvoiceType;  // 发票类型：全电专票/全电普票/形式发票
   amount_type?: InvoiceRequestAmountType;   // 金额类型：客户确认的是不含税还是含税
   tax_rate?: number;                        // 税率，如 0.06 表示 6%
   items: InvoiceRequestItem[];   // 开票明细（支持多个项目编号，最多20个）
@@ -44,6 +44,10 @@ export interface InvoiceRequest extends BaseEntity {
   
   // 关联信息
   invoice_ids?: number[];        // 关联的发票ID（一个申请可能对应多个发票）
+  /** 用于电子发票上传/下载的关联发票（Legacy）ID，通常取 invoice_ids 最后一项 */
+  linked_invoice_id?: number | null;
+  electronic_invoice_file?: string | null;
+  electronic_invoice_file_name?: string | null;
   notes?: string;                // 备注
   
   // 处理信息
@@ -55,7 +59,7 @@ export interface InvoiceRequest extends BaseEntity {
 export interface CreateInvoiceRequestRequest {
   request_date: string;
   customer_name: string;
-  invoice_type?: InvoiceRequestInvoiceType;  // 默认 vat_special
+  invoice_type?: InvoiceRequestInvoiceType;  // 默认 full_elec_special
   amount_type?: InvoiceRequestAmountType;    // 默认 inclusive_of_tax
   tax_rate?: number;                         // 默认 0.06
   items: Array<{

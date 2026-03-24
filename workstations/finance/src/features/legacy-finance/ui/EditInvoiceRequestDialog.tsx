@@ -39,7 +39,8 @@ import { useCustomers } from "../model/useCustomers";
 import type { InvoiceRequest, UpdateInvoiceRequestRequest } from "@/entities/finance/invoice-request-domain";
 
 const INVOICE_TYPE_OPTIONS = [
-  { value: "vat_special", label: "增值税专用发票" },
+  { value: "full_elec_special", label: "全电专票" },
+  { value: "full_elec_normal", label: "全电普票" },
   { value: "proforma", label: "形式发票" },
 ] as const;
 
@@ -51,7 +52,7 @@ const AMOUNT_TYPE_OPTIONS = [
 const editSchema = z.object({
   request_date: z.string().min(1, "申请日期不能为空"),
   customer_name: z.string().min(1, "客户名称不能为空"),
-  invoice_type: z.enum(["vat_special", "proforma"]).default("vat_special"),
+  invoice_type: z.enum(["full_elec_special", "full_elec_normal", "proforma"]).default("full_elec_special"),
   amount_type: z.enum(["exclusive_of_tax", "inclusive_of_tax"]).default("inclusive_of_tax"),
   tax_rate: z.number().min(0).max(1).default(0.06),
   request_by: z.string().min(1, "申请人不能为空"),
@@ -94,7 +95,7 @@ export function EditInvoiceRequestDialog({
     defaultValues: {
       request_date: "",
       customer_name: "",
-      invoice_type: "vat_special",
+      invoice_type: "full_elec_special",
       amount_type: "inclusive_of_tax",
       tax_rate: 0.06,
       request_by: "",
@@ -122,7 +123,7 @@ export function EditInvoiceRequestDialog({
       form.reset({
         request_date: request.request_date?.slice(0, 10) ?? "",
         customer_name: request.customer_name ?? "",
-        invoice_type: request.invoice_type ?? "vat_special",
+        invoice_type: request.invoice_type ?? "full_elec_special",
         amount_type: request.amount_type ?? "inclusive_of_tax",
         tax_rate: request.tax_rate ?? 0.06,
         request_by: request.request_by ?? "",

@@ -418,8 +418,9 @@ class InvoiceRequestQueryParams(Schema):
     status: Optional[str] = None
 
 
-# 发票类型：vat_special=增值税专用发票, proforma=形式发票
-INVOICE_TYPE_VAT_SPECIAL = 'vat_special'
+# 发票类型：full_elec_special=全电专票, full_elec_normal=全电普票, proforma=形式发票
+INVOICE_TYPE_FULL_ELEC_SPECIAL = 'full_elec_special'
+INVOICE_TYPE_FULL_ELEC_NORMAL = 'full_elec_normal'
 INVOICE_TYPE_PROFORMA = 'proforma'
 
 # 金额类型：客户确认的是不含税还是含税；展示与票面统一为含税金额
@@ -430,7 +431,7 @@ AMOUNT_TYPE_EXCLUSIVE_OF_TAX = 'exclusive_of_tax'
 class InvoiceRequestCreateIn(Schema):
     request_date: date
     customer_name: str
-    invoice_type: str = INVOICE_TYPE_VAT_SPECIAL  # 默认增值税专用发票
+    invoice_type: str = INVOICE_TYPE_FULL_ELEC_SPECIAL  # 默认全电专票
     amount_type: str = AMOUNT_TYPE_INCLUSIVE_OF_TAX  # 默认含税
     tax_rate: Optional[Decimal] = None  # 如 0.06 表示 6%，默认 0.06
     items: List[InvoiceRequestItemIn]

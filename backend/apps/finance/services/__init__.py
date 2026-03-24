@@ -382,7 +382,7 @@ def _amount_inclusive(amount, amount_type: str, tax_rate) -> 'Decimal':
 
 def create_invoice_request(request_date, customer_name: str, items: list, po: str = '', request_by: str = '',
                            request_by_id: int = None, notes: str = '', created_by_id: int = None,
-                           invoice_type: str = 'vat_special', amount_type: str = 'inclusive_of_tax',
+                           invoice_type: str = 'full_elec_special', amount_type: str = 'inclusive_of_tax',
                            tax_rate=None) -> InvoiceRequest:
     from decimal import Decimal
     rate = Decimal(str(tax_rate)) if tax_rate is not None else Decimal('0.06')
@@ -393,7 +393,7 @@ def create_invoice_request(request_date, customer_name: str, items: list, po: st
     req = InvoiceRequest.objects.create(
         request_date=request_date,
         customer_name=customer_name,
-        invoice_type=invoice_type or 'vat_special',
+        invoice_type=invoice_type or 'full_elec_special',
         amount_type=amount_type or 'inclusive_of_tax',
         tax_rate=rate,
         po=po or '',

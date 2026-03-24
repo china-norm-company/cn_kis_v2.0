@@ -31,6 +31,8 @@ import { zhCN } from "date-fns/locale";
 import { useToast } from "@/shared/ui/use-toast";
 import { TimeRangeSelect } from "@/shared/ui/time-range-select";
 import { getStartEndForPeriod, type DateRangePeriod } from "@/shared/lib/dateRange";
+import { useFeishuContext } from "@cn-kis/feishu-sdk";
+import { FINANCE_PERMS } from "@/shared/lib/financePermissions";
 
 const STATUS_LABEL: Record<PaymentStatus, string> = {
   pending: "待匹配",
@@ -51,6 +53,9 @@ interface PaymentListProps {
 }
 
 export function PaymentList({ onPaymentSelect }: PaymentListProps) {
+  const { hasPermission } = useFeishuContext();
+  const canWritePayment = hasPermission(FINANCE_PERMS.paymentCreate);
+
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [searchTerm, setSearchTerm] = useState("");
@@ -232,6 +237,12 @@ export function PaymentList({ onPaymentSelect }: PaymentListProps) {
         </div>
       </div>
 
+      {!canWritePayment && (
+        <p className="text-xs text-muted-foreground rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+          当前为只读查看：可检索收款记录；新增、编辑、删除及自动匹配由财务人员操作。
+        </p>
+      )}
+
       {/* 搜索和筛选栏 */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-1 gap-2">
@@ -266,10 +277,12 @@ export function PaymentList({ onPaymentSelect }: PaymentListProps) {
             </SelectContent>
           </Select>
         </div>
-        <Button onClick={() => setCreateDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          新增收款
-        </Button>
+        {canWritePayment && (
+          <Button onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            新增收款
+          </Button>
+        )}
       </div>
 
       {/* 收款列表 */}
@@ -377,7 +390,8 @@ export function PaymentList({ onPaymentSelect }: PaymentListProps) {
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
-                      {(payment.match_status === 'pending' || payment.match_status === 'partial') && (
+                      {canWritePayment &&
+                        (payment.match_status === 'pending' || payment.match_status === 'partial') && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -388,20 +402,24 @@ export function PaymentList({ onPaymentSelect }: PaymentListProps) {
                           <Link2 className="h-4 w-4" />
                         </Button>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(payment)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(payment.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      {canWritePayment && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEdit(payment)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {canWritePayment && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(payment.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

@@ -43,7 +43,7 @@ def generate_monthly_insight(report_data: dict, account_id: int = 0) -> str:
         from apps.agent_gateway.services import call_agent
         call = call_agent(
             account_id=account_id,
-            agent_id='finance-agent',
+            agent_id='insight-agent',
             message=message,
             context={'scene': 'monthly_report', 'data_type': 'financial'},
         )
@@ -62,7 +62,7 @@ def generate_settlement_insight(settlement_data: dict, account_id: int = 0) -> s
         from apps.agent_gateway.services import call_agent
         call = call_agent(
             account_id=account_id,
-            agent_id='finance-agent',
+            agent_id='analysis-agent',
             message=message,
             context={'scene': 'project_settlement', 'data_type': 'financial'},
         )
@@ -81,7 +81,7 @@ def generate_risk_briefing(risk_data: dict, account_id: int = 0) -> str:
         from apps.agent_gateway.services import call_agent
         call = call_agent(
             account_id=account_id,
-            agent_id='finance-agent',
+            agent_id='alert-agent',
             message=message,
             context={'scene': 'risk_briefing', 'data_type': 'financial'},
         )

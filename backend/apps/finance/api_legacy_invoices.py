@@ -11,12 +11,12 @@ from pydantic import BaseModel
 from typing import Optional, List
 
 from .models_legacy_invoice import LegacyInvoice
-from apps.identity.decorators import _get_account_from_request, require_login, require_any_permission
+from apps.identity.decorators import _get_account_from_request, require_login, require_any_permission, require_permission
 
 router = Router()
 
-# 发票管理（新）为共享数据，读操作仅需登录；写操作需 finance 权限
-LEGACY_INVOICE_WRITE_PERMS = ['finance.invoice.create', 'finance.*']
+# 创建/删除发票：仅财务；更新：财务全量 或 商务仅电子发票字段且发票须关联本人开票申请
+LEGACY_INVOICE_UPDATE_PERMS = ['finance.invoice.create', 'finance.invoice.einvoice']
 
 
 # ============================================================================
@@ -185,7 +185,7 @@ def get_legacy_invoice(request, invoice_id: int):
 
 
 @router.post('', summary='创建发票（新）')
-@require_any_permission(LEGACY_INVOICE_WRITE_PERMS)
+@require_permission('finance.invoice.create')
 def create_legacy_invoice(request, data: LegacyInvoiceCreateIn):
     account = _get_account_from_request(request)
     created_by_id = account.id if account else None
@@ -233,12 +233,24 @@ def create_legacy_invoice(request, data: LegacyInvoiceCreateIn):
 
 
 @router.put('/{invoice_id}', summary='更新发票（新）')
-@require_any_permission(LEGACY_INVOICE_WRITE_PERMS)
+@require_any_permission(LEGACY_INVOICE_UPDATE_PERMS)
 def update_legacy_invoice(request, invoice_id: int, data: LegacyInvoiceUpdateIn):
     inv = LegacyInvoice.objects.filter(id=invoice_id, is_deleted=False).first()
     if not inv:
         return 404, {'code': 404, 'msg': '发票不存在', 'data': None}
     updates = data.dict(exclude_unset=True)
+    account = _get_account_from_request(request)
+    from apps.identity.authz import get_authz_service
+    authz = get_authz_service()
+    if not authz.has_permission(account, 'finance.invoice.create'):
+        if not authz.has_permission(account, 'finance.invoice.einvoice'):
+            return 403, {'code': 403, 'msg': '无权限更新发票', 'data': None}
+        einvoice_only = set(updates.keys()) <= {'electronic_invoice_file', 'electronic_invoice_file_name'}
+        if not einvoice_only:
+            return 403, {'code': 403, 'msg': '商务仅可更新电子发票附件字段', 'data': None}
+        from .invoice_request_access import legacy_invoice_linked_to_account_invoice_requests
+        if not legacy_invoice_linked_to_account_invoice_requests(account, invoice_id):
+            return 403, {'code': 403, 'msg': '只能为与本人开票申请关联的发票上传电子件', 'data': None}
     for k, v in updates.items():
         if k == 'invoice_date' and v:
             inv.invoice_date = date.fromisoformat(v)
@@ -279,7 +291,7 @@ def update_legacy_invoice(request, invoice_id: int, data: LegacyInvoiceUpdateIn)
 
 
 @router.delete('/{invoice_id}', summary='删除发票（新）')
-@require_any_permission(LEGACY_INVOICE_WRITE_PERMS)
+@require_permission('finance.invoice.create')
 def delete_legacy_invoice(request, invoice_id: int):
     inv = LegacyInvoice.objects.filter(id=invoice_id, is_deleted=False).first()
     if not inv:
