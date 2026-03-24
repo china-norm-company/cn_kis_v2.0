@@ -39,6 +39,34 @@ class FeishuUserToken(models.Model):
     created_at = models.DateTimeField('创建时间', auto_now_add=True)
     updated_at = models.DateTimeField('更新时间', auto_now=True)
 
+    # ── Token 状态（migration 0022）──────────────────────────────────────────────
+    STATUS_ACTIVE = 'active'
+    STATUS_EXPIRING = 'expiring'
+    STATUS_ACCESS_EXPIRED = 'access_expired'
+    STATUS_REFRESH_EXPIRED = 'refresh_expired'
+    STATUS_REVOKED = 'revoked'
+    STATUS_INVALID = 'invalid'
+    STATUS_CHOICES = [
+        (STATUS_ACTIVE, '正常'),
+        (STATUS_EXPIRING, '即将到期'),
+        (STATUS_ACCESS_EXPIRED, 'Access过期'),
+        (STATUS_REFRESH_EXPIRED, '需重新登录'),
+        (STATUS_REVOKED, '已作废'),
+        (STATUS_INVALID, '无效'),
+    ]
+    status = models.CharField('Token 状态', max_length=20, choices=STATUS_CHOICES, default=STATUS_ACTIVE, db_index=True)
+
+    # ── 时间线统计（migration 0022）──────────────────────────────────────────────
+    first_authorized_at = models.DateTimeField('首次授权时间', null=True, blank=True)
+    last_refreshed_at = models.DateTimeField('最近刷新成功时间', null=True, blank=True)
+    last_used_at = models.DateTimeField('最近使用时间', null=True, blank=True)
+    last_refresh_failed_at = models.DateTimeField('最近刷新失败时间', null=True, blank=True)
+    refresh_count = models.PositiveIntegerField('累计刷新次数', default=0)
+    consecutive_refresh_failures = models.PositiveSmallIntegerField('连续刷新失败次数', default=0)
+    last_refresh_error = models.CharField('最近刷新错误信息', max_length=255, blank=True, default='')
+    revoked_at = models.DateTimeField('作废时间', null=True, blank=True)
+    revoked_reason = models.CharField('作废原因', max_length=64, blank=True, default='')
+
     # 子衿主授权：签发来源与预检可观测
     issuer_app_id = models.CharField('签发应用 App ID', max_length=64, blank=True, default='')
     issuer_app_name = models.CharField('签发应用名称', max_length=64, blank=True, default='')
@@ -62,6 +90,47 @@ class FeishuUserToken(models.Model):
 
     def __str__(self):
         return f'FeishuToken(account={self.account_id}, open_id={self.open_id})'
+
+    def compute_status(self) -> str:
+        """根据字段计算当前 token 状态（不写 DB，仅用于展示/同步）。"""
+        from django.utils import timezone
+        now = timezone.now()
+        if self.revoked_at:
+            return self.STATUS_REVOKED
+        if not self.refresh_expires_at or now >= self.refresh_expires_at:
+            return self.STATUS_REFRESH_EXPIRED
+        if not self.token_expires_at or now >= self.token_expires_at:
+            return self.STATUS_ACCESS_EXPIRED
+        from datetime import timedelta
+        if self.refresh_expires_at and self.refresh_expires_at - now < timedelta(days=7):
+            return self.STATUS_EXPIRING
+        return self.STATUS_ACTIVE
+
+    def revoke(self, reason: str = 'admin') -> None:
+        """将 token 标记为已作废。"""
+        from django.utils import timezone
+        self.status = self.STATUS_REVOKED
+        self.revoked_at = timezone.now()
+        self.revoked_reason = reason or 'admin'
+        self.save(update_fields=['status', 'revoked_at', 'revoked_reason', 'updated_at'])
+
+    @property
+    def access_token_remaining_seconds(self) -> int:
+        """Access token 剩余秒数（已过期返回 0）。"""
+        from django.utils import timezone
+        if not self.token_expires_at:
+            return 0
+        diff = (self.token_expires_at - timezone.now()).total_seconds()
+        return max(0, int(diff))
+
+    @property
+    def refresh_token_remaining_days(self) -> float:
+        """Refresh token 剩余天数（已过期返回 0.0）。"""
+        from django.utils import timezone
+        if not self.refresh_expires_at:
+            return 0.0
+        diff = (self.refresh_expires_at - timezone.now()).total_seconds()
+        return max(0.0, diff / 86400)
 
 
 class PersonalContext(models.Model):
