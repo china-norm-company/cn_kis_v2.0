@@ -55,6 +55,7 @@ static_collected/
 # Node.js / pnpm 前端
 # ============================================================
 node_modules/
+apps/wechat-mini/.swc/
 .pnpm-store/
 dist/
 .next/
