@@ -561,3 +561,10 @@ export type {
   EkbReconcileResult,
   EkbInjectionLog,
 } from './modules/ekuaibao'
+
+// 前端埋点
+export { usePageTracking } from './usePageTracking'
+
+// 治理台 IAM API
+export { iamApi, governanceApi } from './modules/iam'
+export type { AccountSummary } from './modules/iam'

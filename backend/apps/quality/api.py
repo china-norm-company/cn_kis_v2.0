@@ -153,15 +153,16 @@ def _deviation_to_dict(d) -> dict:
     return {
         'id': d.id, 'code': d.code, 'title': d.title,
         'category': d.category, 'severity': d.severity, 'status': d.status,
-        'reporter': d.reporter, 'reported_at': d.reported_at.isoformat(),
+        'reporter': d.reporter,
+        'reported_at': d.reported_at.isoformat() if d.reported_at else None,
         'project': d.project, 'description': d.description,
         'root_cause': d.root_cause, 'resolution': d.resolution,
         'closed_at': d.closed_at.isoformat() if d.closed_at else None,
         'source': getattr(d, 'source', ''),
         'source_workstation': getattr(d, 'source_workstation', ''),
         'source_record_id': getattr(d, 'source_record_id', ''),
-        'create_time': d.create_time.isoformat(),
-        'update_time': d.update_time.isoformat(),
+        'create_time': d.create_time.isoformat() if d.create_time else None,
+        'update_time': d.update_time.isoformat() if d.update_time else None,
     }
 
 
@@ -171,11 +172,12 @@ def _capa_to_dict(c) -> dict:
         'deviation_id': c.deviation_id,
         'deviation_code': c.deviation.code if c.deviation else '',
         'type': c.type, 'title': c.title,
-        'responsible': c.responsible, 'due_date': c.due_date.isoformat(),
+        'responsible': c.responsible,
+        'due_date': c.due_date.isoformat() if c.due_date else None,
         'status': c.status, 'effectiveness': c.effectiveness,
         'action_detail': c.action_detail, 'verification_note': c.verification_note,
-        'create_time': c.create_time.isoformat(),
-        'update_time': c.update_time.isoformat(),
+        'create_time': c.create_time.isoformat() if c.create_time else None,
+        'update_time': c.update_time.isoformat() if c.update_time else None,
     }
 
 

@@ -1,0 +1,213 @@
+# V1.0 反模式黑名单（V2.0 禁止复发）
+
+## 核心原则
+
+**每次从 V1.0 复制代码或编写类似逻辑时，必须对照以下清单逐条检查。发现任何反模式特征，必须停止并先修正。**
+
+---
+
+## F-01：工作台分布式耦合
+
+**特征代码标志：**
+- 在某个工作台目录下 `import` 了另一个工作台的组件
+- `AppLayout`、`AuthGuard` 等布局组件被多个工作台各自复制一份
+- 多个工作台共用同一个 `store`（Pinia/Redux store 非 packages/ 下的共享包）
+
+**V2 正确做法：**
+- 共享逻辑必须提取到 `packages/ui-kit` 或 `packages/api-client`
+- 每个工作台只能引用 `packages/` 下的包，不能跨工作台引用
+- `AppLayout` 必须在 `packages/ui-kit` 中维护唯一版本
+
+---
+
+## F-02：直接向 main/develop 推送
+
+**特征代码标志：**
+- `git push origin main`
+- `git push origin develop`（未经 PR）
+- 迁移文件出现多个 leaf node（`python manage.py showmigrations` 中有两条线路）
+
+**V2 正确做法：**
+- 所有改动必须在 `feature/xxx` 或 `fix/xxx` 分支上，通过 PR 合并
+- 每次 `makemigrations` 前先运行 `python manage.py migrate --check`
+
+---
+
+## F-03：错误的飞书 AppID
+
+**特征代码标志：**
+```python
+# ❌ 旧 AppID，V2 禁用
+FEISHU_APP_ID = "cli_a907f21f0723dbce"
+```
+```javascript
+// ❌ 旧 AppID，V2 禁用
+VITE_FEISHU_APP_ID=cli_a907f21f0723dbce
+```
+
+**V2 唯一合法值：**
+```
+cli_a98b0babd020500e（前后端统一）
+```
+
+**AI 行为：** 看到 `cli_a907f21f0723dbce` 出现在任何 V2 文件中，必须立即报告并要求替换。
+
+---
+
+## F-04：空字符串静默覆盖 Token（最危险的反模式）
+
+**特征代码标志：**
+
+```python
+# ❌ 反模式：get() 的 default 会在新值为空串时仍然覆盖
+token_record.refresh_token = new_data.get('refresh_token', token_record.refresh_token)
+# 原因：当 new_data['refresh_token'] = '' 时，get() 返回 ''（不是 default！）
+
+# ❌ 反模式：无条件写入，不管新值是否为空
+defaults = {
+    'refresh_token': refresh_token,  # refresh_token 可能是 ''
+    'refresh_expires_at': expires_at if expires_in else None,  # None 破坏后续判断
+}
+```
+
+**V2 正确写法：**
+
+```python
+# ✅ 只在有非空新值时才覆盖
+new_refresh = new_data.get('refresh_token', '')
+if new_refresh:
+    token_record.refresh_token = new_refresh
+
+# ✅ 保存时防止空值覆盖
+effective_refresh = refresh_token if refresh_token else (
+    existing.refresh_token if existing else ''
+)
+# ✅ expires_at 永远不存 None，默认 30 天
+_exp = refresh_expires_in if refresh_expires_in else 2592000
+defaults = {
+    'refresh_token': effective_refresh,
+    'refresh_expires_at': now + timedelta(seconds=_exp),
+}
+```
+
+**AI 行为：** 看到任何涉及 `refresh_token` 的 `.get()`、`update_or_create()`、`.save()` 操作，必须检查是否存在此反模式。
+
+---
+
+## F-05：Celery 大写配置键
+
+**特征代码标志：**
+
+```python
+# ❌ Celery 4 写法，Celery 5 完全无效
+CELERY_BROKER_URL = "redis://..."
+CELERY_RESULT_BACKEND = "redis://..."
+CELERY_TASK_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+```
+
+**V2 正确写法（Celery 5 小写键）：**
+
+```python
+# ✅
+broker_url = "redis://..."
+result_backend = "redis://..."
+task_serializer = "json"
+accept_content = ["json"]
+```
+
+**AI 行为：** 修改或新建任何 Celery 配置文件时，检查所有键名是否为小写。
+
+---
+
+## F-06：nginx 备份文件残留于 sites-enabled/
+
+**特征代码标志：**
+- `/etc/nginx/sites-enabled/` 目录下存在 `.bak`、`.old`、`.backup`、`.bak-xxx` 后缀文件
+- `nginx -t` 输出 `duplicate default server`
+
+**V2 正确做法：**
+```bash
+# ✅ 备份放 /tmp，不放 sites-enabled/
+cp /etc/nginx/sites-enabled/cn-kis.conf /tmp/cn-kis.conf.bak_$(date +%Y%m%d_%H%M)
+# 修改完成后：
+nginx -t && nginx -s reload
+```
+
+**AI 行为：** 每次建议 nginx 操作时，必须附带以上完整流程。
+
+---
+
+## F-07：Mail 模型重复注册
+
+**特征代码标志：**
+- `gunicorn` 启动日志中出现 `RuntimeWarning: Model 'secretary.mailsignalevent' was already registered`
+- secretary 模块中同一个模型在多处被 `import` 导致 `AppConfig.ready()` 重复注册
+
+**V2 正确做法：**
+- 每个模型只在一个 `models.py` 中定义
+- `AppConfig.ready()` 中的 signal 注册使用 `dispatch_uid` 参数防止重复
+
+---
+
+## F-08：配置定义散落多处（无 SSOT）
+
+**特征代码标志：**
+- 工作台端口号在 `nginx.conf`、`vite.config.ts`、README 中各不相同
+- 添加新工作台需要手动修改 7 个以上文件
+
+**V2 单一真相源：**
+```
+backend/configs/workstations.yaml
+```
+所有脚本、nginx 模板、前端配置生成工具必须从此文件读取，不得硬编码。
+
+---
+
+## F-09：测试环境执行生产任务
+
+**特征代码标志：**
+```python
+# ❌ 没有环境检查就直接跑生产任务
+@app.task
+def sync_feishu_data():
+    ...  # 会写入向量库，无环境保护
+```
+
+**V2 强制保护：**
+```python
+# ✅ 任何写入性任务必须检查安全开关
+import os
+if os.getenv('CELERY_PRODUCTION_TASKS_DISABLED', 'false').lower() == 'true':
+    logger.warning("Production tasks disabled in this environment. Skipping.")
+    return
+```
+
+---
+
+## F-10：不经保护直接操作知识资产
+
+**特征代码标志：**
+```sql
+-- ❌ 未经核验直接迁移
+INSERT INTO cn_kis_v2.t_knowledge_entry SELECT * FROM cn_kis.knowledge_entry;
+```
+
+**V2 正确流程：**
+1. `ops/scripts/verify_knowledge_assets.py` 全量核验
+2. 干跑模式 `--dry-run` 验证
+3. 小批量试迁移（100 条）→ 验证 → 全量
+
+---
+
+## 快速检查清单（每次 Code Review 必查）
+
+```
+□ 无 cli_a907f21f0723dbce（F-03）
+□ refresh_token 写入有非空值保护（F-04）
+□ Celery 配置键全部小写（F-05）
+□ nginx 备份不在 sites-enabled/（F-06）
+□ 无跨工作台 import（F-01）
+□ 有 CELERY_PRODUCTION_TASKS_DISABLED 检查的生产任务（F-09）
+□ 配置数值来自 workstations.yaml 或 os.getenv()（F-08）
+```

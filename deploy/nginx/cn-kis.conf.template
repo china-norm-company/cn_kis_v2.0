@@ -1,0 +1,113 @@
+# CN KIS V2.0 Nginx 配置模板
+#
+# 用途：将此文件复制到服务器的 /etc/nginx/sites-available/cn-kis.conf
+#       然后建立软链接到 sites-enabled/
+#
+# 更新 Nginx 配置后必须执行：
+#   nginx -t && systemctl reload nginx
+#
+# 工作台路由原则：
+#   - 17 个工作台（统一授权）：secretary/finance/research/.../control-plane/digital-workforce
+#   - 2 个独立授权工作台：governance / data-platform（独立飞书 App）
+#   - 后端 API：/v2/api/v1/ → gunicorn :8002（V2 进程）
+#
+# 端口说明（与 .env.example 一致）：
+#   V1.0 → gunicorn 8001（/opt/cn-kis/，数据库 cn_kis）
+#   V2.0 → gunicorn 8002（/opt/cn-kis-v2/，数据库 cn_kis_v2）
+#
+# 版本：V2.0 | 2026-03-23 | admin+iam 合并为 governance
+
+upstream cn_kis_v2_backend {
+    server 127.0.0.1:8002;
+}
+
+server {
+    listen 80;
+    server_name your-domain.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name your-domain.com;
+
+    # SSL 证书（请替换为实际路径）
+    ssl_certificate     /etc/ssl/certs/cn-kis.crt;
+    ssl_certificate_key /etc/ssl/private/cn-kis.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    # ── 后端 API ──
+    location /v2/api/ {
+        proxy_pass http://cn_kis_v2_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 30s;
+        proxy_read_timeout 300s;
+    }
+
+    # ── 静态资产（长缓存，1 年）──
+    location ~* ^/(secretary|research|quality|finance|hr|crm|execution|recruitment|equipment|material|facility|evaluator|lab-personnel|ethics|reception|control-plane|governance|digital-workforce|data-platform)/assets/ {
+        root /var/www/cn-kis;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # ── 禁止 index.html 缓存（SPA 路由正确更新）──
+    location ~* ^/(secretary|research|quality|finance|hr|crm|execution|recruitment|equipment|material|facility|evaluator|lab-personnel|ethics|reception|control-plane|governance|digital-workforce|data-platform)/index\.html$ {
+        root /var/www/cn-kis;
+        add_header Cache-Control "no-store, no-cache, must-revalidate";
+        expires 0;
+    }
+
+    # ── 业务工作台（子衿统一授权，17 台）──
+    location /secretary { alias /var/www/cn-kis/secretary; try_files $uri $uri/ /secretary/index.html; index index.html; }
+    location /research { alias /var/www/cn-kis/research; try_files $uri $uri/ /research/index.html; index index.html; }
+    location /quality { alias /var/www/cn-kis/quality; try_files $uri $uri/ /quality/index.html; index index.html; }
+    location /finance { alias /var/www/cn-kis/finance; try_files $uri $uri/ /finance/index.html; index index.html; }
+    location /hr { alias /var/www/cn-kis/hr; try_files $uri $uri/ /hr/index.html; index index.html; }
+    location /crm { alias /var/www/cn-kis/crm; try_files $uri $uri/ /crm/index.html; index index.html; }
+    location /execution { alias /var/www/cn-kis/execution; try_files $uri $uri/ /execution/index.html; index index.html; }
+    location /recruitment { alias /var/www/cn-kis/recruitment; try_files $uri $uri/ /recruitment/index.html; index index.html; }
+    location /equipment { alias /var/www/cn-kis/equipment; try_files $uri $uri/ /equipment/index.html; index index.html; }
+    location /material { alias /var/www/cn-kis/material; try_files $uri $uri/ /material/index.html; index index.html; }
+    location /facility { alias /var/www/cn-kis/facility; try_files $uri $uri/ /facility/index.html; index index.html; }
+    location /evaluator { alias /var/www/cn-kis/evaluator; try_files $uri $uri/ /evaluator/index.html; index index.html; }
+    location /lab-personnel { alias /var/www/cn-kis/lab-personnel; try_files $uri $uri/ /lab-personnel/index.html; index index.html; }
+    location /ethics { alias /var/www/cn-kis/ethics; try_files $uri $uri/ /ethics/index.html; index index.html; }
+    location /reception { alias /var/www/cn-kis/reception; try_files $uri $uri/ /reception/index.html; index index.html; }
+    location /control-plane { alias /var/www/cn-kis/control-plane; try_files $uri $uri/ /control-plane/index.html; index index.html; }
+    location /digital-workforce { alias /var/www/cn-kis/digital-workforce; try_files $uri $uri/ /digital-workforce/index.html; index index.html; }
+
+    # ── 独立授权管理台（深度解耦，独立飞书应用）──
+    # 鹿鸣·治理台 — App ID: cli_a937515668b99cc9（原 IAM 应用）
+    location /governance {
+        alias /var/www/cn-kis/governance;
+        try_files $uri $uri/ /governance/index.html;
+        index index.html;
+    }
+    # 洞明·数据台 — App ID: cli_a93753da2c381cef
+    location /data-platform {
+        alias /var/www/cn-kis/data-platform;
+        try_files $uri $uri/ /data-platform/index.html;
+        index index.html;
+    }
+
+    # ── 根路径重定向到秘书台 ──
+    location = / {
+        return 302 /secretary/;
+    }
+
+    # ── 健康检查（供 ELB / 监控使用）──
+    location = /health {
+        proxy_pass http://cn_kis_v2_backend/v2/api/v1/health;
+        access_log off;
+    }
+
+    # Gzip 压缩
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml image/svg+xml;
+    gzip_min_length 1024;
+}
