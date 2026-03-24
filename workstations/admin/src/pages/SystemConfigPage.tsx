@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@cn-kis/api-client'
-import { Settings, Database, Cloud, Shield, Server, Globe, Cpu, HardDrive } from 'lucide-react'
+import { Shield, Server, Globe, Cpu, HardDrive } from 'lucide-react'
 
 export function SystemConfigPage() {
   const { data: healthData } = useQuery({
@@ -71,7 +71,7 @@ export function SystemConfigPage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-slate-800">系统配置</h2>
-        <p className="text-sm text-slate-400 mt-1">CN KIS V1.0 系统配置概览</p>
+        <p className="text-sm text-slate-400 mt-1">CN KIS V2.0 系统配置概览</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

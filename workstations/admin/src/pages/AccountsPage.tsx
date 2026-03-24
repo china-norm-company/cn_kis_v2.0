@@ -1,7 +1,12 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@cn-kis/api-client'
-import { Users, UserPlus, UserMinus } from 'lucide-react'
+import { Users, UserPlus, UserMinus, Search } from 'lucide-react'
+
+interface AccountRoleRow {
+  name: string
+  display_name: string
+}
 
 interface AccountItem {
   id: number
@@ -11,7 +16,7 @@ interface AccountItem {
   avatar: string | null
   account_type: string
   status: string
-  roles: string[]
+  roles: AccountRoleRow[]
   last_login_time: string | null
   create_time: string
 }
@@ -25,7 +30,14 @@ interface RoleItem {
 
 export function AccountsPage() {
   const [page, setPage] = useState(1)
+  /** 已提交给后端的检索词（与输入框分离，避免中文输入法组字过程中用拼音字母触发查询） */
   const [keyword, setKeyword] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+
+  function doSearch() {
+    setKeyword(searchInput.trim())
+    setPage(1)
+  }
   const [assignModal, setAssignModal] = useState<AccountItem | null>(null)
   const [roleToAssign, setRoleToAssign] = useState('')
   const [roleToRemove, setRoleToRemove] = useState<{ account: AccountItem; roleName: string } | null>(null)
@@ -60,8 +72,12 @@ export function AccountsPage() {
 
   const removeMutation = useMutation({
     mutationFn: async ({ account_id, role_name }: { account_id: number; role_name: string }) => {
-      const res = await api.post('/auth/roles/remove', { account_id, role_name })
+      const res = await api.post<{ removed?: boolean }>('/auth/roles/remove', { account_id, role_name })
       if (res.code !== 200) throw new Error(res.msg || '移除角色失败')
+      const removed = res.data?.removed
+      if (removed === false) {
+        throw new Error(res.msg || '未找到该角色绑定（若角色仅挂在项目上，请联系管理员处理）')
+      }
       return res
     },
     onSuccess: () => {
@@ -108,16 +124,21 @@ export function AccountsPage() {
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center mb-4">
-        <input
-          type="search"
-          placeholder="搜索姓名、用户名、邮箱"
-          value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && setPage(1)}
-          className="min-h-11 px-3 py-2 border border-slate-200 rounded-lg text-sm w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-primary-500"
-        />
+        <div className="relative w-full sm:w-64">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" aria-hidden />
+          <input
+            type="search"
+            placeholder="搜索姓名、用户名、邮箱"
+            value={searchInput}
+            title="输入后按回车或点搜索；组字完成后再搜索"
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && doSearch()}
+            className="min-h-11 w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          />
+        </div>
         <button
-          onClick={() => setPage(1)}
+          type="button"
+          onClick={doSearch}
           className="min-h-11 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700"
         >
           搜索
@@ -146,13 +167,13 @@ export function AccountsPage() {
                   <div className="flex flex-wrap gap-1">
                     {a.roles.map((r) => (
                       <span
-                        key={r}
+                        key={r.name}
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs"
                       >
-                        {r}
+                        {r.display_name || r.name}
                         <button
                           type="button"
-                          onClick={() => setRoleToRemove({ account: a, roleName: r })}
+                          onClick={() => setRoleToRemove({ account: a, roleName: r.name })}
                           className="text-slate-400 hover:text-red-600"
                           title="移除角色"
                         >
@@ -261,7 +282,10 @@ export function AccountsPage() {
           >
             <h3 className="text-base font-semibold text-slate-800 mb-2">确认移除角色</h3>
             <p className="text-sm text-slate-600 mb-4">
-              从「{roleToRemove.account.display_name || roleToRemove.account.username}」移除角色「{roleToRemove.roleName}」？
+              从「{roleToRemove.account.display_name || roleToRemove.account.username}」移除角色「
+              {roleToRemove.account.roles.find((x) => x.name === roleToRemove.roleName)?.display_name
+                || roleToRemove.roleName}
+              」？
             </p>
             <div className="flex justify-end gap-2">
               <button
@@ -283,6 +307,9 @@ export function AccountsPage() {
                 {removeMutation.isPending ? '提交中...' : '移除'}
               </button>
             </div>
+            {removeMutation.isError && (
+              <p className="mt-3 text-sm text-red-600">{removeMutation.error?.message}</p>
+            )}
           </div>
         </div>
       )}
