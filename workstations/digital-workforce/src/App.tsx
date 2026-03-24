@@ -1,5 +1,4 @@
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
-<<<<<<< HEAD
 import { ErrorBoundary, HealthPage, OfflineBanner } from '@cn-kis/ui-kit'
 import { useNetworkStatus } from '@cn-kis/feishu-sdk'
 import { AppLayout } from './layouts/AppLayout'
@@ -43,21 +42,6 @@ import { DevTokenInjectPage } from './pages/DevTokenInjectPage'
 import { MailSignalListPage } from './pages/MailSignalListPage'
 import { MailSignalDetailPage } from './pages/MailSignalDetailPage'
 import { MailTaskDraftPage } from './pages/MailTaskDraftPage'
-=======
-import { ErrorBoundary, HealthPage } from '@cn-kis/ui-kit'
-import { AppLayout } from '@/layouts/AppLayout'
-import { DevTokenInjectPage } from '@/pages/DevTokenInjectPage'
-import { PortalPage } from '@/pages/PortalPage'
-import { MailSignalListPage } from '@/pages/MailSignalListPage'
-import { MailSignalDetailPage } from '@/pages/MailSignalDetailPage'
-import { MailTaskDraftPage } from '@/pages/MailTaskDraftPage'
-import { ReplayPage } from '@/pages/ReplayPage'
-import { AnalyticsPage } from '@/pages/AnalyticsPage'
-import { ProactiveInsightListPage } from '@/pages/ProactiveInsightListPage'
-import { ProactiveInsightDetailPage } from '@/pages/ProactiveInsightDetailPage'
-import { ProactiveAnalyticsPage } from '@/pages/ProactiveAnalyticsPage'
-import ChatPage from '@/pages/ChatPage'
->>>>>>> origin/main
 
 export default function App() {
   return (
@@ -68,7 +52,6 @@ export default function App() {
           <Route path="/dev-inject-token" element={<DevTokenInjectPage />} />
           <Route element={<AppLayout />}>
             <Route index element={<Navigate to="/portal" replace />} />
-<<<<<<< HEAD
             {/* 运营总览 */}
             <Route path="portal" element={<PortalPage />} />
             <Route path="roles/:roleCode" element={<RoleDetailPage />} />
@@ -116,18 +99,6 @@ export default function App() {
             <Route path="gates" element={<EvidenceGatePage />} />
             <Route path="upgrades" element={<EvergreenWatchPage />} />
             <Route path="upgrades/:reportId" element={<EvergreenWatchDetailPage />} />
-=======
-            <Route path="/portal" element={<PortalPage />} />
-            <Route path="/chat" element={<ChatPage />} />
-            <Route path="/mail-signals" element={<MailSignalListPage />} />
-            <Route path="/mail-signals/:signalId" element={<MailSignalDetailPage />} />
-            <Route path="/mail-tasks" element={<MailTaskDraftPage />} />
-            <Route path="/replay" element={<ReplayPage />} />
-            <Route path="/analytics" element={<AnalyticsPage />} />
-            <Route path="/proactive-insights" element={<ProactiveInsightListPage />} />
-            <Route path="/proactive-insights/:insightId" element={<ProactiveInsightDetailPage />} />
-            <Route path="/proactive-analytics" element={<ProactiveAnalyticsPage />} />
->>>>>>> origin/main
           </Route>
         </Routes>
       </HashRouter>

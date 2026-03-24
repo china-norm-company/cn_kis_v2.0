@@ -1,0 +1,148 @@
+# 环境隔离铁律（V2.0 强制）
+
+## 核心原则
+
+**测试环境的任何操作绝不能影响生产数据。每次涉及环境变量、服务器操作、任务调度时，必须首先明确当前所在环境，并验证安全开关状态。**
+
+---
+
+## 双环境身份识别
+
+| 环境 | 服务器 | 数据库 | Redis DB | 用途 |
+|------|--------|--------|----------|------|
+| **生产** | `118.196.64.48`（火山云） | `cn_kis_v2` | `1` | 真实用户数据、飞书采集、知识库写入 |
+| **测试** | `test-guide.data-infact.com`（阿里云） | `cn_kis_v2_test` | `2` | 功能验证、破坏性测试 |
+
+**AI 行为：** 每次用户提到服务器操作时，必须首先确认目标服务器 IP/域名，并告知用户当前操作的是哪个环境。
+
+---
+
+## 强制安全开关（每次部署必须验证）
+
+### 测试环境必须设置：
+
+```bash
+CELERY_PRODUCTION_TASKS_DISABLED=true    # 防止飞书采集等任务运行
+KNOWLEDGE_WRITE_ENABLED=false            # 防止写入知识库（PersonalContext/KnowledgeEntry）
+FEISHU_SCHEDULED_SYNC_ENABLED=false      # 防止定时飞书同步
+```
+
+### 生产环境必须设置：
+
+```bash
+CELERY_PRODUCTION_TASKS_DISABLED=false   # 或不设置（默认 false）
+KNOWLEDGE_WRITE_ENABLED=true
+FEISHU_SCHEDULED_SYNC_ENABLED=true
+```
+
+### 验证命令（每次部署后执行）：
+
+```bash
+# 测试环境验证
+grep -E "CELERY_PRODUCTION_TASKS_DISABLED|KNOWLEDGE_WRITE_ENABLED|FEISHU_SCHEDULED_SYNC_ENABLED" .env
+
+# 期望输出（测试环境）：
+# CELERY_PRODUCTION_TASKS_DISABLED=true
+# KNOWLEDGE_WRITE_ENABLED=false
+# FEISHU_SCHEDULED_SYNC_ENABLED=false
+```
+
+---
+
+## 代码层面的环境保护模式
+
+### 任何写入性 Celery 任务必须包含保护检查：
+
+```python
+import os
+import logging
+
+logger = logging.getLogger(__name__)
+
+@app.task
+def sync_feishu_data():
+    if os.getenv('CELERY_PRODUCTION_TASKS_DISABLED', 'false').lower() == 'true':
+        logger.warning("[ENV GUARD] Production tasks disabled. Skipping sync_feishu_data.")
+        return {'skipped': True, 'reason': 'CELERY_PRODUCTION_TASKS_DISABLED=true'}
+    # 正式业务逻辑...
+```
+
+### 任何知识库写入操作必须包含保护检查：
+
+```python
+def write_knowledge_entry(entry):
+    if os.getenv('KNOWLEDGE_WRITE_ENABLED', 'false').lower() != 'true':
+        logger.warning("[ENV GUARD] Knowledge write disabled. Entry not saved: %s", entry.title)
+        return None
+    # 正式写入逻辑...
+```
+
+---
+
+## .env 文件管理铁律
+
+```
+.env 文件永不提交 git（.gitignore 已覆盖）
+每个环境有独立的 .env，从 backend/.env.example 派生
+本地开发：复制 backend/.env.example → backend/.env，手动填值
+生产凭证：只存于服务器 .env，通过 GitHub Secrets 注入 CI/CD
+```
+
+**绝对禁止：**
+```bash
+# ❌ 把生产服务器的 .env 内容粘贴到本地
+# ❌ 在测试环境 .env 中填写生产数据库连接字符串
+# ❌ 在任何 .env 文件中提交 AppSecret、数据库密码
+```
+
+---
+
+## 数据库隔离规则
+
+```python
+# ✅ V2 生产库
+DATABASE_NAME=cn_kis_v2        # 火山云
+REDIS_DB=1
+
+# ✅ V2 测试库
+DATABASE_NAME=cn_kis_v2_test   # 阿里云
+REDIS_DB=2
+
+# ❌ 任何 V2 环境都不得连接
+DATABASE_NAME=cn_kis            # V1 生产库，只读参考，V2 禁止写入
+```
+
+---
+
+## AI 行为规范
+
+每次用户描述需要操作环境变量、数据库、Celery 任务或服务器配置时，AI 必须：
+
+1. **第一句话先问（或自行判断）：** "当前操作的是测试环境还是生产环境？"
+2. 如果是测试环境，**主动检查**三个安全开关是否为正确的测试值
+3. 如果是生产环境，**明确警告**任何不可逆操作（如知识库批量写入、飞书全量采集）
+4. **禁止在测试环境中使用生产凭证**（即使用户要求，也必须先警告风险）
+5. 每次生成含有服务器 IP 的命令，**必须标注环境标签**：
+
+```bash
+# [生产环境 - 火山云] 以下命令将影响真实用户数据
+ssh root@118.196.64.48 ...
+
+# [测试环境 - 阿里云] 以下命令只影响测试数据
+ssh wuxianyu@test-guide.data-infact.com ...
+```
+
+---
+
+## 快速检查清单
+
+```
+□ 确认目标服务器归属（生产/测试）
+□ 测试环境：CELERY_PRODUCTION_TASKS_DISABLED=true
+□ 测试环境：KNOWLEDGE_WRITE_ENABLED=false
+□ 测试环境：FEISHU_SCHEDULED_SYNC_ENABLED=false
+□ 数据库名称与环境匹配（cn_kis_v2 / cn_kis_v2_test）
+□ Redis DB 编号与环境匹配（1=生产 / 2=测试）
+□ 未将生产凭证写入测试环境 .env
+□ .env 文件未加入 git 暂存区
+```

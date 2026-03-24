@@ -1,0 +1,560 @@
+name: 飞书团队通知
+
+# 触发条件：
+#   事件驱动：PR / Issue / staging 推送 / CI 结果
+#   定时播报：早报（UTC 01:00 = 北京 09:00）/ 晚报（UTC 10:00 = 北京 18:00）工作日
+on:
+  schedule:
+    - cron: '0 1 * * 1-5'    # 早报：北京时间 09:00，周一至周五
+    - cron: '0 10 * * 1-5'   # 晚报：北京时间 18:00，周一至周五
+  pull_request:
+    types: [opened, closed, ready_for_review, review_requested]
+  issues:
+    types: [opened, assigned, closed]
+  push:
+    branches:
+      - staging
+  workflow_run:
+    workflows: ["CI", "Deploy V2 Backend to Aliyun Test", "Deploy V2 Backend to Self-hosted"]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  # ══════════════════════════════════════════════════════════════
+  # Job 1：定时早晚报（schedule 触发）
+  # ══════════════════════════════════════════════════════════════
+  ops-briefing:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 生成并发送早晚报
+        uses: actions/github-script@v7
+        env:
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_BOT_WEBHOOK_URL }}
+          FEISHU_CHAT_ID: ${{ secrets.FEISHU_DEV_GROUP_CHAT_ID }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          script: |
+            // ── 工具函数：发送飞书消息 ─────────────────────────────────────
+            async function sendToFeishu(card) {
+              const webhook = process.env.FEISHU_WEBHOOK;
+              const chatId  = process.env.FEISHU_CHAT_ID;
+              const appId   = process.env.FEISHU_APP_ID;
+              const appSecret = process.env.FEISHU_APP_SECRET;
+              const payload = { msg_type: 'interactive', card: JSON.stringify(card) };
+
+              if (webhook) {
+                const resp = await fetch(webhook, {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payload),
+                });
+                const r = await resp.json();
+                if (r.code === 0 || r.StatusCode === 0) core.info('飞书通知发送成功（Webhook）');
+                else core.warning(`飞书通知失败：${JSON.stringify(r)}`);
+              } else if (chatId && appId && appSecret) {
+                const tokenResp = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+                });
+                const tokenData = await tokenResp.json();
+                if (tokenData.code !== 0) { core.warning(`获取飞书 token 失败`); return; }
+                const msgResp = await fetch('https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id', {
+                  method: 'POST',
+                  headers: { 'Authorization': `Bearer ${tokenData.tenant_access_token}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ receive_id: chatId, ...payload }),
+                });
+                const msgData = await msgResp.json();
+                if (msgData.code === 0) core.info('飞书通知发送成功（App Bot）');
+                else core.warning(`飞书通知失败：${JSON.stringify(msgData)}`);
+              } else {
+                core.warning('未配置飞书推送凭据，跳过');
+              }
+            }
+
+            // ── 判断是早报还是晚报（UTC 01:xx = 早报，UTC 10:xx = 晚报）─────
+            const nowUTC  = new Date();
+            const briefType = nowUTC.getUTCHours() < 5 ? 'morning' : 'evening';
+            const bjDate  = new Date(nowUTC.getTime() + 8 * 3600 * 1000);
+            const dateStr = bjDate.toISOString().slice(0, 10);
+            const weekdays = ['日','一','二','三','四','五','六'];
+            const weekday  = weekdays[bjDate.getUTCDay()];
+
+            core.info(`运行类型：${briefType === 'morning' ? '早报' : '晚报'}，日期：${dateStr}`);
+
+            // ── 采集 GitHub 数据 ─────────────────────────────────────────
+            const repo = context.repo;
+            const since24h = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+            const since48h = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+
+            // 开放 PR
+            const { data: openPRs } = await github.rest.pulls.list({
+              ...repo, state: 'open', per_page: 20,
+            });
+            // 最近 24h 合并的 PR
+            const { data: recentPRs } = await github.rest.pulls.list({
+              ...repo, state: 'closed', per_page: 20, sort: 'updated', direction: 'desc',
+            });
+            const mergedPRs = recentPRs.filter(pr => pr.merged_at && pr.merged_at > since24h);
+
+            // 开放 Issue（过滤掉 PR）
+            const { data: openIssues } = await github.rest.issues.listForRepo({
+              ...repo, state: 'open', per_page: 30,
+            });
+            const realIssues = openIssues.filter(i => !i.pull_request);
+
+            // 最近 24h 提交
+            let recentCommits = [];
+            try {
+              const { data: commits } = await github.rest.repos.listCommits({
+                ...repo, per_page: 20, since: since24h,
+              });
+              recentCommits = commits;
+            } catch(e) { core.warning('获取提交记录失败: ' + e.message); }
+
+            // 挂起超过 3 天的 PR（需要催审核）
+            const stalePRs = openPRs.filter(pr => {
+              const age = (Date.now() - new Date(pr.created_at).getTime()) / 86400000;
+              return age > 3;
+            });
+
+            // ── 构造指标摘要 ─────────────────────────────────────────────
+            const metrics = {
+              openPRCount:   openPRs.length,
+              mergedCount:   mergedPRs.length,
+              openIssueCount: realIssues.length,
+              commitCount:   recentCommits.length,
+              stalePRCount:  stalePRs.length,
+              stalePRList:   stalePRs.slice(0,3).map(p => `#${p.number} ${p.title.slice(0,30)} (${Math.floor((Date.now()-new Date(p.created_at).getTime())/86400000)}天)`),
+              mergedPRList:  mergedPRs.slice(0,3).map(p => `✅ #${p.number} ${p.title.slice(0,30)}`),
+              openPRList:    openPRs.slice(0,3).map(p => `• #${p.number} ${p.title.slice(0,35)} @${p.user.login}`),
+              topIssues:     realIssues.filter(i => (i.labels||[]).some(l=>l.name==='bug')).slice(0,3)
+                               .map(i => `🐛 #${i.number} ${i.title.slice(0,35)}`),
+            };
+
+            // ── 生成判断文字（无 LLM 的启发式规则，后续升级为 LLM）────────
+            function generateInsight(metrics, type) {
+              const lines = [];
+              // 系统状态判断
+              if (metrics.stalePRCount > 2) {
+                lines.push(`⚠️ 有 ${metrics.stalePRCount} 个 PR 挂起超过 3 天，请今天安排审核，否则阻塞后续开发`);
+              }
+              if (type === 'morning') {
+                if (metrics.mergedCount > 0) {
+                  lines.push(`📌 昨日有 ${metrics.mergedCount} 次合并，请运行 sync-task 同步最新代码`);
+                } else {
+                  lines.push(`📌 昨日无代码合并，请确认各自任务分支进展`);
+                }
+                if (metrics.openIssueCount > 5) {
+                  lines.push(`📋 当前有 ${metrics.openIssueCount} 个开放 Issue，建议今天认领优先级最高的 Bug`);
+                }
+              } else {
+                // 晚报
+                if (metrics.mergedCount > 0) {
+                  lines.push(`今日完成合并 ${metrics.mergedCount} 个 PR，进展良好`);
+                }
+                if (metrics.commitCount === 0) {
+                  lines.push(`⚠️ 今日代码无提交记录，请确认团队是否有活跃开发`);
+                }
+              }
+              return lines.length > 0 ? lines.join('\n') : '今日系统运行平稳，无紧急事项。';
+            }
+
+            const insight = generateInsight(metrics, briefType);
+
+            // ── 构造飞书卡片 ─────────────────────────────────────────────
+            let card;
+
+            if (briefType === 'morning') {
+              // ═══ 早报卡片 ═══
+              const statusIcon = metrics.stalePRCount > 2 ? '🟡 需要关注' : '🟢 正常';
+              card = {
+                header: {
+                  title: { content: `🌅 CN KIS 早报 · ${dateStr}（周${weekday}）  ${statusIcon}`, tag: 'plain_text' },
+                  template: metrics.stalePRCount > 2 ? 'yellow' : 'green',
+                },
+                elements: [
+                  // 总经理批注（启发式规则，后续换 LLM）
+                  {
+                    tag: 'div',
+                    text: { tag: 'lark_md', content: `**📌 今日重点**\n${insight}` },
+                  },
+                  { tag: 'hr' },
+                  // GitHub 状态
+                  {
+                    tag: 'div',
+                    text: {
+                      tag: 'lark_md',
+                      content: [
+                        `**🔨 代码状态**`,
+                        `昨日合并 **${metrics.mergedCount}** 个 PR  ·  开放 PR **${metrics.openPRCount}** 个  ·  开放 Issue **${metrics.openIssueCount}** 个`,
+                        metrics.mergedPRList.length > 0 ? '\n**昨日合并：**\n' + metrics.mergedPRList.join('\n') : '',
+                        metrics.stalePRList.length > 0 ? '\n**⏳ 待审核（超 3 天）：**\n' + metrics.stalePRList.join('\n') : '',
+                        metrics.openPRList.length > 0 ? '\n**开放 PR：**\n' + metrics.openPRList.join('\n') : '',
+                      ].filter(Boolean).join('\n'),
+                    },
+                  },
+                  { tag: 'hr' },
+                  // Bug Issue
+                  metrics.topIssues.length > 0 ? {
+                    tag: 'div',
+                    text: {
+                      tag: 'lark_md',
+                      content: `**🐛 待修复 Bug**\n${metrics.topIssues.join('\n')}`,
+                    },
+                  } : null,
+                  { tag: 'hr' },
+                  // 操作按钮
+                  {
+                    tag: 'action',
+                    actions: [
+                      { tag: 'button', text: { content: '同步代码', tag: 'plain_text' }, url: `https://github.com/${repo.owner}/${repo.repo}`, type: 'primary' },
+                      { tag: 'button', text: { content: '查看 PR', tag: 'plain_text' }, url: `https://github.com/${repo.owner}/${repo.repo}/pulls`, type: 'default' },
+                      { tag: 'button', text: { content: '认领 Issue', tag: 'plain_text' }, url: `https://github.com/${repo.owner}/${repo.repo}/issues`, type: 'default' },
+                    ],
+                  },
+                  {
+                    tag: 'note',
+                    elements: [{ tag: 'plain_text', content: `子衿智能运营官 · ${dateStr} 09:00  |  下一步：LLM 摘要升级中` }],
+                  },
+                ].filter(Boolean),
+              };
+
+            } else {
+              // ═══ 晚报卡片 ═══
+              const statusIcon = metrics.commitCount === 0 ? '🟡 需关注' : '🟢 达标';
+              card = {
+                header: {
+                  title: { content: `🌙 CN KIS 晚报 · ${dateStr}（周${weekday}）  ${statusIcon}`, tag: 'plain_text' },
+                  template: metrics.commitCount === 0 ? 'yellow' : 'indigo',
+                },
+                elements: [
+                  {
+                    tag: 'div',
+                    text: { tag: 'lark_md', content: `**📌 今日复盘**\n${insight}` },
+                  },
+                  { tag: 'hr' },
+                  {
+                    tag: 'div',
+                    text: {
+                      tag: 'lark_md',
+                      content: [
+                        `**📊 今日战报**`,
+                        `代码提交 **${metrics.commitCount}** 次  ·  合并 PR **${metrics.mergedCount}** 个  ·  开放 Issue **${metrics.openIssueCount}** 个`,
+                        metrics.mergedPRList.length > 0 ? '\n**今日完成：**\n' + metrics.mergedPRList.join('\n') : '今日无合并',
+                        metrics.stalePRList.length > 0 ? '\n**⏳ 仍在挂起：**\n' + metrics.stalePRList.join('\n') : '',
+                      ].filter(Boolean).join('\n'),
+                    },
+                  },
+                  { tag: 'hr' },
+                  {
+                    tag: 'div',
+                    text: {
+                      tag: 'lark_md',
+                      content: `**🗓 明日建议**\n${
+                        metrics.stalePRCount > 0 ? `• 优先审核挂起的 ${metrics.stalePRCount} 个 PR\n` : ''
+                      }${
+                        metrics.topIssues.length > 0 ? `• 跟进 ${metrics.topIssues.length} 个 Bug Issue\n` : ''
+                      }• 确认各工作台推广进展（详见运营面板，LLM 升级后自动生成）`,
+                    },
+                  },
+                  {
+                    tag: 'action',
+                    actions: [
+                      { tag: 'button', text: { content: '查看今日提交', tag: 'plain_text' }, url: `https://github.com/${repo.owner}/${repo.repo}/commits/main`, type: 'primary' },
+                      { tag: 'button', text: { content: '待审核 PR', tag: 'plain_text' }, url: `https://github.com/${repo.owner}/${repo.repo}/pulls?q=is%3Aopen`, type: 'default' },
+                    ],
+                  },
+                  {
+                    tag: 'note',
+                    elements: [{ tag: 'plain_text', content: `子衿智能运营官 · ${dateStr} 18:00  |  LLM 工作台推广分析升级中` }],
+                  },
+                ].filter(Boolean),
+              };
+            }
+
+            await sendToFeishu(card);
+
+  # ══════════════════════════════════════════════════════════════
+  # Job 2：事件通知（PR/Issue/部署/CI，非 schedule 触发）
+  # ══════════════════════════════════════════════════════════════
+  notify-feishu:
+    runs-on: ubuntu-latest
+    # secrets.* 在 job-level if 中不可用，故条件只用 vars 控制
+    # 飞书发送凭据缺失时由 step 内部逻辑 warn 跳过，不会报错
+    if: github.event_name != 'schedule'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 构造并发送飞书通知
+        uses: actions/github-script@v7
+        env:
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_BOT_WEBHOOK_URL }}
+          FEISHU_CHAT_ID: ${{ secrets.FEISHU_DEV_GROUP_CHAT_ID }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+        with:
+          script: |
+            const webhook = process.env.FEISHU_WEBHOOK;
+            const chatId  = process.env.FEISHU_CHAT_ID;
+            const appId   = process.env.FEISHU_APP_ID;
+            const appSecret = process.env.FEISHU_APP_SECRET;
+
+            if (!webhook && !chatId) {
+              core.warning('未配置 FEISHU_BOT_WEBHOOK_URL 或 FEISHU_DEV_GROUP_CHAT_ID，跳过通知');
+              return;
+            }
+
+            // ── 根据触发事件生成消息内容 ────────────────────────────────────
+            const ev = context.eventName;
+            const pr = context.payload.pull_request;
+            const repo = context.repo;
+            let card = null;
+
+            // ── PR 事件 ──────────────────────────────────────────────────────
+            if (ev === 'pull_request') {
+              const action = context.payload.action;
+              const author = pr.user.login;
+              const title  = pr.title;
+              const branch = pr.head.ref;
+              const url    = pr.html_url;
+              const number = pr.number;
+              const base   = pr.base.ref;
+
+              if (action === 'opened' || action === 'ready_for_review') {
+                card = {
+                  header: {
+                    title: { content: `🔔 新 PR 待审核 #${number}`, tag: 'plain_text' },
+                    template: 'blue',
+                  },
+                  elements: [
+                    { tag: 'div', text: { content: `**标题**：${title}\n**作者**：${author}\n**分支**：\`${branch}\` → \`${base}\``, tag: 'lark_md' }},
+                    { tag: 'action', actions: [
+                      { tag: 'button', text: { content: '查看 PR', tag: 'plain_text' }, url, type: 'primary' },
+                    ]},
+                    { tag: 'note', elements: [{ tag: 'plain_text', content: `${new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})} | CN KIS V2.0` }]},
+                  ],
+                };
+              } else if (action === 'review_requested') {
+                const reviewers = (context.payload.pull_request.requested_reviewers || []).map(r => r.login).join(', ');
+                card = {
+                  header: {
+                    title: { content: `👀 PR #${number} 请求审查`, tag: 'plain_text' },
+                    template: 'yellow',
+                  },
+                  elements: [
+                    { tag: 'div', text: { content: `**${title}**\n作者：${author} ｜ 请求审查人：${reviewers || '待定'}`, tag: 'lark_md' }},
+                    { tag: 'action', actions: [
+                      { tag: 'button', text: { content: '立即审查', tag: 'plain_text' }, url, type: 'primary' },
+                    ]},
+                  ],
+                };
+              } else if (action === 'closed' && pr.merged) {
+                card = {
+                  header: {
+                    title: { content: `✅ PR 已合并 #${number}`, tag: 'plain_text' },
+                    template: 'green',
+                  },
+                  elements: [
+                    { tag: 'div', text: { content: `**${title}**\n作者：${author} ｜ 合入 \`${base}\``, tag: 'lark_md' }},
+                    { tag: 'hr' },
+                    { tag: 'div', text: { content: `📢 **请团队成员同步最新代码：**\n在 Cursor 终端运行：\`./ops/scripts/dev-task.sh sync-task\`\n或告诉 AI：「帮我同步最新代码」`, tag: 'lark_md' }},
+                    { tag: 'action', actions: [
+                      { tag: 'button', text: { content: '查看合并记录', tag: 'plain_text' }, url, type: 'default' },
+                    ]},
+                  ],
+                };
+              } else if (action === 'closed' && !pr.merged) {
+                card = {
+                  header: {
+                    title: { content: `❌ PR 已关闭（未合并）#${number}`, tag: 'plain_text' },
+                    template: 'red',
+                  },
+                  elements: [
+                    { tag: 'div', text: { content: `**${title}**\n作者：${author}`, tag: 'lark_md' }},
+                    { tag: 'action', actions: [
+                      { tag: 'button', text: { content: '查看详情', tag: 'plain_text' }, url, type: 'default' },
+                    ]},
+                  ],
+                };
+              }
+            }
+
+            // ── Issue 事件（任务分配与认领）─────────────────────────────────────
+            else if (ev === 'issues') {
+              const action  = context.payload.action;
+              const issue   = context.payload.issue;
+              const number  = issue.number;
+              const title   = issue.title;
+              const author  = issue.user.login;
+              const url     = issue.html_url;
+              const labels  = (issue.labels || []).map(l => l.name).join(', ') || '无';
+              const assignee = issue.assignee?.login || '待认领';
+
+              if (action === 'opened') {
+                card = {
+                  header: {
+                    title: { content: `📋 新任务 #${number}`, tag: 'plain_text' },
+                    template: 'orange',
+                  },
+                  elements: [
+                    { tag: 'div', text: { content: `**${title}**\n创建人：${author} ｜ 标签：${labels} ｜ 负责人：${assignee}`, tag: 'lark_md' }},
+                    { tag: 'hr' },
+                    { tag: 'div', text: { content: `**认领后运行：**\n\`./ops/scripts/dev-task.sh start-task <工作台> ${number} <简述>\``, tag: 'lark_md' }},
+                    { tag: 'action', actions: [
+                      { tag: 'button', text: { content: '查看 Issue', tag: 'plain_text' }, url, type: 'primary' },
+                    ]},
+                  ],
+                };
+              } else if (action === 'assigned') {
+                const assignedTo = context.payload.assignee?.login || assignee;
+                card = {
+                  header: {
+                    title: { content: `✋ Issue #${number} 已认领`, tag: 'plain_text' },
+                    template: 'wathet',
+                  },
+                  elements: [
+                    { tag: 'div', text: { content: `**${title}**\n负责人：${assignedTo}`, tag: 'lark_md' }},
+                    { tag: 'action', actions: [
+                      { tag: 'button', text: { content: '查看详情', tag: 'plain_text' }, url, type: 'default' },
+                    ]},
+                  ],
+                };
+              } else if (action === 'closed') {
+                card = {
+                  header: {
+                    title: { content: `🎉 Issue #${number} 已完成`, tag: 'plain_text' },
+                    template: 'green',
+                  },
+                  elements: [
+                    { tag: 'div', text: { content: `**${title}**\n创建人：${author}`, tag: 'lark_md' }},
+                    { tag: 'note', elements: [{ tag: 'plain_text', content: `已关闭 · ${new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})}` }]},
+                  ],
+                };
+              }
+            }
+
+            // ── staging 推送（部署触发）────────────────────────────────────────
+            else if (ev === 'push') {
+              const commits = context.payload.commits || [];
+              const pusher  = context.payload.pusher?.name || 'unknown';
+              const commitSummary = commits.slice(0, 3).map(c => `• ${c.message.split('\n')[0]} (${c.author?.name || pusher})`).join('\n');
+              const compareUrl = context.payload.compare;
+
+              card = {
+                header: {
+                  title: { content: '🚀 staging 分支已更新，测试环境部署中...', tag: 'plain_text' },
+                  template: 'orange',
+                },
+                elements: [
+                  { tag: 'div', text: { content: `**推送者**：${pusher}\n**提交记录**（最近 3 条）：\n${commitSummary || '无提交信息'}`, tag: 'lark_md' }},
+                  { tag: 'hr' },
+                  { tag: 'div', text: { content: `⏱️ 测试环境约 **5 分钟** 后就绪\n🔗 测试地址：https://test-guide.data-infact.com`, tag: 'lark_md' }},
+                  { tag: 'action', actions: [
+                    { tag: 'button', text: { content: '查看提交记录', tag: 'plain_text' }, url: compareUrl, type: 'default' },
+                  ]},
+                ],
+              };
+            }
+
+            // ── workflow_run 结果（CI / 部署结果）──────────────────────────────
+            else if (ev === 'workflow_run') {
+              const run = context.payload.workflow_run;
+              const wfName = run.name;
+              const conclusion = run.conclusion;    // success / failure / cancelled
+              const runUrl = run.html_url;
+              const actor = run.triggering_actor?.login || 'unknown';
+              const headBranch = run.head_branch;
+
+              if (conclusion === 'failure') {
+                card = {
+                  header: {
+                    title: { content: `⚠️ ${wfName} 失败！`, tag: 'plain_text' },
+                    template: 'red',
+                  },
+                  elements: [
+                    { tag: 'div', text: { content: `**触发者**：${actor}\n**分支**：\`${headBranch}\`\n\n**处理方法**：在 Cursor 中告诉 AI：\n「CI 失败了，帮我查看错误并修复」`, tag: 'lark_md' }},
+                    { tag: 'action', actions: [
+                      { tag: 'button', text: { content: '查看错误日志', tag: 'plain_text' }, url: runUrl, type: 'danger' },
+                    ]},
+                  ],
+                };
+              } else if (conclusion === 'success' && wfName.includes('Deploy')) {
+                card = {
+                  header: {
+                    title: { content: `🎉 ${wfName} 成功！`, tag: 'plain_text' },
+                    template: 'green',
+                  },
+                  elements: [
+                    { tag: 'div', text: { content: `**触发者**：${actor}\n**分支**：\`${headBranch}\`\n测试环境已更新，可以验收了！`, tag: 'lark_md' }},
+                    { tag: 'action', actions: [
+                      { tag: 'button', text: { content: '前往测试环境', tag: 'plain_text' }, url: 'https://test-guide.data-infact.com', type: 'primary' },
+                      { tag: 'button', text: { content: '查看部署日志', tag: 'plain_text' }, url: runUrl, type: 'default' },
+                    ]},
+                  ],
+                };
+              }
+              // CI success 静默不通知（避免刷屏）
+            }
+
+            if (!card) {
+              core.info('当前事件无需通知，跳过');
+              return;
+            }
+
+            const payload = { msg_type: 'interactive', card: JSON.stringify(card) };
+
+            // ── 发送方式 1：自定义机器人 Webhook（推荐，最简单）────────────────
+            if (webhook) {
+              const resp = await fetch(webhook, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+              });
+              const result = await resp.json();
+              if (result.code === 0 || result.StatusCode === 0) {
+                core.info('飞书通知发送成功（Webhook 模式）');
+              } else {
+                core.warning(`飞书通知失败：${JSON.stringify(result)}`);
+              }
+            }
+            // ── 发送方式 2：App Bot（需要 FEISHU_APP_ID + FEISHU_APP_SECRET + FEISHU_DEV_GROUP_CHAT_ID）
+            else if (chatId && appId && appSecret) {
+              // 先获取 tenant_access_token
+              const tokenResp = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+              });
+              const tokenData = await tokenResp.json();
+              if (tokenData.code !== 0) {
+                core.warning(`获取飞书 token 失败：${JSON.stringify(tokenData)}`);
+                return;
+              }
+              const accessToken = tokenData.tenant_access_token;
+
+              const msgResp = await fetch('https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ receive_id: chatId, ...payload }),
+              });
+              const msgData = await msgResp.json();
+              if (msgData.code === 0) {
+                core.info('飞书通知发送成功（App Bot 模式）');
+              } else {
+                core.warning(`飞书通知失败：${JSON.stringify(msgData)}`);
+              }
+            }

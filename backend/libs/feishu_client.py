@@ -1624,9 +1624,12 @@ class FeishuClient:
         member_type: str = 'openid', member_role: str = 'admin',
     ) -> Dict:
         """
-        添加知识空间成员
+        添加知识空间成员（仅支持真实用户，member_type='openid'）。
 
-        使用 user_access_token（空间创建者身份）将其他人/应用添加为成员。
+        ⚠️ 重要限制：飞书不支持将 App/Bot 添加为知识库成员。
+        - member_type='appid' 在飞书 Wiki API 中不可用，调用会返回错误。
+        - 知识库操作唯一正确方式：用管理员的 user_access_token 代理执行。
+        - 此方法仅用于将真实飞书用户（openid）加为知识库成员。
         """
         user_token = self.get_user_token()
         return self._user_request(

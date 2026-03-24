@@ -1,0 +1,96 @@
+name: 新功能
+description: 为某个工作台新增一个功能或页面
+title: "feat(<工作台>): <简要描述功能>"
+labels: ["feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **填写前请确认**：开始开发前必须有此 Issue，通过 `./ops/scripts/dev-task.sh start-task <工作台> <Issue编号> <描述>` 启动任务。
+
+  - type: dropdown
+    id: workstation
+    attributes:
+      label: 工作台
+      description: 这个功能属于哪个工作台？
+      options:
+        - 秘书台（secretary）
+        - 财务台（finance）
+        - 研究台（research）
+        - 执行台（execution）
+        - 质量台（quality）
+        - 人事台（hr）
+        - 客户台（crm）
+        - 招募台（recruitment）
+        - 设备台（equipment）
+        - 物料台（material）
+        - 设施台（facility）
+        - 评估台（evaluator）
+        - 人员台（lab-personnel）
+        - 伦理台（ethics）
+        - 接待台（reception）
+        - 统管台（control-plane）
+        - 治理台（governance）
+        - 智能台（digital-workforce）
+        - 公共/跨工作台（common）
+    validations:
+      required: true
+
+  - type: input
+    id: module
+    attributes:
+      label: 功能模块
+      description: 属于工作台内的哪个模块或页面？
+      placeholder: 例如：样品管理 / 方案列表 / 受试者档案
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: 目标
+      description: 用一句话说清楚这个功能要实现什么。
+      placeholder: 例如：在质量台样品列表页增加按状态筛选的功能，让用户快速定位异常样品。
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 怎么判断这个功能做完了、做对了？列出可验证的条件。
+      placeholder: |
+        1. 样品列表页顶部出现状态筛选下拉框
+        2. 选择"异常"后，列表只显示状态为异常的样品
+        3. 选择"全部"后，恢复显示所有样品
+        4. 筛选状态在页面刷新后保持
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: sensitive_domain
+    attributes:
+      label: 是否涉及敏感域？
+      description: 勾选涉及的域，若涉及则 AI 和 Code Review 会执行额外检查。
+      options:
+        - label: 涉及飞书认证/登录/权限（identity/ 或 feishu_fetcher）
+        - label: 涉及知识资产（knowledge/ 或 ekb/lims 数据模型）
+        - label: 涉及部署或环境配置（ops/ 或 .github/workflows/）
+        - label: 以上都不涉及
+
+  - type: dropdown
+    id: risk_level
+    attributes:
+      label: 风险等级
+      options:
+        - 低（纯前端 UI 改动，无后端逻辑变更）
+        - 中（有 API 变更或数据库字段新增）
+        - 高（涉及认证、权限、生产数据操作）
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 补充说明（可选）
+      description: 相关截图、参考链接、背景信息

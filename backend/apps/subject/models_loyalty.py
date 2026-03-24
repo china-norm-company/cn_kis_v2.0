@@ -124,3 +124,63 @@ class SubjectDiary(models.Model):
 
     def __str__(self):
         return f'日记 Subject#{self.subject_id} {self.entry_date}'
+
+
+# ============================================================================
+# 受试者积分台账（SubjectPointsLedger）
+# ============================================================================
+class PointsEventType(models.TextChoices):
+    PAYMENT          = 'payment',          '礼金奖励'
+    REFERRAL         = 'referral',         '推荐奖励'
+    COMPLETION       = 'completion',       '项目完成奖励'
+    COMPLIANCE       = 'compliance',       '依从性奖励'
+    REDEMPTION       = 'redemption',       '积分兑换（扣除）'
+    ADJUSTMENT       = 'adjustment',       '人工调整'
+    EXPIRY           = 'expiry',           '积分过期（扣除）'
+    IMPORT_BACKFILL  = 'import_backfill',  'NAS历史导入补录'
+
+
+class SubjectPointsLedger(models.Model):
+    """
+    受试者积分台账（流水账）
+
+    每次积分变动记录一行，正值为入账，负值为出账。
+    subject_points_balance = SUM(delta) WHERE subject_id=X
+
+    设计原则：
+      - 永不删除行（仅软取消 is_voided）
+      - 余额通过聚合计算，不冗余存储（避免并发不一致）
+      - 对应礼金支付通过 payment_id 关联 t_subject_payment
+    """
+
+    class Meta:
+        db_table = 't_subject_points_ledger'
+        verbose_name = '受试者积分台账'
+        indexes = [
+            models.Index(fields=['subject_id', 'create_time']),
+            models.Index(fields=['event_type']),
+        ]
+
+    subject_id      = models.BigIntegerField('受试者ID', db_index=True)
+    payment_id      = models.BigIntegerField('关联支付ID', null=True, blank=True, db_index=True)
+    event_type      = models.CharField('事件类型', max_length=30,
+                                       choices=PointsEventType.choices,
+                                       default=PointsEventType.PAYMENT)
+    delta           = models.IntegerField('积分变动', help_text='正=入账，负=出账')
+    balance_after   = models.IntegerField('变动后余额', default=0,
+                                          help_text='快照余额，仅供展示参考；以聚合为准')
+    project_code    = models.CharField('关联项目', max_length=50, blank=True, default='')
+    note            = models.CharField('备注', max_length=200, blank=True, default='')
+    is_voided       = models.BooleanField('已作废', default=False)
+    voided_at       = models.DateTimeField('作废时间', null=True, blank=True)
+    voided_reason   = models.CharField('作废原因', max_length=200, blank=True, default='')
+    operator_id     = models.IntegerField('操作人ID', null=True, blank=True)
+    import_batch    = models.CharField('导入批次', max_length=30, blank=True, default='')
+
+    create_time     = models.DateTimeField('创建时间', auto_now_add=True)
+    update_time     = models.DateTimeField('更新时间', auto_now=True)
+
+    def __str__(self):
+        sign = '+' if self.delta >= 0 else ''
+        return f'积分#{self.subject_id} {sign}{self.delta} ({self.event_type})'
+

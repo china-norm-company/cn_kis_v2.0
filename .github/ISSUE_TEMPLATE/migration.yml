@@ -1,0 +1,61 @@
+name: 迁移/治理任务
+description: V2 迁移波次任务或系统治理类改动
+title: "[wave/<wave-number>] <简要描述>"
+labels: ["migration"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        此模板用于 V2 迁移波次任务（wave/0 ~ wave/5）及系统层面的治理改动。
+        非迁移的日常开发请使用"新功能"或"缺陷修复"模板。
+
+  - type: dropdown
+    id: wave
+    attributes:
+      label: 迁移波次
+      options:
+        - Wave 0 — 治理底座（规则/SSOT/部署）
+        - Wave 1 — 认证权限底座（identity/RBAC/token）
+        - Wave 2 — 核心业务主干（protocol/visit/subject/edc）
+        - Wave 3 — 知识数据平面（knowledge/PersonalContext）
+        - Wave 4 — 企业扩展域（ekuaibao/LIMS/外部系统）
+        - Wave 5 — AI 与治理台（agent_gateway/audit）
+        - 非迁移治理任务（协作规范/CI/文档）
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: 任务目标
+      description: 这个迁移任务要完成什么？
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 完成标准
+      description: 怎么验证这个任务完成了？
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: redlines
+    attributes:
+      label: V2 四条红线（必须逐项确认）
+      options:
+        - label: 飞书统一认证与 Token 持久化不被破坏
+          required: true
+        - label: 权限模型（5 维）不退化
+          required: true
+        - label: 知识资产不丢失（PersonalContext/KnowledgeEntry）
+          required: true
+        - label: 测试环境不混入生产数据
+          required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: 前置依赖（可选）
+      description: 这个任务依赖哪些 Issue 或 PR 先完成？

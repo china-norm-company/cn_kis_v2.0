@@ -46,8 +46,15 @@ from libs.feishu_client import FeishuAPIError
 
 logger = logging.getLogger(__name__)
 
-# 四源权限预检能力键（与 plan 一致）
-PREFLIGHT_CAPABILITIES = ('mail', 'im', 'calendar', 'task')
+# 八源权限预检能力键（与 plan 一致）
+# 前 4 项：API 实探；后 4 项：先 API 实探 wiki，其余用 scope 字符串校验
+PREFLIGHT_CAPABILITIES = ('mail', 'im', 'calendar', 'task', 'wiki', 'docx', 'drive_file')
+
+# 后 4 项预检所需的 feishu_scope 关键字映射（子串匹配即视为已授权）
+PREFLIGHT_SCOPE_REQUIRED = {
+    'docx': 'docx:document',
+    'drive_file': 'drive:file',
+}
 
 # 缓存有效期（分钟）
 CACHE_TTL_MINUTES = 30
@@ -2463,16 +2470,21 @@ def run_feishu_preflight(account: Account) -> Dict[str, Any]:
     登录后四源权限预检：并发探测 mail / calendar / task / im 是否可用。
 
     四源请求并发执行（ThreadPoolExecutor），将总耗时从串行 ~4×RTT 降为 ~1×RTT。
+    wiki 通过实际 API 探测；docx / drive_file / minutes 通过存储的 feishu_scope 字符串校验
+    （无法在无数据的账号上做 API 探测，scope 字符串在每次 OAuth 登录时持久化）。
 
     返回: {
         'passed': bool,
-        'granted_capabilities': {'mail': bool, 'im': bool, 'calendar': bool, 'task': bool},
+        'granted_capabilities': {
+            'mail': bool, 'im': bool, 'calendar': bool, 'task': bool,
+            'wiki': bool, 'docx': bool, 'drive_file': bool, 'minutes': bool,
+        },
         'missing': ['mail', ...],
         'message': str,
         'requires_reauth': bool,
         'auth_source': 'feishu' | 'non_feishu' | 'feishu_expired',
         # auth_source 说明：
-        #   feishu        — 飞书 OAuth 登录且 token 有效，正常做四源探测
+        #   feishu        — 飞书 OAuth 登录且 token 有效，正常做探测
         #   non_feishu    — 微信/短信等非飞书登录，无飞书 token，跳过探测（不应展示重授权）
         #   feishu_expired — 曾经飞书登录但 token 已失效，需重授权
     }
@@ -2510,7 +2522,17 @@ def run_feishu_preflight(account: Account) -> Dict[str, Any]:
     token_record = FeishuUserToken.objects.filter(account_id=account.id).first()
     now = timezone.now()
 
-    # 四源探测函数，每个返回 (capability_name, ok, error_code)
+    # ── 存储的 scope 字符串（用于 docx/drive_file/minutes 的 scope 校验）────────────
+    stored_scope = (getattr(token_record, 'feishu_scope', '') or '') if token_record else ''
+
+    def _scope_granted(required: str) -> bool:
+        """检查 stored_scope 中是否包含指定 scope 关键字。"""
+        if not stored_scope:
+            # 历史 token 尚无 scope 记录 → 保守地视为"未授权"，提示用户重新登录
+            return False
+        return required in stored_scope
+
+    # ── 四源 API 探测函数 ────────────────────────────────────────────────────────
     def _probe_mail():
         try:
             feishu_client.list_user_mails(user_token, page_size=1)
@@ -2549,17 +2571,36 @@ def run_feishu_preflight(account: Account) -> Dict[str, Any]:
         except Exception:
             return 'im', False, None
 
-    probes = [_probe_mail, _probe_calendar, _probe_task, _probe_im]
+    def _probe_wiki():
+        """尝试用 user_access_token 列举知识库空间，检测 wiki:wiki scope。"""
+        try:
+            feishu_client._user_request(
+                'GET', 'wiki/v2/spaces', user_token, params={'page_size': 1}
+            )
+            return 'wiki', True, None
+        except FeishuAPIError as e:
+            return 'wiki', False, str(e.code)
+        except Exception:
+            return 'wiki', False, None
+
+    api_probes = [_probe_mail, _probe_calendar, _probe_task, _probe_im, _probe_wiki]
     granted = {}
     first_error_code = None
 
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = {executor.submit(probe): probe for probe in probes}
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(probe): probe for probe in api_probes}
         for future in as_completed(futures):
             cap, ok, err_code = future.result()
             granted[cap] = ok
             if not ok and err_code and first_error_code is None:
                 first_error_code = err_code
+
+    # ── Scope 字符串校验（docx / drive_file / minutes）────────────────────────
+    for cap, required_scope in PREFLIGHT_SCOPE_REQUIRED.items():
+        ok = _scope_granted(required_scope)
+        granted[cap] = ok
+        if not ok and first_error_code is None:
+            first_error_code = f'scope_missing:{required_scope}'
 
     result['granted_capabilities'] = granted
     result['missing'] = [k for k in PREFLIGHT_CAPABILITIES if not granted.get(k)]
@@ -2574,11 +2615,16 @@ def run_feishu_preflight(account: Account) -> Dict[str, Any]:
         if result['passed']:
             token_record.last_error_code = ''
         elif first_error_code:
-            token_record.last_error_code = first_error_code
+            token_record.last_error_code = str(first_error_code)[:32]
         token_record.save(update_fields=['granted_capabilities', 'last_preflight_at', 'requires_reauth', 'last_error_code'])
 
     if not result['passed']:
-        result['message'] = '部分飞书权限不可用，请使用子衿重新授权：' + '、'.join(result['missing'])
+        missing_labels = {
+            'mail': '邮件', 'im': 'IM消息', 'calendar': '日历', 'task': '任务',
+            'wiki': '知识库', 'docx': '文档', 'drive_file': '云盘文件',
+        }
+        missing_cn = [missing_labels.get(k, k) for k in result['missing']]
+        result['message'] = '部分飞书权限不可用，请使用子衿重新授权：' + '、'.join(missing_cn)
     return result
 
 
@@ -2593,7 +2639,7 @@ def get_feishu_auth_monitor_stats() -> Dict[str, Any]:
     - scope_error_count：99991672（scope/auth 错误）总数
     - issuer_distribution：各 issuer_app_id 签发数量
     - never_preflight_count：从未做过预检（last_preflight_at 为空）的数量
-    - missing_capability_breakdown：按缺失能力分类统计（mail/im/calendar/task）
+    - missing_capability_breakdown：按缺失能力分类统计（mail/im/calendar/task/wiki/docx/drive_file/minutes）
     """
     from django.db.models import Count, Q
 

@@ -13,7 +13,7 @@ from celery import shared_task
 
 logger = logging.getLogger(__name__)
 
-EMBEDDING_DIMENSION = 1024  # 统一契约：jinaai/jina-embeddings-v3 本地 1024 维
+EMBEDDING_DIMENSION = 1024  # 统一契约：Qwen3-embedding 内网 GPU 1024 维
 
 
 def _get_effective_dim(embedding: list) -> int:
@@ -241,85 +241,35 @@ def _prepare_embedding_text(entry) -> str:
 
 def _get_embedding(text: str):
     """
-    向量嵌入策略（统一 1024 维）：
-    主通道：本地 Qwen3 Embedding（内网 GPU 服务器，1024维）
-    降级1：本地 fastembed jinaai/jina-embeddings-v3（1024维，无需 API Key）
-    降级2：Jina API（在线，1024维）
-    降级3：火山云 ARK
+    向量嵌入（唯一授权通道）：
+    内网 GPU 算力中心 Qwen3-embedding（1024 维）。
+    失败时抛出 RuntimeError，不允许降级到任何其他模型。
+    不同 embedding 模型的向量空间不兼容，静默降级会污染索引导致检索结果错误。
     """
-    strategy = os.getenv('KNOWLEDGE_EMBEDDING_STRATEGY', 'qwen3').strip().lower()
-
-    # 主通道：本地 Qwen3 Embedding（GPU 服务器，1024维，最优质量）
-    if strategy in ('qwen3', 'fastembed', 'auto', 'local'):
-        try:
-            import requests as _req
-            from django.conf import settings as _s
-            qwen3_url = getattr(_s, 'QWEN3_EMBEDDING_URL',
-                                'http://10.0.12.30:18099/Embedding/v1/embeddings')
-            qwen3_key = getattr(_s, 'QWEN3_EMBEDDING_KEY',
-                                '7ed12a89-fe21-4ed1-9616-1f6f27e64637')
-            resp = _req.post(
-                qwen3_url,
-                json={'input': text},
-                headers={'Authorization': f'Bearer {qwen3_key}'},
-                timeout=10,
-                verify=False,
-            )
-            data = resp.json()
-            if 'data' in data and data['data']:
-                emb = data['data'][0]['embedding']
-                logger.debug('Qwen3 embedding 成功 dim=%d', len(emb))
-                return emb
-        except Exception as e:
-            logger.debug('Qwen3 本地 embedding 失败: %s，降级到 fastembed', e)
-
-    # 降级1：本地 fastembed（jinaai/jina-embeddings-v3，1024 维）
-    if strategy in ('fastembed', 'auto', 'local'):
-        try:
-            from fastembed import TextEmbedding
-            _fastembed_model = getattr(_get_embedding, '_cached_model', None)
-            if _fastembed_model is None:
-                _fastembed_model = TextEmbedding('jinaai/jina-embeddings-v3')
-                _get_embedding._cached_model = _fastembed_model
-            result = list(_fastembed_model.embed([text]))
-            if result:
-                emb = result[0].tolist() if hasattr(result[0], 'tolist') else list(result[0])
-                logger.debug('fastembed embedding 成功 dim=%d', len(emb))
-                return emb
-        except Exception as e:
-            logger.debug('fastembed 本地 embedding 失败: %s', e)
-
-    # 降级2：Jina AI API（在线，1024 维）
     try:
-        import requests
-        from django.conf import settings as _settings
-        jina_key = getattr(_settings, 'JINA_API_KEY', '')
-        jina_model = getattr(_settings, 'JINA_EMBEDDING_MODEL', 'jina-embeddings-v3')
-        jina_dim = getattr(_settings, 'JINA_EMBEDDING_DIM', 1024)
-        jina_task = getattr(_settings, 'JINA_EMBEDDING_TASK', 'retrieval.passage')
-        if jina_key:
-            resp = requests.post(
-                'https://api.jina.ai/v1/embeddings',
-                json={'model': jina_model, 'input': [text], 'dimensions': jina_dim, 'task': jina_task},
-                headers={'Authorization': f'Bearer {jina_key}'},
-                timeout=15,
-            )
-            data = resp.json()
-            if 'data' in data and data['data']:
-                return data['data'][0]['embedding']
+        import requests as _req
+        from django.conf import settings as _s
+        qwen3_url = getattr(_s, 'QWEN3_EMBEDDING_URL',
+                            'http://11nzxz3591157.vicp.fun:49846/Embedding/v1/embeddings')
+        qwen3_key = getattr(_s, 'QWEN3_EMBEDDING_KEY',
+                            '7ed12a89-fe21-4ed1-9616-1f6f27e64637')
+        resp = _req.post(
+            qwen3_url,
+            json={'input': text},
+            headers={'Authorization': f'Bearer {qwen3_key}'},
+            timeout=10,
+            verify=False,
+        )
+        data = resp.json()
+        if 'data' in data and data['data']:
+            emb = data['data'][0]['embedding']
+            logger.debug('Qwen3 embedding 成功 dim=%d', len(emb))
+            return emb
+        raise RuntimeError(f'Qwen3 embedding 返回无效响应: {data}')
+    except RuntimeError:
+        raise
     except Exception as e:
-        logger.debug('Jina API embedding 失败: %s', e)
-
-    # 降级3：火山云 ARK
-    try:
-        from apps.agent_gateway.services import get_ark_embedding
-        embedding, trace = get_ark_embedding(text)
-        if embedding:
-            return embedding
-    except Exception as e:
-        logger.debug('ARK embedding failed: %s', e)
-
-    return None
+        raise RuntimeError(f'Qwen3 embedding 服务不可用: {e}') from e
 
 
 def _store_embedding(entry_id: int, embedding: list, entry) -> str:
