@@ -20,6 +20,7 @@ import { StorageHierarchyPage } from './pages/StorageHierarchyPage'
 import { RetentionManagementPage } from './pages/RetentionManagementPage'
 import { MaterialScanIssuePage } from './pages/MaterialScanIssuePage'
 import { SampleDistributionPage } from './pages/SampleDistributionPage'
+import SchedulePage from './pages/SchedulePage'
 import { useApiInit } from './hooks/useApiInit'
 
 export default function App() {
@@ -35,6 +36,7 @@ export default function App() {
           <Route element={<AppLayout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/schedule" element={<SchedulePage />} />
             <Route path="/scan-issue" element={<MaterialScanIssuePage />} />
             <Route path="/products" element={<ProductLedgerPage />} />
             <Route path="/consumables" element={<ConsumableLedgerPage />} />

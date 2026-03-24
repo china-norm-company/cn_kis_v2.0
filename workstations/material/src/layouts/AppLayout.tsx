@@ -1,5 +1,5 @@
 import { Outlet } from 'react-router-dom'
-import { LayoutDashboard, Package, Beaker, Warehouse, ArrowRightLeft, AlertTriangle, FlaskConical, ClipboardCheck, PackageCheck, Layers, Trash2, Archive, ClipboardList, FolderTree, Thermometer, ShieldCheck, ScanLine, PackageOpen } from 'lucide-react'
+import { LayoutDashboard, Package, Beaker, Warehouse, ArrowRightLeft, AlertTriangle, FlaskConical, ClipboardCheck, PackageCheck, Layers, Trash2, Archive, ClipboardList, FolderTree, Thermometer, ShieldCheck, ScanLine, PackageOpen, Calendar } from 'lucide-react'
 import { FeishuAuthProvider, useFeishuContext, LoginFallback, createWorkstationFeishuConfig } from '@cn-kis/feishu-sdk'
 import { MobileWorkstationLayout, type MobileWorkstationNavItem } from '@cn-kis/ui-kit'
 
@@ -7,6 +7,7 @@ const FEISHU_CONFIG = createWorkstationFeishuConfig('material')
 
 const navItems = [
   { path: '/dashboard', label: '仪表盘', icon: LayoutDashboard, permissions: ['resource.material.read'] },
+  { path: '/schedule', label: '我的排程', icon: Calendar, permissions: ['scheduling.plan.read'] },
   { path: '/scan-issue', label: '扫码出库', icon: ScanLine, permissions: ['resource.inventory.write'] },
   { path: '/products', label: '产品台账', icon: Package, permissions: ['resource.material.read'] },
   { path: '/consumables', label: '耗材管理', icon: Beaker, permissions: ['resource.material.read'] },

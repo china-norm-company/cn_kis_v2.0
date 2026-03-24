@@ -194,6 +194,7 @@ export type {
   FeishuAlertResult,
   FeishuApprovalResult,
   AlertCheckResult,
+  ProductReturnItem,
 } from './modules/material'
 export type {
   EquipmentDashboard,
