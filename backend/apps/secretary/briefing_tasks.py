@@ -711,7 +711,6 @@ def _build_weekly_card(m: dict, insight: str) -> dict:
 
 def _send_to_dev_group(card: dict) -> None:
     """推送到飞书开发小组群"""
-    import json
     try:
         from libs.feishu_client import FeishuClient
         client = FeishuClient()
@@ -719,10 +718,11 @@ def _send_to_dev_group(card: dict) -> None:
         if not chat_id:
             logger.warning('FEISHU_DEV_GROUP_CHAT_ID 未配置，无法推送简报')
             return
+        # send_card_message 内部会 json.dumps(card)，这里直接传 dict，不能再 dumps
         client.send_card_message(
             receive_id=chat_id,
             receive_id_type='chat_id',
-            card=json.dumps(card),
+            card=card,
         )
         logger.info('简报推送成功')
     except Exception as e:

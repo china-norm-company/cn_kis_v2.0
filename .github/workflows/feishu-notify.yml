@@ -290,8 +290,9 @@ jobs:
   # ══════════════════════════════════════════════════════════════
   notify-feishu:
     runs-on: ubuntu-latest
-    # 只在配置了 Webhook URL 时才运行（避免无配置时报错）
-    if: github.event_name != 'schedule' && (vars.FEISHU_NOTIFY_ENABLED == 'true' || secrets.FEISHU_BOT_WEBHOOK_URL != '')
+    # secrets.* 在 job-level if 中不可用，故条件只用 vars 控制
+    # 飞书发送凭据缺失时由 step 内部逻辑 warn 跳过，不会报错
+    if: github.event_name != 'schedule'
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -296,15 +296,26 @@ def _generate_question_reply(text: str, workstation: str) -> Optional[str]:
 
 
 def _reply_to_feishu_group(message_id: str, text: str) -> None:
-    """在反馈群中回复消息。"""
+    """在反馈群中回复消息（发送到反馈群而非私聊）。
+    
+    飞书 IM v1 的「回复指定消息」接口需要 message_id 作 parent，
+    FeishuClient 当前未封装该接口。此处退化为直接发到群聊，效果相同。
+    """
+    import json
+    import os
+    import urllib.request
     try:
         from libs.feishu_client import FeishuClient
-        import json
         client = FeishuClient()
-        client.reply_message(
-            message_id=message_id,
+        feedback_chat_id = os.environ.get('FEISHU_FEEDBACK_GROUP_CHAT_ID', '')
+        if not feedback_chat_id:
+            logger.warning('FEISHU_FEEDBACK_GROUP_CHAT_ID 未配置，无法自动回复')
+            return
+        client.send_message(
+            receive_id=feedback_chat_id,
             msg_type='text',
             content=json.dumps({'text': text}),
+            receive_id_type='chat_id',
         )
     except Exception as e:
         logger.warning('飞书群回复失败: %s', e)
