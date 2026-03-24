@@ -208,7 +208,8 @@ def _create_github_issue(feedback, label: str = '') -> Optional[dict]:
     import urllib.request
     import json
 
-    token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GITHUB_PAT', '')
+    # GH_TOKEN_ISSUES：GitHub Secrets 中的 PAT（不能用 GITHUB_ 前缀）
+    token = os.environ.get('GH_TOKEN_ISSUES') or os.environ.get('GITHUB_TOKEN', '')
     owner = os.environ.get('GITHUB_REPO_OWNER', 'china-norm-company')
     repo  = os.environ.get('GITHUB_REPO_NAME', 'cn_kis_v2.0')
 
