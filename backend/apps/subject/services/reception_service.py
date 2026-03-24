@@ -19,6 +19,7 @@ from ..models import Subject, Enrollment
 from ..models_execution import (
     SubjectCheckin, CheckinStatus,
     SubjectAppointment, AppointmentStatus,
+    SubjectProjectSC,
 )
 
 logger = logging.getLogger(__name__)
@@ -894,3 +895,56 @@ def _checkin_to_dict(checkin: SubjectCheckin) -> dict:
         'location': checkin.location,
         'notes': checkin.notes,
     }
+
+
+def _normalize_sc_number(raw: str) -> str:
+    """将 SC001、001、1 等格式统一为 001。"""
+    s = (raw or '').strip().upper()
+    if not s:
+        return ''
+    if s.startswith('SC'):
+        s = s[2:].strip()
+    if s.isdigit():
+        return f'{int(s):03d}'
+    return s
+
+
+def ensure_project_sc_from_import(
+    subject_id: int,
+    project_code: str,
+    sc_number: Optional[str] = None,
+    rd_number: Optional[str] = None,
+    operator_id: Optional[int] = None,
+) -> None:
+    """
+    导入预约时若 SC/RD 非空，创建或更新 SubjectProjectSC，使页面直接显示导入数据。
+    仅填充空字段，不覆盖已有值。
+    """
+    if not project_code:
+        return
+    sc_val = _normalize_sc_number(sc_number) if sc_number else ''
+    rd_val = (rd_number or '').strip()
+    rec, created = SubjectProjectSC.objects.get_or_create(
+        subject_id=subject_id,
+        project_code=project_code,
+        is_deleted=False,
+        defaults={
+            'sc_number': sc_val or '',
+            'rd_number': rd_val if rd_val else '',
+            'enrollment_status': '正式入组' if rd_val else '',
+            'created_by_id': operator_id,
+            'updated_by_id': operator_id,
+        },
+    )
+    if not created:
+        update_fields = ['update_time', 'updated_by_id']
+        if operator_id is not None:
+            rec.updated_by_id = operator_id
+        if sc_val and not (rec.sc_number or '').strip():
+            rec.sc_number = sc_val
+            update_fields.append('sc_number')
+        if rd_val and not (rec.rd_number or '').strip():
+            rec.rd_number = rd_val
+            rec.enrollment_status = '正式入组'
+            update_fields.extend(['rd_number', 'enrollment_status'])
+        rec.save(update_fields=update_fields)

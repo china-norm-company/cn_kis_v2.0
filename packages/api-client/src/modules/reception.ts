@@ -26,12 +26,6 @@ export interface QueueItem {
   liaison?: string
   /** 备注 */
   notes?: string
-<<<<<<< HEAD
-=======
-  visit_point?: string
-  project_name?: string
-  project_code?: string
->>>>>>> origin/main
   task_type: 'pre_screening' | 'screening' | 'visit' | 'extra_visit' | 'walk_in'
   status: 'waiting' | 'checked_in' | 'in_progress' | 'checked_out' | 'no_show'
   checkin_id: number | null
@@ -175,7 +169,7 @@ export const receptionApi = {
   },
 
   /** 快速签到 */
-  quickCheckin(data: { subject_id: number; method?: string; location?: string }) {
+  quickCheckin(data: { subject_id: number; method?: string; location?: string; project_code?: string }) {
     return api.post<CheckinResult>('/reception/quick-checkin', data)
   },
 

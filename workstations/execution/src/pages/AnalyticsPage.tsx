@@ -8,7 +8,6 @@
  */
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { PermissionGuard } from '@cn-kis/feishu-sdk'
 import { workorderApi, protocolApi, resourceApi } from '@cn-kis/api-client'
 import type { ResourceStatusOverview } from '@cn-kis/api-client'
 import { StatCard, Tabs, Empty, Button } from '@cn-kis/ui-kit'
@@ -587,15 +586,13 @@ function AlertConfigPanel() {
           <Shield className="w-5 h-5 text-slate-600" />
           <h3 className="text-base font-semibold text-slate-700">告警阈值配置</h3>
         </div>
-        <PermissionGuard permission="execution.analytics.manage">
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="flex min-h-10 items-center gap-1 px-3 py-1.5 text-xs bg-primary-50 text-primary-600 hover:bg-primary-100 rounded-lg"
-            data-testid="add-alert-btn"
-          >
-            <Plus className="w-3.5 h-3.5" /> 新增告警
-          </button>
-        </PermissionGuard>
+        <button
+          onClick={() => setShowAddForm(!showAddForm)}
+          className="flex min-h-10 items-center gap-1 px-3 py-1.5 text-xs bg-primary-50 text-primary-600 hover:bg-primary-100 rounded-lg"
+          data-testid="add-alert-btn"
+        >
+          <Plus className="w-3.5 h-3.5" /> 新增告警
+        </button>
       </div>
 
       {showAddForm && (

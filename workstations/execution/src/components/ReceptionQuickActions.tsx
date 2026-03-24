@@ -6,7 +6,7 @@ import {
   QrCode, UserPlus, Printer, CalendarSearch,
   MessageSquare, AlertTriangle,
 } from 'lucide-react'
-import SmartQRScanner from '../components/QRScanner'
+import QRScanner from '../components/QRScanner'
 
 type ModalType = 'scan' | 'new-subject' | 'print' | 'appointment' | 'ticket' | 'incident' | null
 
@@ -53,33 +53,11 @@ export default function ReceptionQuickActions() {
 
 function ScanModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const qc = useQueryClient()
-
-  const checkinMutation = useMutation({
-    mutationFn: (subjectId: number) => receptionApi.quickCheckin({ subject_id: subjectId, method: 'qr_scan' }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['reception'] })
-      qc.invalidateQueries({ queryKey: ['queue'] })
-    },
-  })
-
-  const checkoutMutation = useMutation({
-    mutationFn: (checkinId: number) => receptionApi.quickCheckout(checkinId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['reception'] })
-      qc.invalidateQueries({ queryKey: ['queue'] })
-    },
-  })
-
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="扫码签到 / 签出" size="md">
-      <SmartQRScanner
-        workstation="execution"
-        onAction={(action, data) => {
-          if (action === 'checkin' && data.subject_id) {
-            checkinMutation.mutate(data.subject_id as number)
-          } else if (action === 'checkout' && data.checkin_id) {
-            checkoutMutation.mutate(data.checkin_id as number)
-          }
+    <Modal isOpen={isOpen} onClose={onClose} title="扫码签到" size="md">
+      <QRScanner
+        onResolved={() => {
+          qc.invalidateQueries({ queryKey: ['reception'] })
         }}
       />
     </Modal>

@@ -10,10 +10,10 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useFeishuContext, PermissionGuard, getWorkstationUrl } from '@cn-kis/feishu-sdk'
-import { workorderApi, subjectApi, digitalWorkforcePortalApi } from '@cn-kis/api-client'
+import { useFeishuContext } from '@cn-kis/feishu-sdk'
+import { workorderApi, subjectApi } from '@cn-kis/api-client'
 import type { WorkOrder } from '@cn-kis/api-client'
-import { DataTable, Badge, Empty, Modal, Button, DigitalWorkerSuggestionBar } from '@cn-kis/ui-kit'
+import { DataTable, Badge, Empty, Modal, Button } from '@cn-kis/ui-kit'
 import { Plus, Search } from 'lucide-react'
 
 const STATUS_OPTIONS = [
@@ -186,39 +186,14 @@ export default function WorkOrderPage() {
           <h2 className="text-lg font-semibold text-slate-800 md:text-xl">工单管理</h2>
           <p className="text-sm text-slate-500 mt-1">创建、分发、跟踪、关闭工单</p>
         </div>
-        <PermissionGuard permission="workorder.workorder.create">
-          <button
-            onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700"
-          >
-            <Plus className="w-4 h-4" />
-            创建工单
-          </button>
-        </PermissionGuard>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700"
+        >
+          <Plus className="w-4 h-4" />
+          创建工单
+        </button>
       </div>
-
-      {/* 数字员工智能派单建议 */}
-      {(() => {
-        const pendingItems = items.filter((wo: WorkOrder) => wo.status === 'pending' && !wo.assigned_to)
-        if (pendingItems.length === 0) return null
-        return (
-          <DigitalWorkerSuggestionBar
-            items={pendingItems.slice(0, 5).map((wo: WorkOrder) => ({
-              suggestion_id: `workorder-assign-${wo.id}`,
-              type: 'auto_assign',
-              title: `工单「${(wo.title || '').slice(0, 30)}」待分配`,
-              summary: '工单匹配员可推荐执行人与设备，一键完成派单。',
-              business_object_type: 'workorder',
-              business_object_id: String(wo.id),
-              role_code: 'workorder_matcher',
-              actions: [
-                { action_id: 'view', label: '查看工单', endpoint: getWorkstationUrl('execution', `#/workorders/${wo.id}`) },
-              ],
-            }))}
-            onAction={(item) => navigate(`/workorders/${item.business_object_id}`)}
-          />
-        )
-      })()}
 
       {/* 状态筛选 */}
       <div className="flex gap-2 overflow-x-auto pb-1">
