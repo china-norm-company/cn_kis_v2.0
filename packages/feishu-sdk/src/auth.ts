@@ -92,9 +92,7 @@ const DEFAULT_USER_SCOPES = [
 
   // ── 即时通讯（IM）──────────────────────────────────────────────────────────
   'im:chat:readonly',                     // 群组/会话列表
-  'im:message:readonly',                  // 消息列表（消息头）
-  'im:message.group_msg:readonly',        // 群消息完整正文（静默失败根源）
-  'im:message.p2p_msg:readonly',          // 私信完整正文（静默失败根源）
+  'im:message:readonly',                  // 消息列表及正文（用户委托权限，覆盖群聊+单聊）
 
   // ── 邮件 ──────────────────────────────────────────────────────────────────
   'mail:user_mailbox',                    // 邮箱基础访问
