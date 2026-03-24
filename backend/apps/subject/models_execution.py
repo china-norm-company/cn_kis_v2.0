@@ -116,6 +116,8 @@ class SubjectPayment(models.Model):
         verbose_name = '礼金支付'
         indexes = [
             models.Index(fields=['subject', 'status']),
+            models.Index(fields=['project_code']),
+            models.Index(fields=['nas_import_batch']),
         ]
 
     subject = models.ForeignKey('subject.Subject', on_delete=models.CASCADE, related_name='payments')
@@ -131,6 +133,39 @@ class SubjectPayment(models.Model):
     payment_method = models.CharField('支付方式', max_length=50, blank=True, default='', help_text='微信/银行转账/现金')
     transaction_id = models.CharField('交易号', max_length=100, blank=True, default='')
     notes = models.TextField('备注', blank=True, default='')
+
+    # ── NAS 历史档案导入扩展字段 ─────────────────────────────────────────
+    bank_account_encrypted = models.TextField(
+        '收款账号（加密）', blank=True, default='',
+        help_text='AES Fernet 加密的银行卡号，使用 libs.field_encryption 解密',
+    )
+    bank_account_last4 = models.CharField(
+        '收款账号后4位', max_length=4, blank=True, default='',
+        help_text='明文后4位，用于展示和模糊匹配',
+    )
+    platform = models.CharField(
+        '支付平台', max_length=50, blank=True, default='',
+        help_text='八羿/捷仕达/安徽创启/安徽斯长/宿钲/融辰/怀宁青枫',
+        db_index=True,
+    )
+    project_code = models.CharField(
+        '项目代码', max_length=50, blank=True, default='',
+        db_index=True,
+    )
+    nas_paid_date = models.DateField(
+        'NAS实际支付日期', null=True, blank=True,
+        help_text='从文件名解析的实际支付日期',
+    )
+    nas_import_batch = models.CharField(
+        'NAS导入批次', max_length=30, blank=True, default='',
+        help_text='格式 nas-YYYY-MM-DD',
+        db_index=True,
+    )
+    # ── 积分关联 ──────────────────────────────────────────────────────────
+    points_awarded = models.IntegerField(
+        '奖励积分', default=0,
+        help_text='本次支付奖励的积分（1元=1分）',
+    )
 
     created_by_id = models.IntegerField('创建人ID', null=True, blank=True)
     create_time = models.DateTimeField('创建时间', auto_now_add=True)

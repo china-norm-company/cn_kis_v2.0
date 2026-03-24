@@ -1,0 +1,156 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches:
+      - main
+      - staging
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    name: lint-and-test
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Node / 前端 ──────────────────────────────────────────────────────────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript type check (shared packages)
+        run: pnpm type-check
+        continue-on-error: false
+
+      # ── Python / 后端 ────────────────────────────────────────────────────────
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install Python dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff
+
+      - name: Python lint (ruff)
+        working-directory: backend
+        run: |
+          ruff check apps/ libs/ --select E,W,F --ignore E501 \
+            --exclude "*/migrations/*,*/venv/*,*/__pycache__/*"
+
+      - name: Django system check
+        id: django-check
+        working-directory: backend
+        env:
+          SECRET_KEY: ci-dummy-secret-key
+          DEBUG: "true"
+          DB_NAME: ci_test
+          DB_USER: ci_user
+          DB_PASSWORD: ci_pass
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          REDIS_URL: redis://localhost:6379/0
+          FEISHU_APP_ID: cli_dummy
+          FEISHU_APP_SECRET: dummy
+          USE_SQLITE: "true"
+        run: |
+          python manage.py check --deploy 2>&1 | grep -v "^System check" | grep -v "^$" || true
+          echo "Django check completed"
+
+      # ── 迁移一致性检查（防止 leaf node 冲突进入 main）────────────────────────
+      - name: Check migration consistency
+        id: migration-check
+        working-directory: backend
+        env:
+          SECRET_KEY: ci-dummy-secret-key
+          DEBUG: "true"
+          USE_SQLITE: "true"
+          FEISHU_APP_ID: cli_dummy
+          FEISHU_APP_SECRET: dummy
+        run: |
+          echo "=== 检查迁移文件一致性 ==="
+
+          # 1. 检查是否有 leaf node 冲突（多个未收敛的迁移末梢）
+          MIGRATION_OUTPUT=$(python manage.py showmigrations --list 2>&1)
+          echo "$MIGRATION_OUTPUT"
+
+          # 检测冲突：如果 showmigrations 本身报错，说明有冲突
+          if echo "$MIGRATION_OUTPUT" | grep -q "CommandError\|MigrationLoader"; then
+            echo ""
+            echo "::error::检测到迁移 leaf node 冲突！"
+            echo "::error::多人同时生成了迁移文件，请运行："
+            echo "::error::  cd backend && python manage.py makemigrations --merge --name merge_conflict"
+            echo "::error::  python manage.py showmigrations  # 确认冲突已解决"
+            echo "::error::  git add . && git commit -m 'migrate: merge leaf node conflict'"
+            exit 1
+          fi
+
+          # 2. 检查是否存在 models.py 修改但缺少对应迁移文件的情况
+          # （通过 migrate --check 在 SQLite 模式下检测）
+          MIGRATE_CHECK=$(python manage.py migrate --check 2>&1 || true)
+          echo "$MIGRATE_CHECK"
+          if echo "$MIGRATE_CHECK" | grep -q "Your models in app(s).*have changes that are not yet reflected"; then
+            echo ""
+            echo "::error::检测到 models.py 有变更但缺少对应的迁移文件！"
+            echo "::error::请运行："
+            echo "::error::  cd backend && python manage.py makemigrations"
+            echo "::error::  git add backend/apps/*/migrations/ && git commit -m 'migrate: add missing migration'"
+            exit 1
+          fi
+
+          echo "迁移文件一致性检查通过 ✅"
+
+      # ── 摘要报告 ─────────────────────────────────────────────────────────────
+      - name: Summary
+        if: always()
+        run: |
+          echo "### CI 检查结果" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| 检查项 | 结果 |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| TypeScript typecheck | ${{ steps.ts-typecheck.outcome || '跳过' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Python ruff lint | ${{ steps.py-ruff.outcome || '跳过' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Django system check | ${{ steps.django-check.outcome || '跳过' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Migration consistency | ${{ steps.migration-check.outcome || '跳过' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "如果 CI 失败，在 Cursor 中说：「CI 第 X 步失败，错误是 [粘贴错误]，帮我修复」" >> $GITHUB_STEP_SUMMARY

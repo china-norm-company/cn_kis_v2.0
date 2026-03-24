@@ -1172,12 +1172,20 @@ def _download_and_save_mail_attachments(
                 user_id=user_id, source_type='mail_attachment', source_id=source_id_attach,
             ).exists():
                 continue
+            # raw_content 填充附件摘要信息（让 process_pending_contexts 不过滤掉此条）
+            attach_raw_content = (
+                f'邮件附件: {att_name or att_id}\n'
+                f'邮件主题: {mail_meta.get("subject", "")}\n'
+                f'发件人: {mail_meta.get("sender", "")}\n'
+                f'文件大小: {att.get("size", 0)} bytes\n'
+                f'本地路径: {out.get("local_path", "（未落盘）")}'
+            )
             PersonalContext.objects.create(
                 user_id=user_id,
                 source_type='mail_attachment',
                 source_id=source_id_attach,
                 summary=f"[附件] {mail_meta.get('subject', '')} — {att_name or att_id}",
-                raw_content='',
+                raw_content=attach_raw_content,
                 metadata={
                     'mail_source_id': message_id,
                     'subject': mail_meta.get('subject', ''),
@@ -1266,8 +1274,12 @@ def _paginate_mail_folder(
     app_secret: str = '',
     checkpoint=None,
     page_delay: float = 0.3,
+    lookback_cutoff_ts: float = 0,
 ) -> int:
-    """对单个邮件文件夹进行分页穷举，返回新写入数量。"""
+    """
+    对单个邮件文件夹进行分页穷举，返回新写入数量。
+    lookback_cutoff_ts: Unix 时间戳（秒），若邮件 date < cutoff 则提前停止翻页（增量模式优化）。
+    """
     use_tenant = bool(email and not user_token)
     page_token = None
     if checkpoint and folder_id == 'INBOX':
@@ -1294,6 +1306,7 @@ def _paginate_mail_folder(
 
         mail_ids = data.get('items', [])
         items = []
+        page_all_old = bool(lookback_cutoff_ts)  # 先假设整页都是旧邮件，有一封新的就翻转
         for mid in mail_ids:
             if not isinstance(mid, str) or not mid.strip():
                 continue
@@ -1306,6 +1319,19 @@ def _paginate_mail_folder(
                 if item:
                     # 标记文件夹来源
                     item['metadata']['folder'] = folder_id
+                    # 增量模式：检查邮件日期，若早于截止时间则跳过但继续判断（API 按时间倒序）
+                    if lookback_cutoff_ts:
+                        mail_date = item['metadata'].get('date', '') or ''
+                        if mail_date:
+                            try:
+                                import email.utils as _eu
+                                mail_ts = _eu.parsedate_to_datetime(mail_date).timestamp()
+                                if mail_ts >= lookback_cutoff_ts:
+                                    page_all_old = False  # 有新邮件，不能提前停止
+                            except Exception:
+                                page_all_old = False  # 解析失败，保守处理不停止
+                        else:
+                            page_all_old = False
                     # 附件列表来自详情 API 的 attachments 字段（需 mail:user_mailbox.message.body:read 权限）
                     attach_list = (item.get('metadata') or {}).get('attachments') or []
                     if attach_list:
@@ -1323,8 +1349,10 @@ def _paginate_mail_folder(
                     items.append(item)
             except FeishuAPIError as e:
                 logger.debug('获取邮件详情失败 %s: %s', mid[:20], e)
+                page_all_old = False
             except Exception as e:
                 logger.debug('获取邮件详情异常 %s: %s', mid[:20], e)
+                page_all_old = False
 
         written = _save_context_items_idempotent(user_id, 'mail', items)
         total += written
@@ -1335,6 +1363,11 @@ def _paginate_mail_folder(
             checkpoint.total_fetched = (checkpoint.total_fetched or 0) + len(mail_ids)
             checkpoint.total_deposited = (checkpoint.total_deposited or 0) + written
             checkpoint.save(update_fields=['page_token', 'total_fetched', 'total_deposited', 'updated_at'])
+
+        # 增量模式早退：整页邮件都早于截止时间，不再翻下一页
+        if lookback_cutoff_ts and page_all_old and mail_ids:
+            logger.info('邮件文件夹 %s 增量早退：当前页全部早于截止时间，停止翻页', folder_id)
+            break
 
         if not data.get('has_more', False) or not new_page_token:
             break
@@ -1350,15 +1383,24 @@ def fetch_mails_full_history(
     checkpoint=None,
     page_delay: float = 0.3,
     folders: List[str] = None,
+    lookback_days: int = 3650,
 ) -> int:
     """
-    全量历史邮件采集：
+    全量/增量历史邮件采集：
     - 遍历所有文件夹（INBOX、SENT、TRASH、UNREAD）
     - 每个文件夹分页穷举直到 has_more=False
+    - lookback_days < 3650 时，遇到整页旧邮件提前停止翻页（增量优化）
     - 幂等写入，不产生重复记录
     """
     if folders is None:
         folders = MAIL_FOLDERS_ALL
+
+    # 增量模式截止时间戳
+    import time as _time
+    lookback_cutoff_ts = (
+        _time.time() - lookback_days * 86400
+        if lookback_days < 3650 else 0
+    )
 
     use_tenant = False
     email = ''
@@ -1393,7 +1435,8 @@ def fetch_mails_full_history(
 
     total = 0
     for folder in folders:
-        logger.info('采集邮件文件夹 %s: user=%s', folder, user_id[:20])
+        logger.info('采集邮件文件夹 %s: user=%s lookback=%s天',
+                    folder, user_id[:20], lookback_days if lookback_days < 3650 else '全量')
         count = _paginate_mail_folder(
             user_id=user_id,
             folder_id=folder,
@@ -1403,6 +1446,7 @@ def fetch_mails_full_history(
             app_secret=app_secret,
             checkpoint=checkpoint if folder == 'INBOX' else None,
             page_delay=page_delay,
+            lookback_cutoff_ts=lookback_cutoff_ts,
         )
         total += count
         if count > 0:
@@ -1416,15 +1460,26 @@ def fetch_im_full_history(
     user_id: str,
     checkpoint=None,
     page_delay: float = 0.3,
+    lookback_days: int = 3650,
+    account_id: int = 0,
 ) -> int:
     """
-    全量历史 IM 消息采集：
-    - 翻页枚举所有群聊（list_user_chats 现已支持 page_token）
-    - 每个群聊用 get_group_messages（已有翻页能力）穷举全部历史消息
-    - start_time=0 表示取全部历史
+    全量/增量 IM 消息采集：
+    - 翻页枚举所有群聊（list_user_chats 支持 page_token）
+    - 每个群聊用 get_group_messages 拉取消息
+    - lookback_days < 3650 时为增量模式：只拉取最近 N 天消息（大幅提速）
+    - lookback_days = 3650（默认）时为全量模式：不设时间限制
+    - 每处理 50 个群聊自动刷新 token（防止 2h 采集中途 401）
     """
     if not user_token:
         return 0
+
+    # 计算 start_time：增量模式用时间窗口，全量模式不限制
+    import time as _time
+    if lookback_days < 3650:
+        start_ts: Optional[int] = int(_time.time() - lookback_days * 86400)
+    else:
+        start_ts = None  # 全量模式：不设时间限制（飞书 API 默认从最新往前）
 
     # Step 1: 枚举所有群聊（翻页）
     all_chats = []
@@ -1450,21 +1505,30 @@ def fetch_im_full_history(
         page_token = new_page_token
         time.sleep(0.3)
 
-    logger.info('IM 采集：%s 共 %d 个群聊', user_id[:20], len(all_chats))
+    logger.info('IM 采集：%s 共 %d 个群聊 lookback=%s天', user_id[:20], len(all_chats),
+                lookback_days if lookback_days < 3650 else '全量')
 
-    # Step 2: 对每个群聊穷举历史消息
+    # Step 2: 对每个群聊拉取消息（增量：只拉 lookback_days 内；全量：拉全部）
     total = 0
-    for chat in all_chats:
+    for idx, chat in enumerate(all_chats):
         chat_id = chat.get('chat_id', '')
         chat_name = chat.get('name', '') or chat.get('description', '') or chat_id[:10]
         if not chat_id:
             continue
 
+        # 每 50 个群聊刷新一次 token，防止长时间采集中途 401
+        if idx > 0 and idx % 50 == 0 and account_id:
+            fresh_token = get_valid_user_token(account_id)
+            if fresh_token:
+                user_token = fresh_token
+                logger.info('IM 采集：已刷新 token（第 %d 个群聊）', idx)
+            else:
+                logger.warning('IM 采集：token 刷新失败，继续使用旧 token（第 %d 个群聊）', idx)
+
         try:
-            # get_group_messages 已经有内置翻页，start_time=0 取全部历史
             messages = feishu_client.get_group_messages(
                 group_id=chat_id,
-                start_time=0,  # 从有史以来最早开始
+                start_time=start_ts,  # None=全量历史；int=只拉 lookback_days 内
                 page_size=50,
                 user_access_token=user_token,
             )
@@ -1789,11 +1853,27 @@ def fetch_approvals_full_history(
         except FeishuAPIError as e:
             if _is_scope_denied(e):
                 use_tenant = True
+            elif getattr(e, 'code', 0) == 99992402:
+                logger.warning(
+                    '审批采集：%s user_token 权限不足（99992402），'
+                    'tenant 模式也无法按用户查询（需 approval_code），跳过', user_id[:20]
+                )
+                return 0
             else:
                 logger.warning('审批采集失败 %s: %s', user_id[:20], e)
                 return 0
         except Exception:
             use_tenant = True
+
+    # tenant 模式下，approval/v4/instances 必须传 approval_code 才能返回数据
+    # 无 approval_code 时必然报 99992402，此时只能跳过，记录 warning
+    if use_tenant and not user_token:
+        logger.warning(
+            '审批采集：%s 无 user_token，tenant 模式下 approval/v4/instances '
+            '无 approval_code 不支持按用户查询，跳过（建议确保该用户完成飞书授权）',
+            user_id[:20]
+        )
+        return 0
 
     while True:
         try:
@@ -1923,17 +2003,27 @@ def fetch_docs_full_history(
 
                 content_text = f'文件名: {file_name}\n类型: {file_type}'
 
-                # 提取 docx/doc 正文（不截断）
+                # 提取 docx/doc 正文（用 user_token，访问私有文档）
                 if file_type in ('docx', 'doc'):
                     try:
-                        doc_data = feishu_client._request(
+                        doc_data = feishu_client._user_request(
                             'GET', f'docx/v1/documents/{file_token}/raw_content',
+                            user_token,
                         )
                         raw_text = (doc_data.get('content', '') or '')
                         if raw_text:
                             content_text = raw_text
                     except Exception as e:
-                        content_text += f'\n(正文获取失败: {e})'
+                        # 降级尝试 tenant_token（共享文档）
+                        try:
+                            doc_data = feishu_client._request(
+                                'GET', f'docx/v1/documents/{file_token}/raw_content',
+                            )
+                            raw_text = (doc_data.get('content', '') or '')
+                            if raw_text:
+                                content_text = raw_text
+                        except Exception:
+                            content_text += f'\n(正文获取失败: {e})'
                 # 提取 sheet 内容（元数据 + 尝试读取值）
                 elif file_type in ('sheet', 'bitable'):
                     try:
@@ -1982,7 +2072,8 @@ def fetch_wiki_full_history(
     page_delay: float = 0.5,
 ) -> int:
     """
-    全量知识库采集（tenant token）：枚举所有 wiki space → 遍历所有节点 → 提取正文。
+    全量知识库采集（tenant token）：枚举所有 wiki space → 递归遍历所有节点 → 提取正文。
+    修复：加入翻页支持（has_more/page_token）和多级节点递归遍历。
     """
     total = 0
     try:
@@ -2004,21 +2095,60 @@ def fetch_wiki_full_history(
         if not space_id:
             continue
 
-        try:
-            nodes_data = feishu_client.get_wiki_nodes(space_id)
-            nodes = nodes_data.get('items', nodes_data.get('nodes', []))
-        except Exception as e:
-            logger.warning('Wiki 空间 %s 节点获取失败: %s', space_name, e)
-            continue
+        # 递归遍历所有层级节点
+        written = _collect_wiki_nodes(user_id, space_id, space_name, page_delay=page_delay)
+        total += written
+        if written > 0:
+            logger.info('  Wiki [%s]: 共写入 %d 条', space_name[:20], written)
+        time.sleep(page_delay)
 
+    return total
+
+
+def _collect_wiki_nodes(
+    user_id: str,
+    space_id: str,
+    space_name: str,
+    parent_node_token: str = '',
+    depth: int = 0,
+    page_delay: float = 0.5,
+    visited_tokens: set = None,
+) -> int:
+    """递归采集 wiki 空间某节点下的所有子节点（带翻页）。"""
+    if depth > 10:
+        return 0
+    if visited_tokens is None:
+        visited_tokens = set()
+
+    total = 0
+    page_token = None
+
+    while True:
+        try:
+            params = {'page_size': 50}
+            if parent_node_token:
+                params['parent_node_token'] = parent_node_token
+            if page_token:
+                params['page_token'] = page_token
+            nodes_data = feishu_client._request(
+                'GET', f'wiki/v2/spaces/{space_id}/nodes', params=params,
+            )
+        except Exception as e:
+            logger.warning('Wiki 空间 %s 节点获取失败 depth=%d: %s', space_name, depth, e)
+            break
+
+        nodes = nodes_data.get('items', nodes_data.get('nodes', []))
         items = []
         for node in nodes:
             node_token = node.get('node_token', '')
             node_title = node.get('title', '')
             obj_token = node.get('obj_token', '')
             obj_type = node.get('obj_type', '')
-            if not node_token:
+            has_child = node.get('has_child', False)
+
+            if not node_token or node_token in visited_tokens:
                 continue
+            visited_tokens.add(node_token)
 
             content_text = f'知识库: {space_name}\n标题: {node_title}\n类型: {obj_type}'
             if obj_type in ('docx', 'doc') and obj_token:
@@ -2043,14 +2173,29 @@ def fetch_wiki_full_history(
                     'obj_token': obj_token,
                     'obj_type': obj_type,
                     'title': node_title,
+                    'depth': depth,
                 },
             })
             time.sleep(0.1)
 
+            # 递归进入有子节点的节点
+            if has_child:
+                sub = _collect_wiki_nodes(
+                    user_id, space_id, space_name,
+                    parent_node_token=node_token,
+                    depth=depth + 1,
+                    page_delay=page_delay,
+                    visited_tokens=visited_tokens,
+                )
+                total += sub
+
         written = _save_context_items_idempotent(user_id, 'wiki', items)
         total += written
-        if written > 0:
-            logger.info('  Wiki [%s]: 新写入 %d 条', space_name[:20], written)
+
+        new_pt = nodes_data.get('page_token', '')
+        if not nodes_data.get('has_more', False) or not new_pt:
+            break
+        page_token = new_pt
         time.sleep(page_delay)
 
     return total
@@ -2087,12 +2232,14 @@ def fetch_all_sources_full_history(
             if source == 'mail':
                 counts['mail'] = fetch_mails_full_history(
                     user_token, open_id, checkpoint=cp, page_delay=page_delay,
+                    lookback_days=lookback_days,
                 )
 
             elif source == 'im':
                 if user_token:
                     counts['im'] = fetch_im_full_history(
                         user_token, open_id, checkpoint=cp, page_delay=page_delay,
+                        lookback_days=lookback_days, account_id=account_id,
                     )
                 else:
                     logger.info('IM 采集：%s 无 user_token，跳过（IM 不支持 tenant 降级）', open_id[:20])

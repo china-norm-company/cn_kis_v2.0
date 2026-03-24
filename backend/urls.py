@@ -105,6 +105,9 @@ if not is_registration_done():
     _safe_add_router(api, '/resource/', resource_router, tags=['资源管理'])
     _safe_add_router(api, '/proposal/', proposal_router, tags=['方案准备'])
 
+    from apps.data_intake.api import router as data_intake_router
+    _safe_add_router(api, '/data-intake/', data_intake_router, tags=['外部数据入库'])
+
     from apps.resource.api_equipment import router as equipment_router
     _safe_add_router(api, '/equipment/', equipment_router, tags=['设备管理'])
 

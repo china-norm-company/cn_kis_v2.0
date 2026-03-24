@@ -1,0 +1,52 @@
+---
+description: 向量化嵌入治理规范：公司内网 Qwen3 是唯一授权通道，禁止任何降级或兜底
+alwaysApply: true
+---
+
+# 向量嵌入治理规范（强制）
+
+## 唯一授权通道
+
+**公司内网 GPU 算力中心 Qwen3-embedding（1024 维）是系统唯一授权的 embedding 服务。**
+
+入口：`apps.agent_gateway.services.get_qwen3_embedding(text)`
+
+## 绝对禁止
+
+- ❌ 添加 fastembed / jinaai / Jina API 作为 fallback
+- ❌ 添加 火山云 ARK embedding 作为 fallback
+- ❌ 使用 `KNOWLEDGE_EMBEDDING_STRATEGY` 环境变量切换 embedding 引擎
+- ❌ 捕获 Qwen3 异常后静默返回 `None` 或调用其他模型
+- ❌ 在任何 embedding 函数中出现"降级"、"fallback"、"backup"逻辑
+
+## 必须遵守
+
+- ✅ `get_qwen3_embedding()` 失败时 **抛出 `RuntimeError`**，不返回 None
+- ✅ Celery 向量化任务失败时记录错误 + 触发重试，不写入错误向量
+- ✅ 检索路径失败时返回空结果 + 记录错误，不用其他模型的向量检索
+
+## 原因
+
+不同 embedding 模型的向量空间不兼容。静默降级会导致：
+1. 索引中混入不同语义空间的向量 → 检索结果完全错误
+2. 错误难以发现（系统不报错，只是结果质量下降）
+
+## 正确写法
+
+```python
+# ✅ 正确：失败时抛出，让调用链明确处理
+from apps.agent_gateway.services import get_qwen3_embedding
+embedding = get_qwen3_embedding(text)  # 失败时 raise RuntimeError
+
+# ❌ 错误：捕获后静默降级
+try:
+    embedding = get_qwen3_embedding(text)
+except Exception:
+    embedding = get_local_embedding(text)  # 禁止！
+```
+
+## 维度升级路径（待办）
+
+- 当前：1024 维（Qwen3-embedding）
+- 待升级：2048 维（`TODO[vec-2048]`，待内网 GPU 部署 Qwen3-embedding-2048 后执行）
+- 升级时搜索所有 `TODO[vec-2048]` 标记统一处理，同时新建迁移 `0016_resize_embedding_vector_2048.py`
