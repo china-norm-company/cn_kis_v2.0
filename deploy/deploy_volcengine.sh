@@ -474,10 +474,11 @@ echo ""
 echo "[8/8] 线上认证链路完整性体检..."
 AUTH_SCRIPT="$DEPLOY_DIR/ops/scripts_v1/check_prod_auth_integrity.sh"
 if [ -f "$AUTH_SCRIPT" ]; then
-  if bash "$AUTH_SCRIPT"; then
+  # 与 deploy 使用同一套 secrets：密钥路径或 sshpass；BASE_URL 默认 http://$SSH_HOST
+  if SSH_KEY="${VOLCENGINE_SSH_KEY:-}" SSH_HOST="$SSH_TARGET" BASE_URL="${BASE_URL:-http://${SSH_HOST}}" bash "$AUTH_SCRIPT"; then
     echo "  ✓ 线上认证链路体检通过"
   else
-    echo "  ✗ 线上认证链路体检失败，请立即排查（可通过 SSH_KEY / SSH_HOST / BASE_URL 环境变量配置）"
+    echo "  ✗ 线上认证链路体检失败，请立即排查（deploy/secrets.env 中 VOLCENGINE_SSH_KEY 或 VOLCENGINE_SSH_PASS；可选 BASE_URL）"
     exit 1
   fi
 else
