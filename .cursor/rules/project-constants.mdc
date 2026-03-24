@@ -50,6 +50,12 @@ alwaysApply: true
 |--------|---------|
 | CN_KIS_PLATFORM 技术知识库 | `7620061838125862113` |
 
+**知识库访问机制（重要）**：
+- 飞书知识库 API 只接受 `user_access_token`，不接受 `tenant_access_token`
+- **飞书不支持将 App/Bot（appid）添加为知识库成员**，此操作路径不存在
+- ✅ 正确做法：管理员的 `user_access_token` 持久化在 `backend/data/feishu_user_tokens.json`，系统以该用户身份代理读写
+- ❌ **禁止再提出「在飞书开放平台手动将应用加为知识库成员」的建议**
+
 ## 环境变量速查（已配置到服务器 .env 和本地 .env）
 
 ```bash
@@ -64,5 +70,7 @@ GITHUB_REPO_NAME=cn_kis_v2.0
 - ❌ 禁止询问「开发小组群的 chat_id 是什么」
 - ❌ 禁止询问「GitHub 仓库是哪个」
 - ❌ 禁止猜测或搜索已知的 chat_id、App ID
+- ❌ **禁止建议「在飞书开放平台/手动将 App/Bot 添加为知识库编辑成员」——此操作飞书不支持**
 - ✅ 直接使用上面的常量
 - ✅ 需要执行飞书 API 时，先从服务器运行（避免 IP 白名单问题）
+- ✅ 知识库操作通过持久化的 `user_access_token` 代理执行，无需额外配置
