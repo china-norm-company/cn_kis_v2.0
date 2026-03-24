@@ -218,14 +218,17 @@ DB_PASSWORD=cn_kis_2026
 DB_HOST=localhost
 DB_PORT=5432
 DJANGO_DEBUG=False
-DJANGO_ALLOWED_HOSTS=118.196.64.48,localhost,www.utest.cc,utest.cc,mini.china-norm.com
+DJANGO_ALLOWED_HOSTS=118.196.64.48,localhost,www.utest.cc,utest.cc,.china-norm.com
 DJANGO_SECRET_KEY=cn-kis-prod-secret-$(openssl rand -hex 16)
 CORS_ORIGINS=http://118.196.64.48
 JWT_SECRET=cn-kis-jwt-secret-$(openssl rand -hex 16)
 REDIS_URL=redis://127.0.0.1:6379/0
+WECHAT_APPID=wxf4ed2ed0eb687e31
+WECHAT_SECRET=88b03ef9b4e96725cf57b5591fb855f1
 ENV
 
 if [ -f "$REMOTE_DIR/deploy/.env.volcengine.plan-a" ]; then
+  # 飞书 / 模型 / Redis 等从 plan-a 追加（微信见上方 heredoc，不依赖 plan-a）
   grep -E '^FEISHU_|^ARK_|^KIMI_|^VOLCENGINE_|^REDIS_URL=' "$REMOTE_DIR/deploy/.env.volcengine.plan-a" >> "$REMOTE_DIR/backend/.env" 2>/dev/null || true
 fi
 
