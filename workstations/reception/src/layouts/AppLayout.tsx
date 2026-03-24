@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react'
 import { Outlet } from 'react-router-dom'
-import { LayoutDashboard, Monitor, Route, BarChart3, CalendarPlus, QrCode, ScanLine, Calendar } from 'lucide-react'
+import { LayoutDashboard, Monitor, Route, BarChart3, CalendarPlus, Calendar, QrCode, ScanLine, ClipboardList } from 'lucide-react'
 import { FeishuAuthProvider, LoginFallback, useFeishuContext, createWorkstationFeishuConfig } from '@cn-kis/feishu-sdk'
 import { MobileWorkstationLayout, type MobileWorkstationNavItem } from '@cn-kis/ui-kit'
 
@@ -8,7 +8,8 @@ export const FEISHU_CONFIG = createWorkstationFeishuConfig('reception')
 
 const navItems = [
   { to: '/dashboard', label: '接待看板', icon: LayoutDashboard },
-  { to: '/appointments', label: '预约管理', icon: CalendarPlus },
+  { to: '/workorders', label: '工单管理', icon: ClipboardList },
+  { to: '/appointments', label: '工单执行', icon: CalendarPlus },
   { to: '/schedule', label: '我的排程', icon: Calendar },
   { to: '/scan', label: '扫码签到', icon: ScanLine },
   { to: '/station-qr', label: '场所码', icon: QrCode },

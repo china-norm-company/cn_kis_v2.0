@@ -14,7 +14,6 @@ const TASK_LABEL_MAP: Record<QueueItem['task_type'], string> = {
   extra_visit: '加访',
   walk_in: '临时到访',
 }
-
 const TASK_BADGE_MAP: Record<QueueItem['task_type'], 'warning' | 'info' | 'success' | 'default'> = {
   pre_screening: 'warning',
   screening: 'info',
@@ -74,13 +73,14 @@ export default function ReceptionDashboardPage() {
     refetchInterval: 30000,
   })
   const { data: queueRes, isLoading } = useQuery({
-    queryKey: ['reception', 'today-queue', queryDate, queuePage, projectFilter, projectCodeFilter],
+    queryKey: ['reception', 'today-queue', 'board', queryDate, queuePage, projectFilter, projectCodeFilter],
     queryFn: () =>
       receptionApi.todayQueue({
         target_date: queryDate,
         page: queuePage,
         page_size: queuePageSize,
         project_code: projectCodeFilter.trim() || undefined,
+        source: 'board',
       }),
     refetchInterval: 30000,
   })
@@ -107,19 +107,17 @@ export default function ReceptionDashboardPage() {
   })
   const suggestions = suggestionsRes?.data?.data?.items ?? []
 
+  /** 接待看板签到（独立于工单执行，SC/RD/签到时间独立）。支持 project_code 实现同天多项目各自 SC。 */
   const checkinMutation = useMutation({
-    mutationFn: (subjectId: number) => receptionApi.quickCheckin({ subject_id: subjectId }),
+    mutationFn: (params: { subject_id: number; project_code?: string }) =>
+      receptionApi.boardCheckin({ subject_id: params.subject_id, target_date: queryDate, project_code: params.project_code }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['reception'] }),
   })
+  /** 接待看板签出（独立于工单执行） */
   const checkoutMutation = useMutation({
-    mutationFn: (checkinId: number) => receptionApi.quickCheckout(checkinId),
-    onSuccess: (res) => {
-      const warnings = res.data?.warnings || []
-      if (warnings.length > 0) {
-        window.alert(`签出提醒：\n${warnings.join('\n')}`)
-      }
-      qc.invalidateQueries({ queryKey: ['reception'] })
-    },
+    mutationFn: (payload: { subject_id: number; target_date: string }) =>
+      receptionApi.boardCheckout(payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['reception'] }),
   })
   const createTicketMutation = useMutation({
     mutationFn: async (payload: { enrollmentId: number; title: string; description: string }) =>
@@ -319,6 +317,7 @@ export default function ReceptionDashboardPage() {
       const res = await receptionApi.todayQueueExport({
         target_date: queryDate,
         project_code: projectCodeFilter.trim() || projectFilter || undefined,
+        source: 'board',
       })
       const items = res.data?.items ?? []
       const headers = ['项目名称', '项目编号', 'SC号', '受试者姓名', '拼音首字母', '性别', '年龄', '预约时间', '签到时间', '签出时间', '状态']
@@ -564,7 +563,7 @@ export default function ReceptionDashboardPage() {
                       <td className="py-2">
                         {item.status === 'waiting' && (
                           <PermissionGuard permission="reception.checkin.create">
-                            <Button className="min-h-8" size="sm" data-action="checkin" onClick={() => checkinMutation.mutate(item.subject_id)}>签到</Button>
+                            <Button className="min-h-8" size="sm" data-action="checkin" onClick={() => checkinMutation.mutate({ subject_id: item.subject_id, project_code: item.project_code })}>签到</Button>
                           </PermissionGuard>
                         )}
                         {(item.status === 'checked_in' || item.status === 'in_progress') && item.checkin_id && (
@@ -582,7 +581,7 @@ export default function ReceptionDashboardPage() {
                             {(item.task_type === 'visit' || item.task_type === 'screening' || item.task_type === 'extra_visit') && (
                               <Button className="min-h-8 mr-1" size="sm" variant="outline" onClick={() => handleFlowcard(item.checkin_id!)}>打印流程卡</Button>
                             )}
-                            <Button className="min-h-8" size="sm" variant="outline" data-action="checkout" onClick={() => checkoutMutation.mutate(item.checkin_id)}>签出</Button>
+                            <Button className="min-h-8" size="sm" variant="outline" data-action="checkout" onClick={() => checkoutMutation.mutate({ subject_id: item.subject_id, target_date: queryDate })}>签出</Button>
                           </>
                         )}
                       </td>

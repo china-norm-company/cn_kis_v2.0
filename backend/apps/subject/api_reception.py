@@ -20,6 +20,7 @@ class QuickCheckinIn(Schema):
     subject_id: int
     method: str = 'manual'
     location: str = ''
+    project_code: Optional[str] = None  # 可选，同一天多项目时指定为哪个项目分配 SC 号
 
 
 class QuickCheckoutIn(Schema):
@@ -46,6 +47,36 @@ class WalkInRegisterIn(Schema):
     auto_checkin: bool = True
 
 
+class UpdateProjectScIn(Schema):
+    """更新受试者-项目 SC 记录的入组情况与 RD 号。仅当入组情况为正式入组时可写 RD 号。"""
+    subject_id: int
+    project_code: str
+    enrollment_status: Optional[str] = None
+    rd_number: Optional[str] = None
+
+
+class BoardCheckinIn(Schema):
+    """接待看板签到（与工单执行签到独立）。project_code 可选，同天多项目时指定为哪个项目分配 SC 号。"""
+    subject_id: int
+    target_date: Optional[date] = None
+    project_code: Optional[str] = None
+
+
+class BoardCheckoutIn(Schema):
+    """接待看板签出（与工单执行签出独立）"""
+    subject_id: int
+    target_date: Optional[date] = None
+
+
+class BoardProjectScIn(Schema):
+    """接待看板 SC/入组/RD（与工单执行独立）"""
+    subject_id: int
+    project_code: str
+    enrollment_status: Optional[str] = None
+    rd_number: Optional[str] = None
+    sc_number: Optional[str] = None
+
+
 # ============================================================================
 # 前台接待 API
 # ============================================================================
@@ -57,8 +88,13 @@ def today_queue(
     page: int = 1,
     page_size: int = 10,
     project_code: Optional[str] = None,
+    source: str = 'execution',
 ):
-    result = svc.get_today_queue(target_date=target_date, page=page, page_size=page_size, project_code=project_code)
+    """source: execution=工单执行独立数据，board=接待看板独立数据。SC/RD/签到签出时间两套互不影响。"""
+    result = svc.get_today_queue(
+        target_date=target_date, page=page, page_size=page_size,
+        project_code=project_code, source=source,
+    )
     return {'code': 200, 'msg': 'OK', 'data': result}
 
 
@@ -69,8 +105,11 @@ def today_queue_export(
     target_date: Optional[date] = None,
     project_code: Optional[str] = None,
     status: Optional[str] = None,
+    source: str = 'execution',
 ):
-    result = svc.get_today_queue_export(target_date=target_date, project_code=project_code, status=status)
+    result = svc.get_today_queue_export(
+        target_date=target_date, project_code=project_code, status=status, source=source,
+    )
     return {'code': 200, 'msg': 'OK', 'data': result}
 
 
@@ -98,6 +137,7 @@ def quick_checkin(request, payload: QuickCheckinIn):
             method=payload.method,
             location=payload.location,
             operator_id=account.id,
+            project_code=(payload.project_code or '').strip() or None,
         )
         return {'code': 200, 'msg': 'OK', 'data': result}
     except Exception as e:
@@ -110,6 +150,97 @@ def quick_checkout(request, payload: QuickCheckoutIn):
     try:
         result = svc.quick_checkout(payload.checkin_id)
         return {'code': 200, 'msg': 'OK', 'data': result}
+    except Exception as e:
+        return {'code': 400, 'msg': str(e), 'data': None}
+
+
+# ============================================================================
+# 接待看板独立签到/签出（与工单执行互不影响）
+# ============================================================================
+@router.get('/board-checkins', summary='接待看板签到记录')
+@require_permission('subject.subject.read')
+def board_checkins_list(request, target_date: Optional[date] = None):
+    """按日期返回接待看板签到/签出记录，供接待看板队列与工单执行队列合并展示。"""
+    result = svc.get_board_checkins(target_date=target_date)
+    return {'code': 200, 'msg': 'OK', 'data': {'items': result}}
+
+
+@router.post('/board-checkin', summary='接待看板签到')
+@require_permission('subject.subject.update')
+def board_checkin(request, payload: BoardCheckinIn):
+    """接待看板签到，仅写入接待看板专用表，不影响工单执行。"""
+    if payload is None:
+        return {'code': 400, 'msg': '请求体不能为空', 'data': None}
+    try:
+        result = svc.board_checkin(
+            subject_id=payload.subject_id,
+            target_date=payload.target_date,
+            project_code=(payload.project_code or '').strip() or None,
+        )
+        return {'code': 200, 'msg': 'OK', 'data': result}
+    except Exception as e:
+        err_msg = str(e)
+        if 'no such table' in err_msg.lower() or 't_reception_board_checkin' in err_msg.lower():
+            err_msg = '接待看板签到表未创建，请先执行: python manage.py migrate subject'
+        return {'code': 400, 'msg': err_msg, 'data': None}
+
+
+@router.post('/board-checkout', summary='接待看板签出')
+@require_permission('subject.subject.update')
+def board_checkout(request, payload: BoardCheckoutIn):
+    """接待看板签出，仅更新接待看板专用表，不影响工单执行。"""
+    if payload is None:
+        return {'code': 400, 'msg': '请求体不能为空', 'data': None}
+    try:
+        result = svc.board_checkout(subject_id=payload.subject_id, target_date=payload.target_date)
+        return {'code': 200, 'msg': 'OK', 'data': result}
+    except Exception as e:
+        err_msg = str(e)
+        if 'no such table' in err_msg.lower() or 't_reception_board_checkin' in err_msg.lower():
+            err_msg = '接待看板签到表未创建，请先执行: python manage.py migrate subject'
+        return {'code': 400, 'msg': err_msg, 'data': None}
+
+
+@router.get('/board-project-sc', summary='接待看板 SC/入组/RD 列表')
+@require_permission('subject.subject.read')
+def board_project_sc_list(request):
+    """返回接待看板专用 SC/入组情况/RD，与工单执行独立。"""
+    result = svc.get_board_project_sc_list()
+    return {'code': 200, 'msg': 'OK', 'data': {'items': result}}
+
+
+@router.patch('/board-project-sc', summary='更新接待看板 SC/入组/RD')
+@require_permission('subject.subject.update')
+def board_project_sc_update(request, payload: BoardProjectScIn):
+    """更新接待看板专用 SC/入组/RD，与工单执行独立。"""
+    try:
+        result = svc.update_board_project_sc(
+            subject_id=payload.subject_id,
+            project_code=payload.project_code,
+            enrollment_status=payload.enrollment_status,
+            rd_number=payload.rd_number,
+            sc_number=payload.sc_number,
+        )
+        return {'code': 200, 'msg': 'OK', 'data': result}
+    except Exception as e:
+        return {'code': 400, 'msg': str(e), 'data': None}
+
+
+@router.patch('/project-sc', summary='更新入组情况与RD号')
+@require_permission('subject.subject.update')
+def update_project_sc(request, payload: UpdateProjectScIn):
+    account = _get_account_from_request(request)
+    try:
+        result = svc.update_project_sc(
+            subject_id=payload.subject_id,
+            project_code=payload.project_code,
+            enrollment_status=payload.enrollment_status,
+            rd_number=payload.rd_number,
+            operator_id=account.id,
+        )
+        return {'code': 200, 'msg': 'OK', 'data': result}
+    except ValueError as e:
+        return {'code': 400, 'msg': str(e), 'data': None}
     except Exception as e:
         return {'code': 400, 'msg': str(e), 'data': None}
 
@@ -183,10 +314,23 @@ class ScanCheckinIn(Schema):
 
 @router.post('/call-next', summary='叫号')
 @require_permission('subject.subject.update')
-def call_next(request, station_id: str = 'default'):
-    """叫下一位等候受试者"""
+def call_next(request, station_id: str = 'default', project_code: Optional[str] = None):
+    """叫下一位等候受试者；可选 project_code 仅在该项目内按 SC 号顺序叫号。"""
     from .services.queue_service import call_next as do_call_next
-    result = do_call_next(station_id)
+    result = do_call_next(station_id=station_id, project_code=project_code)
+    return {'code': 200, 'msg': 'OK', 'data': result}
+
+
+class MissCallIn(Schema):
+    checkin_id: int
+
+
+@router.post('/miss-call', summary='过号')
+@require_permission('subject.subject.update')
+def miss_call(request, payload: MissCallIn):
+    """过号：将执行中的签到改回等候，按该项目顺延 3 位重新排队。"""
+    from .services.queue_service import miss_call as do_miss_call
+    result = do_miss_call(payload.checkin_id)
     return {'code': 200, 'msg': 'OK', 'data': result}
 
 
