@@ -20,6 +20,22 @@ timezone = 'Asia/Shanghai'
 enable_utc = True
 
 beat_schedule = {
+    # ══════════════════════════════════════════════════════════════
+    # 智能运营早晚报（Issue #4）
+    # 总经理视角：LLM 分析 + 全域指标 + 工作台推广状态 → 飞书群
+    # ══════════════════════════════════════════════════════════════
+    'ops-morning-briefing': {
+        'task': 'apps.secretary.tasks.send_morning_briefing',
+        'schedule': crontab(hour=9, minute=0),
+    },
+    'ops-evening-briefing': {
+        'task': 'apps.secretary.tasks.send_evening_briefing',
+        'schedule': crontab(hour=18, minute=0),
+    },
+    'ops-weekly-briefing': {
+        'task': 'apps.secretary.tasks.send_weekly_briefing',
+        'schedule': crontab(hour=8, minute=30, day_of_week='mon'),
+    },
     # ── 纯通知类（不调用 AI） ──
     'notification-daily-alerts': {
         'task': 'apps.notification.tasks.push_all_alerts',
@@ -147,4 +163,3 @@ if PRODUCTION_TASKS_DISABLED:
     # 'project-startup-readiness-check'
     # 'quality-kpi-daily-snapshot'
     # 'agent-monthly-budget-reset'
-}

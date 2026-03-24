@@ -895,3 +895,8 @@ class FeishuMigrationBatch(models.Model):
 
     def __str__(self):
         return f'Batch({self.batch_id} {self.status} {self.total_items}条)'
+
+
+# ── 用户反馈模型（Issue #4 智能运营早晚报）─────────────────────────────────
+# 放在单独文件中定义，这里重导出让 Django 的 app 发现机制正常工作
+from .feedback_models import UserFeedback  # noqa: F401, E402

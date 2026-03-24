@@ -189,6 +189,8 @@ if not is_registration_done():
     from apps.secretary.api import router as secretary_router, mail_router as secretary_mail_router
     _safe_add_router(api, '/dashboard/', secretary_router, tags=['秘书工作台'])
     _safe_add_router(api, '/', secretary_mail_router, tags=['邮件信号'])
+    from apps.secretary.api_feedback import router as feedback_webhook_router
+    _safe_add_router(api, '/secretary/', feedback_webhook_router, tags=['用户反馈 Webhook'])
     from apps.secretary.digital_workforce_api import router as digital_workforce_router
     _safe_add_router(api, '/digital-workforce/', digital_workforce_router, tags=['中书·数字员工中心'])
     _safe_add_router(api, '/', secretary_mail_router, tags=['邮件信号'])

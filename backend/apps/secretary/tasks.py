@@ -4,12 +4,26 @@
 编排器定时任务：
 - generate_morning_brief: 每日 7:30 生成晨报
 - generate_evening_summary: 每日 17:30 生成日报
+
+智能运营简报（Issue #4）：
+- send_morning_briefing: 每日 09:00 全域早报（总经理视角）
+- send_evening_briefing: 每日 18:00 全域晚报（总经理视角）
+- send_weekly_briefing: 每周一 08:30 战略周报
+- process_user_feedback_async: 用户反馈群消息异步处理
 """
 import logging
 
 from celery import shared_task
 
 logger = logging.getLogger(__name__)
+
+# ── 智能运营简报任务（从 briefing_tasks 模块注册）────────────────────────────
+from .briefing_tasks import (  # noqa: F401 - Celery 需要 import 来发现任务
+    send_morning_briefing,
+    send_evening_briefing,
+    send_weekly_briefing,
+    process_user_feedback_async,
+)
 
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=120)
