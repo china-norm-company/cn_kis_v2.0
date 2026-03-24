@@ -228,6 +228,8 @@ export type {
   WorkOrderException as EvaluatorException,
   EvaluatorProfile,
   WeeklySchedule,
+  ScheduleNote,
+  ScheduleAttachment,
   WaitingSubject,
   EnvironmentStatus,
   InstrumentStatus,
