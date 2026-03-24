@@ -66,6 +66,21 @@ function formatDetailTime(value?: string | null) {
   return raw
 }
 
+/**
+ * 性别展示：受试者主档存的是 SubjectGender 英文码（male/female/other），接口会原样返回，故需转成中文；
+ * 若为导入或手填的中文（男/女等）或其它非枚举值，则原样显示。
+ */
+function formatGenderCell(value: unknown): string {
+  if (value === undefined || value === null) return '—'
+  const s = String(value).trim()
+  if (!s) return '—'
+  const lower = s.toLowerCase()
+  if (lower === 'male' || lower === 'm') return '男'
+  if (lower === 'female' || lower === 'f') return '女'
+  if (lower === 'other') return '其他'
+  return s
+}
+
 export default function AppointmentsPage() {
   const queryClient = useQueryClient()
   const [showCreate, setShowCreate] = useState(false)
@@ -83,13 +98,15 @@ export default function AppointmentsPage() {
   const [newProjectCode, setNewProjectCode] = useState('')
   const [newProjectName, setNewProjectName] = useState('')
   const [importFile, setImportFile] = useState<File | null>(null)
+  const [importDragOver, setImportDragOver] = useState(false)
   const [importPreview, setImportPreview] = useState<Record<string, unknown>[]>([])
   const [importMeta, setImportMeta] = useState<{ projectCode: string; projectName: string; appointmentDate: string; visitPoint: string } | null>(null)
 
   const todayStr = new Date().toISOString().slice(0, 10)
   const [queueDate, setQueueDate] = useState(todayStr)
   const [queueListPage, setQueueListPage] = useState(1)
-  const queueListPageSize = 20
+  const queueListPageSize = 10
+  const [queueProjectFilter, setQueueProjectFilter] = useState('')
   const [visibleMonth, setVisibleMonth] = useState(todayStr.slice(0, 7))
   const subjectsQuery = useQuery({
     queryKey: ['subjects', 'appointments'],
@@ -100,8 +117,15 @@ export default function AppointmentsPage() {
     },
   })
   const todayQueueQuery = useQuery({
-    queryKey: ['reception', 'today-queue', queueDate, queueListPage],
-    queryFn: () => receptionApi.todayQueue({ target_date: queueDate, page: queueListPage, page_size: queueListPageSize }),
+    queryKey: ['reception', 'today-queue', queueDate, queueListPage, queueProjectFilter.trim()],
+    queryFn: () =>
+      receptionApi.todayQueue({
+        target_date: queueDate,
+        page: queueListPage,
+        page_size: queueListPageSize,
+        source: 'execution',
+        ...(queueProjectFilter.trim() ? { project_code: queueProjectFilter.trim() } : {}),
+      }),
   })
   const appointmentCalendarQuery = useQuery({
     queryKey: ['reception', 'appointment-calendar', visibleMonth],
@@ -239,10 +263,18 @@ export default function AppointmentsPage() {
         const visitPoint = String(row['访视点'] ?? row['visit_point'] ?? row['访视次数'] ?? '').trim() || (meta?.visitPoint ?? '')
         const projectCode = String(row['项目编号'] ?? row['project_code'] ?? row['方案编号'] ?? row['研究机构方案编号'] ?? '').trim() || (meta?.projectCode ?? '')
         const projectName = String(row['项目名称'] ?? row['project_name'] ?? row['研究名称'] ?? '').trim() || (meta?.projectName ?? '')
+        const namePinyinInitials = String(
+          row['首字母'] ?? row['拼音首字母'] ?? row['name_pinyin_initials'] ?? ''
+        ).trim().toUpperCase().slice(0, 50) || undefined
+        const liaison = String(row['联络员'] ?? row['liaison'] ?? '').trim().slice(0, 100) || undefined
+        const scNumber = String(row['SC号'] ?? row['sc_number'] ?? row['sc号'] ?? '').trim() || undefined
+        const rdNumber = String(row['RD号'] ?? row['rd_number'] ?? row['rd号'] ?? '').trim() || undefined
         return {
           subject_phone: phone || undefined,
           subject_no: no || undefined,
           subject_name: subjectName || undefined,
+          name_pinyin_initials: namePinyinInitials,
+          liaison,
           gender: gender || undefined,
           age: Number.isFinite(ageNum) ? ageNum : undefined,
           appointment_date: dateStr,
@@ -251,6 +283,8 @@ export default function AppointmentsPage() {
           visit_point: visitPoint || undefined,
           project_code: projectCode || undefined,
           project_name: projectName || undefined,
+          sc_number: scNumber,
+          rd_number: rdNumber,
         }
       })
       return executionApi.importAppointments(items)
@@ -273,6 +307,7 @@ export default function AppointmentsPage() {
         setImportFile(null)
         setImportPreview([])
         setImportMeta(null)
+        setImportDragOver(false)
       }
       queryClient.invalidateQueries({ queryKey: ['reception', 'today-queue'] })
       queryClient.invalidateQueries({ queryKey: ['reception', 'appointment-calendar'] })
@@ -305,6 +340,7 @@ export default function AppointmentsPage() {
     const nextMonth = shiftMonth(visibleMonth, offset)
     setVisibleMonth(nextMonth)
     setQueueDate(firstDayOfMonth(nextMonth))
+    setQueueListPage(1)
   }
 
   const HEADER_MARKERS = ['序号', '时间段', '受访者姓名', '联系方式', '手机号码', '测试日期', '研究机构方案编号', '研究名称', '访视点']
@@ -342,9 +378,12 @@ export default function AppointmentsPage() {
     return /手机号码|微信号|年龄段/.test(t) && !/\d{11}/.test(t)
   }
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const processImportFile = (file: File) => {
+    const ok = /\.(xlsx|xls|csv)$/i.test(file.name) || ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'text/csv'].includes(file.type)
+    if (!ok) {
+      notify('请上传 Excel (.xlsx/.xls) 或 CSV 文件')
+      return
+    }
     setImportFile(file)
     setImportMeta(null)
     const reader = new FileReader()
@@ -393,6 +432,32 @@ export default function AppointmentsPage() {
       }
     }
     reader.readAsArrayBuffer(file)
+  }
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    processImportFile(file)
+    e.target.value = ''
+  }
+
+  const handleImportDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setImportDragOver(true)
+  }
+  const handleImportDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setImportDragOver(false)
+  }
+  const handleImportDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setImportDragOver(false)
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+    processImportFile(file)
   }
 
   return (
@@ -591,7 +656,7 @@ export default function AppointmentsPage() {
               <FileSpreadsheet className="w-5 h-5" /> 导入预约表
             </h3>
             <p className="text-sm text-slate-500 mb-4">
-              支持 Excel (.xlsx/.xls) 或 CSV。表头需包含：<strong>手机号</strong> 或 <strong>受试者编号</strong>、<strong>预约日期</strong>（支持 <strong>YYYY-MM-DD</strong>、<strong>YYYY/M/D</strong>，也兼容<strong>测试日期</strong>/<strong>出生年月</strong>等日期列）、<strong>预约时间</strong>/<strong>时间段</strong>（可选）、<strong>访视目的</strong>（可选）、<strong>访视点</strong>（可选）、<strong>项目编号</strong>/<strong>项目名称</strong>（可选）。若手机号/编号在系统中不存在，将自动补建受试者；如提供<strong>姓名</strong>/<strong>受试者姓名</strong>、<strong>性别</strong>、<strong>年龄</strong>会一并带入。
+              支持 Excel (.xlsx/.xls) 或 CSV。表头需包含：<strong>手机号</strong> 或 <strong>受试者编号</strong>、<strong>预约日期</strong>（支持 <strong>YYYY-MM-DD</strong>、<strong>YYYY/M/D</strong>，也兼容<strong>测试日期</strong>/<strong>出生年月</strong>等日期列）、<strong>预约时间</strong>/<strong>时间段</strong>（可选）、<strong>访视目的</strong>（可选）、<strong>访视点</strong>（可选）、<strong>项目编号</strong>/<strong>项目名称</strong>（可选）。可选列：<strong>拼音首字母</strong>（列名「首字母」等）、<strong>联络员</strong>、<strong>SC号</strong>、<strong>RD号</strong>。若手机号/编号在系统中不存在，将自动补建受试者；如提供<strong>姓名</strong>/<strong>受试者姓名</strong>、<strong>性别</strong>、<strong>年龄</strong>会一并带入。导入时<strong>SC号/RD号</strong>非空则直接使用。
             </p>
             <p className="text-xs text-amber-700 mb-4">
               手机号请填写<strong>完整号码</strong>，带星号脱敏的号码无法匹配或补建受试者。
@@ -607,18 +672,35 @@ export default function AppointmentsPage() {
               </a>
             </p>
             <div className="space-y-4">
-              <label className="block">
-                <input
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-                <span className="inline-flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-lg text-sm cursor-pointer hover:bg-slate-50">
-                  <Upload className="w-4 h-4" /> 选择文件
-                </span>
-                {importFile && <span className="ml-2 text-sm text-slate-600">{importFile.name}</span>}
-              </label>
+              <div
+                onDragOver={handleImportDragOver}
+                onDragLeave={handleImportDragLeave}
+                onDrop={handleImportDrop}
+                className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
+                  importDragOver
+                    ? 'border-emerald-400 bg-emerald-50/80'
+                    : 'border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-100/50'
+                }`}
+              >
+                <label className="cursor-pointer block">
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                  <span className="inline-flex items-center gap-2 text-slate-600">
+                    <Upload className="w-5 h-5" />
+                    <span className="font-medium">
+                      {importDragOver ? '松开即可导入' : '点击选择文件或拖拽文件到此处'}
+                    </span>
+                  </span>
+                </label>
+                <p className="text-xs text-slate-500 mt-2">支持 .xlsx、.xls、.csv</p>
+                {importFile && (
+                  <p className="text-sm text-emerald-700 mt-2 font-medium">{importFile.name}</p>
+                )}
+              </div>
               {importPreview.length > 0 && (
                 <div className="border rounded-lg overflow-hidden max-h-48 overflow-y-auto">
                   <table className="w-full text-sm">
@@ -651,6 +733,8 @@ export default function AppointmentsPage() {
                   setShowImport(false)
                   setImportFile(null)
                   setImportPreview([])
+                  setImportMeta(null)
+                  setImportDragOver(false)
                 }}
                 className="min-h-11 px-4 py-2 border border-slate-200 rounded-lg text-sm"
               >
@@ -770,35 +854,78 @@ export default function AppointmentsPage() {
             </div>
           </div>
         </div>
-        <div className="px-4 py-3 border-b border-slate-200 text-sm text-slate-600">
-          当前日期：{queueDate}
+        <div className="px-4 py-3 border-b border-slate-200 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="text-sm text-slate-600 shrink-0">
+            当前日期：{queueDate}
+          </div>
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2 sm:min-w-0 sm:flex-1 sm:max-w-md sm:justify-end">
+            <label htmlFor="queue-project-filter" className="text-xs font-medium text-slate-600 sm:shrink-0">
+              项目编号
+            </label>
+            <div className="relative w-full sm:max-w-xs">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                id="queue-project-filter"
+                type="text"
+                value={queueProjectFilter}
+                onChange={(e) => {
+                  setQueueProjectFilter(e.target.value)
+                  setQueueListPage(1)
+                }}
+                placeholder="筛选，留空为全部"
+                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                autoComplete="off"
+              />
+            </div>
+          </div>
         </div>
         {todayQueueQuery.data?.data?.items?.length ? (
           <>
-            <div className="overflow-x-auto max-h-80 overflow-y-auto">
+            <div className="overflow-x-auto max-h-[min(70vh,36rem)] min-h-[20rem] overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 sticky top-0">
                   <tr>
-                    <th className="px-3 py-2 text-left font-medium text-slate-600">姓名</th>
+                    <th className="px-3 py-2 text-left font-medium text-slate-600 whitespace-nowrap">项目编号</th>
+                    <th
+                      className="px-3 py-2 text-left font-medium text-slate-600 whitespace-nowrap"
+                      title="接待台工单执行今日队列签到后按项目生成（如 V1 首次分配 SC）"
+                    >
+                      SC号
+                    </th>
+                    <th
+                      className="px-3 py-2 text-left font-medium text-slate-600 whitespace-nowrap"
+                      title="接待台工单执行侧维护，与入组情况关联"
+                    >
+                      RD号
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium text-slate-600">受试者姓名</th>
                     <th className="px-3 py-2 text-left font-medium text-slate-600">拼音首字母</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-600">性别</th>
+                    <th className="px-3 py-2 text-left font-medium text-slate-600">姓名</th>
                     <th className="px-3 py-2 text-left font-medium text-slate-600">年龄</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-600">受试者编号</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-600">项目</th>
+                    <th className="px-3 py-2 text-left font-medium text-slate-600">性别</th>
+                    <th className="px-3 py-2 text-left font-medium text-slate-600 whitespace-nowrap">手机号</th>
+                    <th className="px-3 py-2 text-left font-medium text-slate-600">联络员</th>
+                    <th className="px-3 py-2 text-left font-medium text-slate-600 min-w-[6rem]">备注</th>
                     <th className="px-3 py-2 text-left font-medium text-slate-600">访视点</th>
                     <th className="px-3 py-2 text-left font-medium text-slate-600">时间信息</th>
                     <th className="px-3 py-2 text-left font-medium text-slate-600">状态</th>
+                    <th className="px-3 py-2 text-left font-medium text-slate-600 whitespace-nowrap">入组情况</th>
                   </tr>
                 </thead>
                 <tbody>
                   {todayQueueQuery.data.data.items.map((item, idx) => (
                     <tr key={item.appointment_id ?? `subj-${item.subject_id}-${item.checkin_id ?? idx}`} className="border-t border-slate-100">
+                      <td className="px-3 py-2 whitespace-nowrap">{item.project_code?.trim() ? item.project_code : '—'}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">{item.sc_number?.trim() ? item.sc_number : '—'}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">{item.rd_number?.trim() ? item.rd_number : '—'}</td>
                       <td className="px-3 py-2">{item.subject_name || '—'}</td>
-                      <td className="px-3 py-2">{item.name_pinyin_initials ?? '—'}</td>
-                      <td className="px-3 py-2">{item.gender ?? '—'}</td>
-                      <td className="px-3 py-2">{item.age ?? '—'}</td>
-                      <td className="px-3 py-2">{item.subject_no || '—'}</td>
-                      <td className="px-3 py-2">{item.project_name || item.project_code || '—'}</td>
+                      <td className="px-3 py-2">{item.name_pinyin_initials?.trim() ? item.name_pinyin_initials : '—'}</td>
+                      <td className="px-3 py-2">{item.subject_name || '—'}</td>
+                      <td className="px-3 py-2">{item.age != null ? item.age : '—'}</td>
+                      <td className="px-3 py-2">{formatGenderCell(item.gender)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">{item.phone?.trim() ? item.phone : '—'}</td>
+                      <td className="px-3 py-2 max-w-[8rem] break-words">{item.liaison?.trim() ? item.liaison : '—'}</td>
+                      <td className="px-3 py-2 max-w-[10rem] text-xs text-slate-600 break-words">{item.notes?.trim() ? item.notes : '—'}</td>
                       <td className="px-3 py-2">{item.visit_point || '—'}</td>
                       <td className="px-3 py-2">
                         <div className="space-y-1 text-xs text-slate-600 min-w-28">
@@ -817,6 +944,7 @@ export default function AppointmentsPage() {
                         </div>
                       </td>
                       <td className="px-3 py-2">{item.status === 'waiting' ? '待签到' : item.status === 'checked_in' ? '已签到' : item.status === 'in_progress' ? '执行中' : item.status === 'checked_out' ? '已签出' : item.status === 'no_show' ? '缺席' : item.status}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">{item.enrollment_status?.trim() ? item.enrollment_status : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -825,14 +953,18 @@ export default function AppointmentsPage() {
             {(() => {
               const total = todayQueueQuery.data?.data?.total ?? 0
               const totalPages = Math.max(1, Math.ceil(total / queueListPageSize))
-              if (totalPages <= 1) return null
               return (
-                <div className="flex items-center justify-between px-4 py-2 border-t border-slate-200 text-sm text-slate-600">
-                  <span>共 {total} 条，第 {queueListPage}/{totalPages} 页</span>
-                  <div className="flex gap-2">
-                    <button type="button" disabled={queueListPage <= 1} onClick={() => setQueueListPage((p) => Math.max(1, p - 1))} className="px-2 py-1 rounded border border-slate-200 disabled:opacity-50">上一页</button>
-                    <button type="button" disabled={queueListPage >= totalPages} onClick={() => setQueueListPage((p) => Math.min(totalPages, p + 1))} className="px-2 py-1 rounded border border-slate-200 disabled:opacity-50">下一页</button>
-                  </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-t border-slate-200 text-sm text-slate-600">
+                  <span>
+                    共 {total} 条，每页 {queueListPageSize} 条
+                    {totalPages > 1 ? `，第 ${queueListPage}/${totalPages} 页` : ''}
+                  </span>
+                  {totalPages > 1 ? (
+                    <div className="flex gap-2">
+                      <button type="button" disabled={queueListPage <= 1} onClick={() => setQueueListPage((p) => Math.max(1, p - 1))} className="px-3 py-1 rounded border border-slate-200 disabled:opacity-50 hover:bg-slate-50">上一页</button>
+                      <button type="button" disabled={queueListPage >= totalPages} onClick={() => setQueueListPage((p) => Math.min(totalPages, p + 1))} className="px-3 py-1 rounded border border-slate-200 disabled:opacity-50 hover:bg-slate-50">下一页</button>
+                    </div>
+                  ) : null}
                 </div>
               )
             })()}
