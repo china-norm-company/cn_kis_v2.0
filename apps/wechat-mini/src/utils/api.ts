@@ -55,8 +55,8 @@ function getResponseMsg(payload: unknown, fallback: string): string {
 
 /**
  * 严格按微信开放文档「调用云托管服务」使用 wx.cloud.callContainer。
- * 云中转/生产通过构建期环境变量注入 HTTPS 基址；
- * 本地开发可通过 TARO_APP_API_BASE 指定 127.0.0.1。
+ * 云中转/生产通过构建期环境变量注入基址；
+ * 本地或真机调试可通过 TARO_APP_API_BASE 指定 http(s)://host:port/api/v1（http 需在开发者工具勾选「不校验合法域名」）。
  */
 async function cloudContainerRequest(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
@@ -82,13 +82,14 @@ async function cloudContainerRequest(
 
 /**
  * API 基础地址：
- * - 微信小程序中 wx.request 必须使用完整 HTTPS URL，相对路径会报 invalid url。
+ * - 微信小程序中 wx.request 必须使用完整 URL（http 或 https），相对路径会报 invalid url。
  * - 使用云托管时通过 wx.cloud.callContainer 走 path，无需完整 URL。
- * - 云托管不可用或未开通时，必须通过 TARO_APP_API_BASE 构建时传入完整 HTTPS 基址（如 https://your-domain.com/api/v1）。
+ * - 云托管不可用或未开通时，通过 TARO_APP_API_BASE 构建时传入完整基址（如 https://your-domain.com/api/v1 或 http://局域网IP:8001/api/v1）。
  */
-/** 微信小程序 wx.request 必须使用完整 URL，相对路径会导致 invalid url */
-const WEB_RELAY_BASE = '/api/v1'
-const isFullUrl = (s: string) => /^https:\/\//i.test((s || '').trim())
+/** 微信小程序 wx.request 必须使用完整 URL；备份兜底地址仅允许 https */
+const isHttpsUrl = (s: string) => /^https:\/\//i.test((s || '').trim())
+/** 直连 wx.request 的绝对基址（http 或 https） */
+const isAbsoluteApiBaseUrl = (s: string) => /^https?:\/\//i.test((s || '').trim())
 const CLOUD_RELAY_BACKUP_BASE_RAW =
   typeof process !== 'undefined' &&
   process &&
@@ -105,12 +106,8 @@ const ENABLE_API_FALLBACK =
 function normalizeRelayBase(raw?: string): string | undefined {
   if (!raw) return undefined
   const value = raw.trim()
-  // 1) 允许本地开发：127.0.0.1 / localhost（开发时需勾选「不校验合法域名」）
-  if (/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/.*)?$/i.test(value)) {
-    return value.replace(/\/+$/, '')
-  }
-  // 2) 其他 HTTPS 直连（生产域名通过环境变量注入，不在源码中硬编码）
-  if (/^https:\/\/[a-z0-9.-]+(?::\d+)?(\/.*)?$/i.test(value)) {
+  // http(s)://host[:port][/path] — host 为域名或 IPv4；http 时微信端需勾选「不校验合法域名」
+  if (/^https?:\/\/[a-zA-Z0-9.-]+(?::\d+)?(\/.*)?$/i.test(value)) {
     return value.replace(/\/+$/, '')
   }
   return undefined
@@ -143,9 +140,14 @@ function isRelativeApiBase(base: string): boolean {
   return /^\/[a-z0-9/_-]*$/i.test(base)
 }
 
-/** 当前配置的基址是否为本地（localhost/127.0.0.1），是则不走云托管，直接 wx.request 到本地 */
+/** localhost / 127.0.0.1 基址 */
 function isLocalhostBase(base: string): boolean {
   return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/.*)?$/i.test((base || '').trim())
+}
+
+/** 任意 http 基址（含局域网/公网 IP）：不走云托管，直接 wx.request */
+function isPlainHttpApiBase(base: string): boolean {
+  return /^http:\/\//i.test((base || '').trim())
 }
 
 export function getCurrentApiBaseUrl(): string {
@@ -261,10 +263,10 @@ async function request<T = unknown>(
     return response
   }
 
-  // 配置为 localhost 时强制走 wx.request 到本地，不请求云托管 utest
-  const useLocalhost = isLocalhostBase(currentApiBaseUrl)
+  // localhost 或显式 http 基址：直连后端，不先走云托管 utest
+  const useDirectHttpRequest = isLocalhostBase(currentApiBaseUrl) || isPlainHttpApiBase(currentApiBaseUrl)
   const cloud = (typeof wx !== 'undefined' ? resolveWxCloud(wx?.cloud) : undefined) ?? resolveWxCloud(Taro.cloud)
-  if (!useLocalhost && cloudRunAvailable !== false && cloud?.callContainer) {
+  if (!useDirectHttpRequest && cloudRunAvailable !== false && cloud?.callContainer) {
     try {
       const resp = await cloudContainerRequest(method, url, data, header)
       cloudRunAvailable = true
@@ -289,11 +291,10 @@ async function request<T = unknown>(
   }
 
   try {
-    // 小程序 wx.request 必须用完整 URL；允许 https、本地 http(localhost/127.0.0.1)、H5 相对路径
+    // 小程序 wx.request 必须用完整 URL；允许 http(s) 绝对地址、H5 相对路径
     const baseValid = !!(
       currentApiBaseUrl &&
-      (isFullUrl(currentApiBaseUrl) ||
-        isLocalhostBase(currentApiBaseUrl) ||
+      (isAbsoluteApiBaseUrl(currentApiBaseUrl) ||
         (!isWeappLikeRuntime() && isWebRuntime() && isRelativeApiBase(currentApiBaseUrl)))
     )
     if (!baseValid) {
@@ -341,7 +342,7 @@ async function request<T = unknown>(
     const tryBackup =
       ENABLE_API_FALLBACK &&
       !!CLOUD_RELAY_BACKUP_BASE &&
-      isFullUrl(CLOUD_RELAY_BACKUP_BASE) &&
+      isHttpsUrl(CLOUD_RELAY_BACKUP_BASE) &&
       currentApiBaseUrl !== CLOUD_RELAY_BACKUP_BASE &&
       /timeout|timed out|errcode:-100|cronet|network|request:fail/i.test(
         String(getErrorMessage(error))

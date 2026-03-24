@@ -11,7 +11,6 @@ import {
   bindPhone,
   getLocalRouteTarget,
   needsPhoneBind,
-  optionalSyncWechatNicknameFromWechat,
   refreshRolesFromProfile,
   refreshUserInfo,
 } from '../../utils/auth'
@@ -346,15 +345,6 @@ export default function IndexPage() {
     }
   }, [fetchNextVisit])
 
-  const handleOptionalWechatNickname = useCallback(async () => {
-    await optionalSyncWechatNicknameFromWechat()
-    const u = await refreshUserInfo()
-    if (u) {
-      setUserInfo(u)
-      void fetchHomeData(u)
-    }
-  }, [fetchHomeData])
-
   useDidShow(() => {
     const lastLoginError = Taro.getStorageSync('last_login_error') || ''
     setLoginError(String(lastLoginError))
@@ -612,9 +602,6 @@ export default function IndexPage() {
         <View className='home-top-card__main'>
           <Text className='home-top-card__title'>您好，{resolveHomeGreetingName(homeDashboard, userInfo)}</Text>
           <Text className='home-top-card__sub'>编号: {userInfo?.subjectNo || '--'}</Text>
-          <Text className='home-top-card__nickname-sync' onClick={() => void handleOptionalWechatNickname()}>
-            用微信昵称作为称呼（可选）
-          </Text>
           <Text className='home-top-card__quote'>some day U bloom, some day U grow roots</Text>
         </View>
       </View>

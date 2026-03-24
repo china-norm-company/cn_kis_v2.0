@@ -434,26 +434,6 @@ export async function refreshUserInfo(): Promise<UserInfo | null> {
 }
 
 /**
- * 登录后可选：用户点击后唤起微信昵称并写入后端，失败或拒绝均静默，不影响登录（§2.2）。
- */
-export async function optionalSyncWechatNicknameFromWechat(): Promise<void> {
-  if (!isLoggedIn()) return
-  if (typeof Taro.getUserProfile !== 'function') return
-  try {
-    const res = await Taro.getUserProfile({ desc: '用于首页问候称呼' })
-    const nick = res.userInfo?.nickName?.trim()
-    if (!nick) return
-    await post<{ code?: number }>(
-      '/my/profile/wechat-display-name',
-      { display_name: nick },
-      { auth: true, silent: true }
-    )
-  } catch {
-    // 静默
-  }
-}
-
-/**
  * 获取本地存储的用户信息
  */
 export function getLocalUserInfo(): UserInfo | null {
