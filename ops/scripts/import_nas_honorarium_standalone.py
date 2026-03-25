@@ -408,6 +408,10 @@ def main():
     parser.add_argument('--dry-run',       action='store_true', help='预演，不写库')
     parser.add_argument('--backfill-only', action='store_true', help='仅执行身份证反向补全')
     parser.add_argument('--db-password',   type=str, default='')
+    parser.add_argument('--db-host', type=str, default='', help='数据库主机（覆盖默认 PG_HOST）')
+    parser.add_argument('--db-port', type=int, default=0, help='数据库端口（覆盖默认 PG_PORT）')
+    parser.add_argument('--db-name', type=str, default='', help='数据库名（覆盖默认 PG_DB）')
+    parser.add_argument('--db-user', type=str, default='', help='数据库用户（覆盖默认 PG_USER）')
     parser.add_argument('--limit-files',   type=int, default=0,
                         help='[调试用] 限制处理文件数，默认0=不限制。'
                              '⚠️ 生产运行必须保持 0，否则违反 no-data-truncation 规范')
@@ -419,12 +423,16 @@ def main():
         print(f'⚠️  [警告] --limit-files={args.limit_files} 已激活，仅处理前{args.limit_files}个文件。'
               f'这是调试模式，不得用于生产导入！')
 
+    db_host = args.db_host or PG_HOST
+    db_port = args.db_port or PG_PORT
+    db_name = args.db_name or PG_DB
+    db_user = args.db_user or PG_USER
     db_pass = args.db_password or PG_PASS
     if not db_pass and not args.dry_run:
         db_pass = input('输入 cn_kis_v2 数据库密码: ').strip()
 
-    conn = psycopg2.connect(host=PG_HOST, port=PG_PORT, dbname=PG_DB,
-                            user=PG_USER, password=db_pass, connect_timeout=15)
+    conn = psycopg2.connect(host=db_host, port=db_port, dbname=db_name,
+                            user=db_user, password=db_pass, connect_timeout=15)
     conn.autocommit = True
     cur = conn.cursor()
 

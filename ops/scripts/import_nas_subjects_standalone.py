@@ -207,9 +207,17 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help='预演：只打印，不写库')
     parser.add_argument('--report-only', action='store_true', help='只生成 Excel 报告，不写库')
     parser.add_argument('--db-password', type=str, default='', help='V2 数据库密码')
+    parser.add_argument('--db-host', type=str, default='', help='数据库主机（覆盖默认 PG_HOST）')
+    parser.add_argument('--db-port', type=int, default=0, help='数据库端口（覆盖默认 PG_PORT）')
+    parser.add_argument('--db-name', type=str, default='', help='数据库名（覆盖默认 PG_DB）')
+    parser.add_argument('--db-user', type=str, default='', help='数据库用户（覆盖默认 PG_USER）')
     parser.add_argument('--batch-size', type=int, default=50, help='每批提交条数（autocommit 模式无效）')
     args = parser.parse_args()
 
+    db_host = args.db_host or PG_HOST
+    db_port = args.db_port or PG_PORT
+    db_name = args.db_name or PG_DB
+    db_user = args.db_user or PG_USER
     db_pass = args.db_password or PG_PASS
     if not db_pass and not args.dry_run and not args.report_only:
         db_pass = input('输入 cn_kis_v2 数据库密码: ').strip()
@@ -312,14 +320,9 @@ def main():
     print('步骤 3: 与 V2 数据库匹配')
     print('=' * 68)
 
-    if args.dry_run or args.report_only:
-        conn = psycopg2.connect(host=PG_HOST, port=PG_PORT, dbname=PG_DB,
-                                user=PG_USER, password=db_pass,
-                                connect_timeout=10)
-    else:
-        conn = psycopg2.connect(host=PG_HOST, port=PG_PORT, dbname=PG_DB,
-                                user=PG_USER, password=db_pass,
-                                connect_timeout=10)
+    conn = psycopg2.connect(host=db_host, port=db_port, dbname=db_name,
+                            user=db_user, password=db_pass,
+                            connect_timeout=10)
     conn.autocommit = True
     cur = conn.cursor()
 
