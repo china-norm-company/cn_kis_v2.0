@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger('cn_kis.lims.playwright')
 
-LIMS_BASE_URL = 'http://lims.china-norm.com'
+LIMS_BASE_URL = 'http://lims.china-norm.com:8088'
 LIMS_USERNAME = 'malm'
 LIMS_PASSWORD = 'fushuo@123456'
 

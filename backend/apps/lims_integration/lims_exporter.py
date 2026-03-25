@@ -117,7 +117,7 @@ class LimsExporter:
         manifest = {
             'batch_no': self.batch_no,
             'operator': operator,
-            'lims_url': 'http://lims.china-norm.com',
+            'lims_url': 'http://lims.china-norm.com:8088',
             'lims_account': 'malm',
             'created_at': datetime.now().isoformat(),
             'total_records': total_records,
