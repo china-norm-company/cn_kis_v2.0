@@ -683,9 +683,15 @@ def feishu_callback(request, data: FeishuCallbackIn):
             'data': {'error_code': 'AUTH_APP_MISMATCH', 'trace_id': trace_id or ''},
         }
 
+    # 空串会触发 feishu_oauth_login 回退推导；须 strip，避免误用 /login 旧逻辑残留
+    callback_redirect_uri = (data.redirect_uri or '').strip() or None
     try:
         account = feishu_oauth_login(
-            data.code, app_id, app_secret, state_payload, redirect_uri=data.redirect_uri
+            data.code,
+            app_id,
+            app_secret,
+            state_payload,
+            redirect_uri=callback_redirect_uri,
         )
     except ValueError as e:
         logger.error(f'OAuth 回调失败 (app_id={app_id}): {e}')

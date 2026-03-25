@@ -21,13 +21,16 @@ export function createWorkstationFeishuConfig(workstation: string): FeishuAuthCo
     throw new Error('[FeishuConfig] workstation 不能为空')
   }
 
-  // 浏览器环境：用当前页面 origin，避免部署到服务器后仍跳回 localhost（构建时 env 为 localhost）
-  // 非浏览器（SSR/测试）：用 env 或火山云默认
+  // 生产构建：浏览器内始终用当前页 origin，避免部署域名与构建时 env 不一致。
+  // 本地 dev：若设置 VITE_FEISHU_REDIRECT_BASE，则固定用该值拼 redirect_uri，与飞书「重定向 URL」登记一致，
+  // 避免因 127.0.0.1 vs localhost、Vite 端口漂移（3010→3011）导致授权页 20029。
   const envBase = (import.meta.env.VITE_FEISHU_REDIRECT_BASE as string)?.trim()
-  const base =
-    (typeof window !== 'undefined' && window.location?.origin)
-      ? window.location.origin
-      : (envBase || VOLCENGINE_REDIRECT_BASE)
+  const inBrowser = typeof window !== 'undefined' && Boolean(window.location?.origin)
+  const base = inBrowser
+    ? import.meta.env.DEV && envBase
+      ? envBase
+      : window.location!.origin
+    : envBase || VOLCENGINE_REDIRECT_BASE
   const baseNorm = base.replace(/\/+$/, '')
 
   const redirectOverride = (import.meta.env.VITE_FEISHU_REDIRECT_URI as string)?.trim()

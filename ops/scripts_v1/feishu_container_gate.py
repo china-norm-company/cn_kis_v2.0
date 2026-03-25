@@ -3,7 +3,7 @@
 飞书容器一致性门禁：
 1) config/feishu.yaml 与 config/workstations.yaml 的工作台映射一致
 2) app_id_env 必须一致
-3) redirect_path 与工作台 path 语义一致（秘书台允许 /login 特例）
+3) redirect_path 与工作台 path 语义一致（秘书台与其它台相同，为 /secretary）
 4) 前端 App.tsx 使用 HashRouter
 5) feishu-sdk auth.ts 保留端内免登能力（tt.requestAuthCode）
 """
@@ -79,12 +79,10 @@ def check_configs() -> list[str]:
         ws_path = normalize_path(ws.get("path", f"/{ws_key}"))
         redirect_path = normalize_path(app.get("redirect_path", ws_path))
 
-        # 秘书台 OAuth 回调是 /login，属于特例；其余工作台应与 path 对齐
-        if ws_key != "secretary":
-            if redirect_path != ws_path:
-                issues.append(
-                    f"{ws_key}: redirect_path({redirect_path}) 与 workstations.path({ws_path}) 不一致"
-                )
+        if redirect_path != ws_path:
+            issues.append(
+                f"{ws_key}: redirect_path({redirect_path}) 与 workstations.path({ws_path}) 不一致"
+            )
 
     return issues
 

@@ -270,12 +270,10 @@ def _normalize_oauth_code(code: str) -> str:
 
 def _resolve_redirect_uri(state_payload: Optional[Dict[str, Any]] = None) -> str:
     """
-    根据 workstation 推导 redirect_uri（与前端 config.ts 逻辑完全一致）。
+    根据 workstation 推导 redirect_uri（与 packages/feishu-sdk/src/config.ts 一致）。
 
-    规则：
-    - secretary → {base}/login
-    - 其他工作台 → {base}/{workstation}/
-    - base 默认 http://118.196.64.48，可通过 FEISHU_REDIRECT_BASE 覆盖
+    规则：{base}/{workstation}/（秘书台为 /secretary/，与 Vite base 一致；勿再用 /login）。
+    base 默认 http://118.196.64.48，可通过 FEISHU_REDIRECT_BASE 覆盖。
     """
     base = (
         getattr(settings, 'FEISHU_REDIRECT_BASE', '')
@@ -283,8 +281,6 @@ def _resolve_redirect_uri(state_payload: Optional[Dict[str, Any]] = None) -> str
         or 'http://118.196.64.48'
     ).rstrip('/')
     ws = (state_payload or {}).get('ws', 'secretary')
-    if ws == 'secretary':
-        return f'{base}/login'
     return f'{base}/{ws}/'
 
 
@@ -302,7 +298,8 @@ def feishu_oauth_login(
     # redirect_uri 必须与授权 URL 中的完全一致（飞书 20071 校验）
     _app_id = app_id or settings.FEISHU_APP_ID
     _app_secret = app_secret or settings.FEISHU_APP_SECRET
-    _redirect_uri = redirect_uri or _resolve_redirect_uri(state_payload)
+    _ru = (redirect_uri or '').strip() or None
+    _redirect_uri = _ru or _resolve_redirect_uri(state_payload)
     try:
         resp = httpx.post(
             'https://open.feishu.cn/open-apis/authen/v2/oauth/token',

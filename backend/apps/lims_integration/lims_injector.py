@@ -38,6 +38,8 @@ LIMS 数据注入器（P0 增强版）
 """
 import json
 import logging
+import re
+from datetime import date as date_cls, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from django.db import transaction
@@ -79,6 +81,64 @@ FIELD_ALIASES = {
     'sample_name': ['样品名称', '产品名称', 'sampleName', 'productName'],
     'batch_no': ['批号', 'batchNo', '批次号'],
 }
+
+
+def _parse_lims_date(val: Any) -> Optional[date_cls]:
+    """解析 LIMS 日期字符串为 date（YYYY-MM-DD / YYYY/MM/DD）"""
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s:
+        return None
+    s = s[:19].replace('T', ' ')[:10]
+    for fmt in ('%Y-%m-%d', '%Y/%m/%d', '%Y.%m.%d'):
+        try:
+            return datetime.strptime(s[:10], fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _lims_first_nonempty_str(raw: dict, keys: tuple) -> str:
+    """按候选键顺序取第一个非空字符串（LIMS 列名兼容）"""
+    for k in keys:
+        v = raw.get(k)
+        if v is None:
+            continue
+        s = str(v).strip()
+        if s:
+            return s
+    return ''
+
+
+def _infer_unified_name_type(display_name: str) -> str:
+    """
+    LIMS 未单列「名称分类」时，从展示用设备名推断统一规格类型。
+    例：温湿度记录仪 16 → 温湿度记录仪；电子天平 01 → 电子天平。
+    """
+    if not display_name or not str(display_name).strip():
+        return ''
+    s = str(display_name).strip()
+    t = re.sub(r'\s+\d+$', '', s)
+    if t != s:
+        return t.strip()
+    t = re.sub(r'[-_#]\d+$', '', s, flags=re.IGNORECASE)
+    return (t.strip() if t.strip() else s)
+
+
+def _parse_cycle_days(val: Any) -> Optional[int]:
+    """从「365」「365天」「12 个月」等提取周期天数"""
+    if val is None or val == '':
+        return None
+    if isinstance(val, int) and val > 0:
+        return val
+    if isinstance(val, float) and val > 0:
+        return int(val)
+    m = re.match(r'^(\d+)', str(val).strip())
+    if m:
+        n = int(m.group(1))
+        return n if n > 0 else None
+    return None
 
 
 def _extract_field(raw_data: dict, field_key: str, default: str = '') -> str:
@@ -571,6 +631,9 @@ def _inject_equipment(raw_data: dict):
     - SBZT（设备状态）= 设备状态（启用/停用/报废等）→ 影响 is_active
     - SYBM（归属部门）= 使用部门 → 设备所属部门标注
     - XCJZSJ（下次校准时间）= 下次校准到期日 → next_calibration_date
+    - 名称分类（与 ResourceCategory「设备类别」不同）= 同规格设备统一类型名
+      （如 电子天平、glossymeter）→ attributes.name_classification；
+      资源类别仍由 SBLB/SBFL/设备分类 等推断。
     """
     try:
         from apps.resource.models import ResourceItem, ResourceCategory, EquipmentAuthorization
@@ -616,10 +679,19 @@ def _inject_equipment(raw_data: dict):
         # 综合判断：使用中优先，然后设备状态
         status = status_map.get(raw_usage_status) or status_map.get(raw_equip_status, 'idle')
 
-        # 查找合适的设备分类（从"设备名称分类"SBLB 或"设备分类"SBFL 推断）
-        category_name = (raw_data.get('SBLB') or raw_data.get('设备名称分类')
-                         or raw_data.get('SBFL') or raw_data.get('设备分类') or '').strip()
-        category = _find_or_create_equipment_category(category_name)
+        # 资源类别（设备大类/实验室分类）— 勿与「名称分类」混用
+        category_name_raw = _lims_first_nonempty_str(raw_data, (
+            'SBLB', 'SBFL', '设备分类', '资源类别', '设备大类',
+            'labCategory', 'equipmentCategory',
+        ))
+        category = _find_or_create_equipment_category(category_name_raw)
+
+        # 名称分类：LIMS 对同规格设备的统一类型（如 电子天平、glossymeter），独立于 ResourceCategory
+        name_classification_raw = _lims_first_nonempty_str(raw_data, (
+            '名称分类', '设备名称分类', 'MCFL', '标准设备名称', '统一名称', 'TYMC',
+            'instrumentType', 'instrumentTypeName', 'typeName', '统一设备名称',
+            'standardInstrumentName', 'unifiedName',
+        )) or _infer_unified_name_type(name)
 
         # 设备字段
         model_number = (raw_data.get('YQXH') or raw_data.get('设备规格/型号')
@@ -636,9 +708,27 @@ def _inject_equipment(raw_data: dict):
         # 借用人字段（SBLYR = 设备当前借用人姓名）
         borrower_name = (raw_data.get('SBLYR') or raw_data.get('设备当前借用人') or '').strip()
 
-        # 校准/核查日期
-        next_cal = (raw_data.get('XCJZSJ') or raw_data.get('下次校准时间')
-                    or raw_data.get('下次核查时间') or '').strip()
+        # 校准 / 核查 / 维护 计划字段（与 ResourceItem 模型及设备台账列一致）
+        d_next_cal = _parse_lims_date(
+            raw_data.get('XCJZSJ') or raw_data.get('下次校准时间') or raw_data.get('下次校准日期')
+        )
+        d_next_ver = _parse_lims_date(
+            raw_data.get('XCHCSJ') or raw_data.get('下次核查时间') or raw_data.get('下次核查日期')
+        )
+        d_next_maint = _parse_lims_date(
+            raw_data.get('XCWHSJ') or raw_data.get('下次维护时间')
+            or raw_data.get('下次维护日期') or raw_data.get('下次保养时间')
+        )
+        cal_cycle = _parse_cycle_days(
+            raw_data.get('JZZQ') or raw_data.get('校准周期') or raw_data.get('校准周期(天)')
+        )
+        ver_cycle = _parse_cycle_days(
+            raw_data.get('HCZQ') or raw_data.get('核查周期') or raw_data.get('核查周期(天)')
+        )
+        maint_cycle = _parse_cycle_days(
+            raw_data.get('WHZQ') or raw_data.get('维护周期')
+            or raw_data.get('维护周期(天)') or raw_data.get('保养周期')
+        )
 
         # 查找责任人 Account（使用姓名查找已注入的人员）
         manager_account = None
@@ -660,20 +750,25 @@ def _inject_equipment(raw_data: dict):
                 '_lims_dept': department,
                 '_lims_manager': manager_name,
                 '_lims_borrower': borrower_name,
+                'name_classification': name_classification_raw,
             },
         }
         if category:
             defaults['category'] = category
         if manager_account:
             defaults['manager_id'] = manager_account.id
-        if next_cal:
-            try:
-                from datetime import datetime
-                defaults['next_calibration_date'] = datetime.strptime(
-                    next_cal, '%Y-%m-%d'
-                ).date()
-            except (ValueError, TypeError):
-                pass
+        if d_next_cal:
+            defaults['next_calibration_date'] = d_next_cal
+        if d_next_ver:
+            defaults['next_verification_date'] = d_next_ver
+        if d_next_maint:
+            defaults['next_maintenance_date'] = d_next_maint
+        if cal_cycle:
+            defaults['calibration_cycle_days'] = cal_cycle
+        if ver_cycle:
+            defaults['verification_cycle_days'] = ver_cycle
+        if maint_cycle:
+            defaults['maintenance_cycle_days'] = maint_cycle
 
         if code:
             obj, created = ResourceItem.objects.get_or_create(
@@ -683,6 +778,25 @@ def _inject_equipment(raw_data: dict):
             if not created and manager_account and not obj.manager_id:
                 obj.manager_id = manager_account.id
                 obj.save(update_fields=['manager_id'])
+            # 已存在的 LIMS 设备：再次同步时刷新台账计划字段与名称分类
+            if not created:
+                prev_attrs = obj.attributes or {}
+                if prev_attrs.get('_lims_source'):
+                    merged_attr = {**prev_attrs, **(defaults.get('attributes') or {})}
+                    obj.attributes = merged_attr
+                    save_fields = ['attributes', 'update_time']
+                    for fld, val in (
+                        ('next_calibration_date', defaults.get('next_calibration_date')),
+                        ('next_verification_date', defaults.get('next_verification_date')),
+                        ('next_maintenance_date', defaults.get('next_maintenance_date')),
+                        ('calibration_cycle_days', defaults.get('calibration_cycle_days')),
+                        ('verification_cycle_days', defaults.get('verification_cycle_days')),
+                        ('maintenance_cycle_days', defaults.get('maintenance_cycle_days')),
+                    ):
+                        if val is not None:
+                            setattr(obj, fld, val)
+                            save_fields.append(fld)
+                    obj.save(update_fields=list(dict.fromkeys(save_fields)))
         else:
             obj = ResourceItem.objects.create(**defaults)
             created = True
