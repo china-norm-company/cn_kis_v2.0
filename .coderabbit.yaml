@@ -27,11 +27,13 @@ reviews:
       - "main"
       - "develop"
 
-  # 忽略不需要 Review 的文件
+  # 只 Review 有实质代码价值的文件，排除文档/前端工作台/配置快照/迁移文件
+  # 目的：将每次 PR Review 的文件数控制在 150 以内
   path_filters:
+    # 锁文件 & 编译产物
     - "!**/pnpm-lock.yaml"
-    - "!**/package-lock.json"
-    - "!**/migrations/0*.py"
+    - "!**/package-lock.yaml"
+    - "!**/yarn.lock"
     - "!**/__pycache__/**"
     - "!**/*.pyc"
     - "!**/staticfiles/**"
@@ -39,7 +41,19 @@ reviews:
     - "!**/node_modules/**"
     - "!**/*.min.js"
     - "!**/*.min.css"
-    - "!docs/csv/**"
+    - "!**/*.map"
+    # Django 迁移文件（自动生成，不需要 AI Review）
+    - "!**/migrations/0*.py"
+    # 文档目录（内容类，不需要代码 Review）
+    - "!docs/**"
+    # Cursor 规则与技能（AI 配置文件，不是业务代码）
+    - "!.cursor/**"
+    # 前端各工作台代码（在独立 PR 里单独 Review）
+    - "!workstations/**"
+    # E2E 测试（单独 Review）
+    - "!e2e/**"
+    # 测试截图
+    - "!tests/ui-acceptance/screenshots*/**"
 
   # ── 各域专项 Review 指令 ──────────────────────────────────────────────────
 
