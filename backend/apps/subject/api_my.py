@@ -27,20 +27,30 @@ router = Router()
 
 
 def _get_subject_from_request(request):
-    """从请求中获取当前受试者（优先 JWT phone，兼容 account）"""
+    """从请求中获取当前受试者（优先 JWT phone，兼容 account）。
+    同手机号多条档案时，解析为与当日预约一致的 canonical Subject，避免扫码签到写到错误 subject_id。
+    """
     from .models import Subject
+    from .services import subject_service as subject_svc
 
     # 方法1: 尝试从 phone_session JWT 提取 phone
     phone = get_phone_from_request(request)
     if phone:
-        subject = Subject.objects.filter(phone=phone, is_deleted=False).first()
+        subject = subject_svc.resolve_subject_for_mobile_session(phone, timezone.localdate())
         if subject:
             return subject
 
     # 方法2: 兼容旧逻辑（account-based token）
     account = _get_account_from_request(request)
     if account:
-        return Subject.objects.filter(account_id=account.id, is_deleted=False).first()
+        sub = Subject.objects.filter(account_id=account.id, is_deleted=False).first()
+        if sub and (sub.phone or '').strip():
+            canonical = subject_svc.resolve_subject_for_mobile_session(
+                sub.phone, timezone.localdate()
+            )
+            if canonical:
+                return canonical
+        return sub
 
     return None
 
@@ -438,7 +448,12 @@ def bind_phone(request, data: BindPhoneIn):
         return 400, {'code': 400, 'msg': '请输入正确的11位手机号'}
 
     from .models import Subject, AuthLevel
-    from .services.subject_service import generate_subject_no
+    from .services.subject_service import (
+        generate_subject_no,
+        normalize_subject_phone,
+        find_subjects_by_mobile_normalized,
+        resolve_subject_for_mobile_session,
+    )
 
     # 检查当前账号是否已绑定
     existing_subject = Subject.objects.filter(account_id=account.id, is_deleted=False).first()
@@ -453,8 +468,14 @@ def bind_phone(request, data: BindPhoneIn):
             },
         }
 
-    # 查找已有 Subject（招募台录入的预约数据中）
-    subject = Subject.objects.filter(phone=phone, is_deleted=False).first()
+    n = normalize_subject_phone(phone)
+
+    # 查找已有 Subject；同号多条时绑定到与当日预约一致的 canonical，避免再建「微信用户」重复档
+    subject = None
+    if n and find_subjects_by_mobile_normalized(n).exists():
+        subject = resolve_subject_for_mobile_session(phone, timezone.localdate())
+    if subject is None:
+        subject = Subject.objects.filter(phone=phone, is_deleted=False).first()
     if subject:
         if subject.account_id and subject.account_id != account.id:
             return 409, {'code': 409, 'msg': '该手机号已被其他账号绑定，请联系工作人员'}
@@ -472,12 +493,18 @@ def bind_phone(request, data: BindPhoneIn):
             },
         }
 
-    # 未找到，自动创建 Subject
+    # 未找到，自动创建 Subject（防御：规范化后应仍无同号档）
+    if n and find_subjects_by_mobile_normalized(n).exists():
+        return 400, {
+            'code': 400,
+            'msg': '该手机号已有受试者档案，请稍后再试或联系前台处理重复档案。',
+            'data': None,
+        }
     subject = Subject.objects.create(
         subject_no=generate_subject_no(),
         account_id=account.id,
         name='受试者',
-        phone=phone,
+        phone=n if n else phone,
         auth_level=AuthLevel.PHONE_VERIFIED,
     )
     return {
@@ -1637,6 +1664,7 @@ def my_scan_checkin(request, data: Optional[ScanCheckinIn] = Body(default=None))
         ReceptionBoardCheckin.objects.filter(
             subject_id=subject.id,
             checkin_date=today,
+            checkin_time__isnull=False,
             checkout_time__isnull=True,
         )
         .order_by('checkin_time', 'id')
@@ -1647,8 +1675,14 @@ def my_scan_checkin(request, data: Optional[ScanCheckinIn] = Body(default=None))
         result = reception_svc.board_checkout(subject.id, target_date=today)
         return {'code': 200, 'msg': '签出成功', 'data': {**result, 'action': 'checkout'}}
 
-    has_any_board = ReceptionBoardCheckin.objects.filter(subject_id=subject.id, checkin_date=today).exists()
-    if (not has_any_board) or reception_svc.has_pending_appointments_for_checkin(subject.id, today):
+    # 仅「签到/签出时间曾写过」算有过看板记录；两行均为 NULL 的空壳（如库内批量清空）视为可再次签到
+    has_meaningful_board_today = ReceptionBoardCheckin.objects.filter(
+        subject_id=subject.id,
+        checkin_date=today,
+    ).filter(Q(checkin_time__isnull=False) | Q(checkout_time__isnull=False)).exists()
+    if (not has_meaningful_board_today) or reception_svc.has_pending_appointments_for_checkin(
+        subject.id, today
+    ):
         # 首次签到，或同日仍有待到访预约时再次签到：仅写接待看板链路。
         appt_ctx = reception_svc.resolve_today_appointment_for_quick_checkin(subject.id, None, today)
         project_code = (appt_ctx.project_code or '').strip() if appt_ctx else None

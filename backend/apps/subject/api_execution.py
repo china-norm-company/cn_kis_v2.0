@@ -271,13 +271,24 @@ def _build_import_subject_name(item: AppointmentImportItem) -> str:
 def _resolve_or_create_subject_for_import(item: AppointmentImportItem, account=None):
     """按手机号/编号匹配或新建受试者。匹配到已有受试者时，用导入的姓名/性别/年龄更新。"""
     from .models import Subject
-    from .services.subject_service import create_subject as svc_create_subject
+    from .services.subject_service import (
+        create_subject as svc_create_subject,
+        find_subjects_by_mobile_normalized,
+        normalize_subject_phone,
+        resolve_subject_for_mobile_session,
+    )
 
     subject = None
     if item.subject_id:
         subject = Subject.objects.filter(id=item.subject_id, is_deleted=False).first()
     if not subject and item.subject_phone:
-        subject = Subject.objects.filter(phone=item.subject_phone.strip(), is_deleted=False).first()
+        raw_p = item.subject_phone.strip()
+        mob = normalize_subject_phone(raw_p)
+        appt_d = _parse_import_date(item.appointment_date)
+        if mob and find_subjects_by_mobile_normalized(mob).exists():
+            subject = resolve_subject_for_mobile_session(raw_p, appt_d)
+        if not subject:
+            subject = Subject.objects.filter(phone=raw_p, is_deleted=False).first()
     if not subject and item.subject_no:
         subject = Subject.objects.filter(subject_no=item.subject_no.strip(), is_deleted=False).first()
     if subject:

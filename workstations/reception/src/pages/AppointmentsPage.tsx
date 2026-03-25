@@ -21,6 +21,23 @@ import {
 import { Button, Badge, Card, Empty, StatCard, Modal } from '@cn-kis/ui-kit'
 import * as XLSX from 'xlsx'
 
+/** 与后端 normalize_subject_phone 一致：取 11 位大陆手机号 */
+function normalizeSubjectPhone11(raw: string): string {
+  const digits = (raw || '').replace(/\D/g, '')
+  if (digits.length >= 11) {
+    const last = digits.slice(-11)
+    if (last.length === 11 && last.startsWith('1')) return last
+  }
+  return ''
+}
+
+function subjectPhonesMatch(stored: string | undefined, input: string | undefined): boolean {
+  const nStored = normalizeSubjectPhone11(stored || '')
+  const nInput = normalizeSubjectPhone11(input || '')
+  if (nStored && nInput) return nStored === nInput
+  return (stored || '').trim() === (input || '').trim()
+}
+
 const TASK_LABEL_MAP: Record<QueueItem['task_type'], string> = {
   pre_screening: '粗筛',
   screening: '筛选',
@@ -760,7 +777,7 @@ export default function AppointmentsPage() {
   const subjectsQuery = useQuery({
     queryKey: ['subjects', 'appointments'],
     queryFn: async () => {
-      const res = await subjectApi.list({ status: 'active', page_size: 150 })
+      const res = await subjectApi.list({ status: 'active', page_size: 400 })
       if (!res?.data) throw new Error('获取受试者列表失败')
       return res
     },
@@ -825,25 +842,56 @@ export default function AppointmentsPage() {
     mutationFn: async () => {
       let subjectId = selectedSubject
       if (!subjectId && (quickPhone.trim() || quickName.trim())) {
-        const phone = quickPhone.trim()
+        const phoneRaw = quickPhone.trim()
         const name = quickName.trim()
-        let existing = allSubjects.find((s) => s.phone === phone || (phone && s.phone?.includes(phone)))
-        if (!existing && phone) {
-          const listRes = await subjectApi.list({ search: phone, page_size: 50 })
-          existing = (listRes as { data?: { items?: Subject[] } })?.data?.items?.find((s) => s.phone === phone)
+        const phoneNorm = normalizeSubjectPhone11(phoneRaw)
+
+        if (phoneNorm.length === 11) {
+          try {
+            const resolved = await subjectApi.resolveByPhone(phoneNorm)
+            const sub = resolved.data as Subject | undefined
+            if (sub?.id) subjectId = sub.id
+          } catch {
+            /* 无档案或无权限：走下方列表匹配 / 新建 */
+          }
         }
-        if (!existing && name) {
-          const listRes = await subjectApi.list({ search: name, page_size: 50 })
-          existing = (listRes as { data?: { items?: Subject[] } })?.data?.items?.find((s) => s.name === name)
+
+        if (!subjectId) {
+          let existing = allSubjects.find(
+            (s) =>
+              (phoneNorm && subjectPhonesMatch(s.phone, phoneNorm)) ||
+              (!!phoneRaw && s.phone === phoneRaw) ||
+              (!!phoneRaw && s.phone?.includes?.(phoneRaw)),
+          )
+          if (!existing && phoneNorm) {
+            existing = allSubjects.find((s) => subjectPhonesMatch(s.phone, phoneNorm))
+          }
+          if (!existing && phoneRaw) {
+            const listRes = await subjectApi.list({
+              search: phoneNorm || phoneRaw,
+              phone: phoneNorm || undefined,
+              page_size: 80,
+            })
+            const items = (listRes as { data?: { items?: Subject[] } })?.data?.items ?? []
+            existing = items.find(
+              (s) =>
+                subjectPhonesMatch(s.phone, phoneRaw) ||
+                (phoneNorm ? subjectPhonesMatch(s.phone, phoneNorm) : false),
+            )
+          }
+          if (!existing && name) {
+            const listRes = await subjectApi.list({ search: name, page_size: 80 })
+            existing = (listRes as { data?: { items?: Subject[] } })?.data?.items?.find((s) => s.name === name)
+          }
+          if (existing) subjectId = existing.id
         }
-        if (existing) {
-          subjectId = existing.id
-        } else {
-          if (!name && !phone) throw new Error('请选择受试者或录入姓名、手机号')
+
+        if (!subjectId) {
+          if (!name && !phoneRaw) throw new Error('请选择受试者或录入姓名、手机号')
           const ageNum = quickAge.trim() ? parseInt(quickAge.trim(), 10) : undefined
           const created = await subjectApi.create({
             name: name || '待补充',
-            phone: phone || '',
+            phone: phoneNorm || phoneRaw || '',
             gender: quickGender || undefined,
             age: Number.isFinite(ageNum) ? ageNum : undefined,
           })
@@ -1205,12 +1253,21 @@ export default function AppointmentsPage() {
     return new Map(items.map((item) => [item.date, item.total]))
   }, [appointmentCalendarQuery.data])
   const subjects = searchInput
-    ? allSubjects.filter(
-        (s) =>
-          s.name?.includes(searchInput) ||
-          s.subject_no?.includes(searchInput) ||
-          s.phone?.includes(searchInput),
-      )
+    ? allSubjects.filter((s) => {
+        const q = searchInput.trim()
+        const qn = normalizeSubjectPhone11(q)
+        if (qn)
+          return (
+            subjectPhonesMatch(s.phone, qn) ||
+            Boolean(s.name?.includes(q)) ||
+            Boolean(s.subject_no?.includes(q))
+          )
+        return (
+          Boolean(s.name?.includes(q)) ||
+          Boolean(s.subject_no?.includes(q)) ||
+          Boolean(s.phone?.includes(q))
+        )
+      })
     : allSubjects
 
   const handleSelectQueueDate = (dateKey: string) => {
@@ -1455,7 +1512,10 @@ export default function AppointmentsPage() {
                 </div>
               </div>
               <div className="border-t border-slate-200 pt-4">
-                <p className="text-sm text-slate-600 mb-2">或快速录入（未选中受试者可在此填写，将匹配/新建）</p>
+                <p className="text-sm text-slate-600 mb-2">
+                  或快速录入（未选中受试者可在此填写）。填写手机号时将<strong className="font-medium">优先按规范化号码匹配已有主档</strong>
+                  ，避免重复建档；无记录时再新建。
+                </p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">受试者姓名</label>

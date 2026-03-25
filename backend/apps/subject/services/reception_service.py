@@ -194,11 +194,13 @@ def _merge_duplicate_queue_items(queue: list[dict], target_date: date) -> list[d
 
 
 def _determine_board_queue_status(appt: SubjectAppointment, board_rec: Optional[ReceptionBoardCheckin]) -> str:
-    """接待看板队列状态：根据 ReceptionBoardCheckin 的 checkout_time 推断。"""
+    """接待看板队列状态：须有签到时间才算已签到；仅清空时间但保留行时视为待签到。"""
     if board_rec:
         if board_rec.checkout_time:
             return 'checked_out'
-        return 'checked_in'
+        if board_rec.checkin_time:
+            return 'checked_in'
+        return 'waiting'
     if appt.status == AppointmentStatus.NO_SHOW:
         return 'no_show'
     return 'waiting'
@@ -521,7 +523,11 @@ def get_today_queue(
             'project_name': project_name,
             'project_code': project_code_val,
             'task_type': 'walk_in',
-            'status': 'checked_out' if board_rec.checkout_time else 'checked_in',
+            'status': (
+                'checked_out'
+                if board_rec.checkout_time
+                else ('checked_in' if board_rec.checkin_time else 'waiting')
+            ),
             'checkin_id': board_rec.id,
             'checkin_time': board_rec.checkin_time.isoformat() if board_rec.checkin_time else None,
             'checkout_time': board_rec.checkout_time.isoformat() if board_rec.checkout_time else None,
@@ -1315,23 +1321,39 @@ def register_walk_in(
     3. auto_checkin=True 时立即签到
     """
     from ..models import Subject
-    from ..services.subject_service import generate_subject_no
-    from ..models import AuthLevel
+    from ..services.subject_service import (
+        create_subject as svc_create_subject,
+        find_subjects_by_mobile_normalized,
+        normalize_subject_phone,
+        resolve_subject_for_mobile_session,
+    )
 
     phone = (phone or '').strip()
     today = _local_today()
 
-    subject = Subject.objects.filter(phone=phone, is_deleted=False).first()
+    subject = None
+    n = normalize_subject_phone(phone)
+    if n and find_subjects_by_mobile_normalized(n).exists():
+        subject = resolve_subject_for_mobile_session(phone, today)
+    if subject is None:
+        subject = Subject.objects.filter(phone=phone, is_deleted=False).first()
     is_new_subject = False
     if not subject:
-        subject = Subject.objects.create(
-            subject_no=generate_subject_no(),
-            name=name or '临时受试者',
-            phone=phone,
-            gender=gender or '',
-            auth_level=AuthLevel.GUEST,
-        )
-        is_new_subject = True
+        try:
+            subject = svc_create_subject(
+                name=name or '临时受试者',
+                gender=gender or '',
+                phone=phone,
+            )
+            is_new_subject = True
+        except ValueError:
+            subject = resolve_subject_for_mobile_session(phone, today) or Subject.objects.filter(
+                phone=phone, is_deleted=False
+            ).first()
+            if not subject:
+                raise ValueError(
+                    '该手机号已有受试者档案但无法自动关联，请从已有档案补录或联系管理员合并重复档。'
+                ) from None
     else:
         if not subject.name or subject.name == '受试者':
             subject.name = name or subject.name
