@@ -385,7 +385,7 @@ class ProjectBudget(models.Model):
     total_cost = models.DecimalField('预算成本', max_digits=15, decimal_places=2, default=Decimal('0'))
     total_expense = models.DecimalField('预算费用', max_digits=15, decimal_places=2, default=Decimal('0'))
     gross_profit = models.DecimalField('预算毛利', max_digits=15, decimal_places=2, default=Decimal('0'))
-    gross_margin = models.DecimalField('预算毛利率(%)', max_digits=5, decimal_places=2, default=Decimal('0'))
+    gross_margin = models.DecimalField('预算毛利率(%)', max_digits=8, decimal_places=2, default=Decimal('0'))
 
     # 实际金额（执行中更新）
     actual_income = models.DecimalField('实际收入', max_digits=15, decimal_places=2, default=Decimal('0'))
