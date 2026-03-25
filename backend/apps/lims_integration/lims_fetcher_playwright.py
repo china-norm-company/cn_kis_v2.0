@@ -383,8 +383,10 @@ class LimsPlaywrightFetcher:
             # 使用 OrderedDict 保留 allColArray 的顺序
             # 格式: [(field_code, label), ...] 有序列表
             col_map_ordered: List[tuple] = []
+            # API 返回的完整行数据（所有字段，不受 DOM 可见列限制）
+            api_rows_buffer: List[dict] = []
 
-            # 拦截 JSON 获取字段映射（保留顺序）
+            # 拦截 JSON：同时捕获列配置和完整行数据
             async def on_resp(response):
                 try:
                     ct = response.headers.get('content-type', '')
@@ -392,13 +394,19 @@ class LimsPlaywrightFetcher:
                         body = await response.json()
                         if isinstance(body, dict) and body.get('result') == 'ok':
                             data = body.get('data', {})
-                            if isinstance(data, dict) and 'colConfigInfo' in data:
-                                # 只更新一次（第一次获取到的才是当前模块的）
-                                if not col_map_ordered:
+                            if isinstance(data, dict):
+                                # 捕获列配置（只取第一次）
+                                if 'colConfigInfo' in data and not col_map_ordered:
                                     for col in data['colConfigInfo'].get('allColArray', []):
                                         f, l = col.get('field', ''), col.get('label', '')
                                         if f and l:
                                             col_map_ordered.append((f, l))
+                                # 捕获完整行数据（rows / list / records / data）
+                                for key in ('rows', 'list', 'records', 'datas'):
+                                    rows = data.get(key)
+                                    if isinstance(rows, list) and rows:
+                                        api_rows_buffer.extend(rows)
+                                        break
                 except Exception:
                     pass
 
@@ -415,9 +423,14 @@ class LimsPlaywrightFetcher:
                 return [], meta
 
             records, page_count = await self._scrape_module_pages(
-                page, module, module_info, sid, col_map_ordered
+                page, module, module_info, sid, col_map_ordered,
+                api_rows_override=api_rows_buffer,
             )
             meta['pages'] = page_count
+            # 如果 API 行数比 DOM 多，以 API 为准
+            if api_rows_buffer and len(api_rows_buffer) > len(records):
+                logger.info('[%s] 使用 API 完整行数据: %d 条（DOM抓取: %d 条）',
+                            module, len(api_rows_buffer), len(records))
             await browser.close()
 
         meta['total'] = len(records)
@@ -443,6 +456,8 @@ class LimsPlaywrightFetcher:
             # 全局 col_maps（按模块存储，保留 allColArray 顺序）
             # 格式: {module: [(field_code, label), ...]}
             col_maps: Dict[str, List[tuple]] = {}
+            # API 完整行数据缓冲（按模块存储，不受 DOM 可见列限制）
+            api_rows_by_module: Dict[str, List[dict]] = {}
             current = {'module': ''}
 
             async def on_resp(response):
@@ -452,15 +467,22 @@ class LimsPlaywrightFetcher:
                         body = await response.json()
                         if isinstance(body, dict) and body.get('result') == 'ok':
                             data = body.get('data', {})
-                            if isinstance(data, dict) and 'colConfigInfo' in data:
+                            if isinstance(data, dict):
                                 m = current['module']
-                                # 只记录第一次（每个模块首次加载时的 colConfigInfo）
-                                if m and m not in col_maps:
+                                # 捕获列配置（每模块只记录一次）
+                                if 'colConfigInfo' in data and m and m not in col_maps:
                                     col_maps[m] = []
                                     for col in data['colConfigInfo'].get('allColArray', []):
                                         f, l = col.get('field', ''), col.get('label', '')
                                         if f and l:
                                             col_maps[m].append((f, l))
+                                # 捕获完整行数据（每页累积）
+                                if m:
+                                    for key in ('rows', 'list', 'records', 'datas'):
+                                        rows = data.get(key)
+                                        if isinstance(rows, list) and rows:
+                                            api_rows_by_module.setdefault(m, []).extend(rows)
+                                            break
                 except Exception:
                     pass
 
@@ -482,8 +504,13 @@ class LimsPlaywrightFetcher:
                 logger.info('开始采集模块: %s', module)
 
                 records, page_count = await self._scrape_module_pages(
-                    page, module, module_info, sid, col_maps.get(module, {})
+                    page, module, module_info, sid, col_maps.get(module, {}),
+                    api_rows_override=api_rows_by_module.get(module, []),
                 )
+                api_cnt = len(api_rows_by_module.get(module, []))
+                if api_cnt > len(records):
+                    logger.info('[%s] 使用 API 完整行数据: %d 条（DOM抓取: %d 条）',
+                                module, api_cnt, len(records))
                 results[module] = (records, {
                     'module': module,
                     'label': module_info.get('label', module),
@@ -509,6 +536,7 @@ class LimsPlaywrightFetcher:
         module_info: dict,
         sid: str,
         col_map: dict,
+        api_rows_override: List[dict] = None,
     ) -> Tuple[List[Dict], int]:
         """
         导航到模块页面并逐页提取所有数据。
@@ -614,6 +642,26 @@ class LimsPlaywrightFetcher:
                 'scraped_at': datetime.now().isoformat(),
             }
 
+        # ── 优先使用 API 完整行数据（所有字段，不受 DOM 可见列限制）──────────
+        if api_rows_override:
+            logger.info('[%s] 使用 API 行数据（%d 条，%d 字段/行），跳过 DOM 分页抓取',
+                        module, len(api_rows_override),
+                        len(api_rows_override[0]) if api_rows_override else 0)
+            # 用 col_map 把 field_code 替换为中文 label（保留双键：field_code + label）
+            col_code_to_label = {fc: lbl for fc, lbl in (col_map if col_map else [])}
+            for raw_row in api_rows_override:
+                if not isinstance(raw_row, dict):
+                    continue
+                labeled = {}
+                for k, v in raw_row.items():
+                    label = col_code_to_label.get(k, k)
+                    labeled[label] = v
+                    if label != k:
+                        labeled[k] = v  # 同时保留 field_code 以便 p0_mapping 使用
+                records.append(build_record(labeled, module, page.url))
+            return records, page_count
+
+        # ── 降级：DOM 分页抓取（仅可见列）──────────────────────────────────
         # 第一页
         dom_rows = await page.evaluate(EXTRACT_TABLE_JS)
         rows = extract_rows_with_authoritative_cols(dom_rows, authoritative_cols)
