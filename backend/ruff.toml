@@ -1,25 +1,24 @@
 # CN KIS V2.0 Backend Ruff 配置
-# 与 CI 命令保持一致：--select E,W,F --ignore E501
-# 以下规则是历史存量问题，逐步修复中，暂时排除以维持 CI 通过
+# ruff.toml 是唯一配置来源；CI 命令只需 `ruff check apps/ libs/`
 
 [lint]
 select = ["E", "W", "F"]
 ignore = [
-    "E501",   # line too long (由 CI 命令排除)
-    "E402",   # module import not at top of file（Django 路由模式下无法避免）
-    "F841",   # local variable assigned but never used（存量代码，逐步清理）
-    "E741",   # ambiguous variable name（存量代码，l/O/I 等命名）
+    "E501",   # line too long
+    "E402",   # module import not at top（Django 路由模式）
+    "F841",   # local variable assigned but never used（存量代码）
+    "E741",   # ambiguous variable name（存量代码）
     "F601",   # multi-value repeated key literal（存量代码）
     "E701",   # multiple statements on one line（存量代码）
-    "F821",   # undefined name（Django 动态属性，如 __all__ 等场景）
+    "F821",   # undefined name（Django 动态属性）
     "E731",   # lambda assignment（存量代码）
     "E702",   # multiple statements on one line - semicolon（存量代码）
     "E712",   # comparison to True/False（存量代码）
-    "F811",   # redefined while unused（部分为条件导入模式）
+    "F811",   # redefined while unused（条件导入模式）
 ]
 
 exclude = [
-    "*/migrations/*",
-    "*/venv/*",
-    "*/__pycache__/*",
+    "**/migrations/**",
+    "**/venv/**",
+    "**/__pycache__/**",
 ]
