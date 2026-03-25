@@ -345,6 +345,15 @@ def import_appointments(request, data: AppointmentImportIn):
 
     try:
         for idx, item in enumerate(data.items):
+            phone = (item.subject_phone or '').strip()
+            project_code = (item.project_code or '').strip()
+            if not phone:
+                errors.append({'row': idx + 1, 'msg': '手机号不能为空'})
+                continue
+            if not project_code:
+                errors.append({'row': idx + 1, 'msg': '项目编号不能为空'})
+                continue
+
             subject = _resolve_or_create_subject_for_import(item, account=account)
             if not subject:
                 errors.append({'row': idx + 1, 'msg': '请至少填写手机号或受试者编号'})
@@ -372,12 +381,12 @@ def import_appointments(request, data: AppointmentImportIn):
                     purpose=item.purpose or '',
                     enrollment_id=None,
                     visit_point=item.visit_point or '',
-                    project_code=item.project_code or '',
+                    project_code=project_code,
                     project_name=item.project_name or '',
                     name_pinyin_initials=(item.name_pinyin_initials or '').strip() or '',
                     liaison=(item.liaison or '').strip() or '',
                 )
-                pc = (item.project_code or '').strip()
+                pc = project_code
                 sc_val = (item.sc_number or '').strip()
                 rd_val = (item.rd_number or '').strip()
                 if pc and (sc_val or rd_val):
@@ -398,7 +407,7 @@ def import_appointments(request, data: AppointmentImportIn):
         logger.exception('预约导入失败: %s', e)
         err_msg = str(e).strip() if e else ''
         if not err_msg:
-            err_msg = '导入失败，请检查数据格式（预约日期为 YYYY-MM-DD / YYYY/M/D，且至少提供手机号或受试者编号）'
+            err_msg = '导入失败，请检查数据格式（预约日期为 YYYY-MM-DD / YYYY/M/D，且项目编号、手机号不能为空）'
         return 500, {
             'code': 500,
             'msg': err_msg,

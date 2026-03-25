@@ -73,9 +73,11 @@ function matchQueueSearch(item: QueueItem, q: string): boolean {
   const sc = (item.sc_number ?? '').toLowerCase()
   const rd = (item.rd_number ?? '').toLowerCase()
   const name = (item.subject_name ?? '').toLowerCase()
+  const pc = (item.project_code ?? '').toLowerCase()
+  const pname = (item.project_name ?? '').toLowerCase()
   const phone = (item.phone ?? '').replace(/\s/g, '')
   const phoneS = s.replace(/\s/g, '')
-  return sc.includes(s) || rd.includes(s) || name.includes(s) || phone.includes(phoneS)
+  return sc.includes(s) || rd.includes(s) || name.includes(s) || pc.includes(s) || pname.includes(s) || phone.includes(phoneS)
 }
 
 const clawFetcher = (key: string) => clawRegistryApi.getByWorkstation(key)
@@ -105,7 +107,6 @@ export default function ReceptionDashboardPage() {
   const [qrcodeSubjectId, setQrcodeSubjectId] = useState('')
   const [assigneeId, setAssigneeId] = useState('')
   const [projectFilter, setProjectFilter] = useState('')
-  const [projectCodeFilter, setProjectCodeFilter] = useState('')
   const [queueSearch, setQueueSearch] = useState('')
   /** 今日队列 RD 号输入未提交的本地值，key: subject_id-project_code */
   const [pendingQueueRd, setPendingQueueRd] = useState<Record<string, string>>({})
@@ -123,14 +124,19 @@ export default function ReceptionDashboardPage() {
   const [walkInPhone, setWalkInPhone] = useState('')
   const [walkInPurpose, setWalkInPurpose] = useState('临时到访')
   const [walkInAutoCheckin, setWalkInAutoCheckin] = useState(true)
+  /** 签到前核对受试者信息（接待看板） */
+  const [checkinConfirmTarget, setCheckinConfirmTarget] = useState<QueueItem | null>(null)
 
-  const projectCodeForApi = (projectCodeFilter || projectFilter).trim() || undefined
-  const selectedProject = (projectCodeFilter || projectFilter).trim()
+  const projectCodeForApi = projectFilter.trim() || undefined
 
   const { data: statsRes } = useQuery({
     queryKey: ['reception', 'today-stats', queryDate, 'board', projectCodeForApi ?? ''],
     queryFn: () => receptionApi.todayStats(queryDate, projectCodeForApi, 'board'),
-    refetchInterval: 30000,
+  })
+  // 项目下拉选项使用“未筛选”的统计结果，避免选中后下拉只剩当前项目
+  const { data: statsOptionsRes } = useQuery({
+    queryKey: ['reception', 'today-stats', queryDate, 'board', 'all-project-options'],
+    queryFn: () => receptionApi.todayStats(queryDate, undefined, 'board'),
   })
   const { data: queueRes, isFetching: queueListFetching } = useQuery({
     queryKey: ['reception', 'today-queue', 'board', queryDate, queuePage, queuePageSize, projectCodeForApi ?? ''],
@@ -142,7 +148,6 @@ export default function ReceptionDashboardPage() {
         project_code: projectCodeForApi,
         source: 'board',
       }),
-    refetchInterval: 30000,
     enabled: queueSearch.trim().length === 0,
   })
   const { data: searchQueueRes, isFetching: searchQueueFetching } = useQuery({
@@ -155,13 +160,11 @@ export default function ReceptionDashboardPage() {
         project_code: projectCodeForApi,
         source: 'board',
       }),
-    refetchInterval: 30000,
     enabled: queueSearch.trim().length > 0,
   })
   const { data: alertRes } = useQuery({
     queryKey: ['reception', 'pending-alerts', queryDate],
     queryFn: () => receptionApi.pendingAlerts(queryDate),
-    refetchInterval: 30000,
   })
   const { data: qrListRes, refetch: refetchQrList } = useQuery({
     queryKey: ['reception', 'qrcode-list'],
@@ -171,7 +174,6 @@ export default function ReceptionDashboardPage() {
   const { data: ticketRes } = useQuery({
     queryKey: ['reception', 'support-tickets'],
     queryFn: () => executionApi.listSupportTickets(),
-    refetchInterval: 30000,
     enabled: canViewSupportTickets,
   })
 
@@ -180,23 +182,38 @@ export default function ReceptionDashboardPage() {
     queryFn: () => digitalWorkforcePortalApi.getSuggestions('reception'),
   })
   const suggestions = suggestionsRes?.data?.data?.items ?? []
+  const refreshBoardQueueAndStats = useCallback(() => {
+    void qc.invalidateQueries({ queryKey: ['reception', 'today-queue'] })
+    void qc.invalidateQueries({ queryKey: ['reception', 'today-stats'] })
+    void qc.invalidateQueries({ queryKey: ['reception', 'pending-alerts'] })
+  }, [qc])
 
   /** 接待看板签到（独立于工单执行，SC/RD/签到时间独立）。支持 project_code 实现同天多项目各自 SC。 */
   const checkinMutation = useMutation({
     mutationFn: (params: { subject_id: number; project_code?: string }) =>
       receptionApi.boardCheckin({ subject_id: params.subject_id, target_date: queryDate, project_code: params.project_code }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['reception'] }),
+    onSuccess: refreshBoardQueueAndStats,
   })
+  const handleConfirmCheckin = () => {
+    if (!checkinConfirmTarget) return
+    checkinMutation.mutate(
+      { subject_id: checkinConfirmTarget.subject_id, project_code: checkinConfirmTarget.project_code },
+      {
+        onSuccess: () => setCheckinConfirmTarget(null),
+        onError: (e) => window.alert('签到失败：' + (e as Error).message),
+      },
+    )
+  }
   /** 接待看板签出（独立于工单执行） */
   const checkoutMutation = useMutation({
     mutationFn: (payload: { subject_id: number; target_date: string }) =>
       receptionApi.boardCheckout(payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['reception'] }),
+    onSuccess: refreshBoardQueueAndStats,
   })
   const updateBoardProjectScMutation = useMutation({
     mutationFn: (params: { subject_id: number; project_code: string; enrollment_status?: string; rd_number?: string }) =>
       receptionApi.updateBoardProjectSc(params),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['reception'] }),
+    onSuccess: refreshBoardQueueAndStats,
     onError: (err: Error) => window.alert('保存失败：' + err.message),
   })
   const createTicketMutation = useMutation({
@@ -230,7 +247,7 @@ export default function ReceptionDashboardPage() {
       setShowWalkIn(false)
       setWalkInName('')
       setWalkInPhone('')
-      qc.invalidateQueries({ queryKey: ['reception'] })
+      refreshBoardQueueAndStats()
     },
     onError: (err: Error) => {
       window.alert(`补登失败：${err.message}`)
@@ -298,7 +315,7 @@ export default function ReceptionDashboardPage() {
   const queueTotal = queueRes?.data?.total ?? 0
   const searchQueueRaw = searchQueueRes?.data?.items ?? []
   const projectOptions = useMemo(() => {
-    const raw = statsRes?.data?.project_options
+    const raw = statsOptionsRes?.data?.project_options
     if (Array.isArray(raw) && raw.length > 0) {
       return [...raw].sort((a, b) => (a.name || a.code).localeCompare(b.name || b.code, 'zh-CN'))
     }
@@ -309,18 +326,17 @@ export default function ReceptionDashboardPage() {
       if (code) byCode.set(code, name || code)
     })
     return Array.from(byCode.entries()).map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
-  }, [statsRes, queueRaw])
+  }, [statsOptionsRes, queueRaw])
 
   useEffect(() => {
-    if (!selectedProject) return
+    if (!projectFilter.trim()) return
     if (projectOptions.length === 0) return
     const codes = new Set(projectOptions.map((o) => o.code))
-    if (!codes.has(selectedProject)) {
+    if (!codes.has(projectFilter.trim())) {
       setProjectFilter('')
-      setProjectCodeFilter('')
       setQueuePage(1)
     }
-  }, [projectOptions, selectedProject, queryDate])
+  }, [projectOptions, projectFilter, queryDate])
 
   /** 与工单执行页一致：统计来自 today-stats（board 源），随日期与项目筛选联动 */
   const displayStats = stats
@@ -348,13 +364,7 @@ export default function ReceptionDashboardPage() {
       }).format(new Date(queryDate)),
     [queryDate],
   )
-  const hasProjectFilter = !!selectedProject
-  const clearProjectFilter = () => {
-    setProjectFilter('')
-    setProjectCodeFilter('')
-    setQueueSearch('')
-    setQueuePage(1)
-  }
+  const hasProjectFilter = !!projectFilter.trim()
 
   const withEnrollment = (action: (enrollmentId: number) => void) => {
     const target = queueSorted.find((item) => item.enrollment_id)
@@ -394,8 +404,6 @@ export default function ReceptionDashboardPage() {
     window.alert(res.data?.message || '当前无可叫号受试者')
   }
 
-  const handleScanCheckin = () => navigate('/scan')
-
   const handleExportQueue = async () => {
     try {
       const res = await receptionApi.todayQueueExport({
@@ -432,10 +440,6 @@ export default function ReceptionDashboardPage() {
     } catch (e) {
       window.alert('导出失败：' + (e as Error).message)
     }
-  }
-
-  const handleBatchPrint = async () => {
-    window.alert('流程卡打印依赖工单执行签到记录。接待看板签到与工单执行独立，请至「工单执行」页对已签到的队列使用打印流程卡。')
   }
 
   const handleGenerateSubjectQR = async () => {
@@ -484,11 +488,9 @@ export default function ReceptionDashboardPage() {
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-medium text-slate-700">项目筛选</span>
             <select
-              value={selectedProject}
+              value={projectFilter}
               onChange={(e) => {
-                const v = e.target.value
-                setProjectCodeFilter(v)
-                setProjectFilter('')
+                setProjectFilter(e.target.value)
                 setQueuePage(1)
               }}
               title="项目筛选"
@@ -500,18 +502,6 @@ export default function ReceptionDashboardPage() {
                 <option key={code} value={code}>{code}</option>
               ))}
             </select>
-            <span className="text-slate-400 text-sm">或</span>
-            <input
-              type="text"
-              value={projectCodeFilter}
-              onChange={(e) => {
-                setProjectCodeFilter(e.target.value)
-                if (e.target.value.trim()) setProjectFilter('')
-                setQueuePage(1)
-              }}
-              placeholder="项目编号（如 M25076081）"
-              className="min-h-10 w-40 px-3 py-2 border border-slate-200 rounded-lg text-sm"
-            />
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
@@ -521,25 +511,16 @@ export default function ReceptionDashboardPage() {
                   setQueueSearch(e.target.value)
                   setQueuePage(1)
                 }}
-                placeholder="搜索 SC号/RD号/姓名/手机号"
-                title="与项目筛选为且关系：先按项目筛选，再在结果中搜索"
+                placeholder="搜索 项目编号/SC号/RD号/姓名/手机号"
+                title="与项目筛选为且关系：先按项目筛选，再在结果中搜索（含项目名称）"
                 className="min-h-10 w-72 min-w-[200px] pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm"
               />
             </div>
-            {hasProjectFilter && (
-              <button
-                type="button"
-                onClick={clearProjectFilter}
-                className="text-sm text-slate-600 hover:text-slate-800 underline"
-              >
-                清除项目筛选
-              </button>
-            )}
           </div>
         </div>
         <p className="text-xs text-slate-500">
           {hasProjectFilter
-            ? `当前筛选：${selectedProject}，统计与队列已联动`
+            ? `当前筛选：${projectFilter}，统计与队列已联动`
             : `默认展示 ${displayDateText} 当日全部预约数据`}
           {queueSearch.trim() && '；项目筛选与搜索为且关系'}
         </p>
@@ -596,54 +577,6 @@ export default function ReceptionDashboardPage() {
           ))}
         </div>
       </div>
-
-      <Card variant="bordered" title="快捷操作" data-section="quick-actions">
-        <div className="flex flex-wrap items-center gap-2 md:gap-3">
-          <Button className="min-h-11" size="sm" onClick={() => setShowCreateTicket(true)}>创建答疑工单</Button>
-          <PermissionGuard permission="reception.incident.create">
-            <Button className="min-h-11" size="sm" variant="outline" onClick={() => setShowEventReport(true)}>事件上报</Button>
-          </PermissionGuard>
-          <Button className="min-h-11" size="sm" variant="outline" onClick={handleScanCheckin}>扫码签到</Button>
-          <Button className="min-h-11" size="sm" variant="outline" onClick={handleCallNext}>叫号</Button>
-          <Button className="min-h-11" size="sm" variant="outline" onClick={handleBatchPrint}>批量打印流程卡</Button>
-          <Button className="min-h-11" size="sm" variant="outline" onClick={() => setShowQRCodeCenter(true)}>二维码管理</Button>
-          <Button className="min-h-11" size="sm" variant="outline" onClick={() => window.open(getWorkstationUrl('reception', '#/display'), '_blank')}>大屏查看</Button>
-          <Button className="min-h-11" size="sm" variant="primary" onClick={() => setShowWalkIn(true)} data-testid="walkin-btn">
-            临时到访补登
-          </Button>
-        </div>
-      </Card>
-      <Card variant="bordered" title="待处理提醒">
-        {alerts.length === 0 ? (
-          <p className="text-sm text-slate-400">暂无待处理提醒</p>
-        ) : (
-          <div className="space-y-2">
-            {alerts.map((alert, idx) => (
-              <div key={`${alert.subject_no}-${idx}`} className="border border-amber-200 bg-amber-50 rounded-lg px-3 py-2 text-sm text-amber-800">
-                {alert.message}
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      {displayStats?.total_appointments > 0 && (
-        <DigitalWorkerActionCard
-          roleCode="reception_assistant"
-          roleName="接待助理"
-          title="队列签到与叫号建议"
-          description="接待助理建议优先处理待签到和即将到点的预约，减少现场等待与拥堵。"
-          items={[
-            {
-              key: 'pending-checkin',
-              label: '待签到提醒',
-              value: `今日待签到/处理中 ${Math.max((displayStats?.total_appointments ?? 0) - (displayStats?.checked_in ?? 0) - (displayStats?.checked_out ?? 0), 0)} 人`,
-            },
-          ]}
-          onTrigger={handleCallNext}
-          triggerLabel="开始叫号处理"
-        />
-      )}
 
       <Card
         variant="bordered"
@@ -776,7 +709,7 @@ export default function ReceptionDashboardPage() {
                                 className="min-h-8"
                                 size="sm"
                                 data-action="checkin"
-                                onClick={() => checkinMutation.mutate({ subject_id: item.subject_id, project_code: item.project_code })}
+                                onClick={() => setCheckinConfirmTarget(item)}
                               >
                                 签到
                               </Button>
@@ -859,6 +792,37 @@ export default function ReceptionDashboardPage() {
           </div>
         )}
       </Card>
+      <Card variant="bordered" title="待处理提醒">
+        {alerts.length === 0 ? (
+          <p className="text-sm text-slate-400">暂无待处理提醒</p>
+        ) : (
+          <div className="space-y-2">
+            {alerts.map((alert, idx) => (
+              <div key={`${alert.subject_no}-${idx}`} className="border border-amber-200 bg-amber-50 rounded-lg px-3 py-2 text-sm text-amber-800">
+                {alert.message}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {displayStats?.total_appointments > 0 && (
+        <DigitalWorkerActionCard
+          roleCode="reception_assistant"
+          roleName="接待助理"
+          title="队列签到与叫号建议"
+          description="接待助理建议优先处理待签到和即将到点的预约，减少现场等待与拥堵。"
+          items={[
+            {
+              key: 'pending-checkin',
+              label: '待签到提醒',
+              value: `今日待签到/处理中 ${Math.max((displayStats?.total_appointments ?? 0) - (displayStats?.checked_in ?? 0) - (displayStats?.checked_out ?? 0), 0)} 人`,
+            },
+          ]}
+          onTrigger={handleCallNext}
+          triggerLabel="开始叫号处理"
+        />
+      )}
       {canViewSupportTickets && (
         <Card variant="bordered" title="答疑工单SLA">
         {tickets.length === 0 ? (
@@ -917,6 +881,40 @@ export default function ReceptionDashboardPage() {
         )}
         </Card>
       )}
+      <Modal
+        open={!!checkinConfirmTarget}
+        onClose={() => !checkinMutation.isPending && setCheckinConfirmTarget(null)}
+        title="确认签到"
+        size="md"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" disabled={checkinMutation.isPending} onClick={() => setCheckinConfirmTarget(null)}>
+              取消
+            </Button>
+            <Button size="sm" disabled={checkinMutation.isPending} onClick={handleConfirmCheckin}>
+              {checkinMutation.isPending ? '提交中…' : '确认签到'}
+            </Button>
+          </div>
+        }
+      >
+        {checkinConfirmTarget ? (
+          <div className="space-y-4 text-sm text-slate-700">
+            <p className="text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              请核对以下信息与现场受试者是否一致。若<strong className="font-semibold">有误</strong>请点击「取消」，核实后再操作；若<strong className="font-semibold">无误</strong>请点击「确认签到」。
+            </p>
+            <dl className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-2">
+              <dt className="text-slate-500">姓名</dt>
+              <dd className="font-medium text-slate-900">{checkinConfirmTarget.subject_name || '—'}</dd>
+              <dt className="text-slate-500">手机号</dt>
+              <dd className="font-medium text-slate-900">{checkinConfirmTarget.phone?.trim() || '—'}</dd>
+              <dt className="text-slate-500">项目编号</dt>
+              <dd className="font-medium text-slate-900">{(checkinConfirmTarget.project_code || '').trim() || '—'}</dd>
+              <dt className="text-slate-500">访视点</dt>
+              <dd className="font-medium text-slate-900">{(checkinConfirmTarget.visit_point || '').trim() || '—'}</dd>
+            </dl>
+          </div>
+        ) : null}
+      </Modal>
       <Modal
         open={showCreateTicket}
         title="创建答疑工单"

@@ -778,7 +778,6 @@ export default function AppointmentsPage() {
         ...(queueProjectFilter.trim() ? { project_code: queueProjectFilter.trim() } : {}),
       }),
     staleTime: 12 * 1000,
-    refetchInterval: 30000,
   })
   const appointmentCalendarQuery = useQuery({
     queryKey: ['reception', 'appointment-calendar', visibleMonth],
@@ -789,7 +788,6 @@ export default function AppointmentsPage() {
     queryKey: ['reception', 'today-stats', queueDate],
     queryFn: () => receptionApi.todayStats(queueDate),
     staleTime: 12 * 1000,
-    refetchInterval: 30000,
   })
   const { data: queueQueueRes, isLoading: queueQueueLoading, refetch: refetchQueueQueue } = useQuery({
     queryKey: ['reception', 'today-queue', queueDate, queuePage, projectFilter],
@@ -802,9 +800,8 @@ export default function AppointmentsPage() {
         source: 'execution',
       }),
     staleTime: 12 * 1000,
-    refetchInterval: 30000,
   })
-  /** 搜索时拉取更多数据（500 条）以支持跨页模糊搜索 SC/RD/姓名/手机号 */
+  /** 搜索时拉取更多数据（500 条）以支持跨页模糊搜索 项目编号/名称、SC/RD、姓名、手机号 */
   const { data: searchQueueRes, isFetching: searchQueueFetching } = useQuery({
     queryKey: ['reception', 'today-queue', 'search', queueDate, projectFilter, queueSearch],
     queryFn: () =>
@@ -822,7 +819,6 @@ export default function AppointmentsPage() {
     queryKey: ['reception', 'pending-alerts', queueDate],
     queryFn: () => receptionApi.pendingAlerts(queueDate),
     staleTime: 12 * 1000,
-    refetchInterval: 30000,
   })
 
   const createMutation = useMutation({
@@ -1068,9 +1064,18 @@ export default function AppointmentsPage() {
     const sc = (item.sc_number ?? '').toLowerCase()
     const rd = (item.rd_number ?? '').toLowerCase()
     const name = (item.subject_name ?? '').toLowerCase()
+    const pc = (item.project_code ?? '').toLowerCase()
+    const pname = (item.project_name ?? '').toLowerCase()
     const phone = (item.phone ?? '').replace(/\s/g, '')
     const phoneS = s.replace(/\s/g, '')
-    return sc.includes(s) || rd.includes(s) || name.includes(s) || phone.includes(phoneS)
+    return (
+      sc.includes(s) ||
+      rd.includes(s) ||
+      name.includes(s) ||
+      pc.includes(s) ||
+      pname.includes(s) ||
+      phone.includes(phoneS)
+    )
   }
   const searchQueueRaw = (searchQueueRes?.data?.items ?? []) as QueueItem[]
   const queue = useMemo(() => {
@@ -1743,8 +1748,8 @@ export default function AppointmentsPage() {
                   setQueueSearch(e.target.value)
                   setQueuePage(1)
                 }}
-                placeholder="搜索 SC号/RD号/姓名/手机号"
-                title="与项目筛选为且关系：先按项目筛选，再在结果中搜索"
+                placeholder="搜索 项目编号/SC号/RD号/姓名/手机号"
+                title="与项目筛选为且关系：先按项目筛选，再在结果中搜索（含项目名称）"
                 className="min-h-10 w-72 min-w-[200px] pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm"
               />
             </div>
@@ -1819,7 +1824,7 @@ export default function AppointmentsPage() {
         {(queueQueueLoading || (isSearchMode && searchQueueFetching)) ? (
           <p className="text-sm text-slate-400">加载中...</p>
         ) : displayQueue.length === 0 ? (
-          <Empty title={isSearchMode ? '未找到匹配的 SC号/RD号/姓名或手机号' : (queueDate === todayStr ? '今日暂无预约' : '当日暂无预约')} />
+          <Empty title={isSearchMode ? '未找到匹配的项目编号/名称、SC号、RD号、姓名或手机号' : (queueDate === todayStr ? '今日暂无预约' : '当日暂无预约')} />
         ) : (
           <div className="space-y-3">
             <div className="overflow-x-auto">

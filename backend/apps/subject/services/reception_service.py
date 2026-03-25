@@ -404,6 +404,8 @@ def get_today_queue(
     # 工单执行：全日队列由缓存构建一次，分页与统计接口共用
     if not use_board:
         queue = _get_cached_full_execution_queue(today)
+        # 今日队列仅展示有项目编号的记录（工单执行 / 接待看板统一口径）
+        queue = [i for i in queue if (i.get('project_code') or '').strip()]
         if project_code and str(project_code).strip():
             pc_lower = str(project_code).strip().lower()
             queue = [i for i in queue if (i.get('project_code') or '').strip().lower() == pc_lower]
@@ -527,6 +529,8 @@ def get_today_queue(
         })
 
     queue = _merge_duplicate_queue_items(queue, today)
+    # 今日队列仅展示有项目编号的记录（工单执行 / 接待看板统一口径）
+    queue = [i for i in queue if (i.get('project_code') or '').strip()]
 
     keys = [(item.get('subject_id'), (item.get('project_code') or '').strip()) for item in queue]
     keys = [(s, p) for s, p in keys if s is not None and p]
@@ -723,7 +727,9 @@ def get_today_stats(
 
     appt_qs = SubjectAppointment.objects.filter(
         appointment_date=today,
-    ).exclude(status=AppointmentStatus.CANCELLED)
+    ).exclude(status=AppointmentStatus.CANCELLED).exclude(
+        Q(project_code__isnull=True) | Q(project_code=''),
+    )
     if project_code:
         appt_qs = appt_qs.filter(project_code=project_code)
     dedupe_keys = set()
@@ -732,7 +738,9 @@ def get_today_stats(
         dedupe_keys.add((identity, (appt_project_code or '').strip().lower(), today.isoformat()))
     total_appointments = len(dedupe_keys)
 
-    checkins = SubjectCheckin.objects.filter(checkin_date=today)
+    checkins = SubjectCheckin.objects.filter(checkin_date=today).exclude(
+        Q(project_code__isnull=True) | Q(project_code=''),
+    )
     if project_code and str(project_code).strip():
         # 与队列行一致：按签到记录上的 project_code 统计，避免同人多项目时串项
         checkins = checkins.filter(project_code__iexact=str(project_code).strip())
@@ -757,14 +765,18 @@ def get_today_stats(
     all_appt_subject_ids = list(
         SubjectAppointment.objects.filter(appointment_date=today)
         .exclude(status=AppointmentStatus.CANCELLED)
+        .exclude(Q(project_code__isnull=True) | Q(project_code=''))
         .values_list('subject_id', flat=True)
     )
     walk_in_count = SubjectCheckin.objects.filter(
         checkin_date=today,
+    ).exclude(
+        Q(project_code__isnull=True) | Q(project_code=''),
     ).exclude(subject_id__in=all_appt_subject_ids).count()
 
     # 入组情况各状态数量（工单执行页卡片用）：与 today-queue（execution）共用缓存队列，避免重复构建
     items = _get_cached_full_execution_queue(today)
+    items = [i for i in items if (i.get('project_code') or '').strip()]
     if project_code and str(project_code).strip():
         pc_lower = str(project_code).strip().lower()
         items = [i for i in items if (i.get('project_code') or '').strip().lower() == pc_lower]
@@ -1708,21 +1720,42 @@ def _next_board_sc_number_for_project(project_code: str) -> str:
     return f'{next_num:03d}'
 
 
+def _next_board_rd_number_for_project(project_code: str) -> str:
+    """接待看板该项目下正式入组 RD 号最大序号+1，格式 RD001、RD002...（与工单执行独立）。"""
+    existing = ReceptionBoardProjectSc.objects.filter(
+        project_code=project_code,
+        enrollment_status=ENROLLMENT_STATUS_ENROLLED,
+    ).exclude(rd_number='').values_list('rd_number', flat=True)
+    nums = []
+    for s in existing:
+        s = (s or '').strip().upper()
+        if s.startswith('RD') and len(s) > 2:
+            suffix = s[2:].strip()
+            if suffix.isdigit():
+                nums.append(int(suffix))
+    next_num = (max(nums) + 1) if nums else 1
+    return f'RD{next_num:03d}'
+
+
 def _ensure_board_project_sc_on_checkin(
     subject_id: int,
     project_code: str,
     visit_point: str,
 ) -> None:
-    """确保受试者在该项目下有 ReceptionBoardProjectSc；V1 时分配 SC 号，否则仅确保记录存在。"""
+    """确保受试者在该项目下有 ReceptionBoardProjectSc；规则与工单执行 _visit_point_allocates_sc 一致（初筛/V0/V1 等分配 SC）。"""
     if not project_code:
         return
-    visit_point = (visit_point or '').strip().upper()
-    if visit_point == 'V1':
-        ReceptionBoardProjectSc.objects.get_or_create(
+    if _visit_point_allocates_sc(visit_point):
+        rec, created = ReceptionBoardProjectSc.objects.get_or_create(
             subject_id=subject_id,
             project_code=project_code,
             defaults={'sc_number': _next_board_sc_number_for_project(project_code)},
         )
+        if not created:
+            existing_sc = (rec.sc_number or '').strip()
+            if not existing_sc:
+                rec.sc_number = _next_board_sc_number_for_project(project_code)
+                rec.save(update_fields=['sc_number', 'update_time'])
     else:
         ReceptionBoardProjectSc.objects.get_or_create(
             subject_id=subject_id,
@@ -1751,23 +1784,8 @@ def mirror_reception_board_after_miniprogram_checkin(
     if appt is not None:
         proj = (appt.project_code or '').strip()
         visit_point_raw = (getattr(appt, 'visit_point', '') or '').strip()
-        vp_upper = visit_point_raw.upper()
         if proj:
-            if created:
-                if vp_upper == 'V1':
-                    ReceptionBoardProjectSc.objects.get_or_create(
-                        subject_id=subject_id,
-                        project_code=proj,
-                        defaults={'sc_number': _next_board_sc_number_for_project(proj)},
-                    )
-                else:
-                    ReceptionBoardProjectSc.objects.get_or_create(
-                        subject_id=subject_id,
-                        project_code=proj,
-                        defaults={'sc_number': ''},
-                    )
-            else:
-                _ensure_board_project_sc_on_checkin(subject_id, proj, visit_point_raw)
+            _ensure_board_project_sc_on_checkin(subject_id, proj, visit_point_raw)
 
     return {
         'id': rec.id,
@@ -1791,18 +1809,23 @@ def board_checkin(
     now = timezone.now()
     pc = (project_code or '').strip() or None
 
+    # 看板队列会展示非 CANCELLED 预约（含 COMPLETED），签到时取预约上下文也需覆盖 COMPLETED，
+    # 否则会出现“有签到时间但无法分配 SC”的情况。
     appt_qs = SubjectAppointment.objects.filter(
         subject_id=subject_id,
         appointment_date=day,
-        status__in=[AppointmentStatus.CONFIRMED, AppointmentStatus.PENDING],
+        status__in=[AppointmentStatus.CONFIRMED, AppointmentStatus.PENDING, AppointmentStatus.COMPLETED],
     )
-    appt = appt_qs.filter(project_code=pc).first() if pc else appt_qs.first()
+    appt = appt_qs.filter(project_code__iexact=pc).first() if pc else appt_qs.first()
     if not appt and pc:
         appt = appt_qs.first()
 
-    defaults = {'checkin_time': now}
-    if appt:
-        defaults['appointment_id'] = appt.id
+    # 二次签到时显式清空 checkout_time，避免保留上一次签出状态。
+    defaults = {
+        'checkin_time': now,
+        'checkout_time': None,
+        'appointment_id': appt.id if appt else None,
+    }
 
     rec, created = ReceptionBoardCheckin.objects.update_or_create(
         subject_id=subject_id,
@@ -1815,29 +1838,17 @@ def board_checkin(
         appt_for_pc = SubjectAppointment.objects.filter(
             subject_id=subject_id,
             appointment_date=day,
-            project_code=pc,
+            project_code__iexact=pc,
             status__in=[AppointmentStatus.CONFIRMED, AppointmentStatus.PENDING, AppointmentStatus.COMPLETED],
         ).first()
         if appt_for_pc:
             visit_point = (getattr(appt_for_pc, 'visit_point', '') or '').strip()
             _ensure_board_project_sc_on_checkin(subject_id, pc, visit_point)
     elif appt and created:
-        # 新建签到：分配 SC 号
         proj = (appt.project_code or '').strip()
-        visit_point = (getattr(appt, 'visit_point', '') or '').strip().upper()
+        visit_point_raw = (getattr(appt, 'visit_point', '') or '').strip()
         if proj:
-            if visit_point == 'V1':
-                ReceptionBoardProjectSc.objects.get_or_create(
-                    subject_id=subject_id,
-                    project_code=proj,
-                    defaults={'sc_number': _next_board_sc_number_for_project(proj)},
-                )
-            else:
-                ReceptionBoardProjectSc.objects.get_or_create(
-                    subject_id=subject_id,
-                    project_code=proj,
-                    defaults={'sc_number': ''},
-                )
+            _ensure_board_project_sc_on_checkin(subject_id, proj, visit_point_raw)
 
     return {
         'id': rec.id,
@@ -1901,8 +1912,19 @@ def update_board_project_sc(
     if enrollment_status is not None:
         rec.enrollment_status = (enrollment_status or '').strip()
         update_fields.append('enrollment_status')
-    if rd_number is not None:
-        rec.rd_number = (rd_number or '').strip()
+    need_rd_update = enrollment_status is not None or rd_number is not None
+    if need_rd_update:
+        effective_status = (rec.enrollment_status or '').strip()
+        if effective_status == ENROLLMENT_STATUS_ENROLLED:
+            val = (rd_number or '').strip() if rd_number is not None else ''
+            existing_rd = (rec.rd_number or '').strip()
+            # 与工单执行页一致：正式入组时，空值/仅 RD 且无已有值 => 自动生成 RD00x
+            if (not val or val.upper() == 'RD') and not existing_rd:
+                rec.rd_number = _next_board_rd_number_for_project(project_code)
+            elif val and val.upper() != 'RD':
+                rec.rd_number = val
+        else:
+            rec.rd_number = ''
         update_fields.append('rd_number')
     if sc_number is not None:
         rec.sc_number = (sc_number or '').strip()

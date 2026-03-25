@@ -1521,8 +1521,41 @@ def get_my_queue_position(request):
     if not subject:
         return 404, {'code': 404, 'msg': '未找到受试者信息'}
     try:
-        from .services.queue_service import get_queue_position
-        result = get_queue_position(subject.id)
+        from .models_execution import ReceptionBoardCheckin
+        from .services.queue_service import format_local_hhmm
+
+        today = timezone.localdate()
+        rows = list(
+            ReceptionBoardCheckin.objects.filter(
+                subject_id=subject.id,
+                checkin_date=today,
+                checkin_time__isnull=False,
+            ).order_by('-checkin_time', '-id')
+        )
+        if not rows:
+            return {'code': 200, 'msg': 'OK', 'data': {'position': 0, 'ahead_count': 0, 'wait_minutes': 0, 'status': 'none'}}
+
+        latest = rows[0]
+        if latest.checkout_time:
+            return {'code': 200, 'msg': 'OK', 'data': {'position': 0, 'ahead_count': 0, 'wait_minutes': 0, 'status': 'completed'}}
+
+        open_rows = list(
+            ReceptionBoardCheckin.objects.filter(
+                checkin_date=today,
+                checkin_time__isnull=False,
+                checkout_time__isnull=True,
+            ).order_by('checkin_time', 'id')
+        )
+        ahead_count = sum(1 for r in open_rows if r.subject_id != subject.id and (r.checkin_time or dt_datetime.min) < (latest.checkin_time or dt_datetime.min))
+        position = ahead_count + 1
+        wait_minutes = ahead_count * 10
+        result = {
+            'position': position,
+            'ahead_count': ahead_count,
+            'wait_minutes': wait_minutes,
+            'status': 'waiting',
+            'checkin_time': format_local_hhmm(latest.checkin_time),
+        }
         return {'code': 200, 'msg': 'OK', 'data': result}
     except Exception:
         return {'code': 200, 'msg': 'OK', 'data': {'position': 0, 'wait_minutes': 0, 'status': 'none'}}
@@ -1596,49 +1629,51 @@ def my_scan_checkin(request, data: Optional[ScanCheckinIn] = Body(default=None))
                 )
 
     from .services import reception_service as reception_svc
+    from .models_execution import ReceptionBoardCheckin
 
     today = reception_svc._local_today()
-    from .models_execution import SubjectCheckin, CheckinStatus
 
-    first_open = reception_svc.first_open_execution_checkin_today(subject.id, today)
-
-    if first_open is not None:
-        # 已签到或执行中：签出（FIFO 一条；工单执行 + 接待看板镜像）
-        with transaction.atomic():
-            result = reception_svc.quick_checkout(first_open.id)
-            try:
-                reception_svc.board_checkout(subject.id, target_date=today)
-            except ValueError as e:
-                msg = str(e)
-                if '接待看板' in msg and ('签到' in msg or '请先签到' in msg):
-                    logger.info(
-                        '小程序签出：无接待看板当日签到记录，跳过看板镜像 subject_id=%s',
-                        subject.id,
-                    )
-                else:
-                    raise
-        return {'code': 200, 'msg': '签出成功', 'data': {**result, 'action': 'checkout'}}
-
-    has_any = SubjectCheckin.objects.filter(subject_id=subject.id, checkin_date=today).exists()
-    if not has_any or reception_svc.has_pending_appointments_for_checkin(subject.id, today):
-        # 首次签到，或上一项目已签出但仍有待到访预约（同日多项目）
-        with transaction.atomic():
-            appt_ctx = reception_svc.resolve_today_appointment_for_quick_checkin(
-                subject.id, None, today
-            )
-            result = reception_svc.quick_checkin(
-                subject.id, method='qr_scan', location=location
-            )
-            reception_svc.mirror_reception_board_after_miniprogram_checkin(
-                subject.id, today, appt_ctx
-            )
-        return {'code': 200, 'msg': '签到成功', 'data': {**result, 'action': 'checkin'}}
-
-    last_done = (
-        SubjectCheckin.objects.filter(
+    open_board = (
+        ReceptionBoardCheckin.objects.filter(
             subject_id=subject.id,
             checkin_date=today,
-            status=CheckinStatus.CHECKED_OUT,
+            checkout_time__isnull=True,
+        )
+        .order_by('checkin_time', 'id')
+        .first()
+    )
+    if open_board is not None:
+        # 小程序扫码仅影响接待看板，不写工单执行 SubjectCheckin。
+        result = reception_svc.board_checkout(subject.id, target_date=today)
+        return {'code': 200, 'msg': '签出成功', 'data': {**result, 'action': 'checkout'}}
+
+    has_any_board = ReceptionBoardCheckin.objects.filter(subject_id=subject.id, checkin_date=today).exists()
+    if (not has_any_board) or reception_svc.has_pending_appointments_for_checkin(subject.id, today):
+        # 首次签到，或同日仍有待到访预约时再次签到：仅写接待看板链路。
+        appt_ctx = reception_svc.resolve_today_appointment_for_quick_checkin(subject.id, None, today)
+        project_code = (appt_ctx.project_code or '').strip() if appt_ctx else None
+        result = reception_svc.board_checkin(
+            subject_id=subject.id,
+            target_date=today,
+            project_code=project_code or None,
+        )
+        return {
+            'code': 200,
+            'msg': '签到成功',
+            'data': {
+                **result,
+                'action': 'checkin',
+                'location': location,
+                'project_name': (getattr(appt_ctx, 'project_name', '') or '').strip() if appt_ctx else '',
+                'visit_point': (getattr(appt_ctx, 'visit_point', '') or '').strip() if appt_ctx else '',
+            },
+        }
+
+    last_done = (
+        ReceptionBoardCheckin.objects.filter(
+            subject_id=subject.id,
+            checkin_date=today,
+            checkout_time__isnull=False,
         )
         .order_by('-checkout_time', '-id')
         .first()
