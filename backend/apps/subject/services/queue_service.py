@@ -22,8 +22,12 @@ MISSED_CALL_DELAY_SLOTS = 3
 
 
 def _get_project_code_for_checkin(checkin, today: date) -> str:
-    """为签到解析项目编号：优先当日预约，否则 enrollment.protocol.code。"""
+    """为签到解析项目编号：优先签到记录上的 project_code，再当日预约，否则 enrollment.protocol.code。"""
     from ..models_execution import SubjectAppointment
+
+    stored = (getattr(checkin, 'project_code', None) or '').strip()
+    if stored:
+        return stored
 
     appt = (
         SubjectAppointment.objects.filter(

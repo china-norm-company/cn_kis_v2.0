@@ -39,6 +39,9 @@ const TASK_BADGE_MAP: Record<QueueItem['task_type'], 'warning' | 'info' | 'succe
 /** 入组情况下拉选项（今日队列） */
 const ENROLLMENT_STATUS_OPTIONS = ['初筛合格', '正式入组', '不合格', '复筛不合格', '退出', '缺席'] as const
 
+/** 未签到时仍可选的入组情况（与后端 update_project_sc 一致） */
+const ENROLLMENT_ALLOWED_WITHOUT_CHECKIN = new Set<string>(['缺席', '退出'])
+
 /** 入组情况卡片展示顺序（对应 StatCard） */
 const ENROLLMENT_STATUS_CARDS = ['初筛合格', '正式入组', '不合格', '复筛不合格', '退出'] as const
 
@@ -468,7 +471,7 @@ function QueueEditDrawer({ item, queueDate, onClose, onSaved }: QueueEditDrawerP
   const [visitPoint, setVisitPoint] = useState(item.visit_point || '')
   const [subjectName, setSubjectName] = useState(item.subject_name || '')
   const [namePinyinInitials, setNamePinyinInitials] = useState(item.name_pinyin_initials || '')
-  const [gender, setGender] = useState(item.gender || '')
+  const [genderCode, setGenderCode] = useState<'' | 'male' | 'female' | 'other'>(() => normalizeGenderToDb(item.gender))
   const [age, setAge] = useState(String(item.age ?? ''))
   const [projectCode, setProjectCode] = useState(item.project_code || '')
   const [projectName, setProjectName] = useState(item.project_name || '')
@@ -480,15 +483,35 @@ function QueueEditDrawer({ item, queueDate, onClose, onSaved }: QueueEditDrawerP
     setVisitPoint(item.visit_point || '')
     setSubjectName(item.subject_name || '')
     setNamePinyinInitials(item.name_pinyin_initials || '')
-    setGender(item.gender || '')
+    setGenderCode(normalizeGenderToDb(item.gender))
     setAge(String(item.age ?? ''))
     setProjectCode(item.project_code || '')
     setProjectName(item.project_name || '')
   }, [item, queueDate])
 
   const handleSave = async () => {
+    const trimmedName = subjectName.trim()
+    if (!trimmedName) {
+      window.alert('受试者姓名不能为空')
+      return
+    }
+    const ageTrim = age.trim()
+    let ageNum: number | undefined
+    if (ageTrim !== '') {
+      const n = parseInt(ageTrim, 10)
+      if (Number.isNaN(n) || n < 1 || n > 120) {
+        window.alert('年龄请填写 1～120 的整数，或留空不修改')
+        return
+      }
+      ageNum = n
+    }
     setSaving(true)
     try {
+      await subjectApi.update(item.subject_id, {
+        name: trimmedName,
+        gender: genderCode,
+        ...(ageTrim === '' ? {} : { age: ageNum }),
+      })
       if (item.appointment_id) {
         await executionApi.updateAppointment(item.appointment_id, {
           appointment_date: appointmentDate,
@@ -549,7 +572,7 @@ function QueueEditDrawer({ item, queueDate, onClose, onSaved }: QueueEditDrawerP
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">受试者姓名</label>
-            <input type="text" value={subjectName} onChange={(e) => setSubjectName(e.target.value)} className="w-full min-h-10 px-3 py-2 border border-slate-200 rounded-lg text-sm" readOnly />
+            <input type="text" value={subjectName} onChange={(e) => setSubjectName(e.target.value)} placeholder="与现场证件一致" className="w-full min-h-10 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">拼音首字母</label>
@@ -557,11 +580,28 @@ function QueueEditDrawer({ item, queueDate, onClose, onSaved }: QueueEditDrawerP
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">性别</label>
-            <input type="text" value={formatGenderCell(gender)} readOnly className="w-full min-h-10 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50" />
+            <select
+              value={genderCode}
+              onChange={(e) => setGenderCode((e.target.value || '') as '' | 'male' | 'female' | 'other')}
+              className="w-full min-h-10 px-3 py-2 border border-slate-200 rounded-lg text-sm"
+            >
+              <option value="">请选择</option>
+              <option value="male">男</option>
+              <option value="female">女</option>
+              <option value="other">其他</option>
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">年龄</label>
-            <input type="text" value={age} readOnly className="w-full min-h-10 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50" />
+            <input
+              type="number"
+              min={1}
+              max={120}
+              value={age}
+              onChange={(e) => setAge(e.target.value)}
+              placeholder="岁，可留空"
+              className="w-full min-h-10 px-3 py-2 border border-slate-200 rounded-lg text-sm"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">项目编号</label>
@@ -653,6 +693,17 @@ function formatExportDateTime(value?: string | null): string {
   const dt = new Date(s)
   if (Number.isNaN(dt.getTime())) return s
   return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())} ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}:${pad2(dt.getSeconds())}`
+}
+
+/** 将队列/导入中的性别值规范为 Subject 表存储的英文码（male/female/other），无法识别则返回空 */
+function normalizeGenderToDb(value: unknown): '' | 'male' | 'female' | 'other' {
+  const s = String(value ?? '').trim()
+  if (!s) return ''
+  const lower = s.toLowerCase()
+  if (lower === 'male' || lower === 'm' || s === '男') return 'male'
+  if (lower === 'female' || lower === 'f' || s === '女') return 'female'
+  if (lower === 'other' || s === '其他') return 'other'
+  return ''
 }
 
 /**
@@ -1799,7 +1850,7 @@ export default function AppointmentsPage() {
                     const queueRowKey = `${item.subject_id}-${(item.project_code || '').trim()}`
                     const isEnrolled = (item.enrollment_status || '').trim() === '正式入组'
                     const rdDisplay = pendingQueueRd[queueRowKey] ?? item.rd_number ?? (isEnrolled ? 'RD' : '')
-                    /** 未签到时仅「缺席」可选；初筛合格/正式入组等需先签到（与后端一致） */
+                    /** 未签到时仅「缺席」「退出」可选；其余需先签到（与后端一致） */
                     const hasExecutionCheckin = !!item.checkin_id
                     return (
                     <tr
@@ -1851,7 +1902,7 @@ export default function AppointmentsPage() {
                         >
                           <option value="">请选择</option>
                           {ENROLLMENT_STATUS_OPTIONS.map((opt) => (
-                            <option key={opt} value={opt} disabled={!hasExecutionCheckin && opt !== '缺席'}>{opt}</option>
+                            <option key={opt} value={opt} disabled={!hasExecutionCheckin && !ENROLLMENT_ALLOWED_WITHOUT_CHECKIN.has(opt)}>{opt}</option>
                           ))}
                         </select>
                       </td>

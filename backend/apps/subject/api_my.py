@@ -1595,16 +1595,33 @@ def my_scan_checkin(request, data: Optional[ScanCheckinIn] = Body(default=None))
                     action='self_checkin',
                 )
 
-    from django.utils import timezone as tz
-    today = tz.localdate()
-    from .models_execution import SubjectCheckin, CheckinStatus
-    existing = SubjectCheckin.objects.filter(
-        subject_id=subject.id, checkin_date=today,
-    ).first()
+    from .services import reception_service as reception_svc
 
-    if not existing:
-        # 首次：签到（工单执行 + 接待看板镜像，同事务；附录 B）
-        from .services import reception_service as reception_svc
+    today = reception_svc._local_today()
+    from .models_execution import SubjectCheckin, CheckinStatus
+
+    first_open = reception_svc.first_open_execution_checkin_today(subject.id, today)
+
+    if first_open is not None:
+        # 已签到或执行中：签出（FIFO 一条；工单执行 + 接待看板镜像）
+        with transaction.atomic():
+            result = reception_svc.quick_checkout(first_open.id)
+            try:
+                reception_svc.board_checkout(subject.id, target_date=today)
+            except ValueError as e:
+                msg = str(e)
+                if '接待看板' in msg and ('签到' in msg or '请先签到' in msg):
+                    logger.info(
+                        '小程序签出：无接待看板当日签到记录，跳过看板镜像 subject_id=%s',
+                        subject.id,
+                    )
+                else:
+                    raise
+        return {'code': 200, 'msg': '签出成功', 'data': {**result, 'action': 'checkout'}}
+
+    has_any = SubjectCheckin.objects.filter(subject_id=subject.id, checkin_date=today).exists()
+    if not has_any or reception_svc.has_pending_appointments_for_checkin(subject.id, today):
+        # 首次签到，或上一项目已签出但仍有待到访预约（同日多项目）
         with transaction.atomic():
             appt_ctx = reception_svc.resolve_today_appointment_for_quick_checkin(
                 subject.id, None, today
@@ -1617,34 +1634,24 @@ def my_scan_checkin(request, data: Optional[ScanCheckinIn] = Body(default=None))
             )
         return {'code': 200, 'msg': '签到成功', 'data': {**result, 'action': 'checkin'}}
 
-    if existing.status == CheckinStatus.CHECKED_OUT:
-        # 已签出：重复提示
-        return {
-            'code': 200,
-            'msg': '您今日已完成签出，无需重复操作',
-            'data': {
-                'action': 'already_checked_out',
-                'checkin_id': existing.id,
-                'checkout_time': existing.checkout_time.isoformat() if existing.checkout_time else None,
-            },
-        }
-
-    # 已签到或执行中：签出（工单执行 + 接待看板镜像；无看板记录时跳过镜像）
-    from .services import reception_service as reception_svc
-    with transaction.atomic():
-        result = reception_svc.quick_checkout(existing.id)
-        try:
-            reception_svc.board_checkout(subject.id, target_date=today)
-        except ValueError as e:
-            msg = str(e)
-            if '接待看板' in msg and ('签到' in msg or '请先签到' in msg):
-                logger.info(
-                    '小程序签出：无接待看板当日签到记录，跳过看板镜像 subject_id=%s',
-                    subject.id,
-                )
-            else:
-                raise
-    return {'code': 200, 'msg': '签出成功', 'data': {**result, 'action': 'checkout'}}
+    last_done = (
+        SubjectCheckin.objects.filter(
+            subject_id=subject.id,
+            checkin_date=today,
+            status=CheckinStatus.CHECKED_OUT,
+        )
+        .order_by('-checkout_time', '-id')
+        .first()
+    )
+    return {
+        'code': 200,
+        'msg': '您今日已完成签出，无需重复操作',
+        'data': {
+            'action': 'already_checked_out',
+            'checkin_id': last_done.id if last_done else None,
+            'checkout_time': last_done.checkout_time.isoformat() if last_done and last_done.checkout_time else None,
+        },
+    }
 
 
 # ============================================================================
