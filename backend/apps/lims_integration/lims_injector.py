@@ -575,16 +575,30 @@ def _inject_equipment(raw_data: dict):
         from apps.resource.models import ResourceItem, EquipmentAuthorization
         from apps.identity.models import Account
 
-        # colConfigInfo 修复后：SBMC = 设备编号，ZBMC = 设备名称
-        # 同时保留旧列名兼容（修复前数据）
-        code = (raw_data.get('SBMC')
-                or raw_data.get('设备名称')
-                or '').strip()
-        name = (raw_data.get('ZBMC')
-                or raw_data.get('组别名称')
-                or '').strip()
+        # 格式检测：新格式有 col_X 列（LIMS BPM 已修复列偏移）
+        # 新格式：设备编号 = 真实设备编号，设备名称 = 真实设备名称
+        # 旧格式（colConfigInfo bug）：设备名称 列实际存储设备编号，组别名称 列存储设备名称
+        is_new_format = any(k.startswith('col_') for k in raw_data)
 
-        # 兼容旧格式
+        if is_new_format:
+            # 新格式：字段含义已正确（LIMS BPM 修复后）
+            code = (raw_data.get('设备编号') or raw_data.get('col_0') or '').strip()
+            name = (raw_data.get('设备名称') or raw_data.get('col_1') or '').strip()
+            # 无效占位符编号（'/' 或 '-'）视为无编号
+            if code in ('/', '-', '\\', ''):
+                code = ''
+        else:
+            # 旧格式：colConfigInfo bug 导致列偏移
+            # SBMC/设备名称 列 = 真正的设备编号（如 FSD0405113）
+            # ZBMC/组别名称 列 = 设备通用名称
+            code = (raw_data.get('SBMC')
+                    or raw_data.get('设备名称')
+                    or '').strip()
+            name = (raw_data.get('ZBMC')
+                    or raw_data.get('组别名称')
+                    or '').strip()
+
+        # 兜底：旧格式补充字段
         if not code:
             for field in ['SBBH', 'equipmentCode', '仪器编号']:
                 code = raw_data.get(field, '').strip()
@@ -602,6 +616,10 @@ def _inject_equipment(raw_data: dict):
             name = code
         if not code and name:
             code = name[:50]
+
+        # 截断到字段最大长度（ResourceItem.code max_length=50，name max_length=200）
+        code = code[:50]
+        name = name[:200]
 
         # 状态映射
         # SBLYZT = 使用状态（空闲/使用登记），SBZT = 设备状态（启用/停用/报废）
@@ -768,13 +786,16 @@ def _inject_personnel(raw_data: dict):
     Step 5: EquipmentAuthorization（后续由设备注入阶段完成，此处标记pending）
     Step 6: MethodQualification（默认创建 instrument_operator 基础资质）
 
-    字段说明（colConfigInfo 修复后已正确对应）：
-    - "姓名"字段 = 真实姓名（修复后）
-    - "性别"字段 = 性别（修复后）
+    字段说明（兼容两种 LIMS 格式）：
+    - 新格式（有 col_X 字段）：字段名含义已正确，姓名='姓名',性别='性别'
+    - 旧格式（列偏移 bug）：'姓名'存行号，真实姓名在'性别'列
     - "组别名称"字段 = 组别（始终正确）
-    - "上次考核时间"字段 = 岗位状态（在岗/试用期/已离职等）
+    - "上次考核时间"字段 = 岗位状态（旧格式）或上次考核日期（新格式）
+
+    注意：DB 异常不在此处捕获，由上层 _inject_one 的 transaction.atomic() 处理，
+    保证事务隔离和正确回滚。
     """
-    try:
+    if True:  # 不用 try/except 包裹，让 DB 异常传播到 _inject_one 的事务处理
         from apps.identity.models import Account, AccountRole
         from apps.hr.models import Staff
         from apps.lims_integration.p0_mapping import (
@@ -932,10 +953,6 @@ def _inject_personnel(raw_data: dict):
         logger.info('  人员注入: %s | 组别: %s | 角色: %s | 状态: %s',
                     name, department, role_names, job_status.get('training_status', ''))
         return staff, action, before
-
-    except Exception as ex:
-        logger.error('人员注入失败: %s | data=%s', ex, str(raw_data)[:200])
-        return None
 
 
 def _inject_client(raw_data: dict):
