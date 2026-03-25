@@ -37,13 +37,19 @@ def _find_system_chromium() -> Optional[str]:
     """
     查找系统已安装的 Chromium 或 Google Chrome 路径。
     当 playwright 管理的 chromium 未下载完成时使用系统版本。
+    支持 Linux 和 macOS。
     """
     candidates = [
+        # Linux
         '/usr/bin/chromium',
         '/usr/bin/chromium-browser',
         '/usr/bin/google-chrome',
         '/usr/bin/google-chrome-stable',
         '/snap/bin/chromium',
+        # macOS
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        '/Applications/Chromium.app/Contents/MacOS/Chromium',
+        os.path.expanduser('~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'),
     ]
     for path in candidates:
         if os.path.isfile(path) and os.access(path, os.X_OK):
