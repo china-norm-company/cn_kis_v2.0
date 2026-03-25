@@ -229,6 +229,8 @@ export type {
   WaitingSubject,
   EnvironmentStatus,
   InstrumentStatus,
+  ScheduleNote,
+  ScheduleAttachment,
 } from './modules/evaluator'
 export type {
   FacilityDashboard,
