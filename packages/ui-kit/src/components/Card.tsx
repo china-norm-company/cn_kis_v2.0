@@ -18,9 +18,9 @@ export interface CardProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 't
 }
 
 const variantStyles: Record<CardVariant, string> = {
-  default: 'bg-white rounded-lg shadow-card',
-  bordered: 'bg-white rounded-lg border border-slate-200',
-  elevated: 'bg-white rounded-lg shadow-md',
+  default: 'rounded-lg bg-white shadow-card dark:bg-slate-800 dark:shadow-none',
+  bordered: 'rounded-lg border border-slate-200 bg-white dark:border-[#3b434e] dark:bg-slate-800',
+  elevated: 'rounded-lg bg-white shadow-md dark:bg-slate-800 dark:shadow-lg dark:shadow-black/40',
 }
 
 export const Card = forwardRef<HTMLDivElement, CardProps>(
@@ -54,20 +54,20 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
         {(title || actions) && (
           <div
             className={clsx(
-              'flex items-start justify-between border-b border-slate-100 p-6',
+              'flex items-start justify-between border-b border-slate-100 p-6 dark:border-[#3b434e]',
               compactOnMobile && 'p-4 md:p-6',
             )}
           >
             <div className="flex-1 min-w-0">
               {typeof title === 'string' ? (
-                <h3 className="truncate text-base font-semibold text-slate-800 md:text-lg">
+                <h3 className="truncate text-base font-semibold text-slate-800 dark:text-slate-100 md:text-lg">
                   {title}
                 </h3>
               ) : (
                 title
               )}
               {subtitle && (
-                <p className="mt-1 text-xs text-slate-500 md:text-sm">{subtitle}</p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 md:text-sm">{subtitle}</p>
               )}
             </div>
             {(actions || extra) && <div className="ml-4 flex-shrink-0">{actions ?? extra}</div>}
@@ -81,7 +81,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
         {footer && (
           <div
             className={clsx(
-              'rounded-b-lg border-t border-slate-100 bg-slate-50 px-6 py-4',
+              'rounded-b-lg border-t border-slate-100 bg-slate-50 px-6 py-4 dark:border-[#3b434e] dark:bg-slate-900/40',
               compactOnMobile && 'px-4 py-3 md:px-6 md:py-4',
             )}
           >

@@ -52,8 +52,8 @@ function NavigationList({
               'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
               item.indent && 'ml-5 text-[13px]',
               isActive
-                ? 'bg-primary-50 text-primary-700'
-                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800',
+                ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/35 dark:text-primary-300'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100',
             )
           }
         >
@@ -117,8 +117,8 @@ function SectionedNavigationList({
               className={clsx(
                 'flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wide transition-colors',
                 hasActiveChild
-                  ? 'text-primary-700 bg-primary-50/60'
-                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700',
+                  ? 'bg-primary-50/60 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200',
               )}
             >
               <span>{section.title}</span>
@@ -143,8 +143,8 @@ function SectionedNavigationList({
                         'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                         item.indent && 'ml-4 text-[13px]',
                         isActive
-                          ? 'bg-primary-50 text-primary-700'
-                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800',
+                          ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/35 dark:text-primary-300'
+                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100',
                       )
                     }
                   >
@@ -168,11 +168,11 @@ function UserIdentity({ userName, userAvatar }: { userName?: string; userAvatar?
       {userAvatar ? (
         <img src={userAvatar} alt={userName} className="h-7 w-7 rounded-full" />
       ) : (
-        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-100 text-xs font-bold text-primary-700">
+        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-100 text-xs font-bold text-primary-700 dark:bg-primary-900/50 dark:text-primary-200">
           {userName.charAt(0)}
         </div>
       )}
-      <span className="max-w-[7rem] truncate text-sm text-slate-600 md:max-w-none">{userName}</span>
+      <span className="max-w-[7rem] truncate text-sm text-slate-600 dark:text-slate-200 md:max-w-none">{userName}</span>
     </div>
   )
 }
@@ -209,7 +209,7 @@ export function MobileWorkstationLayout({
         {onLogout && (
           <button
             onClick={onLogout}
-            className="min-h-11 min-w-11 rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+            className="min-h-11 min-w-11 rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-200"
             title="退出登录"
           >
             <LogOut className="h-4 w-4" />
@@ -232,9 +232,9 @@ export function MobileWorkstationLayout({
   )
 
   return (
-    <div className="flex min-h-[100dvh] h-[100dvh] md:h-screen overflow-hidden bg-slate-50">
-      <aside className="hidden w-56 flex-shrink-0 flex-col border-r border-slate-200 bg-white md:flex h-full min-h-0">
-        <div className="flex h-14 shrink-0 items-center border-b border-slate-200 px-5">
+    <div className="flex h-[100dvh] min-h-[100dvh] overflow-hidden bg-slate-50 dark:bg-slate-900 md:h-screen">
+      <aside className="hidden h-full min-h-0 w-56 flex-shrink-0 flex-col border-r border-slate-200 bg-white dark:border-[#3b434e] dark:bg-slate-800 md:flex">
+        <div className="flex h-14 shrink-0 items-center border-b border-slate-200 px-5 dark:border-[#3b434e]">
           <div className="flex items-center gap-2">
             <div
               className={clsx(
@@ -244,28 +244,30 @@ export function MobileWorkstationLayout({
             >
               {logoText}
             </div>
-            <span className="text-sm font-semibold text-slate-700">{appName}</span>
+            <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{appName}</span>
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {sidebarNav}
         </div>
-        {sidebarFooter ? <div className="shrink-0 border-t border-slate-100">{sidebarFooter}</div> : null}
+        {sidebarFooter ? (
+          <div className="shrink-0 border-t border-slate-100 dark:border-[#3b434e]">{sidebarFooter}</div>
+        ) : null}
       </aside>
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-3 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0">
+        <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-3 pt-[env(safe-area-inset-top)] dark:border-slate-700/80 dark:bg-slate-800 md:px-6 md:pt-0">
           <div className="flex items-center gap-2">
             {hasNav && (
               <button
                 onClick={() => setMobileMenuOpen(true)}
-                className="min-h-11 min-w-11 rounded-md p-2 text-slate-600 hover:bg-slate-100 md:hidden"
+                className="min-h-11 min-w-11 rounded-md p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 md:hidden"
                 aria-label="打开导航菜单"
               >
                 <Menu className="h-5 w-5" />
               </button>
             )}
-            <h1 className="text-sm font-semibold text-slate-800 md:text-base">{title}</h1>
+            <h1 className="text-sm font-semibold text-slate-800 dark:text-slate-100 md:text-base">{title}</h1>
           </div>
           <div className="flex items-center gap-3">
             {headerExtra}
@@ -286,7 +288,7 @@ export function MobileWorkstationLayout({
       </div>
 
       {hasBottomNav && (
-        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur dark:border-[#3b434e] dark:bg-slate-800/95 md:hidden">
           <ul className="grid h-14 grid-cols-5 gap-1">
             {primaryNavItems.map((item) => (
               <li key={item.to} className="min-w-0">
@@ -296,7 +298,9 @@ export function MobileWorkstationLayout({
                   className={({ isActive }) =>
                     clsx(
                       'flex h-full w-full flex-col items-center justify-center gap-0.5 rounded-lg px-1 text-[11px] font-medium',
-                      isActive ? 'text-primary-700' : 'text-slate-500',
+                      isActive
+                        ? 'text-primary-700 dark:text-primary-400'
+                        : 'text-slate-500 dark:text-slate-400',
                     )
                   }
                 >
@@ -316,8 +320,8 @@ export function MobileWorkstationLayout({
             onClick={() => setMobileMenuOpen(false)}
             aria-label="关闭导航菜单遮罩"
           />
-          <aside className="relative flex h-full w-72 max-w-[85vw] flex-col border-r border-slate-200 bg-white shadow-xl">
-            <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-4 pt-[env(safe-area-inset-top)]">
+          <aside className="relative flex h-full w-72 max-w-[85vw] flex-col border-r border-slate-200 bg-white shadow-xl dark:border-[#3b434e] dark:bg-slate-800">
+            <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-4 pt-[env(safe-area-inset-top)] dark:border-[#3b434e]">
               <div className="flex items-center gap-2">
                 <div
                   className={clsx(
@@ -327,17 +331,17 @@ export function MobileWorkstationLayout({
                 >
                   {logoText}
                 </div>
-                <span className="text-sm font-semibold text-slate-700">{appName}</span>
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{appName}</span>
               </div>
               <button
                 onClick={() => setMobileMenuOpen(false)}
-                className="min-h-11 min-w-11 rounded-md p-2 text-slate-600 hover:bg-slate-100"
+                className="min-h-11 min-w-11 rounded-md p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
                 aria-label="关闭导航菜单"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="shrink-0 border-b border-slate-100 px-4 py-3">
+            <div className="shrink-0 border-b border-slate-100 px-4 py-3 dark:border-[#3b434e]">
               <UserIdentity userName={userName} userAvatar={userAvatar} />
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">

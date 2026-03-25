@@ -29,12 +29,12 @@ export function Empty({
         className
       )}
     >
-      <div className="mb-4 text-slate-300">
+      <div className="mb-4 text-slate-300 dark:text-slate-600">
         {icon || <Inbox className="w-16 h-16" />}
       </div>
-      <h3 className="text-lg font-medium text-slate-600">{title}</h3>
+      <h3 className="text-lg font-medium text-slate-600 dark:text-slate-300">{title}</h3>
       {resolvedDescription && (
-        <p className="mt-2 text-sm text-slate-500 max-w-sm">{resolvedDescription}</p>
+        <p className="mt-2 max-w-sm text-sm text-slate-500 dark:text-slate-400">{resolvedDescription}</p>
       )}
       {action && <div className="mt-6">{action}</div>}
     </div>

@@ -12,7 +12,6 @@ import {
   formatExecutionPeriodToMMMMDDYY,
   type ResourceDemandSummary,
 } from '../utils/executionOrderPlanConfig'
-import { useTheme } from '../contexts/ThemeContext'
 
 export type DemandItem = { id: number; headers: string[]; rows: unknown[] }
 
@@ -144,14 +143,14 @@ function renderSemicolonChips(val: string, center: boolean, opts?: SemicolonChip
     .map((s) => s.trim())
   if (parts.length === 0) {
     return (
-      <Badge variant="default" size="sm">
+      <Badge variant="field" size="sm" className="opacity-75">
         -
       </Badge>
     )
   }
 
   const badges = parts.map((name, i) => (
-    <Badge key={`${i}-${name}`} variant="info" size="sm" className="shrink-0 whitespace-nowrap">
+    <Badge key={`${i}-${name}`} variant="field" size="sm" className="shrink-0 whitespace-nowrap">
       {name}
     </Badge>
   ))
@@ -186,8 +185,6 @@ export function DemandsPanel({
   items: DemandItem[]
   onViewDetail: (itemIndex: number) => void
 }) {
-  const { theme } = useTheme()
-  const isDark = theme === 'dark'
   const [page, setPage] = useState(1)
   const [projectCodeFilter, setProjectCodeFilter] = useState('')
 
@@ -294,11 +291,11 @@ export function DemandsPanel({
         align: 'center',
         render: (r: DemandTableRow) =>
           r.execution_period ? (
-            <Badge variant="info" size="sm">
+            <Badge variant="field" size="sm">
               {formatExecutionPeriodToMMMMDDYY(r.execution_period)}
             </Badge>
           ) : (
-            <Badge variant="default" size="sm">
+            <Badge variant="field" size="sm" className="opacity-75">
               -
             </Badge>
           ),
@@ -344,7 +341,7 @@ export function DemandsPanel({
 
   if (!items.length) {
     return (
-      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-[#3b434e] p-12">
+      <div className="cnkis-project-list bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-[#3b434e] p-12">
         <Empty message="暂无资源需求数据，请点击「上传执行订单」上传测试执行订单文件" />
       </div>
     )
@@ -378,13 +375,8 @@ export function DemandsPanel({
   }
 
   return (
-    <div className={clsx('bg-white dark:bg-slate-800 rounded-xl', !isDark && 'border border-slate-200')}>
-      <div
-        className={clsx(
-          'flex flex-wrap items-center gap-2 px-4 py-3 border-b',
-          isDark ? 'border-[#3b434e]' : 'border-slate-100'
-        )}
-      >
+    <div className="cnkis-project-list rounded-xl border border-slate-200 bg-white dark:border-[#3b434e] dark:bg-slate-800">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3 dark:border-[#3b434e]">
         <label htmlFor="demands-project-code-filter" className="text-sm font-medium text-slate-600 dark:text-slate-400 shrink-0">
           项目编号
         </label>
@@ -411,12 +403,7 @@ export function DemandsPanel({
           />
         </div>
       </div>
-      <div
-        className={clsx(
-          'flex flex-wrap items-center justify-between gap-3 px-6 py-3 text-xs text-slate-500 dark:text-slate-400',
-          !isDark && 'border-t border-slate-100'
-        )}
-      >
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-6 py-3 text-xs text-slate-500 dark:border-[#3b434e] dark:text-slate-400">
         <span>共 {total} 条</span>
         <div className="flex items-center gap-2 flex-wrap">
           <button

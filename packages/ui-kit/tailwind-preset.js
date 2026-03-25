@@ -4,6 +4,8 @@
  */
 /** @type {import('tailwindcss').Config} */
 export default {
+  /** 与 ThemeContext / html.dark 手动主题切换一致；默认 `media` 只会跟系统深浅色，导致 dark: 不随工作台切换生效 */
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {

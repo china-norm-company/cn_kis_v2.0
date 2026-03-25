@@ -57,15 +57,15 @@ export function StatCard({
   return (
     <div
       className={clsx(
-        'rounded-lg bg-white p-6 shadow-card',
+        'rounded-lg bg-white p-6 shadow-card dark:border dark:border-[#3b434e] dark:bg-slate-800 dark:shadow-none',
         compactOnMobile && 'p-4 md:p-6',
         className
       )}
     >
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs text-slate-500 md:text-sm">{displayTitle}</p>
-          <p className="mt-1.5 text-xl font-bold text-slate-800 md:mt-2 md:text-2xl">{value}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 md:text-sm">{displayTitle}</p>
+          <p className="mt-1.5 text-xl font-bold text-slate-800 dark:text-slate-100 md:mt-2 md:text-2xl">{value}</p>
           {trend && (
             <div className="flex items-center gap-1 mt-2">
               {isPositive ? (
@@ -90,13 +90,13 @@ export function StatCard({
         {icon && (
           <div className={clsx(
             'rounded-lg p-2.5 md:p-3',
-            colorCfg ? `${colorCfg.bg} ${colorCfg.text}` : 'bg-primary-50 text-primary-600',
+            colorCfg ? `${colorCfg.bg} ${colorCfg.text}` : 'bg-primary-50 text-primary-600 dark:bg-primary-900/40 dark:text-primary-300',
           )}>
             {icon}
           </div>
         )}
       </div>
-      {footer && <div className="mt-3 text-xs text-slate-500">{footer}</div>}
+      {footer && <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">{footer}</div>}
     </div>
   )
 }

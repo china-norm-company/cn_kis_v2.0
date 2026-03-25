@@ -75,16 +75,16 @@ export function DataTable<T extends object>({
 
   return (
     <div className="w-full">
-      <div className="space-y-3 md:hidden">
+      <div className="cnkis-datatable-mobile-stack space-y-3 md:hidden">
         {loading ? (
-          <div className="rounded-lg border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
+          <div className="rounded-lg border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500 dark:border-[#3b434e] dark:bg-slate-800 dark:text-slate-400">
             <div className="inline-flex items-center gap-2">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
               <span>加载中...</span>
             </div>
           </div>
         ) : data.length === 0 ? (
-          <div className="rounded-lg border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
+          <div className="rounded-lg border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500 dark:border-[#3b434e] dark:bg-slate-800 dark:text-slate-400">
             {emptyText}
           </div>
         ) : (
@@ -92,7 +92,7 @@ export function DataTable<T extends object>({
             <div
               key={getRowKey(record, index)}
               className={clsx(
-                'space-y-2 rounded-lg border border-slate-200 bg-white p-4',
+                'space-y-2 rounded-lg border border-slate-200 bg-white p-4 dark:border-[#3b434e] dark:bg-slate-800',
                 onRowClick && 'cursor-pointer'
               )}
               onClick={() => onRowClick?.(record)}
@@ -110,8 +110,8 @@ export function DataTable<T extends object>({
                   : String(getValue(record, String(col.key)) ?? '-')
                 return (
                   <div key={String(col.key)} className="flex items-start justify-between gap-3">
-                    <span className="shrink-0 text-xs font-medium text-slate-500">{title}</span>
-                    <div className="min-w-0 text-right text-sm text-slate-700">{rendered}</div>
+                    <span className="shrink-0 text-xs font-medium text-slate-500 dark:text-slate-400">{title}</span>
+                    <div className="min-w-0 text-right text-sm text-slate-700 dark:text-slate-200">{rendered}</div>
                   </div>
                 )
               })}
@@ -120,15 +120,15 @@ export function DataTable<T extends object>({
         )}
       </div>
 
-      <div className="hidden overflow-x-auto rounded-lg border border-slate-200 md:block">
-        <table className="w-full">
-          <thead className="bg-slate-50">
+      <div className="cnkis-datatable-desktop-wrap hidden overflow-x-auto rounded-lg border border-slate-200 bg-white dark:border-[#3b434e] dark:bg-slate-800 md:block">
+        <table className="w-full border-collapse [&_td]:border-0 [&_th]:border-0">
+          <thead className="border-b border-slate-200 bg-slate-50 dark:border-[#3b434e] dark:bg-[#141414]">
             <tr>
               {columns.map((col) => (
                 <th
                   key={String(col.key)}
                   className={clsx(
-                    'px-4 py-3 text-sm font-semibold text-slate-700',
+                    'border-0 px-4 py-3 text-sm font-semibold text-slate-700 dark:bg-[#141414] dark:text-slate-100',
                     col.align === 'center' && 'text-center',
                     col.align === 'right' && 'text-right'
                   )}
@@ -139,11 +139,11 @@ export function DataTable<T extends object>({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200 bg-white">
+          <tbody className="divide-y divide-slate-200 bg-white dark:divide-[#3b434e] dark:bg-slate-800">
             {loading ? (
               <tr>
                 <td colSpan={columns.length} className="px-4 py-8 text-center">
-                  <div className="flex items-center justify-center gap-2 text-slate-500">
+                  <div className="flex items-center justify-center gap-2 text-slate-500 dark:text-slate-400">
                     <div className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
                     <span>加载中...</span>
                   </div>
@@ -151,7 +151,7 @@ export function DataTable<T extends object>({
               </tr>
             ) : data.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={columns.length} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">
                   {emptyText}
                 </td>
               </tr>
@@ -160,7 +160,7 @@ export function DataTable<T extends object>({
                 <tr
                   key={getRowKey(record, index)}
                   className={clsx(
-                    'hover:bg-slate-50 transition-colors',
+                    'transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/35',
                     onRowClick && 'cursor-pointer'
                   )}
                   onClick={() => onRowClick?.(record)}
@@ -169,7 +169,7 @@ export function DataTable<T extends object>({
                     <td
                       key={String(col.key)}
                       className={clsx(
-                        'px-4 py-3 text-sm text-slate-600',
+                        'border-0 px-4 py-3 text-sm text-slate-600 dark:text-slate-300',
                         col.align === 'center' && 'text-center',
                         col.align === 'right' && 'text-right'
                       )}
@@ -194,8 +194,8 @@ export function DataTable<T extends object>({
 
       {/* 分页 */}
       {resolvedPagination && totalPages > 1 && (
-        <div className="flex items-center justify-between mt-4 px-2">
-          <span className="text-sm text-slate-500">
+        <div className="mt-4 flex items-center justify-between px-2">
+          <span className="text-sm text-slate-500 dark:text-slate-400">
             共 {resolvedPagination.total} 条
           </span>
           <div className="flex items-center gap-2">
@@ -207,7 +207,7 @@ export function DataTable<T extends object>({
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>
-            <span className="text-sm text-slate-600">
+            <span className="text-sm text-slate-600 dark:text-slate-300">
               {resolvedPagination.current} / {totalPages}
             </span>
             <Button

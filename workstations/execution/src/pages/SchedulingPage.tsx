@@ -1242,7 +1242,7 @@ function PlansPanel({
     { key: 'visit_node_count', header: '访视点', align: 'center' as const, render: (p: SchedulePlanListItem) => <span className="text-sm text-slate-600 dark:text-slate-300">{p.visit_node_count ?? '-'}</span> },
     { key: 'visit_node_count2', header: '访视数', align: 'center' as const, render: (p: SchedulePlanListItem) => <span className="text-sm text-slate-600 dark:text-slate-300">{p.visit_node_count ?? '-'}</span> },
     { key: 'window_summary', header: '窗口期', align: 'center' as const, render: (p: SchedulePlanListItem) => <span className="text-xs text-slate-500 dark:text-slate-400 max-w-[120px] truncate block mx-auto" title={p.window_summary}>{p.window_summary ?? '-'}</span> },
-    { key: 'execution_period', header: '执行周期', align: 'center' as const, render: (p: SchedulePlanListItem) => (p.execution_period ? <Badge variant="info" size="sm">{formatExecutionPeriodToMMMMDDYY(p.execution_period)}</Badge> : <Badge variant="default" size="sm">-</Badge>) },
+    { key: 'execution_period', header: '执行周期', align: 'center' as const, render: (p: SchedulePlanListItem) => (p.execution_period ? <Badge variant="field" size="sm">{formatExecutionPeriodToMMMMDDYY(p.execution_period)}</Badge> : <Badge variant="field" size="sm" className="opacity-75">-</Badge>) },
     { key: '数据来源', header: '数据来源', align: 'center' as const, render: (p: SchedulePlanListItem) => <Badge variant={dataSourceLabel(p) === '线下' ? 'warning' : 'success'}>{dataSourceLabel(p)}</Badge> },
     {
       key: 'schedule_progress',
@@ -1466,7 +1466,7 @@ function ResourceApprovalListPanel({
     { key: 'visit_node_count', header: '访视点', align: 'center' as const, render: (r: ResourceApprovalRow) => <span className="text-sm text-slate-600">{r.visit_node_count}</span> },
     { key: 'visit_node_count2', header: '访视数', align: 'center' as const, render: (r: ResourceApprovalRow) => <span className="text-sm text-slate-600">{r.visit_node_count}</span> },
     { key: 'window_summary', header: '窗口期', align: 'center' as const, render: (r: ResourceApprovalRow) => <span className="text-xs text-slate-500 max-w-[120px] truncate block mx-auto" title={r.window_summary}>{r.window_summary || '-'}</span> },
-    { key: 'execution_period', header: '执行周期', align: 'center' as const, render: (r: ResourceApprovalRow) => (r.execution_period ? <Badge variant="info" size="sm">{r.execution_period}</Badge> : <Badge variant="default" size="sm">-</Badge>) },
+    { key: 'execution_period', header: '执行周期', align: 'center' as const, render: (r: ResourceApprovalRow) => (r.execution_period ? <Badge variant="field" size="sm">{r.execution_period}</Badge> : <Badge variant="field" size="sm" className="opacity-75">-</Badge>) },
     { key: 'schedule_progress', header: '审核进度', align: 'center' as const, render: (r: ResourceApprovalRow) => (r.status === 'approved' || r.status === 'rejected' ? <Badge variant="success" size="sm">已审核</Badge> : <Badge variant="warning" size="sm">待审核</Badge>) },
     {
       key: 'actions',

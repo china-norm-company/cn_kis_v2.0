@@ -483,7 +483,7 @@ export default function ResourceDemandDetailPage() {
                     <div className="overflow-x-auto">
                       <table className="w-full min-w-[520px] text-sm border-collapse">
                         <thead>
-                          <tr className="border-b border-slate-200 dark:border-[#3b434e] bg-slate-100 dark:bg-slate-700/50">
+                          <tr className="border-b border-slate-200 bg-slate-100 dark:border-[#3b434e] dark:bg-[#141414]">
                             {projectVisitCols.map((c) => (
                               <th
                                 key={c.key}
@@ -560,7 +560,7 @@ export default function ResourceDemandDetailPage() {
                     <div className="overflow-x-auto">
                       <table className="w-full min-w-[520px] text-sm border-collapse">
                         <thead>
-                          <tr className="border-b border-slate-200 dark:border-[#3b434e] bg-slate-100 dark:bg-slate-700/50">
+                          <tr className="border-b border-slate-200 bg-slate-100 dark:border-[#3b434e] dark:bg-[#141414]">
                             {projectVisitCols.map((c) => (
                               <th
                                 key={c.key}
@@ -597,7 +597,7 @@ export default function ResourceDemandDetailPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[520px] text-sm border-collapse">
                       <thead>
-                        <tr className="border-b border-slate-200 dark:border-[#3b434e] bg-slate-100 dark:bg-slate-700/50">
+                        <tr className="border-b border-slate-200 bg-slate-100 dark:border-[#3b434e] dark:bg-[#141414]">
                           {projectVisitCols.map((c) => (
                             <th
                               key={c.key}
@@ -653,7 +653,7 @@ export default function ResourceDemandDetailPage() {
                     <div className="overflow-x-auto">
                       <table className="w-full min-w-[480px] text-sm border-collapse">
                         <thead>
-                          <tr className="border-b border-slate-200 dark:border-[#3b434e] bg-slate-100 dark:bg-slate-700/50">
+                          <tr className="border-b border-slate-200 bg-slate-100 dark:border-[#3b434e] dark:bg-[#141414]">
                             {VISIT_TABLE_COLUMNS.map((c) => (
                               <th
                                 key={c.key}
@@ -724,7 +724,7 @@ export default function ResourceDemandDetailPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[480px] text-sm border-collapse">
                       <thead>
-                        <tr className="border-b border-slate-200 dark:border-[#3b434e] bg-slate-100 dark:bg-slate-700/50">
+                        <tr className="border-b border-slate-200 bg-slate-100 dark:border-[#3b434e] dark:bg-[#141414]">
                           {VISIT_TABLE_COLUMNS.map((c) => (
                             <th
                               key={c.key}
@@ -794,7 +794,7 @@ export default function ResourceDemandDetailPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[520px] text-sm border-collapse">
                     <thead>
-                      <tr className="border-b border-slate-200 dark:border-[#3b434e] bg-slate-100 dark:bg-slate-700/50">
+                      <tr className="border-b border-slate-200 bg-slate-100 dark:border-[#3b434e] dark:bg-[#141414]">
                         {cols.map((c) => (
                           <th
                             key={c.key}
@@ -866,7 +866,7 @@ export default function ResourceDemandDetailPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[520px] text-sm border-collapse">
                     <thead>
-                      <tr className="border-b border-slate-200 dark:border-[#3b434e] bg-slate-100 dark:bg-slate-700/50">
+                      <tr className="border-b border-slate-200 bg-slate-100 dark:border-[#3b434e] dark:bg-[#141414]">
                         {cols.map((c) => (
                           <th
                             key={String(c.key)}
@@ -1047,7 +1047,7 @@ export default function ResourceDemandDetailPage() {
                     <div className="border-b border-slate-100 dark:border-slate-700/50 overflow-hidden">
                       <table className="w-full text-sm border-collapse">
                         <thead>
-                          <tr className="bg-slate-100 dark:bg-slate-700/50">
+                          <tr className="bg-slate-100 dark:bg-[#141414]">
                             <th className="px-4 py-2.5 text-center font-medium text-slate-700 dark:text-slate-200 border-b border-r border-slate-200 dark:border-slate-600">
                               执行开始日期
                             </th>
@@ -1072,7 +1072,7 @@ export default function ResourceDemandDetailPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[520px] text-sm border-collapse">
                       <thead>
-                        <tr className="border-b border-slate-200 dark:border-[#3b434e] bg-slate-100 dark:bg-slate-700/50">
+                        <tr className="border-b border-slate-200 bg-slate-100 dark:border-[#3b434e] dark:bg-[#141414]">
                           {scheduleCols.map((c) => (
                             <th key={c.key} className="px-3 py-2.5 text-left font-medium text-slate-700 dark:text-slate-200 border-r border-slate-200 dark:border-[#3b434e] last:border-r-0">
                               {c.label}
