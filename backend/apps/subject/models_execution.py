@@ -167,6 +167,12 @@ class SubjectPayment(models.Model):
         help_text='本次支付奖励的积分（1元=1分）',
     )
 
+    # ── 协议关联（通过 project_code → Protocol.code 反向填充）──────────────
+    protocol_id = models.IntegerField(
+        '协议ID', null=True, blank=True, db_index=True,
+        help_text='关联 t_protocol.id，由 link_lims_ekb_to_protocol 命令填充',
+    )
+
     created_by_id = models.IntegerField('创建人ID', null=True, blank=True)
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)
