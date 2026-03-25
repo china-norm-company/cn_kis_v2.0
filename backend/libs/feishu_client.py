@@ -836,7 +836,7 @@ class FeishuClient:
         resp = self.request_with_retry(method='GET', url=url, headers=headers, timeout=15.0, retry=self.RATE_LIMIT_RETRY)
         if resp.status_code != 200:
             raise FeishuAPIError(code=resp.status_code, msg=f'HTTP {resp.status_code}: {resp.text[:200]}',
-                                 api=f'mail attachment download_url')
+                                 api='mail attachment download_url')
         result = resp.json()
         if result.get('code', -1) != 0:
             raise FeishuAPIError(code=result.get('code', -1), msg=result.get('msg', ''), api='mail attachment download_url')
@@ -1756,7 +1756,7 @@ class FeishuClient:
 
     def get_wiki_node_info(self, token: str) -> Dict:
         """通过 obj_token 或 node_token 获取知识库节点信息"""
-        return self._request('GET', f'wiki/v2/spaces/get_node', params={'token': token})
+        return self._request('GET', 'wiki/v2/spaces/get_node', params={'token': token})
 
     def search_documents(
         self,
