@@ -20,6 +20,7 @@ import ResourceCalendar from '../components/ResourceCalendar'
 import { CreateScheduleUploadModal } from '../components/CreateScheduleUploadModal'
 import { LabScheduleUploadModal } from '../components/LabScheduleUploadModal'
 import { LabScheduleProjectCalendar } from '../components/LabScheduleProjectCalendar'
+import { LabSchedulePersonCalendar } from '../components/LabSchedulePersonCalendar'
 import { TimelineTableView } from '../components/TimelineTableView'
 import { TimelineGanttView } from '../components/TimelineGanttView'
 import { mapParsedToTimelineRows } from '../utils/timelineTableMapping'
@@ -118,8 +119,8 @@ export default function SchedulingPage() {
   const [labScheduleAppliedPerson, setLabScheduleAppliedPerson] = useState('')
   const [labScheduleAppliedEquipment, setLabScheduleAppliedEquipment] = useState('')
   const [labScheduleAppliedDate, setLabScheduleAppliedDate] = useState('')
-  /** 实验室排期：数据列表 | 项目日历（日历不受上方人员/设备/日期筛选影响） */
-  const [labSubView, setLabSubView] = useState<'table' | 'calendar'>('table')
+  /** 实验室排期：数据列表 | 项目日历 | 人员日历 */
+  const [labSubView, setLabSubView] = useState<'table' | 'calendar' | 'person'>('table')
   const [toastMsg, setToastMsg] = useState<string | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const location = useLocation()
@@ -531,7 +532,7 @@ export default function SchedulingPage() {
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
             <div className="flex gap-2 overflow-x-auto min-h-11 items-center">
-              {(['table', 'calendar'] as const).map((sub) => (
+              {(['table', 'calendar', 'person'] as const).map((sub) => (
                 <button
                   key={sub}
                   type="button"
@@ -543,7 +544,7 @@ export default function SchedulingPage() {
                       : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-[#3b434e] dark:text-slate-200 dark:hover:bg-slate-700'
                   )}
                 >
-                  {sub === 'table' ? '数据列表' : '项目日历'}
+                  {sub === 'table' ? '数据列表' : sub === 'calendar' ? '项目日历' : '人员日历'}
                 </button>
               ))}
             </div>
@@ -572,6 +573,9 @@ export default function SchedulingPage() {
           )}
           {labSubView === 'calendar' ? (
             <LabScheduleProjectCalendar hasAnyLabData={labTotalUnfiltered > 0} />
+          ) : null}
+          {labSubView === 'person' ? (
+            <LabSchedulePersonCalendar hasAnyLabData={labTotalUnfiltered > 0} />
           ) : null}
           {labSubView === 'table' ? (
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-[#3b434e] overflow-hidden">

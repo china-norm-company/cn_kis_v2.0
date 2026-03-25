@@ -12,7 +12,9 @@
 - PUT  /scheduling/slots/{id}           更新时间槽
 """
 import logging
+from collections import defaultdict
 from django.http import JsonResponse
+from django.db.models import Q
 from ninja import Router, Schema
 from typing import Optional, List, Any
 from datetime import date, time as time_type
@@ -624,12 +626,129 @@ def _lab_schedule_protocol_exclude_q():
     )
 
 
+# 人员日历取数：group 或 day_group 完全等于下列组别时排除（ORM 与 JSON 回退一致）
+_LAB_SCHEDULE_CALENDAR_EXCLUDED_GROUP_NAMES = ('行政', '评估', '操作')
+
+
 def _lab_schedule_drop_json_row(row: Any) -> bool:
     """JSON 回退行是否应丢弃（与 ORM exclude 一致）。"""
     if not isinstance(row, dict):
         return True
     pc = str(row.get('protocol_code') or '')
     return ('外借' in pc) or ('内部使用' in pc) or ('内部借用' in pc)
+
+
+def _lab_schedule_json_row_excluded_admin_eval(row: Any) -> bool:
+    """JSON 行是否因行政/评估/操作组别排除（与 _lab_schedule_exclude_admin_eval_group_q 一致）。"""
+    if not isinstance(row, dict):
+        return True
+    g = str(row.get('group') or '').strip()
+    dg = str(row.get('day_group') or '').strip()
+    return g in _LAB_SCHEDULE_CALENDAR_EXCLUDED_GROUP_NAMES or dg in _LAB_SCHEDULE_CALENDAR_EXCLUDED_GROUP_NAMES
+
+
+def _lab_schedule_json_row_to_api_dict(row: dict) -> dict:
+    """JSON 行转为与 _lab_schedule_row_to_dict 相同结构。"""
+    d = str(row.get('date') or '')
+    return {
+        'group': str(row.get('group') or ''),
+        'equipment_code': str(row.get('equipment_code') or ''),
+        'equipment': str(row.get('equipment') or ''),
+        'date': d[:10] if d else '',
+        'protocol_code': str(row.get('protocol_code') or ''),
+        'sample_size': str(row.get('sample_size') or '') if row.get('sample_size') is not None else '',
+        'person_role': str(row.get('person_role') or ''),
+        'room': str(row.get('room') or ''),
+        'day_group': str(row.get('day_group') or ''),
+    }
+
+
+def _lab_schedule_exclude_admin_eval_group_q():
+    """组别（固定列 group 或日期块内 day_group）完全等于 行政 / 评估 / 操作 时排除。"""
+    return Q(group__in=_LAB_SCHEDULE_CALENDAR_EXCLUDED_GROUP_NAMES) | Q(
+        day_group__in=_LAB_SCHEDULE_CALENDAR_EXCLUDED_GROUP_NAMES
+    )
+
+
+def _person_role_valid_for_calendar(person_role: Optional[str]) -> bool:
+    s = (person_role or '').strip()
+    if not s or s == '/':
+        return False
+    return True
+
+
+def _parse_sample_size_float(val) -> float:
+    if val is None:
+        return 0.0
+    s = str(val).strip()
+    if not s:
+        return 0.0
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
+
+
+def _lab_schedule_date_key_ymd(date_str: str) -> str:
+    t = (date_str or '').strip()
+    if len(t) >= 10:
+        return t[:10]
+    return t
+
+
+def _lab_schedule_year_month_filter_q(year_month: str):
+    """
+    匹配 yyyy-MM 所在自然月；兼容 date 存为 2026-03-15、2026/3/15、2026.03.15 等。
+    单独使用 date__icontains=2026-03 无法匹配含斜杠的日期串。
+    """
+    ym = (year_month or '').strip()
+    if len(ym) < 7:
+        return Q(pk__in=[])
+    parts = ym.split('-')
+    if len(parts) < 2:
+        return Q(date__icontains=ym)
+    y, mm = parts[0], parts[1]
+    try:
+        mm_int = int(mm)
+    except ValueError:
+        return Q(date__icontains=ym)
+    mm_pad = mm.zfill(2)
+    return (
+        Q(date__icontains=ym)
+        | Q(date__icontains=f'{y}/{mm_pad}')
+        | Q(date__icontains=f'{y}/{mm_int}/')
+        | Q(date__icontains=f'{y}-{mm_int}-')
+        | Q(date__icontains=f'{y}.{mm_pad}.')
+        | Q(date__icontains=f'{y}.{mm_int}.')
+    )
+
+
+def _lab_schedule_date_str_in_year_month(date_str: str, year_month: str) -> bool:
+    """与 _lab_schedule_year_month_filter_q 等价的 Python 判断（用于 JSON 行过滤）。"""
+    ym = (year_month or '').strip()
+    if len(ym) < 7:
+        return False
+    s = (date_str or '').strip()
+    if not s:
+        return False
+    parts = ym.split('-')
+    if len(parts) < 2:
+        return ym in s
+    y, mm = parts[0], parts[1]
+    try:
+        mm_int = int(mm)
+    except ValueError:
+        return ym in s
+    mm_pad = mm.zfill(2)
+    patterns = (
+        ym,
+        f'{y}/{mm_pad}',
+        f'{y}/{mm_int}/',
+        f'{y}-{mm_int}-',
+        f'{y}.{mm_pad}.',
+        f'{y}.{mm_int}.',
+    )
+    return any(p in s for p in patterns)
 
 
 @router.get('/lab-schedule/list', summary='实验室排期列表（分页+筛选）')
@@ -742,7 +861,7 @@ def lab_schedule_month(
     qs = (
         LabScheduleRow.objects.filter(upload=rec)
         .exclude(_lab_schedule_protocol_exclude_q())
-        .filter(date__icontains=date_val)
+        .filter(_lab_schedule_year_month_filter_q(date_val))
     )
     person_val = (person_role or '').strip()
     if person_val:
@@ -753,6 +872,164 @@ def lab_schedule_month(
     items = [_lab_schedule_row_to_dict(r) for r in rows]
     return {'code': 200, 'msg': 'OK', 'data': {
         'items': items, 'total': len(items), 'source_file_name': (rec.source_file_name or ''),
+    }}
+
+
+@router.get('/lab-schedule/person-calendar', summary='人员日历（实验室排期：按人汇总、导出明细不合并）')
+@require_any_permission_or_anon_in_debug(_LAB_SCHEDULE_READ_PERMS)
+def lab_schedule_person_calendar(
+    request,
+    year_month: str,
+    person_role: Optional[str] = None,
+    equipment: Optional[str] = None,
+):
+    """
+    人员日历数据：排除「行政」「评估」「操作」组别（group/day_group 完全等于）、
+    仅含有效「人员/岗位」（非空且非 /）。
+    返回 calendar_by_date（按日、每人每台设备一行，同人不同设备多行）与 detail_rows（明细行，导出不合并）。
+    """
+    from .models import LabScheduleUpload, LabScheduleRow
+
+    ym = (year_month or '').strip()
+    if not ym or len(ym) < 6:
+        return {'code': 200, 'msg': 'OK', 'data': {
+            'calendar_by_date': {}, 'detail_rows': [], 'source_file_name': '',
+            'filter_options': {'person_roles': [], 'equipments': []},
+        }}
+
+    rec = LabScheduleUpload.objects.order_by('-create_time').first()
+    if not rec:
+        return {'code': 200, 'msg': 'OK', 'data': {
+            'calendar_by_date': {}, 'detail_rows': [], 'source_file_name': '',
+            'filter_options': {'person_roles': [], 'equipments': []},
+        }}
+
+    ym_q = _lab_schedule_year_month_filter_q(ym)
+    has_orm_rows = (
+        LabScheduleRow.objects.filter(upload=rec)
+        .exclude(_lab_schedule_protocol_exclude_q())
+        .exists()
+    )
+    person_val = (person_role or '').strip()
+    equip_val = (equipment or '').strip()
+
+    person_opts: list = []
+    equip_opts: list = []
+    detail_rows: list = []
+    # 按日 → (人员, 设备) → 合并样本量（同人同设备多行来源相加）
+    cal_pe: dict[str, dict[tuple, float]] = defaultdict(lambda: defaultdict(float))
+
+    if has_orm_rows:
+        base_qs = (
+            LabScheduleRow.objects.filter(upload=rec)
+            .exclude(_lab_schedule_protocol_exclude_q())
+            .exclude(_lab_schedule_exclude_admin_eval_group_q())
+            .filter(ym_q)
+        )
+        base_for_options = (
+            LabScheduleRow.objects.filter(upload=rec)
+            .exclude(_lab_schedule_protocol_exclude_q())
+            .exclude(_lab_schedule_exclude_admin_eval_group_q())
+            .filter(ym_q)
+        )
+        person_opts = sorted(
+            {
+                str(p).strip()
+                for p in base_for_options.exclude(person_role='')
+                .values_list('person_role', flat=True).distinct()
+                if _person_role_valid_for_calendar(str(p))
+            }
+        )
+        equip_opts = sorted(
+            {
+                str(e).strip()
+                for e in base_for_options.exclude(equipment='')
+                .values_list('equipment', flat=True).distinct()
+                if str(e).strip()
+            }
+        )
+
+        qs = base_qs
+        if person_val:
+            qs = qs.filter(person_role__icontains=person_val)
+        if equip_val:
+            qs = qs.filter(equipment__icontains=equip_val)
+
+        rows = list(qs.order_by('date', 'person_role', 'equipment', 'id'))
+        rows = [r for r in rows if _person_role_valid_for_calendar(getattr(r, 'person_role', None))]
+
+        detail_rows = [_lab_schedule_row_to_dict(r) for r in rows]
+
+        for r in rows:
+            dk = _lab_schedule_date_key_ymd(getattr(r, 'date', '') or '')
+            if not dk:
+                continue
+            p = (getattr(r, 'person_role', None) or '').strip()
+            eq = (getattr(r, 'equipment', None) or '').strip()
+            cal_pe[dk][(p, eq)] += _parse_sample_size_float(getattr(r, 'sample_size', None))
+    else:
+        data = (rec.data if isinstance(rec.data, list) else []) or []
+        json_all = []
+        for row in data:
+            if not isinstance(row, dict):
+                continue
+            if _lab_schedule_drop_json_row(row):
+                continue
+            if _lab_schedule_json_row_excluded_admin_eval(row):
+                continue
+            ds = str(row.get('date') or '')
+            if not _lab_schedule_date_str_in_year_month(ds, ym):
+                continue
+            if not _person_role_valid_for_calendar(str(row.get('person_role') or '')):
+                continue
+            json_all.append(row)
+
+        person_opts = sorted(
+            {str(r.get('person_role') or '').strip() for r in json_all if _person_role_valid_for_calendar(str(r.get('person_role') or ''))}
+        )
+        equip_opts = sorted(
+            {str(r.get('equipment') or '').strip() for r in json_all if str(r.get('equipment') or '').strip()}
+        )
+
+        json_rows = []
+        for row in json_all:
+            if person_val and person_val not in str(row.get('person_role') or ''):
+                continue
+            if equip_val and equip_val not in str(row.get('equipment') or ''):
+                continue
+            json_rows.append(row)
+
+        detail_rows = [_lab_schedule_json_row_to_api_dict(r) for r in json_rows]
+
+        for row in json_rows:
+            dk = _lab_schedule_date_key_ymd(str(row.get('date') or ''))
+            if not dk:
+                continue
+            p = str(row.get('person_role') or '').strip()
+            eq = str(row.get('equipment') or '').strip()
+            cal_pe[dk][(p, eq)] += _parse_sample_size_float(row.get('sample_size'))
+
+    calendar_by_date: dict[str, list] = {}
+    for dk in sorted(cal_pe.keys()):
+        rows_out = []
+        for (person, eq) in sorted(cal_pe[dk].keys(), key=lambda t: (t[0], t[1])):
+            total = cal_pe[dk][(person, eq)]
+            if total == int(total):
+                total_out = int(total)
+            else:
+                total_out = round(total, 2)
+            rows_out.append({
+                'person_role': person,
+                'equipment': eq,
+                'sample_size': total_out,
+            })
+        calendar_by_date[dk] = rows_out
+
+    return {'code': 200, 'msg': 'OK', 'data': {
+        'calendar_by_date': calendar_by_date,
+        'detail_rows': detail_rows,
+        'source_file_name': (rec.source_file_name or ''),
+        'filter_options': {'person_roles': person_opts, 'equipments': equip_opts},
     }}
 
 

@@ -55,6 +55,13 @@ export interface LabScheduleRow {
   [key: string]: unknown
 }
 
+/** 人员日历：某日一行 = 一人 + 一台设备 + 样本量（同人不同设备多行） */
+export interface PersonCalendarDayEntry {
+  person_role: string
+  equipment: string
+  sample_size: number
+}
+
 export const schedulingApi = {
   /** [仅DEBUG] 清空全部排程计划并可选重置已审批资源需求 */
   clearAllPlans(alsoResetApprovedDemands = true) {
@@ -263,6 +270,20 @@ export const schedulingApi = {
       total: number
       source_file_name: string
     }>('/scheduling/lab-schedule/month', { params })
+  },
+
+  /** 人员日历：月视图汇总 + 明细行（导出按设备分行，不合并） */
+  getLabSchedulePersonCalendar(params: {
+    year_month: string
+    person_role?: string
+    equipment?: string
+  }) {
+    return api.get<{
+      calendar_by_date: Record<string, PersonCalendarDayEntry[]>
+      detail_rows: LabScheduleRow[]
+      source_file_name: string
+      filter_options: { person_roles: string[]; equipments: string[] }
+    }>('/scheduling/lab-schedule/person-calendar', { params })
   },
 
   /** 实验室排期列表（分页+筛选，首页返回 filter_options 供前端下拉） */

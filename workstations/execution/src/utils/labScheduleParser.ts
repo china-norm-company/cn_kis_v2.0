@@ -73,6 +73,9 @@ export function parseLabScheduleSheet(rows: unknown[][]): LabScheduleRow[] {
 
       const sampleSize = row[startCol + 1]
       const personRole = str(row[startCol + 2])
+      /** 日期块仅在有「人员/岗位」且非「/」时生成明细行 */
+      if (!personRole || personRole === '/') continue
+
       const room = str(row[startCol + 3])
       const dayGroup = str(row[startCol + 4])
       const dateStr = parseExcelDate(dateRow[startCol])
