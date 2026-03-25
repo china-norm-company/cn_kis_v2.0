@@ -842,13 +842,20 @@ def _inject_personnel(raw_data: dict):
                 account.save(update_fields=['display_name', 'status'])
 
         # ─── Step 2: Staff ────────────────────────────────────────────────
+        # feishu_open_id 字段 unique=True 且 NOT NULL，LIMS 导入记录用唯一占位符
+        # 格式 'lims_XXXXXX'（飞书真实 open_id 以 'ou_' 开头，不会冲突）
+        # 当用户后续通过飞书 OAuth 登录时，该值会被自动覆盖为真实 open_id
+        import hashlib as _hashlib
+        _seed = f"{name}|{department or ''}|{employee_no or ''}"
+        lims_feishu_placeholder = f"lims_{_hashlib.md5(_seed.encode()).hexdigest()[:20]}"
+
         staff_defaults = {
             'name': name,
             'position': job_status.get('training_status', '在岗'),
             'department': department or '',
             'account_fk': account,
             'account_id': account.id,
-            'feishu_open_id': None,  # 避免空字符串唯一约束冲突
+            'feishu_open_id': lims_feishu_placeholder,
             'training_status': job_status.get('training_status', ''),
         }
 
@@ -862,10 +869,14 @@ def _inject_personnel(raw_data: dict):
             if existing_staff:
                 staff, staff_created = existing_staff, False
             else:
+                # 用 savepoint 保护 create，避免唯一约束失败污染外层事务
+                from django.db import transaction as _txn
                 try:
-                    staff = Staff.objects.create(**staff_defaults)
+                    with _txn.atomic():
+                        staff = Staff.objects.create(**staff_defaults)
                     staff_created = True
                 except Exception:
+                    # 已有同名记录（可能并发写入），回退到查找
                     staff = Staff.objects.filter(name=name).first()
                     staff_created = False
                     if not staff:
