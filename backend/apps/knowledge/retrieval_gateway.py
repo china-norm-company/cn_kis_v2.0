@@ -25,7 +25,7 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from django.db import connection
-from django.db.models import Q, Case, When, Value, IntegerField, F
+from django.db.models import Q, Case, When, Value, IntegerField
 
 from .models import KnowledgeEntry, KnowledgeEntity, KnowledgeRelation
 from libs.db_utils import paginate_queryset

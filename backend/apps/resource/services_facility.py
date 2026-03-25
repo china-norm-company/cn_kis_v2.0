@@ -5,7 +5,7 @@
 """
 from datetime import datetime, date, timedelta
 from django.conf import settings
-from django.db.models import Q, Count
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 

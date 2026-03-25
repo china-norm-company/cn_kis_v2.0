@@ -337,7 +337,6 @@ def _sync_training_to_calendar(training: Training) -> None:
 
     try:
         from libs.feishu_client import feishu_client
-        import time as time_module
 
         # 将 date 转为 Unix 时间戳
         start_ts = int(datetime.combine(training.start_date, datetime.min.time()).timestamp())
@@ -663,7 +662,7 @@ def create_collaboration_snapshot(**kwargs):
 
 def get_ops_overview(month: str = None, department: str = None, account=None) -> dict:
     """HRD 经营驾驶舱汇总"""
-    from django.db.models import Count, Sum
+    from django.db.models import Sum
 
     if not department and account:
         scope_mode = _get_hr_scope_mode(account)

@@ -6,7 +6,7 @@
 2. 为 benchmark / 健康治理提供专题覆盖统计
 3. 通过统一规则避免后续新增知识继续“只有条目，没有专题语义”
 """
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, Dict, Iterable
 
 from django.core.management.base import BaseCommand
 from django.db.models import Q

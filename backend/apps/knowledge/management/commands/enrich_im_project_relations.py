@@ -13,11 +13,9 @@ enrich_im_project_relations — IM 项目图谱深度富化
   python manage.py enrich_im_project_relations --update-profiles  # 更新 project_profile
 """
 import re
-import json
 import logging
 from collections import defaultdict
 from django.core.management.base import BaseCommand
-from django.db import transaction
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +51,9 @@ class Command(BaseCommand):
         update_profiles = options['update_profiles']
 
         from apps.secretary.models import PersonalContext
-        from apps.knowledge.models import KnowledgeEntry, KnowledgeEntity, KnowledgeRelation
+        from apps.knowledge.models import KnowledgeEntry, KnowledgeRelation
         from apps.identity.models import Account
-        from django.db.models import Count, Q
+        from django.db.models import Count
 
         self.stdout.write('\n[1] 构建账户映射...')
         open_id_map = {
@@ -130,7 +128,7 @@ class Command(BaseCommand):
                             person_name = open_id_map[sender_id]
                             person_milestones[person_name][proj_no].add(milestone)
 
-        self.stdout.write(f'  发现里程碑信号:')
+        self.stdout.write('  发现里程碑信号:')
         for m, cnt in sorted(milestone_stats.items(), key=lambda x: -x[1]):
             self.stdout.write(f'    {m:<25s}: {cnt} 次提及')
 

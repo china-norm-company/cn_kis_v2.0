@@ -18,7 +18,6 @@ from ..models_domain import SkinProfile
 from ..models_recruitment import (
     SubjectRegistration, RegistrationStatus,
     PreScreeningRecord, PreScreeningResult,
-    EligibilityCriteria,
 )
 
 logger = logging.getLogger(__name__)

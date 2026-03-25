@@ -105,11 +105,11 @@ class Command(BaseCommand):
             content_parts = [
                 f'# {category}功效评价',
                 '',
-                f'## 测量仪器\n' + '\n'.join(f'- {i}' for i in data['instruments']),
-                f'## 评价指标\n' + '\n'.join(f'- {i}' for i in data['indicators']),
-                f'## 测试方法\n' + '\n'.join(f'- {m}' for m in data['methods']),
-                f'## 参考标准\n' + '\n'.join(f'- {s}' for s in data['standards']),
-                f'## 相关术语\n' + '\n'.join(f'- {t}' for t in data['terms']),
+                '## 测量仪器\n' + '\n'.join(f'- {i}' for i in data['instruments']),
+                '## 评价指标\n' + '\n'.join(f'- {i}' for i in data['indicators']),
+                '## 测试方法\n' + '\n'.join(f'- {m}' for m in data['methods']),
+                '## 参考标准\n' + '\n'.join(f'- {s}' for s in data['standards']),
+                '## 相关术语\n' + '\n'.join(f'- {t}' for t in data['terms']),
             ]
 
             entry, created = KnowledgeEntry.objects.get_or_create(

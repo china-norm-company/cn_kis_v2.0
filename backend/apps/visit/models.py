@@ -35,7 +35,7 @@ class VisitPlan(models.Model):
     # 时间
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)
-    
+
     # 软删除
     is_deleted = models.BooleanField('已删除', default=False)
 
@@ -66,7 +66,7 @@ class VisitNode(models.Model):
 
     # 飞书日历（对应 FEISHU_NATIVE_SETUP.md 5.1 访视排程日历）
     feishu_event_id = models.CharField('飞书日历事件ID', max_length=100, blank=True, default='')
-    
+
     # 时间
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)
@@ -155,7 +155,7 @@ class VisitActivity(models.Model):
         null=True, blank=True, related_name='visit_activities',
         verbose_name='关联活动模板',
     )
-    
+
     # 时间
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)

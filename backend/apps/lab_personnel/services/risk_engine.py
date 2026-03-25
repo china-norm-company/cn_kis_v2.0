@@ -14,12 +14,11 @@
 import logging
 from typing import Optional
 from datetime import date, timedelta
-from decimal import Decimal
 
-from django.db.models import Count, Q, Sum
+from django.db.models import Sum
 from django.utils import timezone
 
-from apps.hr.models import Staff, Training, TrainingStatus
+from apps.hr.models import Training, TrainingStatus
 from apps.lab_personnel.models import (
     StaffCertificate, MethodQualification, LabStaffProfile,
     CertificateStatus, MethodQualLevel,

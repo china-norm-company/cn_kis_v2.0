@@ -6,7 +6,7 @@
 - 提高检索时的命中粒度、引用稳定性和专题密度
 """
 import re
-from typing import Iterable, List, Tuple
+from typing import List, Tuple
 
 from django.core.management.base import BaseCommand
 from django.db.models import Q

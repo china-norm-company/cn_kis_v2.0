@@ -141,7 +141,6 @@ def suggest_time_slots(
     """
     智能时段推荐：返回当日可选时段，并按已有预约数排序（优先推荐较空闲时段，避峰）。
     """
-    from datetime import time, datetime
     target_date = target_date or timezone.localdate()
     start = time(8, 0)
     end = time(17, 0)

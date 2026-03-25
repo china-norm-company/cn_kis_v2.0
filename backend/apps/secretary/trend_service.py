@@ -5,9 +5,9 @@
 """
 import logging
 from datetime import date, timedelta
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any, Optional
 
-from django.db.models import Count, Sum, Q
+from django.db.models import Count, Sum
 from django.db.models.functions import TruncDate, TruncWeek, TruncMonth, Coalesce
 
 logger = logging.getLogger(__name__)

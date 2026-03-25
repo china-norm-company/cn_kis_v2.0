@@ -31,7 +31,7 @@ import hashlib
 import logging
 import os
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError
 
@@ -405,7 +405,7 @@ class Command(BaseCommand):
                 summary=summary or '',
                 metadata=metadata or {},
                 content_hash=content_hash,
-                batch_id=f'v1_migration',
+                batch_id='v1_migration',
                 file_path='',
                 created_at=created_at,
             ))

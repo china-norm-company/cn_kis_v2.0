@@ -13,20 +13,17 @@ import io
 import logging
 from decimal import Decimal
 from datetime import date
-from typing import Optional
 
 from dateutil.relativedelta import relativedelta
-from django.db.models import Sum, Count, DecimalField
+from django.db.models import Sum, DecimalField
 from django.db.models.functions import TruncMonth, Coalesce
 
 from apps.finance.models import (
     Contract, ContractStatus,
-    Invoice, InvoiceStatus, InvoiceItem,
-    PaymentRecord, PaymentRecordStatus,
+    Invoice, InvoiceStatus, PaymentRecord, PaymentRecordStatus,
     PaymentPlan, PaymentPlanStatus,
     CostRecord, CostRecordStatus, CostType,
     ProjectBudget, BudgetItem,
-    FinancialReport,
 )
 
 logger = logging.getLogger(__name__)
@@ -658,8 +655,8 @@ def export_report_pdf(report_data: dict) -> bytes:
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
         from reportlab.lib.units import mm
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
+        from reportlab.pdfbase import pdfmetrics  # noqa: F401
+        from reportlab.pdfbase.ttfonts import TTFont  # noqa: F401
     except ImportError:
         logger.error('reportlab 未安装, 无法导出 PDF')
         raise ImportError('需要安装 reportlab: pip install reportlab')
@@ -814,7 +811,7 @@ def export_report_pdf(report_data: dict) -> bytes:
         elements.append(t)
 
     else:
-        elements.append(Paragraph(f'Financial Report', title_style))
+        elements.append(Paragraph('Financial Report', title_style))
         elements.append(Spacer(1, 10 * mm))
         elements.append(Paragraph(str(report_data), normal_style))
 

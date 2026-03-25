@@ -30,7 +30,7 @@
 import logging
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, List, Optional
 
 from django.db import transaction
 from django.utils import timezone
@@ -338,8 +338,8 @@ class EkbInjector:
 
     def _inject_one(self, raw_rec):
         from apps.ekuaibao_integration.models import (
-            EkbConflict, EkbConflictType, EkbConflictResolution,
-            EkbInjectionLog, EkbInjectionAction,
+            EkbConflict, EkbConflictResolution,
+            EkbInjectionLog,
         )
         module = raw_rec.module
         raw_data = raw_rec.raw_data

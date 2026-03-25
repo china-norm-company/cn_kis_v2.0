@@ -634,7 +634,7 @@ def ocr_extract(request, data: OcrExtractIn):
     接收 base64 编码的仪器屏幕图片，通过 ARK/Kimi 视觉模型提取数字读数，
     返回字段列表及置信度。前端可根据置信度决定是否自动填入 CRF。
     """
-    import base64, re
+    import re
     from apps.agent_gateway.services.ark_client import ark_chat_completion
 
     if not data.image_base64:

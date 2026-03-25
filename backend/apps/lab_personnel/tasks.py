@@ -12,7 +12,6 @@ from decimal import Decimal
 
 from celery import shared_task
 from django.db.models import Sum
-from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 

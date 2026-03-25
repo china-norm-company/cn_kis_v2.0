@@ -5,9 +5,8 @@
 draft → submitted → reviewing → approved → implementing → verified → closed
 """
 import logging
-from django.db import transaction
 
-from ..models_change import ChangeRequest, ChangeStatus, ChangeRisk
+from ..models_change import ChangeRequest, ChangeStatus
 
 logger = logging.getLogger(__name__)
 

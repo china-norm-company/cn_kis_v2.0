@@ -172,7 +172,7 @@ class Command(BaseCommand):
         fetcher = LimsFetcher()
         result = fetcher.test_connection()
         if result['connected']:
-            self.stdout.write(self.style.SUCCESS(f'✓ LIMS 连接成功'))
+            self.stdout.write(self.style.SUCCESS('✓ LIMS 连接成功'))
             self.stdout.write(f'  URL: {result["base_url"]}')
             self.stdout.write(f'  账号: {result["username"]}')
             self.stdout.write(f'  会话ID: {result["sid"]}')
@@ -204,7 +204,6 @@ class Command(BaseCommand):
     def _run_full_pipeline(self, options):
         from apps.lims_integration.lims_fetcher import LimsFetcher
         from apps.lims_integration.lims_exporter import LimsExporter
-        from apps.lims_integration.lims_injector import LimsInjector
         from apps.lims_integration.lims_dedup import LimsDedupReport
         TM = TIER_MODULES  # TIER_MODULES 已在本文件顶部定义
 

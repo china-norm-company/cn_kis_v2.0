@@ -55,7 +55,7 @@ class Command(BaseCommand):
         ).exclude(feishu_open_id='')
 
         self.stdout.write(f'\n{"="*60}')
-        self.stdout.write(f'  飞书邮件全量采集（sweep_feishu_mails）')
+        self.stdout.write('  飞书邮件全量采集（sweep_feishu_mails）')
         self.stdout.write(f'  目标账号数: {accounts.count()}')
         self.stdout.write(f'  每账号 limit: {limit}  reprocess: {reprocess}  dry_run: {dry_run}')
         self.stdout.write(f'{"="*60}\n')
@@ -186,7 +186,7 @@ class Command(BaseCommand):
         from django.db.models import Count
 
         self.stdout.write(f'\n{"="*60}')
-        self.stdout.write(f'  采集完成')
+        self.stdout.write('  采集完成')
         self.stdout.write(f'  总采集邮件: {total_fetched}')
         self.stdout.write(f'  总 MailSignalEvent: {total_signals}')
         if failed:

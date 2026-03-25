@@ -22,9 +22,7 @@ extract_financial_knowledge — 从飞书全量数据深度抽取财务知识
 """
 import logging
 import re
-from decimal import Decimal, InvalidOperation
-from datetime import datetime
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set
 
 from django.core.management.base import BaseCommand
 
@@ -67,7 +65,7 @@ STIPEND_RE = re.compile(
 
 # 已知客户名称（用于关联）
 KNOWN_CLIENTS = [
-    '欧莱雅', '联合利华', 'LVMH', '资生堂', '薇诺娜', '花王', '拜尔斯道夫', 
+    '欧莱雅', '联合利华', 'LVMH', '资生堂', '薇诺娜', '花王', '拜尔斯道夫',
     '巴斯夫', '宝洁', '云南白药', '丝芙兰', '上海家化', 'Chanel', '雅诗兰黛',
     '金佰利', '高丝', '皮尔法伯', 'L\'Oreal', 'Beiersdorf', 'Shiseido',
     'Unilever', 'Henkel', 'P&G', 'Estee Lauder', '汉高', '拜尔斯道夫',
@@ -137,7 +135,7 @@ def extract_amounts_with_context(text: str) -> List[Dict]:
         start = max(0, m.start() - 20)
         end = min(len(text), m.end() + 20)
         context = text[start:end]
-        
+
         amount_text = m.group(2) if m.group(2) else m.group(1)
         amount = parse_amount(amount_text)
         if amount and amount >= 100:  # 过滤太小的数字
@@ -176,9 +174,9 @@ def extract_financial_signals(content: str, source_type: str, metadata: dict) ->
         'invoice_nos': INVOICE_NO_RE.findall(content),
         'contract_nos': CONTRACT_NO_RE.findall(content),
     }
-    
+
     text_lower = content.lower()
-    
+
     # 信号类型检测
     if any(kw in text_lower for kw in ['报价', 'quote', 'quotation', '报价单']):
         signal['signal_types'].append('quote')
@@ -194,15 +192,15 @@ def extract_financial_signals(content: str, source_type: str, metadata: dict) ->
         signal['signal_types'].append('budget')
     if any(kw in text_lower for kw in ['po', '采购订单', '采购']):
         signal['signal_types'].append('purchase_order')
-    
+
     signal['has_financial'] = (
-        len(signal['signal_types']) > 0 or 
+        len(signal['signal_types']) > 0 or
         len(signal['amounts']) > 0 or
         len(signal['project_codes']) > 0 or
         len(signal['invoice_nos']) > 0 or
         len(signal['contract_nos']) > 0
     )
-    
+
     return signal
 
 
@@ -261,7 +259,6 @@ class Command(BaseCommand):
     def _phase1_extract_signals(self, source_type: str, limit: int,
                                  batch_size: int, dry_run: bool) -> dict:
         from apps.secretary.models import PersonalContext
-        from django.db import connection
 
         stats = {
             'processed': 0, 'with_financial': 0, 'with_project': 0,
@@ -380,7 +377,7 @@ class Command(BaseCommand):
                     json.dumps(s['contract_nos'], ensure_ascii=False),
                 ))
             cursor.executemany("""
-                INSERT INTO t_financial_signal_cache 
+                INSERT INTO t_financial_signal_cache
                 (ctx_id, user_id, source_type, source_id, project_codes, client,
                  signal_types, amounts, cost_items, invoice_nos, contract_nos)
                 VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb)
@@ -401,7 +398,6 @@ class Command(BaseCommand):
         """
         from apps.knowledge.models import KnowledgeEntity, KnowledgeRelation
         from apps.protocol.models import Protocol
-        from apps.crm.models import Client
         from apps.identity.models import Account
         from django.db import connection
 
@@ -441,7 +437,7 @@ class Command(BaseCommand):
         # ── 按项目聚合财务信号 ──
         with connection.cursor() as cursor:
             cursor.execute("""
-                SELECT 
+                SELECT
                     project_code,
                     COUNT(*) as mention_count,
                     COUNT(*) FILTER (WHERE signal_types ? 'quote') as quote_count,
@@ -467,7 +463,7 @@ class Command(BaseCommand):
         # ── 费用科目聚合 ──
         with connection.cursor() as cursor:
             cursor.execute("""
-                SELECT 
+                SELECT
                     cost_item,
                     COUNT(*) as mention_count,
                     COUNT(DISTINCT project_code) as project_count,
@@ -635,7 +631,7 @@ class Command(BaseCommand):
 
         with connection.cursor() as cursor:
             cursor.execute("""
-                SELECT 
+                SELECT
                     user_id,
                     project_code,
                     COUNT(*) as involvement_count,
@@ -687,7 +683,6 @@ class Command(BaseCommand):
         - "蒋艳雯参与了哪些项目的报价？"
         """
         from apps.knowledge.ingestion_pipeline import RawKnowledgeInput, run_pipeline
-        from apps.knowledge.models import KnowledgeEntity
         from apps.protocol.models import Protocol
         from apps.finance.models_expense import ExpenseRequest
         from apps.finance.models import ProjectBudget
@@ -702,7 +697,7 @@ class Command(BaseCommand):
         # 获取有丰富财务活动的项目（用简单可靠的两步查询）
         with connection.cursor() as cursor:
             cursor.execute("""
-                SELECT 
+                SELECT
                     pc as project_code,
                     COUNT(*) as total_mentions,
                     COUNT(*) FILTER (WHERE signal_types ? 'quote') as quote_mentions,
@@ -763,8 +758,8 @@ class Command(BaseCommand):
                 f"项目编号：{project_code}",
                 f"项目名称：{protocol.title if protocol else '（见飞书）'}",
                 f"委托客户：{client_str}",
-                f"",
-                f"【飞书财务活动统计（来源：邮件/IM/审批/文档）】",
+                "",
+                "【飞书财务活动统计（来源：邮件/IM/审批/文档）】",
                 f"总提及次数：{total_mentions}",
                 f"报价相关：{quote_mentions} 次",
                 f"发票相关：{invoice_mentions} 次",
@@ -773,15 +768,15 @@ class Command(BaseCommand):
             ]
 
             if amount_contexts:
-                lines.append(f"")
-                lines.append(f"【金额相关上下文（飞书原文节选）】")
+                lines.append("")
+                lines.append("【金额相关上下文（飞书原文节选）】")
                 for ctx in (amount_contexts or [])[:5]:
                     if ctx:
                         lines.append(f"- {ctx}")
 
             if expense_total > 0 or budget_total > 0:
-                lines.append(f"")
-                lines.append(f"【易快报费用数据】")
+                lines.append("")
+                lines.append("【易快报费用数据】")
                 if budget_total > 0:
                     lines.append(f"预算总额：¥{budget_total:,.2f}")
                 if expense_total > 0:

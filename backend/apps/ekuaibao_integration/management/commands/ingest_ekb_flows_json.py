@@ -3,7 +3,8 @@ ingest_ekb_flows_json — 将本机采集的 JSON 文件写入 EkbRawRecord
 
 usage: python manage.py ingest_ekb_flows_json --file /opt/cn-kis/backend/data/ekb_flows_all.json
 """
-import json, hashlib
+import json
+import hashlib
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 

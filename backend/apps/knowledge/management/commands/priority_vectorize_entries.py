@@ -12,7 +12,6 @@ from django.utils import timezone
 from django.db.models import Count
 
 from apps.knowledge.models import KnowledgeEntry
-from apps.knowledge.tasks import EMBEDDING_DIMENSION
 
 PRIORITY_SOURCE_TYPES = [
     'im_group_summary',

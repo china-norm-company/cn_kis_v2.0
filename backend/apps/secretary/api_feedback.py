@@ -15,15 +15,12 @@
   GITHUB_REPO_OWNER              仓库 owner
   GITHUB_REPO_NAME               仓库名
 """
-import hashlib
-import hmac
 import json
 import logging
 import os
 
 from ninja import Router
 from django.http import JsonResponse, HttpRequest
-from django.views.decorators.csrf import csrf_exempt
 
 logger = logging.getLogger(__name__)
 

@@ -65,7 +65,7 @@ def on_slot_changed(sender, instance, created, **kwargs):
         if old_assigned:
             _notify_slot_event(
                 title=f'排程变更: {_slot_display(instance)} 已重新分配',
-                content=f'该时间槽已转交给其他人员',
+                content='该时间槽已转交给其他人员',
                 recipient_id=old_assigned,
                 slot=instance,
                 priority='low',

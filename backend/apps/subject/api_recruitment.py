@@ -4,9 +4,9 @@
 路由前缀：/recruitment/
 覆盖：计划 CRUD + 审批、入排标准、渠道管理、广告、报名、筛选、入组、进度、问题、策略。
 """
-from ninja import Router, Schema, Query
+from ninja import Router, Schema
 from typing import Optional, List
-from datetime import datetime, date
+from datetime import date
 from apps.identity.decorators import require_permission, _get_account_from_request
 from .services import recruitment_service as svc
 

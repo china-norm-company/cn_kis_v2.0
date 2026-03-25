@@ -9,9 +9,8 @@
 - GET  /agents/sessions                      列出用户的聊天会话
 - GET  /agents/sessions/{session_id}/history  获取聊天历史
 """
-from ninja import Router, Schema, Query
+from ninja import Router, Schema
 from typing import Optional, Dict, List, Any
-from datetime import datetime
 from pydantic import ConfigDict
 from apps.identity.decorators import require_permission
 from celery.result import AsyncResult
@@ -452,7 +451,6 @@ class AgentFeedbackIn(Schema):
 @require_permission('agent.chat.use')
 def submit_agent_feedback(request, call_id: int, payload: AgentFeedbackIn):
     """用户对 Agent 回复打分（1-5分），支持文字反馈，低分触发提示词审查预警。"""
-    from apps.identity.services import verify_jwt_token
     from .services import record_agent_feedback
 
     auth_header = request.META.get('HTTP_AUTHORIZATION', '')

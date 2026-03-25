@@ -391,7 +391,7 @@ class Command(BaseCommand):
 
         # 汇总报告
         msg_parts = [
-            f'完成。',
+            '完成。',
             f'新建协议 {stats["created_protocols"]} 条，',
             f'新建方案 {stats["created_proposals"]} 条，',
             f'新建访视计划 {stats["created_visit_plans"]} 条，',

@@ -377,7 +377,7 @@ def manager_overview(
 
     from datetime import date, timedelta
     from decimal import Decimal
-    from django.db.models import Count, Q, Sum, DecimalField
+    from django.db.models import Sum, DecimalField
     from django.db.models.functions import Coalesce
 
     today = date.today()
@@ -494,7 +494,7 @@ def manager_overview(
                 'risk_score': risk_score,
             })
         project_health.sort(key=lambda x: -x['risk_score'])
-    except Exception as e:
+    except Exception:
         project_health = []
 
     # --- Risk Alerts ---
@@ -937,7 +937,7 @@ def business_pipeline(request):
         return 401, {'code': 401, 'msg': '未授权', 'data': None}
 
     from decimal import Decimal
-    from django.db.models import Sum, Count, Q, DecimalField
+    from django.db.models import Sum, Count, DecimalField
     from django.db.models.functions import Coalesce
 
     funnel = {
@@ -2420,7 +2420,7 @@ def mail_signal_list(
     from django.core.paginator import Paginator
     from django.db.models import Q
     from .models import MailSignalEvent, AssistantActionPlan
-    
+
 
     account = _get_account(request)
     if not account:
@@ -3086,7 +3086,6 @@ def deposit_knowledge_from_analysis(
     - 治理层面：产物仍限内部，不对客发送
     """
     import hashlib
-    from django.utils import timezone as dj_tz
     from .models import MailSignalEvent, AssistantActionPlan
     from apps.knowledge.ingestion_pipeline import RawKnowledgeInput, run_pipeline
     from .mail_signal_external_evidence_service import evidence_to_knowledge_content
@@ -3612,7 +3611,7 @@ def mail_signal_analytics(request, days: int = 30):
     返回指定天数内的采纳率、任务分布、商机贡献等统计数据。
     """
     from django.utils import timezone as dj_tz
-    from django.db.models import Count, Q
+    from django.db.models import Count
     from .models import MailSignalEvent, AssistantActionPlan
 
     account = _get_account(request)

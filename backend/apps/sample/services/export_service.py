@@ -4,7 +4,7 @@ import io
 from datetime import datetime
 from django.http import HttpResponse
 
-from apps.sample.models_material import ConsumableTransaction, Consumable
+from apps.sample.models_material import ConsumableTransaction
 
 
 def _parse_date(s: str):

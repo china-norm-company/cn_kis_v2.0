@@ -5,7 +5,7 @@
 """
 import logging
 from datetime import date
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 

@@ -30,7 +30,7 @@ from collections import defaultdict
 from decimal import Decimal, InvalidOperation
 
 from django.core.management.base import BaseCommand
-from django.db import connection, transaction
+from django.db import connection
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -344,8 +344,7 @@ class Command(BaseCommand):
     # =========================================================
     def phase_enrich(self):
         """按项目编号关联测试数据（Raw Data / EDC / 问卷）"""
-        from apps.subject.models import Subject, Enrollment
-        from apps.protocol.models import Protocol
+        from apps.subject.models import Enrollment
         from apps.subject.models_timeseries import SkinMeasurementRecord
         from apps.subject.models_execution import SubjectQuestionnaire
 
@@ -528,10 +527,7 @@ class Command(BaseCommand):
     # =========================================================
     def phase_profile(self):
         """为每位受试者生成融合所有来源的全景档案"""
-        from apps.subject.models import Subject, Enrollment
-        from apps.subject.models_timeseries import SkinMeasurementRecord
-        from apps.subject.models_execution import SubjectQuestionnaire, ComplianceRecord, SubjectPayment
-        from apps.subject.models_domain import SkinProfile
+        from apps.subject.models import Subject
         from apps.knowledge.models import KnowledgeEntry
 
         subjects = Subject.objects.filter(is_deleted=False)
@@ -668,11 +664,10 @@ class Command(BaseCommand):
     # Phase 5: 向量化（更新 index_status）
     # =========================================================
     def phase_vectorize(self):
-        from apps.knowledge.models import KnowledgeEntry
 
         c = connection.cursor()
         c.execute("""
-        UPDATE t_knowledge_entry 
+        UPDATE t_knowledge_entry
         SET index_status='pending'
         WHERE source_type IN ('subject_full_lifecycle', 'subject_beauty_profile',
                               'recruit_lifecycle_stats')
@@ -706,7 +701,7 @@ class Command(BaseCommand):
 
         print('\n=== 知识库统计 ===')
         c.execute("""
-        SELECT source_type, COUNT(*), 
+        SELECT source_type, COUNT(*),
                SUM(CASE WHEN index_status='indexed' THEN 1 ELSE 0 END) as indexed
         FROM t_knowledge_entry
         WHERE source_type LIKE 'subject%' OR source_type LIKE 'recruit%'

@@ -19,7 +19,6 @@ stitch_cross_source_knowledge — 跨源知识图谱融合命令
 """
 import logging
 import re
-from typing import Dict, List, Optional, Set
 
 from django.core.management.base import BaseCommand
 
@@ -205,8 +204,6 @@ class Command(BaseCommand):
         import json
         from apps.knowledge.models import KnowledgeEntity, KnowledgeRelation
         from apps.identity.models import Account
-        from apps.protocol.models import Protocol
-        from apps.crm.models import Client
 
         stats = {'relations_created': 0, 'skipped': 0}
 

@@ -203,7 +203,7 @@ class ICFVersion(models.Model):
     file_path = models.CharField('文件路径', max_length=500, blank=True, default='')
     content = models.TextField('内容', blank=True, default='')
     is_active = models.BooleanField('是否生效', default=True)
-    
+
     # 时间
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)

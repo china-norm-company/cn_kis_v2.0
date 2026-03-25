@@ -38,13 +38,13 @@ class Protocol(models.Model):
     title = models.CharField('标题', max_length=500)
     code = models.CharField('协议编号', max_length=100, blank=True, default='', db_index=True)
     file_path = models.CharField('文件路径', max_length=500, blank=True, default='')
-    
+
     # 状态
     status = models.CharField('状态', max_length=20, choices=ProtocolStatus.choices, default=ProtocolStatus.DRAFT, db_index=True)
-    
+
     # 解析结果（AI解析后的结构化数据）
     parsed_data = models.JSONField('解析数据', null=True, blank=True)
-    
+
     # 试验设计
     efficacy_type = models.CharField('疗效类型', max_length=50, choices=EfficacyType.choices, blank=True, default='')
     sample_size = models.IntegerField('样本量', null=True, blank=True)
@@ -78,7 +78,7 @@ class Protocol(models.Model):
         '项目团队成员', null=True, blank=True, default=list,
         help_text='JSON数组 [{id, name, role}]',
     )
-    
+
     # [废弃] 飞书项目工作项ID — 公司商业专业版不含飞书项目服务
     # 已改用飞书多维表格看板同步（feishu_sync 模块），此字段保留兼容但不再写入
     feishu_project_work_item_id = models.CharField('飞书项目工作项ID(废弃)', max_length=100, blank=True, default='')
@@ -91,7 +91,7 @@ class Protocol(models.Model):
     # 时间
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)
-    
+
     # 软删除
     is_deleted = models.BooleanField('已删除', default=False)
 
@@ -115,7 +115,7 @@ class ProtocolParseLog(models.Model):
     status = models.CharField('状态', max_length=20, choices=ProtocolStatus.choices, default=ProtocolStatus.PARSING)
     error_message = models.TextField('错误信息', blank=True, default='')
     parsed_result = models.JSONField('解析结果', null=True, blank=True)
-    
+
     # 时间
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     finish_time = models.DateTimeField('完成时间', null=True, blank=True)

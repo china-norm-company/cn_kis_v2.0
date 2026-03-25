@@ -1029,8 +1029,5 @@ class InvoiceRequestItem(models.Model):
 
 
 # 应付与费用报销（Phase 2）
-from .models_payable import PayableRecord, PayableStatus  # noqa: E402
-from .models_expense import ExpenseRequest, ExpenseType, ExpenseApprovalStatus  # noqa: E402
 
 # 项目决算与分析（Phase 4）
-from .models_settlement import ProjectSettlement, AnalysisSnapshot, CreditScore  # noqa: E402

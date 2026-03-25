@@ -43,15 +43,12 @@
 import json
 import logging
 import os
-import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Set
+from datetime import timedelta
+from typing import Any, Dict, List, Optional
 
-from django.conf import settings
-from django.db.models import Q
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)

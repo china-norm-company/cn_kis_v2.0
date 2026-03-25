@@ -13,13 +13,12 @@
 """
 import json
 import logging
-import time
 from collections import defaultdict
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from datetime import timedelta
+from typing import Any, Dict
 
 from django.core.management.base import BaseCommand
-from django.db.models import Count, Q, F
+from django.db.models import Count
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -707,7 +706,7 @@ class Command(BaseCommand):
         # 工单分析
         wo = report.get('work_orders', {})
         if wo.get('total'):
-            self.stdout.write(f'\n工单分析:')
+            self.stdout.write('\n工单分析:')
             self.stdout.write(f'  总量: {wo["total"]}')
             self.stdout.write(f'  飞书任务覆盖: {wo.get("feishu_task_coverage", "N/A")}')
             self.stdout.write(f'  已分配: {wo.get("with_assignment", 0)}')
@@ -729,7 +728,7 @@ class Command(BaseCommand):
 
         recommendations = gap.get('recommendations', [])
         if recommendations:
-            self.stdout.write(f'\n优化建议:')
+            self.stdout.write('\n优化建议:')
             for i, rec in enumerate(recommendations, 1):
                 self.stdout.write(f'  {i}. {rec}')
 

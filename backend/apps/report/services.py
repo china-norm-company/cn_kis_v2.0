@@ -6,7 +6,7 @@ S4-4：自动收集数据 → 生成报告 → 上传飞书云文档
 import logging
 from typing import Optional
 from django.utils import timezone
-from django.db.models import Count, Q
+from django.db.models import Count
 
 from .models import Report, ReportTemplate, ReportStatus, ReportType
 
@@ -154,8 +154,8 @@ def _render_report(report: Report, data: dict) -> str:
 
     # 格式化输出
     if report.report_type == ReportType.VISIT_SUMMARY:
-        lines.append(f'| 指标 | 数值 |')
-        lines.append(f'|------|------|')
+        lines.append('| 指标 | 数值 |')
+        lines.append('|------|------|')
         lines.append(f'| 访视计划数 | {data.get("plan_count", 0)} |')
         lines.append(f'| 访视节点数 | {data.get("node_count", 0)} |')
     elif report.report_type == ReportType.ENROLLMENT_STATUS:
@@ -187,8 +187,8 @@ def _render_report(report: Report, data: dict) -> str:
             for st, cnt in by_status.items():
                 lines.append(f'| {st} | {cnt} |')
     elif report.report_type == ReportType.COMPLIANCE_REPORT:
-        lines.append(f'| 指标 | 数值 |')
-        lines.append(f'|------|------|')
+        lines.append('| 指标 | 数值 |')
+        lines.append('|------|------|')
         lines.append(f'| 偏差数 | {data.get("deviation_count", 0)} |')
         lines.append(f'| CAPA数 | {data.get("capa_count", 0)} |')
     else:

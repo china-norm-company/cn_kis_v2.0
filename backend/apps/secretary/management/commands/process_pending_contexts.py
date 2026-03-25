@@ -23,7 +23,6 @@ process_pending_contexts — 将 PersonalContext 原始数据批量过 ingestion
 import logging
 import time
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 

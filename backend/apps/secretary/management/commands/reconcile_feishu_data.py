@@ -59,7 +59,7 @@ class Command(BaseCommand):
                 logger.error('reconcile %s failed: %s', source, e)
 
         # PersonalContext vs KnowledgeEntry 对账
-        self.stdout.write(f'\n[内部对账] PersonalContext → KnowledgeEntry')
+        self.stdout.write('\n[内部对账] PersonalContext → KnowledgeEntry')
         self._reconcile_internal()
 
         if discrepancies:
@@ -163,7 +163,7 @@ class Command(BaseCommand):
         if result['has_discrepancy']:
             self.stdout.write(f'  ⚠ 差异: {gap} 条 ({result["gap_pct"]:.1%})')
         else:
-            self.stdout.write(f'  ✓ 无明显差异')
+            self.stdout.write('  ✓ 无明显差异')
 
     def _reconcile_internal(self):
         """对账 PersonalContext → KnowledgeEntry 转化率。"""

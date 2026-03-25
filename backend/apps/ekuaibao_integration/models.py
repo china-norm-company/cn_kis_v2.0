@@ -200,7 +200,8 @@ class EkbRawRecord(models.Model):
         return f'EkbRaw[{self.module}:{self.ekb_id}] @{self.batch.batch_no}'
 
     def compute_checksum(self) -> str:
-        import hashlib, json
+        import hashlib
+        import json
         data_str = json.dumps(self.raw_data, sort_keys=True, ensure_ascii=False)
         return hashlib.sha256(data_str.encode('utf-8')).hexdigest()
 

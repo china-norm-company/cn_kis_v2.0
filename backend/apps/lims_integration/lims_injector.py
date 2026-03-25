@@ -41,7 +41,6 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from django.db import transaction
-from django.utils import timezone
 
 logger = logging.getLogger('cn_kis.lims.injector')
 
@@ -333,7 +332,7 @@ class LimsInjector:
     def _inject_one(self, raw_rec):
         """注入单条记录"""
         from apps.lims_integration.models import (
-            LimsConflict, LimsInjectionLog, ConflictType, ConflictResolution
+            LimsConflict, LimsInjectionLog, ConflictResolution
         )
         module = raw_rec.module
         raw_data = raw_rec.raw_data
@@ -573,7 +572,7 @@ def _inject_equipment(raw_data: dict):
     - XCJZSJ（下次校准时间）= 下次校准到期日 → next_calibration_date
     """
     try:
-        from apps.resource.models import ResourceItem, ResourceCategory, EquipmentAuthorization
+        from apps.resource.models import ResourceItem, EquipmentAuthorization
         from apps.identity.models import Account
 
         # colConfigInfo 修复后：SBMC = 设备编号，ZBMC = 设备名称
@@ -1062,7 +1061,6 @@ def _inject_commission(raw_data: dict):
             test_methods_raw = raw_data.get('检测项目', raw_data.get('检测方法', ''))
             if test_methods_raw and not obj.test_methods:
                 try:
-                    import json as json_mod
                     if isinstance(test_methods_raw, str):
                         obj.test_methods = [m.strip() for m in test_methods_raw.split(',') if m.strip()]
                     else:
@@ -1406,7 +1404,7 @@ def _inject_training_record(raw_data: dict):
 def _inject_competency_record(raw_data: dict):
     """注入能力考核记录 -> lab_personnel.MethodQualification"""
     try:
-        from apps.lab_personnel.models import MethodQualification, LabStaffProfile
+        from apps.lab_personnel.models import MethodQualification
         from apps.hr.models import Staff
         from apps.resource.models import DetectionMethodTemplate
 
@@ -1541,7 +1539,6 @@ def _inject_equipment_maintenance(raw_data: dict):
     """注入设备维护/维修记录 -> EquipmentMaintenance"""
     try:
         from apps.resource.models import EquipmentMaintenance, ResourceItem
-        from apps.hr.models import Staff
 
         equipment_code = _extract_field(raw_data, 'equipment_code') or raw_data.get('设备编号', '')
         if not equipment_code:
@@ -1613,4 +1610,3 @@ def _inject_sample_transfer(raw_data: dict):
         return None
 
 
-import json

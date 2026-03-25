@@ -7,8 +7,6 @@ import logging
 from datetime import date, timedelta
 from typing import Dict, List, Any, Optional
 
-from django.db.models import Sum, Count, Q
-from django.db.models.functions import Coalesce
 
 logger = logging.getLogger(__name__)
 
@@ -371,7 +369,7 @@ def _check_crm_churn_risk() -> List[Dict]:
                     'type': 'crm_churn_risk',
                     'severity': 'medium',
                     'title': f'客户流失风险: {client.name}',
-                    'detail': f'近 90 天无新合同或商机',
+                    'detail': '近 90 天无新合同或商机',
                     'entity_id': client.id,
                     'entity_type': 'client',
                     'link': f'/crm/clients/{client.id}',

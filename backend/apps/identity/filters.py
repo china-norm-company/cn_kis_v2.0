@@ -10,7 +10,7 @@
 - personal: 个人级，仅自己创建/负责的数据
 """
 import logging
-from typing import Dict, List, Optional, Set
+from typing import Dict, Optional, Set
 
 from django.db.models import Q, QuerySet
 

@@ -17,7 +17,6 @@ feishu_sweep_watchdog — 飞书采集进程守护 / 防僵死监控
 """
 import logging
 import os
-import signal as _signal_module
 import time
 from datetime import timedelta
 
@@ -241,7 +240,7 @@ def _send_feishu_notify(killed_pids: list, killed_cmds: list, reset_count: int):
         import json
         import urllib.request
 
-        lines = [f'⚠️ feishu_sweep_watchdog 自动处理僵死进程']
+        lines = ['⚠️ feishu_sweep_watchdog 自动处理僵死进程']
         for pid, cmd in zip(killed_pids, killed_cmds):
             lines.append(f'• kill PID={pid}: {cmd}')
         if reset_count:

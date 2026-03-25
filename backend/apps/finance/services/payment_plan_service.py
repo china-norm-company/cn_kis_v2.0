@@ -8,7 +8,6 @@ from typing import Optional
 from decimal import Decimal
 from datetime import date
 from django.utils import timezone
-from django.db.models import Sum
 
 from apps.finance.models import (
     PaymentPlan, PaymentPlanStatus, PaymentRecord,

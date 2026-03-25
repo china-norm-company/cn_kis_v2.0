@@ -96,7 +96,6 @@ def compute_weekly_learning_digest(self):
 
     active_accounts = Account.objects.filter(is_active=True).values_list('id', flat=True)
     from .feedback_loop_service import (
-        build_user_behavior_profile,
         get_user_feedback_summary,
         invalidate_profile_cache,
     )
@@ -690,10 +689,9 @@ def feishu_token_health_check(self):
     3. token 刷新成功后自动触发补采
     """
     import logging
-    from datetime import timedelta
     from django.utils import timezone
     from apps.identity.models import Account
-    from apps.secretary.models import FeishuUserToken, PersonalContext
+    from apps.secretary.models import FeishuUserToken
     from apps.secretary.feishu_fetcher import get_valid_user_token
     from libs.feishu_client import feishu_client
 

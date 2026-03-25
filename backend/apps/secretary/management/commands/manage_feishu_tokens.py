@@ -184,7 +184,7 @@ class Command(BaseCommand):
             self.stdout.write(f'  requires_reauth:   {tr.requires_reauth}')
             self.stdout.write(f'  issuer_app_id:     {tr.issuer_app_id or "-"}')
             self.stdout.write('')
-            self.stdout.write(f'  [Access Token]')
+            self.stdout.write('  [Access Token]')
             self.stdout.write(f'  token_expires_at:  {self._fmt_dt(tr.token_expires_at)}')
             remaining_sec = tr.access_token_remaining_seconds
             if remaining_sec > 0:
@@ -192,7 +192,7 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(self.style.ERROR('  剩余:              已过期'))
             self.stdout.write('')
-            self.stdout.write(f'  [Refresh Token]')
+            self.stdout.write('  [Refresh Token]')
             self.stdout.write(f'  refresh_expires_at:{self._fmt_dt(tr.refresh_expires_at)}')
             remaining_days = tr.refresh_token_remaining_days
             if remaining_days > 7:
@@ -202,14 +202,14 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(self.style.ERROR('  剩余:              已过期'))
             self.stdout.write('')
-            self.stdout.write(f'  [时间线]')
+            self.stdout.write('  [时间线]')
             self.stdout.write(f'  首次授权:          {self._fmt_dt(tr.first_authorized_at)}')
             self.stdout.write(f'  最近刷新成功:      {self._fmt_dt(tr.last_refreshed_at)}')
             self.stdout.write(f'  最近使用:          {self._fmt_dt(tr.last_used_at)}')
             self.stdout.write(f'  最近刷新失败:      {self._fmt_dt(tr.last_refresh_failed_at)}')
             self.stdout.write(f'  首次入库:          {self._fmt_dt(tr.created_at)}')
             self.stdout.write('')
-            self.stdout.write(f'  [统计]')
+            self.stdout.write('  [统计]')
             self.stdout.write(f'  累计刷新次数:      {tr.refresh_count}')
             self.stdout.write(f'  连续刷新失败:      {tr.consecutive_refresh_failures}')
             if tr.last_refresh_error:
