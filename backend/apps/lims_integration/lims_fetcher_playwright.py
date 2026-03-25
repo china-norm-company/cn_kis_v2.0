@@ -20,7 +20,9 @@ LIMS 数据采集器 - Playwright 浏览器自动化版本（DOM 提取方式）
 import asyncio
 import json
 import logging
+import os
 import re
+import shutil
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -29,6 +31,31 @@ logger = logging.getLogger('cn_kis.lims.playwright')
 LIMS_BASE_URL = 'http://lims.china-norm.com:8088'
 LIMS_USERNAME = 'malm'
 LIMS_PASSWORD = 'fushuo@123456'
+
+
+def _find_system_chromium() -> Optional[str]:
+    """
+    查找系统已安装的 Chromium 或 Google Chrome 路径。
+    当 playwright 管理的 chromium 未下载完成时使用系统版本。
+    """
+    candidates = [
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/google-chrome',
+        '/usr/bin/google-chrome-stable',
+        '/snap/bin/chromium',
+    ]
+    for path in candidates:
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            logger.info('使用系统 Chromium: %s', path)
+            return path
+    # 用 shutil.which 补充搜索
+    for name in ('chromium', 'chromium-browser', 'google-chrome'):
+        found = shutil.which(name)
+        if found:
+            logger.info('使用系统 Chromium（which）: %s', found)
+            return found
+    return None
 
 # 各功能模块的 processGroupId 和 appId
 LIMS_MODULE_MAP: Dict[str, Dict[str, str]] = {
@@ -285,12 +312,15 @@ class LimsPlaywrightFetcher:
         headless: bool = True,
         page_delay_ms: int = 3000,
         turn_delay_ms: int = 1500,
+        executable_path: str = None,
     ):
         self.username = username
         self.password = password
         self.headless = headless
         self.page_delay_ms = page_delay_ms
         self.turn_delay_ms = turn_delay_ms
+        # 允许使用系统 chromium（当 playwright 管理的 chromium 未下载时）
+        self.executable_path = executable_path or _find_system_chromium()
 
     # ------------------------------------------------------------------
     # 同步入口
@@ -378,7 +408,7 @@ class LimsPlaywrightFetcher:
         records = []
 
         async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=self.headless)
+            browser = await pw.chromium.launch(headless=self.headless, executable_path=self.executable_path)
             page = await browser.new_page()
             # 使用 OrderedDict 保留 allColArray 的顺序
             # 格式: [(field_code, label), ...] 有序列表
@@ -450,7 +480,7 @@ class LimsPlaywrightFetcher:
         results = {}
 
         async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=self.headless)
+            browser = await pw.chromium.launch(headless=self.headless, executable_path=self.executable_path)
             page = await browser.new_page()
 
             # 全局 col_maps（按模块存储，保留 allColArray 顺序）
@@ -720,7 +750,7 @@ class LimsPlaywrightFetcher:
     async def _test_conn(self) -> Dict[str, Any]:
         from playwright.async_api import async_playwright
         async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=True)
+            browser = await pw.chromium.launch(headless=True, executable_path=self.executable_path)
             page = await browser.new_page()
             ok, sid = await self._do_login(page)
             await browser.close()
