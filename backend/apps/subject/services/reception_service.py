@@ -164,66 +164,66 @@ def _determine_board_queue_status(appt: SubjectAppointment, board_rec: Optional[
     return 'waiting'
 
 
-def get_today_queue(
-    target_date: Optional[date] = None,
-    page: int = 1,
-    page_size: int = 10,
-    project_code: Optional[str] = None,
-    source: str = 'execution',
-) -> dict:
-    """
-    今日受试者队列：聚合预约 + 签到状态；排序为项目编号升序，同项目内先排有 SC 号的记录再排无 SC 的，再按 SC 号升序。
-    支持分页（每页默认10条）、按项目编号筛选。
-    source: execution=工单执行（SubjectCheckin+SubjectProjectSC），board=接待看板（ReceptionBoardCheckin+ReceptionBoardProjectSc）
-    两套数据完全独立，SC/RD号、签到签出时间互不影响。
-    """
-    today = target_date or _local_today()
-    use_board = (source or 'execution').strip().lower() == 'board'
+# 工单执行队列内存缓存（与 board 无关）：同一日历日内 stats + 多分页请求只构建一次全日队列
+EXECUTION_QUEUE_CACHE_TTL = 10
 
+
+def _execution_queue_cache_key(day: date) -> str:
+    return f'cn_kis:v2:reception:exec_queue:{day.isoformat()}'
+
+
+def invalidate_execution_queue_cache_for_date(day: Optional[date] = None) -> None:
+    """签到/签出/过号等变更后丢弃当日执行队列缓存，避免卡片与表格短暂不一致。"""
+    from django.core.cache import cache
+
+    d = day or _local_today()
+    cache.delete(_execution_queue_cache_key(d))
+
+
+def _normalize_sc_for_queue_sort(raw: object) -> str:
+    s = str(raw or '').strip()
+    if not s or s in ('-', '—', '－'):
+        return ''
+    return s
+
+
+def _today_queue_sort_key(item: dict) -> tuple:
+    pc = (item.get('project_code') or '').strip()
+    sc = _normalize_sc_for_queue_sort(item.get('sc_number'))
+    has_sc_rank = 1 if not sc else 0
+    appt_t = str(item.get('appointment_time') or '').strip()
+    return (pc, has_sc_rank, sc, appt_t)
+
+
+def _build_full_execution_queue_uncached(today: date) -> list[dict]:
+    """构建当日 execution 源队列（未按项目筛选、已排序），供缓存与分页共用。"""
     appointments_qs = SubjectAppointment.objects.filter(
         appointment_date=today,
     ).exclude(
         status=AppointmentStatus.CANCELLED,
     ).select_related('subject', 'enrollment', 'enrollment__protocol').order_by('appointment_time')
 
-    if project_code:
-        appointments_qs = appointments_qs.filter(project_code=project_code)
-
     appointments = list(appointments_qs)
 
-    if use_board:
-        board_checkins_today = {
-            c.subject_id: c for c in
-            ReceptionBoardCheckin.objects.filter(checkin_date=today).select_related('subject')
-        }
-    else:
-        _checkin_rows = list(
-            SubjectCheckin.objects.filter(checkin_date=today).select_related('subject'),
-        )
-        _by_subject: dict[int, list[SubjectCheckin]] = {}
-        for _c in _checkin_rows:
-            _by_subject.setdefault(_c.subject_id, []).append(_c)
-        checkins_today = {
-            _sid: _pick_checkin_row_for_queue(_lst)
-            for _sid, _lst in _by_subject.items()
-        }
+    _checkin_rows = list(
+        SubjectCheckin.objects.filter(checkin_date=today).select_related('subject'),
+    )
+    _by_subject: dict[int, list[SubjectCheckin]] = {}
+    for _c in _checkin_rows:
+        _by_subject.setdefault(_c.subject_id, []).append(_c)
+    checkins_today = {
+        _sid: _pick_checkin_row_for_queue(_lst)
+        for _sid, _lst in _by_subject.items()
+    }
 
-    queue = []
+    queue: list[dict] = []
     for appt in appointments:
-        if use_board:
-            board_rec = board_checkins_today.get(appt.subject_id)
-            task_type = _determine_task_type(appt)
-            status = _determine_board_queue_status(appt, board_rec)
-            checkin_id = board_rec.id if board_rec else None
-            checkin_time = board_rec.checkin_time.isoformat() if board_rec and board_rec.checkin_time else None
-            checkout_time = board_rec.checkout_time.isoformat() if board_rec and board_rec.checkout_time else None
-        else:
-            checkin = checkins_today.get(appt.subject_id)
-            task_type = _determine_task_type(appt)
-            status = _determine_queue_status(appt, checkin)
-            checkin_id = checkin.id if checkin else None
-            checkin_time = checkin.checkin_time.isoformat() if checkin and checkin.checkin_time else None
-            checkout_time = checkin.checkout_time.isoformat() if checkin and checkin.checkout_time else None
+        checkin = checkins_today.get(appt.subject_id)
+        task_type = _determine_task_type(appt)
+        status = _determine_queue_status(appt, checkin)
+        checkin_id = checkin.id if checkin else None
+        checkin_time = checkin.checkin_time.isoformat() if checkin and checkin.checkin_time else None
+        checkout_time = checkin.checkout_time.isoformat() if checkin and checkin.checkout_time else None
 
         project_name = getattr(appt, 'project_name', '') or ''
         project_code_val = getattr(appt, 'project_code', '') or ''
@@ -260,125 +260,251 @@ def get_today_queue(
             'enrollment_id': appt.enrollment_id,
         })
 
-    # 无预约签到（临时到访）
-    if use_board:
-        unscheduled = ReceptionBoardCheckin.objects.filter(checkin_date=today).exclude(
-            subject_id__in=[a.subject_id for a in appointments],
-        ).select_related('subject')
-        enrollment_protocol_map = {}
-        enr_ids = [c.appointment_id for c in unscheduled if c.appointment_id]
-        if enr_ids:
-            appts_by_id = {a.id: a for a in appointments}
-            for aid in enr_ids:
-                a = appts_by_id.get(aid)
-                if a and a.enrollment_id and getattr(a.enrollment, 'protocol', None):
-                    p = a.enrollment.protocol
-                    enrollment_protocol_map[aid] = (p.title or '', (p.code or '').strip())
-                else:
-                    enrollment_protocol_map[aid] = ('', '')
-        for board_rec in unscheduled:
-            project_name = ''
-            project_code_val = ''
-            subj = board_rec.subject
-            _phone = getattr(subj, 'phone', '') or '' if subj else ''
-            queue.append({
-                'appointment_id': board_rec.appointment_id,
-                'subject_id': board_rec.subject_id,
-                'subject_name': subj.name if subj else '',
-                'subject_no': subj.subject_no if subj else '',
-                '_subject_phone': _phone,
-                'phone': _phone,
-                'name_pinyin_initials': '',
-                'liaison': '',
-                'notes': '',
-                'sc_number': '',
-                'rd_number': '',
-                'gender': getattr(subj, 'gender', '') or '' if subj else '',
-                'age': getattr(subj, 'age', None) if subj else None,
-                'appointment_time': '',
-                'purpose': '临时到访',
-                'visit_point': '',
-                'project_name': project_name,
-                'project_code': project_code_val,
-                'task_type': 'walk_in',
-                'status': 'checked_out' if board_rec.checkout_time else 'checked_in',
-                'checkin_id': board_rec.id,
-                'checkin_time': board_rec.checkin_time.isoformat() if board_rec.checkin_time else None,
-                'checkout_time': board_rec.checkout_time.isoformat() if board_rec.checkout_time else None,
-                'enrollment_id': None,
-            })
-    else:
-        unscheduled_checkins = SubjectCheckin.objects.filter(
-            checkin_date=today,
-        ).exclude(
-            subject_id__in=[a.subject_id for a in appointments],
-        ).select_related('subject')
-        enrollment_protocol_map = {}
-        enr_ids = [c.enrollment_id for c in unscheduled_checkins if c.enrollment_id]
-        if enr_ids:
-            for enr in Enrollment.objects.filter(id__in=enr_ids).select_related('protocol'):
-                if enr.protocol:
-                    enrollment_protocol_map[enr.id] = (enr.protocol.title or '', (enr.protocol.code or '').strip())
-                else:
-                    enrollment_protocol_map[enr.id] = ('', '')
+    unscheduled_checkins = SubjectCheckin.objects.filter(
+        checkin_date=today,
+    ).exclude(
+        subject_id__in=[a.subject_id for a in appointments],
+    ).select_related('subject')
+    enrollment_protocol_map: dict[int, tuple[str, str]] = {}
+    enr_ids = [c.enrollment_id for c in unscheduled_checkins if c.enrollment_id]
+    if enr_ids:
+        for enr in Enrollment.objects.filter(id__in=enr_ids).select_related('protocol'):
+            if enr.protocol:
+                enrollment_protocol_map[enr.id] = (enr.protocol.title or '', (enr.protocol.code or '').strip())
+            else:
+                enrollment_protocol_map[enr.id] = ('', '')
 
-        for checkin in unscheduled_checkins:
-            project_name = ''
-            project_code_val = ''
-            if checkin.enrollment_id:
-                project_name, project_code_val = enrollment_protocol_map.get(checkin.enrollment_id, ('', ''))
-            subj = checkin.subject
-            _phone = getattr(subj, 'phone', '') or '' if subj else ''
-            queue.append({
-                'appointment_id': None,
-                'subject_id': checkin.subject_id,
-                'subject_name': subj.name if subj else '',
-                'subject_no': subj.subject_no if subj else '',
-                '_subject_phone': _phone,
-                'phone': _phone,
-                'name_pinyin_initials': '',
-                'liaison': '',
-                'notes': '',
-                'sc_number': '',
-                'rd_number': '',
-                'gender': getattr(subj, 'gender', '') or '' if subj else '',
-                'age': getattr(subj, 'age', None) if subj else None,
-                'appointment_time': '',
-                'purpose': '临时到访',
-                'visit_point': '',
-                'project_name': project_name,
-                'project_code': project_code_val,
-                'task_type': 'walk_in',
-                'status': checkin.status,
-                'checkin_id': checkin.id,
-                'checkin_time': checkin.checkin_time.isoformat() if checkin.checkin_time else None,
-                'checkout_time': checkin.checkout_time.isoformat() if checkin.checkout_time else None,
-                'enrollment_id': checkin.enrollment_id,
-            })
+    for checkin in unscheduled_checkins:
+        project_name = ''
+        project_code_val = ''
+        if checkin.enrollment_id:
+            project_name, project_code_val = enrollment_protocol_map.get(checkin.enrollment_id, ('', ''))
+        subj = checkin.subject
+        _phone = getattr(subj, 'phone', '') or '' if subj else ''
+        queue.append({
+            'appointment_id': None,
+            'subject_id': checkin.subject_id,
+            'subject_name': subj.name if subj else '',
+            'subject_no': subj.subject_no if subj else '',
+            '_subject_phone': _phone,
+            'phone': _phone,
+            'name_pinyin_initials': '',
+            'liaison': '',
+            'notes': '',
+            'sc_number': '',
+            'rd_number': '',
+            'gender': getattr(subj, 'gender', '') or '' if subj else '',
+            'age': getattr(subj, 'age', None) if subj else None,
+            'appointment_time': '',
+            'purpose': '临时到访',
+            'visit_point': '',
+            'project_name': project_name,
+            'project_code': project_code_val,
+            'task_type': 'walk_in',
+            'status': checkin.status,
+            'checkin_id': checkin.id,
+            'checkin_time': checkin.checkin_time.isoformat() if checkin.checkin_time else None,
+            'checkout_time': checkin.checkout_time.isoformat() if checkin.checkout_time else None,
+            'enrollment_id': checkin.enrollment_id,
+        })
 
     queue = _merge_duplicate_queue_items(queue, today)
 
-    # SC号/RD号：source=execution 用 SubjectProjectSC，source=board 用 ReceptionBoardProjectSc
     keys = [(item.get('subject_id'), (item.get('project_code') or '').strip()) for item in queue]
     keys = [(s, p) for s, p in keys if s is not None and p]
-    sc_map = {}
+    sc_map: dict[tuple[int, str], SubjectProjectSC] = {}
     if keys:
-        if use_board:
-            for rec in ReceptionBoardProjectSc.objects.filter(
-                subject_id__in={s for s, _ in keys},
-                project_code__in={p for _, p in keys},
-            ):
-                k = (rec.subject_id, (rec.project_code or '').strip())
-                if k not in sc_map:
-                    sc_map[k] = rec
+        for rec in SubjectProjectSC.objects.filter(is_deleted=False).filter(
+            subject_id__in={s for s, _ in keys},
+            project_code__in={p for _, p in keys},
+        ):
+            k = (rec.subject_id, (rec.project_code or '').strip())
+            if k not in sc_map:
+                sc_map[k] = rec
+    for item in queue:
+        k = (item.get('subject_id'), (item.get('project_code') or '').strip())
+        rec = sc_map.get(k)
+        if rec:
+            sn = (rec.sc_number or '').strip()
+            item['sc_number'] = f'SC{sn}' if sn.isdigit() else (sn or '')
+            item['rd_number'] = (rec.rd_number or '').strip()
+            item['enrollment_status'] = (rec.enrollment_status or '').strip()
         else:
-            for rec in SubjectProjectSC.objects.filter(is_deleted=False).filter(
-                subject_id__in={s for s, _ in keys},
-                project_code__in={p for _, p in keys},
-            ):
-                k = (rec.subject_id, (rec.project_code or '').strip())
-                if k not in sc_map:
-                    sc_map[k] = rec
+            item['sc_number'] = item.get('sc_number') or ''
+            item['rd_number'] = item.get('rd_number') or ''
+            item['enrollment_status'] = item.get('enrollment_status') or ''
+
+    queue.sort(key=_today_queue_sort_key)
+    return queue
+
+
+def _get_cached_full_execution_queue(today: date) -> list[dict]:
+    """读取缓存的当日全日排序队列；返回每行浅拷贝，避免调用方原地修改污染缓存。"""
+    from django.core.cache import cache
+
+    key = _execution_queue_cache_key(today)
+    hit = cache.get(key)
+    if hit is not None:
+        return [{**row} for row in hit]
+    built = _build_full_execution_queue_uncached(today)
+    cache.set(key, built, EXECUTION_QUEUE_CACHE_TTL)
+    return [{**row} for row in built]
+
+
+def get_today_queue(
+    target_date: Optional[date] = None,
+    page: int = 1,
+    page_size: int = 10,
+    project_code: Optional[str] = None,
+    source: str = 'execution',
+) -> dict:
+    """
+    今日受试者队列：聚合预约 + 签到状态；排序为项目编号升序，同项目内先排有 SC 号的记录再排无 SC 的，再按 SC 号升序。
+    支持分页（每页默认10条）、按项目编号筛选。
+    source: execution=工单执行（SubjectCheckin+SubjectProjectSC），board=接待看板（ReceptionBoardCheckin+ReceptionBoardProjectSc）
+    两套数据完全独立，SC/RD号、签到签出时间互不影响。
+    """
+    today = target_date or _local_today()
+    use_board = (source or 'execution').strip().lower() == 'board'
+
+    # 工单执行：全日队列由缓存构建一次，分页与统计接口共用
+    if not use_board:
+        queue = _get_cached_full_execution_queue(today)
+        if project_code and str(project_code).strip():
+            pc_lower = str(project_code).strip().lower()
+            queue = [i for i in queue if (i.get('project_code') or '').strip().lower() == pc_lower]
+        total = len(queue)
+        start = (page - 1) * page_size
+        end = start + page_size
+        page_items = queue[start:end]
+        return {
+            'items': page_items,
+            'date': str(today),
+            'total': total,
+            'page': page,
+            'page_size': page_size,
+        }
+
+    # 接待看板（board）：与 execution 数据完全独立，不走路径缓存
+    appointments_qs = SubjectAppointment.objects.filter(
+        appointment_date=today,
+    ).exclude(
+        status=AppointmentStatus.CANCELLED,
+    ).select_related('subject', 'enrollment', 'enrollment__protocol').order_by('appointment_time')
+
+    if project_code:
+        appointments_qs = appointments_qs.filter(project_code=project_code)
+
+    appointments = list(appointments_qs)
+
+    board_checkins_today = {
+        c.subject_id: c for c in
+        ReceptionBoardCheckin.objects.filter(checkin_date=today).select_related('subject')
+    }
+
+    queue: list[dict] = []
+    for appt in appointments:
+        board_rec = board_checkins_today.get(appt.subject_id)
+        task_type = _determine_task_type(appt)
+        status = _determine_board_queue_status(appt, board_rec)
+        checkin_id = board_rec.id if board_rec else None
+        checkin_time = board_rec.checkin_time.isoformat() if board_rec and board_rec.checkin_time else None
+        checkout_time = board_rec.checkout_time.isoformat() if board_rec and board_rec.checkout_time else None
+
+        project_name = getattr(appt, 'project_name', '') or ''
+        project_code_val = getattr(appt, 'project_code', '') or ''
+        if not project_name and appt.enrollment_id and appt.enrollment and hasattr(appt.enrollment, 'protocol') and appt.enrollment.protocol:
+            p = appt.enrollment.protocol
+            project_name = p.title or ''
+            project_code_val = (p.code or '').strip()
+        subj = appt.subject
+        _phone = getattr(subj, 'phone', '') or '' if subj else ''
+        queue.append({
+            'appointment_id': appt.id,
+            'subject_id': appt.subject_id,
+            'subject_name': subj.name if subj else '',
+            'subject_no': subj.subject_no if subj else '',
+            '_subject_phone': _phone,
+            'phone': _phone,
+            'name_pinyin_initials': (getattr(appt, 'name_pinyin_initials', '') or '').strip(),
+            'liaison': (getattr(appt, 'liaison', '') or '').strip(),
+            'notes': (getattr(appt, 'notes', '') or '').strip(),
+            'sc_number': '',
+            'rd_number': '',
+            'gender': getattr(subj, 'gender', '') or '' if subj else '',
+            'age': getattr(subj, 'age', None) if subj else None,
+            'appointment_time': appt.appointment_time.strftime('%H:%M') if appt.appointment_time else '',
+            'purpose': appt.purpose,
+            'visit_point': getattr(appt, 'visit_point', '') or '',
+            'project_name': project_name,
+            'project_code': project_code_val,
+            'task_type': task_type,
+            'status': status,
+            'checkin_id': checkin_id,
+            'checkin_time': checkin_time,
+            'checkout_time': checkout_time,
+            'enrollment_id': appt.enrollment_id,
+        })
+
+    unscheduled = ReceptionBoardCheckin.objects.filter(checkin_date=today).exclude(
+        subject_id__in=[a.subject_id for a in appointments],
+    ).select_related('subject')
+    enrollment_protocol_map: dict[int, tuple[str, str]] = {}
+    enr_ids = [c.appointment_id for c in unscheduled if c.appointment_id]
+    if enr_ids:
+        appts_by_id = {a.id: a for a in appointments}
+        for aid in enr_ids:
+            a = appts_by_id.get(aid)
+            if a and a.enrollment_id and getattr(a.enrollment, 'protocol', None):
+                p = a.enrollment.protocol
+                enrollment_protocol_map[aid] = (p.title or '', (p.code or '').strip())
+            else:
+                enrollment_protocol_map[aid] = ('', '')
+    for board_rec in unscheduled:
+        project_name = ''
+        project_code_val = ''
+        subj = board_rec.subject
+        _phone = getattr(subj, 'phone', '') or '' if subj else ''
+        queue.append({
+            'appointment_id': board_rec.appointment_id,
+            'subject_id': board_rec.subject_id,
+            'subject_name': subj.name if subj else '',
+            'subject_no': subj.subject_no if subj else '',
+            '_subject_phone': _phone,
+            'phone': _phone,
+            'name_pinyin_initials': '',
+            'liaison': '',
+            'notes': '',
+            'sc_number': '',
+            'rd_number': '',
+            'gender': getattr(subj, 'gender', '') or '' if subj else '',
+            'age': getattr(subj, 'age', None) if subj else None,
+            'appointment_time': '',
+            'purpose': '临时到访',
+            'visit_point': '',
+            'project_name': project_name,
+            'project_code': project_code_val,
+            'task_type': 'walk_in',
+            'status': 'checked_out' if board_rec.checkout_time else 'checked_in',
+            'checkin_id': board_rec.id,
+            'checkin_time': board_rec.checkin_time.isoformat() if board_rec.checkin_time else None,
+            'checkout_time': board_rec.checkout_time.isoformat() if board_rec.checkout_time else None,
+            'enrollment_id': None,
+        })
+
+    queue = _merge_duplicate_queue_items(queue, today)
+
+    keys = [(item.get('subject_id'), (item.get('project_code') or '').strip()) for item in queue]
+    keys = [(s, p) for s, p in keys if s is not None and p]
+    sc_map: dict[tuple[int, str], ReceptionBoardProjectSc] = {}
+    if keys:
+        for rec in ReceptionBoardProjectSc.objects.filter(
+            subject_id__in={s for s, _ in keys},
+            project_code__in={p for _, p in keys},
+        ):
+            k = (rec.subject_id, (rec.project_code or '').strip())
+            if k not in sc_map:
+                sc_map[k] = rec
     for item in queue:
         k = (item.get('subject_id'), (item.get('project_code') or '').strip())
         rec = sc_map.get(k)
@@ -395,20 +521,6 @@ def get_today_queue(
     if project_code and str(project_code).strip():
         pc_lower = str(project_code).strip().lower()
         queue = [i for i in queue if (i.get('project_code') or '').strip().lower() == pc_lower]
-
-    def _normalize_sc_for_sort(raw: object) -> str:
-        s = str(raw or '').strip()
-        if not s or s in ('-', '—', '－'):
-            return ''
-        return s
-
-    def _today_queue_sort_key(item: dict) -> tuple:
-        pc = (item.get('project_code') or '').strip()
-        sc = _normalize_sc_for_sort(item.get('sc_number'))
-        # 同项目内：有有效 SC 在前、无 SC 在后；再按 SC 号升序；最后按预约时间
-        has_sc_rank = 1 if not sc else 0
-        appt_t = str(item.get('appointment_time') or '').strip()
-        return (pc, has_sc_rank, sc, appt_t)
 
     queue.sort(key=_today_queue_sort_key)
 
@@ -548,9 +660,11 @@ def get_today_stats(target_date: Optional[date] = None, project_code: Optional[s
         checkin_date=today,
     ).exclude(subject_id__in=all_appt_subject_ids).count()
 
-    # 入组情况各状态数量（工单执行页卡片用）：从今日队列聚合
-    queue_full = get_today_queue(target_date=today, page=1, page_size=99999, project_code=project_code, source='execution')
-    items = queue_full.get('items', [])
+    # 入组情况各状态数量（工单执行页卡片用）：与 today-queue（execution）共用缓存队列，避免重复构建
+    items = _get_cached_full_execution_queue(today)
+    if project_code and str(project_code).strip():
+        pc_lower = str(project_code).strip().lower()
+        items = [i for i in items if (i.get('project_code') or '').strip().lower() == pc_lower]
     enrollment_status_counts = {
         '初筛合格': 0,
         '正式入组': 0,
@@ -564,6 +678,22 @@ def get_today_stats(target_date: Optional[date] = None, project_code: Optional[s
         if s in enrollment_status_counts:
             enrollment_status_counts[s] = enrollment_status_counts[s] + 1
 
+    # 工单执行页项目筛选项：与 queue_full 同源，避免前端再发一次大包 today-queue 仅取项目列表
+    project_name_by_code: dict[str, str] = {}
+    for it in items:
+        pc = (it.get('project_code') or '').strip()
+        if not pc:
+            continue
+        pname = (it.get('project_name') or pc or '').strip()
+        project_name_by_code[pc] = pname or pc
+    project_options = [
+        {'code': c, 'name': project_name_by_code[c]}
+        for c in sorted(
+            project_name_by_code.keys(),
+            key=lambda x: (project_name_by_code[x].lower(), x.lower()),
+        )
+    ]
+
     return {
         'date': str(today),
         'total_appointments': total_appointments,
@@ -575,6 +705,7 @@ def get_today_stats(target_date: Optional[date] = None, project_code: Optional[s
         'signed_in_count': signed_in_count,
         'walk_in_count': walk_in_count,
         'enrollment_status_counts': enrollment_status_counts,
+        'project_options': project_options,
     }
 
 
@@ -629,6 +760,7 @@ def ensure_project_sc_from_import(
             rec.enrollment_status = '正式入组'
             update_fields.extend(['rd_number', 'enrollment_status'])
         rec.save(update_fields=update_fields)
+    invalidate_execution_queue_cache_for_date(_local_today())
 
 
 def _ensure_project_sc_on_checkin(
@@ -727,6 +859,7 @@ def quick_checkin(
             if appt:
                 visit_point_raw = (getattr(appt, 'visit_point', '') or '').strip()
                 _ensure_project_sc_on_checkin(subject_id, pc, visit_point_raw, operator_id)
+        invalidate_execution_queue_cache_for_date(today)
         return _checkin_to_dict(existing)
 
     subject = Subject.objects.get(id=subject_id)
@@ -786,6 +919,7 @@ def quick_checkin(
         logger.warning('签到通知发送失败', exc_info=True)
 
     logger.info('快速签到: subject=%s method=%s', subject.subject_no, method)
+    invalidate_execution_queue_cache_for_date(today)
     return _checkin_to_dict(checkin)
 
 
@@ -899,6 +1033,7 @@ def update_project_sc(
         update_fields.append('updated_by_id')
     if update_fields:
         rec.save(update_fields=set(update_fields) | {'update_time'})
+    invalidate_execution_queue_cache_for_date(_local_today())
     return {
         'subject_id': rec.subject_id,
         'project_code': rec.project_code,
@@ -936,6 +1071,7 @@ def quick_checkout(checkin_id: int) -> dict:
     checkin.save(update_fields=['checkout_time', 'status', 'update_time'])
 
     logger.info('快速签出: checkin=%s subject=%s', checkin_id, checkin.subject.subject_no)
+    invalidate_execution_queue_cache_for_date(checkin.checkin_date)
     return {**_checkin_to_dict(checkin), 'warnings': warnings}
 
 
@@ -1004,6 +1140,7 @@ def mark_no_show(appointment_id: int) -> dict:
         checkin.status = CheckinStatus.NO_SHOW
         checkin.notes = (checkin.notes or '') + f'\n预约缺席自动标记，预约ID={appt.id}'
         checkin.save(update_fields=['status', 'notes', 'update_time'])
+    invalidate_execution_queue_cache_for_date(appt.appointment_date)
     return {
         'appointment_id': appt.id,
         'subject_id': appt.subject_id,

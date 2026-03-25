@@ -726,14 +726,18 @@ export default function AppointmentsPage() {
         source: 'execution',
         ...(queueProjectFilter.trim() ? { project_code: queueProjectFilter.trim() } : {}),
       }),
+    staleTime: 12 * 1000,
+    refetchInterval: 30000,
   })
   const appointmentCalendarQuery = useQuery({
     queryKey: ['reception', 'appointment-calendar', visibleMonth],
     queryFn: () => receptionApi.appointmentCalendar(visibleMonth),
+    staleTime: 60 * 1000,
   })
   const { data: statsRes } = useQuery({
     queryKey: ['reception', 'today-stats', queueDate],
     queryFn: () => receptionApi.todayStats(queueDate),
+    staleTime: 12 * 1000,
     refetchInterval: 30000,
   })
   const { data: queueQueueRes, isLoading: queueQueueLoading, refetch: refetchQueueQueue } = useQuery({
@@ -746,19 +750,8 @@ export default function AppointmentsPage() {
         project_code: projectFilter || undefined,
         source: 'execution',
       }),
+    staleTime: 12 * 1000,
     refetchInterval: 30000,
-  })
-  /** 独立查询获取当日全部项目列表，供项目筛选下拉始终展示所有项目（不受当前筛选影响） */
-  const { data: projectListRes } = useQuery({
-    queryKey: ['reception', 'today-queue', 'project-list', queueDate],
-    queryFn: () =>
-      receptionApi.todayQueue({
-        target_date: queueDate,
-        page: 1,
-        page_size: 500,
-        source: 'execution',
-      }),
-    staleTime: 60 * 1000,
   })
   /** 搜索时拉取更多数据（500 条）以支持跨页模糊搜索 SC/RD/姓名/手机号 */
   const { data: searchQueueRes, isFetching: searchQueueFetching } = useQuery({
@@ -777,6 +770,7 @@ export default function AppointmentsPage() {
   const { data: alertRes } = useQuery({
     queryKey: ['reception', 'pending-alerts', queueDate],
     queryFn: () => receptionApi.pendingAlerts(queueDate),
+    staleTime: 12 * 1000,
     refetchInterval: 30000,
   })
 
@@ -977,17 +971,14 @@ export default function AppointmentsPage() {
   const queueRaw = queueQueueRes?.data?.items ?? []
   const queueTotal = queueQueueRes?.data?.total ?? 0
   const queuePageTotal = Math.max(1, Math.ceil(queueTotal / queuePageSize))
-  /** 仅来自左侧「查询日期」当日队列中的项目；不使用演示数据兜底，避免先显示假项目再闪成全部真实项目 */
-  const projectListItems = (projectListRes?.data?.items ?? []) as QueueItem[]
+  /** 项目筛选：由 today-stats 内已加载的全日队列推导，避免额外请求 page_size=500 的 today-queue（服务端也不必再构建一遍队列） */
   const projectOptions = useMemo(() => {
-    const byCode = new Map<string, string>()
-    projectListItems.forEach((item: QueueItem) => {
-      const code = (item.project_code || '').trim()
-      const name = (item.project_name || code || '').trim()
-      if (code) byCode.set(code, name || code)
-    })
-    return Array.from(byCode.entries()).map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name))
-  }, [projectListItems])
+    const raw = statsRes?.data?.project_options
+    if (Array.isArray(raw) && raw.length > 0) {
+      return [...raw].sort((a, b) => (a.name || a.code).localeCompare(b.name || b.code, 'zh-CN'))
+    }
+    return []
+  }, [statsRes])
 
   useEffect(() => {
     if (!projectFilter.trim()) return

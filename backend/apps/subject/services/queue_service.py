@@ -122,6 +122,12 @@ def call_next(station_id: str = 'default', project_code: Optional[str] = None) -
     next_checkin.status = 'in_progress'
     next_checkin.save(update_fields=['status', 'update_time'])
 
+    try:
+        from ..services.reception_service import invalidate_execution_queue_cache_for_date
+        invalidate_execution_queue_cache_for_date(next_checkin.checkin_date)
+    except Exception:
+        pass
+
     subject = next_checkin.subject
     subject_info = {
         'subject_id': subject.id,
@@ -182,6 +188,12 @@ def miss_call(checkin_id: int) -> dict:
     checkin.missed_call_at = now
     checkin.missed_after_sc_rank = missed_after_sc_rank
     checkin.save(update_fields=['status', 'missed_call_at', 'missed_after_sc_rank', 'update_time'])
+
+    try:
+        from ..services.reception_service import invalidate_execution_queue_cache_for_date
+        invalidate_execution_queue_cache_for_date(checkin.checkin_date)
+    except Exception:
+        pass
 
     logger.info('过号: checkin_id=%s subject=%s missed_after_sc_rank=%s', checkin_id, checkin.subject_id, missed_after_sc_rank)
     return {

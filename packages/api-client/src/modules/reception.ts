@@ -71,6 +71,8 @@ export interface TodayStats {
   walk_in_count: number
   /** 入组情况各状态数量（初筛合格/正式入组/不合格/复筛不合格/退出/缺席） */
   enrollment_status_counts?: Record<string, number>
+  /** 当日队列中出现的项目（与 today-stats 内队列聚合一致，供项目筛选，避免额外拉大包） */
+  project_options?: Array<{ code: string; name: string }>
 }
 
 export interface CheckinResult {
