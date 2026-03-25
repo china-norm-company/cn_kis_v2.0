@@ -49,7 +49,7 @@ def _find_system_chromium() -> Optional[str]:
             return path
     return shutil.which('google-chrome') or shutil.which('chromium') or None
 
-LIMS_BASE_URL = 'http://lims.china-norm.com'
+LIMS_BASE_URL = 'http://lims.china-norm.com:8088'
 LIMS_USERNAME = 'malm'
 LIMS_PASSWORD = 'fushuo@123456'
 
