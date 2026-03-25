@@ -177,11 +177,11 @@ def list_equipment(
         elif calibration_status == 'valid':
             qs = qs.filter(next_calibration_date__gt=today + timedelta(days=30))
 
-    # LIMS 来源过滤：通过 properties 字段的 _lims_source 标记
+    # LIMS 来源过滤：通过 attributes JSON 的 _lims_source 标记
     if lims_only is True:
-        qs = qs.filter(properties__contains={'_lims_source': True})
+        qs = qs.filter(attributes__contains={'_lims_source': True})
     elif lims_only is False:
-        qs = qs.exclude(properties__contains={'_lims_source': True})
+        qs = qs.exclude(attributes__contains={'_lims_source': True})
 
     # 排序
     allowed_sorts = {
@@ -214,12 +214,15 @@ def list_equipment(
     for item in items:
         cal_info = _get_calibration_info(item, today)
         attrs = item.attributes or {}
+        # 名称分类仅来自 LIMS 写入的 attributes，与 ResourceCategory（设备类别）无关
+        name_cls = (attrs.get('name_classification') or attrs.get('lims_name_classification') or '')
         result_items.append({
             'id': item.id,
             'name': item.name,
             'code': item.code,
             'category_id': item.category_id,
             'category_name': item.category.name if item.category else '',
+            'name_classification': name_cls or '',
             'status': item.status,
             'status_display': item.get_status_display(),
             'location': item.location,
@@ -228,6 +231,12 @@ def list_equipment(
             'serial_number': item.serial_number,
             'purchase_date': str(item.purchase_date) if item.purchase_date else None,
             'warranty_expiry': str(item.warranty_expiry) if item.warranty_expiry else None,
+            'next_calibration_date': str(item.next_calibration_date) if item.next_calibration_date else None,
+            'next_verification_date': str(item.next_verification_date) if item.next_verification_date else None,
+            'next_maintenance_date': str(item.next_maintenance_date) if item.next_maintenance_date else None,
+            'calibration_cycle_days': item.calibration_cycle_days,
+            'verification_cycle_days': item.verification_cycle_days,
+            'maintenance_cycle_days': item.maintenance_cycle_days,
             'calibration_info': cal_info,
             'authorized_operators_count': auth_counts.get(item.id, 0),
             'usage_count_30d': usage_counts.get(item.id, 0),
@@ -301,6 +310,9 @@ def get_equipment_detail(equipment_id: int) -> Optional[dict]:
         )
     )
 
+    attrs = item.attributes or {}
+    name_cls = (attrs.get('name_classification') or attrs.get('lims_name_classification') or '')
+
     return {
         'id': item.id,
         'name': item.name,
@@ -308,6 +320,7 @@ def get_equipment_detail(equipment_id: int) -> Optional[dict]:
         'category_id': item.category_id,
         'category_name': item.category.name if item.category else '',
         'category_path': item.category.full_path if item.category else '',
+        'name_classification': name_cls or '',
         'status': item.status,
         'status_display': item.get_status_display(),
         'location': item.location,
@@ -316,7 +329,15 @@ def get_equipment_detail(equipment_id: int) -> Optional[dict]:
         'serial_number': item.serial_number,
         'purchase_date': str(item.purchase_date) if item.purchase_date else None,
         'warranty_expiry': str(item.warranty_expiry) if item.warranty_expiry else None,
+        'last_calibration_date': str(item.last_calibration_date) if item.last_calibration_date else None,
+        'last_verification_date': str(item.last_verification_date) if item.last_verification_date else None,
+        'last_maintenance_date': str(item.last_maintenance_date) if item.last_maintenance_date else None,
+        'next_calibration_date': str(item.next_calibration_date) if item.next_calibration_date else None,
+        'next_verification_date': str(item.next_verification_date) if item.next_verification_date else None,
+        'next_maintenance_date': str(item.next_maintenance_date) if item.next_maintenance_date else None,
         'calibration_cycle_days': item.calibration_cycle_days,
+        'verification_cycle_days': item.verification_cycle_days,
+        'maintenance_cycle_days': item.maintenance_cycle_days,
         'calibration_info': cal_info,
         'manager_id': item.manager_id,
         'attributes': item.attributes,

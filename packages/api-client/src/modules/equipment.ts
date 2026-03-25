@@ -57,6 +57,8 @@ export interface EquipmentItem {
   code: string
   category_id: number
   category_name: string
+  /** LIMS「名称分类」：同规格统一类型（如 电子天平、glossymeter），与设备类别 ResourceCategory 无关 */
+  name_classification?: string
   status: string
   status_display: string
   location: string
@@ -65,6 +67,12 @@ export interface EquipmentItem {
   serial_number: string
   purchase_date: string | null
   warranty_expiry: string | null
+  next_calibration_date?: string | null
+  next_verification_date?: string | null
+  next_maintenance_date?: string | null
+  calibration_cycle_days?: number | null
+  verification_cycle_days?: number | null
+  maintenance_cycle_days?: number | null
   calibration_info: CalibrationInfo
   authorized_operators_count: number
   usage_count_30d: number
@@ -84,6 +92,9 @@ export interface EquipmentItem {
 export interface EquipmentDetail extends EquipmentItem {
   category_path: string
   calibration_cycle_days: number | null
+  last_calibration_date?: string | null
+  last_verification_date?: string | null
+  last_maintenance_date?: string | null
   attributes: Record<string, unknown>
   recent_calibrations: CalibrationRecord[]
   recent_maintenances: MaintenanceOrder[]
