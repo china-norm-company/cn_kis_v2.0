@@ -1252,9 +1252,28 @@ function PlansPanel({
         const label = p.schedule_progress_display ?? (p.status === 'draft' ? '待排程' : p.status === 'generated' ? '已排程' : p.status === 'published' ? '已发布' : p.status)
         const isPending = label === '待排程'
         const isPublished = label === '已发布'
-        if (isPublished) return <Badge variant="success" size="sm">{label}</Badge>
-        if (isPending) return <Badge variant="warning" size="sm">{label}</Badge>
-        return <Badge variant="default" size="sm">{label}</Badge>
+        /* 暗夜：底色与描边加亮，避免 emerald/amber/slate 950 压在 slate-800 上过暗 */
+        const progressDark =
+          'dark:shadow-sm dark:ring-1 dark:ring-white/15 dark:!shadow-[0_0_12px_-2px_rgba(255,255,255,0.12)]'
+        if (isPublished) {
+          return (
+            <Badge variant="success" size="sm" className={clsx(progressDark, 'dark:!bg-emerald-800/75 dark:!text-emerald-50 dark:ring-emerald-400/45')}>
+              {label}
+            </Badge>
+          )
+        }
+        if (isPending) {
+          return (
+            <Badge variant="warning" size="sm" className={clsx(progressDark, 'dark:!bg-amber-800/70 dark:!text-amber-50 dark:ring-amber-400/45')}>
+              {label}
+            </Badge>
+          )
+        }
+        return (
+          <Badge variant="default" size="sm" className={clsx(progressDark, 'dark:!bg-sky-900/65 dark:!text-sky-100 dark:ring-sky-400/40')}>
+            {label}
+          </Badge>
+        )
       },
     },
     {
