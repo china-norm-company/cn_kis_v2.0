@@ -29,11 +29,15 @@
 """
 import logging
 from decimal import Decimal, InvalidOperation
-from datetime import datetime
+from datetime import datetime, date as _date_type
 from typing import Any, Dict, List, Optional, Tuple
 
 from django.db import transaction
 from django.utils import timezone
+
+from apps.ekuaibao_integration.ekb_normalizer import (
+    normalize, extract_payment_info, is_feishu_internal_format
+)
 
 logger = logging.getLogger('cn_kis.ekuaibao.injector')
 
@@ -344,6 +348,9 @@ class EkbInjector:
         module = raw_rec.module
         raw_data = raw_rec.raw_data
 
+        # ── 格式规范化：飞书内部 API 格式 → 统一格式 ──────────────────────────
+        raw_data = normalize(raw_data)
+
         if module != 'flows':
             raw_rec.injection_status = 'skipped'
             raw_rec.save(update_fields=['injection_status'])
@@ -550,18 +557,65 @@ def _inject_expense_with_relations(raw_data: dict):
             feishu_approval_id='',
             receipt_count=0,
             receipt_images=[],
-            approval_chain=[],
+            approval_chain=raw_data.get('approval_chain', []) or [],
             client_name=project_info.get('client_name', ''),
-            cost_department='',
+            cost_department=project_info.get('dept_name', ''),
             ekuaibao_submitter_id=owner_info.get('submitter_id', ''),
             expense_template=template_name or '',
-            linked_budget_no='',
+            linked_budget_no=project_info.get('linked_requisition_code', ''),
+            **_build_payment_fields(raw_data),
         )
         return obj, 'created', {}
 
     except Exception as ex:
         logger.error('报销单注入失败: %s | code=%s', ex, raw_data.get('code', '?'))
         return None
+
+
+# ============================================================================
+# 辅助：从 raw_data 构造 ExpenseRequest 支付/收款新字段
+# ============================================================================
+
+def _build_payment_fields(raw_data: dict) -> dict:
+    """提取支付相关新字段，兼容 OpenAPI 和飞书内部格式"""
+    pay_info = extract_payment_info(raw_data)
+
+    fields: dict = {}
+
+    # submit_date
+    if pay_info.get('submit_date'):
+        fields['submit_date'] = pay_info['submit_date']
+
+    # payment_date
+    if pay_info.get('payment_date'):
+        fields['payment_date'] = pay_info['payment_date']
+
+    # payment_amount
+    try:
+        amt = pay_info.get('payment_amount', '0')
+        if amt and str(amt) not in ('0', '0.00', ''):
+            fields['payment_amount'] = Decimal(str(amt)).quantize(Decimal('0.01'))
+    except Exception:
+        pass
+
+    # payment_method
+    channel = pay_info.get('payment_method', '')
+    if channel:
+        channel_map = {
+            'OFFLINE': '线下支付', 'ONLINE': '线上支付',
+            'CASH_COMPASS': '现金罗盘', 'BANK': '银行转账',
+        }
+        fields['payment_method'] = channel_map.get(channel, channel)
+
+    # voucher_no / invoice_count / account_period
+    if pay_info.get('voucher_no'):
+        fields['voucher_no'] = pay_info['voucher_no']
+    if pay_info.get('invoice_count'):
+        fields['invoice_count'] = pay_info['invoice_count']
+    if pay_info.get('account_period'):
+        fields['account_period'] = pay_info['account_period']
+
+    return fields
 
 
 # ============================================================================
@@ -633,7 +687,10 @@ def _inject_requisition_as_budget(raw_data: dict):
             start_date=start_date,
             end_date=end_date,
             total_expense=actual_expense,
-            gross_margin=Decimal(str(project_info['profit_rate'] or 0)) * 100 if project_info['profit_rate'] else Decimal('0'),
+            gross_margin=min(
+            Decimal(str(project_info['profit_rate'] or 0)) * 100 if project_info['profit_rate'] else Decimal('0'),
+            Decimal('999999.99'),
+        ),
             notes=(
                 f"易快报预算申请 | 样本数: {project_info['sample_count'] or '-'} | "
                 f"版块: {project_info['sector']} | 测试类型: {project_info['test_type']} | "

@@ -96,6 +96,57 @@ class ExpenseRequest(models.Model):
         help_text='submitterId.id，用于关联到 Account.ekuaibao_staff_id',
     )
 
+    # ── 支付与收款信息 ──────────────────────────────────────────────────────────
+    submit_date = models.DateField(
+        '提交日期', null=True, blank=True, db_index=True,
+        help_text='单据原始提交日期（历史数据保留）',
+    )
+    payment_amount = models.DecimalField(
+        '支付金额', max_digits=15, decimal_places=2, null=True, blank=True,
+        help_text='实际出账金额',
+    )
+    payment_date = models.DateField(
+        '支付日期', null=True, blank=True,
+        help_text='资金出账日期',
+    )
+    payment_method = models.CharField(
+        '支付方式', max_length=50, blank=True, default='',
+    )
+    payee_name = models.CharField(
+        '收款户名', max_length=200, blank=True, default='',
+    )
+    payee_account = models.CharField(
+        '收款账号', max_length=100, blank=True, default='', db_index=True,
+    )
+    payee_bank = models.CharField(
+        '开户行', max_length=100, blank=True, default='',
+    )
+    payee_bank_branch = models.CharField(
+        '开户网点', max_length=200, blank=True, default='',
+    )
+    payee_province = models.CharField(
+        '开户行所在省', max_length=50, blank=True, default='',
+    )
+    payee_city = models.CharField(
+        '开户行所在市', max_length=50, blank=True, default='',
+    )
+    payee_account_type = models.CharField(
+        '账户类型', max_length=20, blank=True, default='',
+        help_text='个人 / 对公',
+    )
+
+    # ── 票据与凭证信息 ──────────────────────────────────────────────────────────
+    invoice_count = models.IntegerField('发票张数', default=0)
+    voucher_no = models.CharField('凭证号', max_length=100, blank=True, default='')
+    account_period = models.CharField('会计期间', max_length=20, blank=True, default='')
+
+    # ── 软删除 + 原始数据保留 ───────────────────────────────────────────────────
+    is_deleted = models.BooleanField('已删除', default=False, db_index=True)
+    excel_raw_data = models.JSONField(
+        '原始Excel行数据', default=dict, blank=True,
+        help_text='NAS Excel导入时保存的完整125列原始行数据',
+    )
+
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)
 
