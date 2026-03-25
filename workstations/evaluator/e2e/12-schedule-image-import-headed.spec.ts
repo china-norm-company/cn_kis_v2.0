@@ -14,7 +14,7 @@ import { injectAuth, setupApiMocks } from './helpers/setup'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-test.describe('排程图片识别 - Headed 验证', () => {
+test.describe.skip('排程图片识别 - Headed 验证（已移除：我的排程改为实验室月历）', () => {
   test.beforeEach(async ({ page }) => {
     await injectAuth(page)
     await setupApiMocks(page)

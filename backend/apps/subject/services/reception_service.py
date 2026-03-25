@@ -27,6 +27,31 @@ from ..models_execution import (
 logger = logging.getLogger(__name__)
 
 
+def _visit_point_allocates_sc(visit_point: str) -> bool:
+    """
+    签到时是否应分配 SC 排队号（与接待台访视点选项对齐）。
+    仅匹配大写「V1」会漏掉中文「初筛」等，导致队列无 SC、叫号异常。
+    """
+    raw = (visit_point or '').strip()
+    if not raw:
+        return False
+    u = raw.upper()
+    if u in ('V0', 'V1'):
+        return True
+    if raw in ('初筛', '粗筛', '基线'):
+        return True
+    return False
+
+
+def _pick_checkin_row_for_queue(rows: list[SubjectCheckin]) -> Optional[SubjectCheckin]:
+    """同一受试者同日多条 SubjectCheckin（签出后再签等）时选取应展示的一条，避免 dict 推导随机覆盖。"""
+    if not rows:
+        return None
+    active = [c for c in rows if c.status != CheckinStatus.CHECKED_OUT]
+    pool = active if active else list(rows)
+    return max(pool, key=lambda c: c.id)
+
+
 def _local_today() -> date:
     """
     当前「本地」日历日。
@@ -115,6 +140,11 @@ def _merge_duplicate_queue_items(queue: list[dict], target_date: date) -> list[d
                 merged[field] = fallback[field]
         if not merged.get('appointment_id') and fallback.get('appointment_id'):
             merged['appointment_id'] = fallback['appointment_id']
+        if _queue_status_rank(str(merged.get('status') or '')) < _queue_status_rank(str(fallback.get('status') or '')):
+            merged['status'] = fallback['status']
+        for _ck in ('checkin_id', 'checkin_time', 'checkout_time'):
+            if not merged.get(_ck) and fallback.get(_ck):
+                merged[_ck] = fallback[_ck]
         deduped[key] = merged
 
     items = list(deduped.values())
@@ -167,9 +197,15 @@ def get_today_queue(
             ReceptionBoardCheckin.objects.filter(checkin_date=today).select_related('subject')
         }
     else:
+        _checkin_rows = list(
+            SubjectCheckin.objects.filter(checkin_date=today).select_related('subject'),
+        )
+        _by_subject: dict[int, list[SubjectCheckin]] = {}
+        for _c in _checkin_rows:
+            _by_subject.setdefault(_c.subject_id, []).append(_c)
         checkins_today = {
-            c.subject_id: c for c in
-            SubjectCheckin.objects.filter(checkin_date=today).select_related('subject')
+            _sid: _pick_checkin_row_for_queue(_lst)
+            for _sid, _lst in _by_subject.items()
         }
 
     queue = []
@@ -601,11 +637,10 @@ def _ensure_project_sc_on_checkin(
     visit_point: str,
     operator_id: Optional[int],
 ) -> None:
-    """确保受试者在该项目下有 SubjectProjectSC；V1 时若 SC 为空才分配，否则仅确保记录存在。"""
+    """确保受试者在该项目下有 SubjectProjectSC；初筛/V0/V1 等若 SC 为空则分配排队号。"""
     if not project_code:
         return
-    visit_point = (visit_point or '').strip().upper()
-    if visit_point == 'V1':
+    if _visit_point_allocates_sc(visit_point):
         rec, created = SubjectProjectSC.objects.get_or_create(
             subject_id=subject_id,
             project_code=project_code,
@@ -690,8 +725,8 @@ def quick_checkin(
                 status__in=[AppointmentStatus.CONFIRMED, AppointmentStatus.PENDING, AppointmentStatus.COMPLETED],
             ).first()
             if appt:
-                visit_point = (getattr(appt, 'visit_point', '') or '').strip()
-                _ensure_project_sc_on_checkin(subject_id, pc, visit_point, operator_id)
+                visit_point_raw = (getattr(appt, 'visit_point', '') or '').strip()
+                _ensure_project_sc_on_checkin(subject_id, pc, visit_point_raw, operator_id)
         return _checkin_to_dict(existing)
 
     subject = Subject.objects.get(id=subject_id)
@@ -709,11 +744,11 @@ def quick_checkin(
     if appt:
         appt.status = AppointmentStatus.COMPLETED
         appt.save(update_fields=['status', 'update_time'])
-        # SC 号仅在访视点为 V1 时分配；同项目后续访视复用该 SC 号
+        # SC 号：初筛/基线/V0/V1 等到院访视分配；同项目后续访视复用该 SC 号
         project_code = (appt.project_code or '').strip()
-        visit_point = (getattr(appt, 'visit_point', '') or '').strip().upper()
+        visit_point_raw = (getattr(appt, 'visit_point', '') or '').strip()
         if project_code:
-            if visit_point == 'V1':
+            if _visit_point_allocates_sc(visit_point_raw):
                 rec, created = SubjectProjectSC.objects.get_or_create(
                     subject_id=subject_id,
                     project_code=project_code,

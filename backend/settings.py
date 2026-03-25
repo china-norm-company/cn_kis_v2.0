@@ -185,6 +185,12 @@ WORKORDER_FREEZE_LEGACY_WRITE = os.getenv('WORKORDER_FREEZE_LEGACY_WRITE', 'fals
 WORKORDER_FREEZE_OBSERVE_LOG_ENABLED = os.getenv('WORKORDER_FREEZE_OBSERVE_LOG_ENABLED', 'true').lower() == 'true'
 
 # ============================================================================
+# 时区（与 V1 对齐：预约/签到「今日」、飞书通知时间均按北京时间展示）
+# ============================================================================
+USE_TZ = os.getenv('DJANGO_USE_TZ', 'true').lower() in ('1', 'true', 'yes')
+TIME_ZONE = os.getenv('DJANGO_TIME_ZONE', 'Asia/Shanghai')
+
+# ============================================================================
 # Redis / 缓存
 # ============================================================================
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')

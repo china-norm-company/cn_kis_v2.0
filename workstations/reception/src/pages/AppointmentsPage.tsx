@@ -589,6 +589,12 @@ function pad2(value: number) {
   return String(value).padStart(2, '0')
 }
 
+/** 浏览器本地日历日 YYYY-MM-DD（勿用 toISOString：东八区凌晨会得到前一日 UTC 日期） */
+function localTodayYmd() {
+  const d = new Date()
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
+
 function parseDateKey(dateKey: string) {
   const [year, month, day] = dateKey.split('-').map((part) => parseInt(part, 10))
   return { year, month, day }
@@ -686,7 +692,7 @@ export default function AppointmentsPage() {
   const [importMeta, setImportMeta] = useState<{ projectCode: string; projectName: string; appointmentDate: string; visitPoint: string } | null>(null)
   const [importDragOver, setImportDragOver] = useState(false)
 
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = localTodayYmd()
   const [queueDate, setQueueDate] = useState(todayStr)
   const [queueListPage, setQueueListPage] = useState(1)
   const queueListPageSize = 10
@@ -971,14 +977,7 @@ export default function AppointmentsPage() {
   const queueRaw = queueQueueRes?.data?.items ?? []
   const queueTotal = queueQueueRes?.data?.total ?? 0
   const queuePageTotal = Math.max(1, Math.ceil(queueTotal / queuePageSize))
-  const MOCK_PROJECTS = useMemo(
-    () => [
-      { code: 'M2507', name: 'M2507-演示项目A' },
-      { code: 'M2508', name: 'M2508-演示项目B' },
-      { code: 'M2509', name: 'M2509-演示项目C' },
-    ],
-    [],
-  )
+  /** 仅来自左侧「查询日期」当日队列中的项目；不使用演示数据兜底，避免先显示假项目再闪成全部真实项目 */
   const projectListItems = (projectListRes?.data?.items ?? []) as QueueItem[]
   const projectOptions = useMemo(() => {
     const byCode = new Map<string, string>()
@@ -987,9 +986,17 @@ export default function AppointmentsPage() {
       const name = (item.project_name || code || '').trim()
       if (code) byCode.set(code, name || code)
     })
-    const fromList = Array.from(byCode.entries()).map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name))
-    return fromList.length > 0 ? fromList : MOCK_PROJECTS
-  }, [projectListItems, MOCK_PROJECTS])
+    return Array.from(byCode.entries()).map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name))
+  }, [projectListItems])
+
+  useEffect(() => {
+    if (!projectFilter.trim()) return
+    const codes = new Set(projectOptions.map((o) => o.code))
+    if (!codes.has(projectFilter.trim())) {
+      setProjectFilter('')
+      setQueuePage(1)
+    }
+  }, [projectOptions, projectFilter, queueDate])
   const stats = statsRes?.data
   const ENROLLMENT_STATUS_KEYS = ['初筛合格', '正式入组', '不合格', '复筛不合格', '退出', '缺席'] as const
   const displayStats = useMemo(() => {
@@ -1044,7 +1051,11 @@ export default function AppointmentsPage() {
   const checkinMutation = useMutation({
     mutationFn: (params: { subject_id: number; project_code?: string }) =>
       receptionApi.quickCheckin({ subject_id: params.subject_id, project_code: params.project_code }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reception'] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['reception'] })
+      void queryClient.invalidateQueries({ queryKey: ['reception', 'today-queue'] })
+      void queryClient.invalidateQueries({ queryKey: ['reception', 'today-stats'] })
+    },
   })
   const handleConfirmCheckin = () => {
     if (!checkinConfirmTarget) return
