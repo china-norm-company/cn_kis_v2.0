@@ -9,6 +9,8 @@ on:
     - cron: '0 10 * * 1-5'   # 晚报：北京时间 18:00，周一至周五
   pull_request:
     types: [opened, closed, ready_for_review, review_requested]
+  pull_request_review:
+    types: [submitted]
   issues:
     types: [opened, assigned, closed]
   push:
@@ -22,6 +24,7 @@ permissions:
   contents: read
   pull-requests: read
   issues: read
+  checks: read
 
 jobs:
   # ══════════════════════════════════════════════════════════════
@@ -388,6 +391,75 @@ jobs:
                     { tag: 'action', actions: [
                       { tag: 'button', text: { content: '查看详情', tag: 'plain_text' }, url, type: 'default' },
                     ]},
+                  ],
+                };
+              }
+            }
+
+            // ── CodeRabbit AI Review 完成通知 ────────────────────────────────────
+            else if (ev === 'pull_request_review') {
+              const review   = context.payload.review;
+              const reviewer = review.user.login;
+              const state    = review.state; // 'approved' | 'changes_requested' | 'commented'
+              const pr       = context.payload.pull_request;
+              const prNumber = pr.number;
+              const prTitle  = pr.title;
+              const prAuthor = pr.user.login;
+              const prUrl    = pr.html_url;
+              const reviewUrl = review.html_url;
+              // 取 review body 前 300 字符作为摘要
+              const reviewSummary = (review.body || '').replace(/<!--[\s\S]*?-->/g, '').trim().slice(0, 300);
+
+              // 只处理 CodeRabbit 的 approved 和 changes_requested，忽略普通 comment
+              if (reviewer === 'coderabbitai[bot]' && (state === 'approved' || state === 'changes_requested')) {
+                const isApproved = state === 'approved';
+                card = {
+                  header: {
+                    title: {
+                      content: isApproved
+                        ? `🤖 AI Review 通过 · PR #${prNumber}`
+                        : `🤖 AI Review 需要修改 · PR #${prNumber}`,
+                      tag: 'plain_text',
+                    },
+                    template: isApproved ? 'green' : 'yellow',
+                  },
+                  elements: [
+                    {
+                      tag: 'div',
+                      text: {
+                        tag: 'lark_md',
+                        content: [
+                          `**${prTitle}**`,
+                          `作者：${prAuthor}`,
+                          ``,
+                          isApproved
+                            ? `✅ **CodeRabbit 已批准合并**，代码质量通过 AI 检查`
+                            : `⚠️ **CodeRabbit 要求修改**，请 ${prAuthor} 查看评审意见`,
+                          reviewSummary ? `\n> ${reviewSummary.split('\n').slice(0, 4).join('\n> ')}` : '',
+                        ].filter(Boolean).join('\n'),
+                      },
+                    },
+                    { tag: 'hr' },
+                    {
+                      tag: 'div',
+                      text: {
+                        tag: 'lark_md',
+                        content: isApproved
+                          ? `💡 **下一步**：等待人工 Review（至少 1 人）后即可合并\n请相关同学前往 GitHub 完成最终审核`
+                          : `💡 **处理方式**：\n在 Cursor 中说：「PR #${prNumber} 有 CodeRabbit 评审意见，帮我逐条处理」\n修改后 push，CodeRabbit 会自动重新 Review`,
+                      },
+                    },
+                    {
+                      tag: 'action',
+                      actions: [
+                        { tag: 'button', text: { content: '查看 AI Review', tag: 'plain_text' }, url: reviewUrl, type: 'primary' },
+                        { tag: 'button', text: { content: '查看 PR', tag: 'plain_text' }, url: prUrl, type: 'default' },
+                      ],
+                    },
+                    {
+                      tag: 'note',
+                      elements: [{ tag: 'plain_text', content: `CodeRabbit AI · ${new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})} | CN KIS V2.0` }],
+                    },
                   ],
                 };
               }

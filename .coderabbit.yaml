@@ -1,0 +1,134 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CN KIS V2.0 CodeRabbit 配置
+# 项目：临床研究一体化信息系统，18 个工作台，飞书 OAuth + Django + TypeScript
+# 所有 Review 反馈以中文输出
+
+language: "zh-CN"
+
+early_access: false
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: true
+  high_level_summary_placeholder: "@coderabbitai 总结"
+  auto_title_placeholder: "@coderabbitai"
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  finishing_touches:
+    docstrings:
+      enabled: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "main"
+      - "develop"
+
+  # 忽略不需要 Review 的文件
+  path_filters:
+    - "!**/pnpm-lock.yaml"
+    - "!**/package-lock.json"
+    - "!**/migrations/0*.py"
+    - "!**/__pycache__/**"
+    - "!**/*.pyc"
+    - "!**/staticfiles/**"
+    - "!**/media/**"
+    - "!**/node_modules/**"
+    - "!**/*.min.js"
+    - "!**/*.min.css"
+    - "!docs/csv/**"
+
+  # ── 各域专项 Review 指令 ──────────────────────────────────────────────────
+
+  path_instructions:
+
+    # ❶ 认证/权限域（最高风险）
+    - path: "backend/apps/identity/**"
+      instructions: |
+        【高风险域：飞书认证与权限】Review 时必须重点检查以下内容：
+        1. `_save_feishu_user_token()` 中，`refresh_token` 字段不得用空字符串覆盖已有的非空值
+           正确写法：`effective_refresh = refresh_token if refresh_token else existing.refresh_token`
+        2. `refresh_expires_at` 字段不得设为 None，应默认 30 天（2592000 秒）
+        3. 子衿主应用 App ID（cli_a98b0babd020500e）不得在代码中被替换或绕过
+        4. 飞书 OAuth callback 中必须保持 `force_primary=True`，确保所有工作台用子衿凭证换 token
+        5. 任何新增的权限 scope 都只能是"用户委托权限"，不得将应用权限放入 OAuth scope
+
+    # ❷ Token 管理（高风险）
+    - path: "backend/apps/secretary/feishu_fetcher.py"
+      instructions: |
+        【高风险：Token 刷新逻辑】
+        1. `get_valid_user_token()` 中，刷新 token 后更新 `refresh_token` 必须判断非空：
+           `if new_refresh: token_record.refresh_token = new_refresh`
+           不可使用 `.get('refresh_token', token_record.refresh_token)` —— 空字符串会触发覆盖
+        2. `pre_expiry_buffer` 不得小于 `timedelta(hours=1)`
+        3. refresh_token 剩余有效期不足 7 天时，必须触发主动续期逻辑
+
+    # ❸ 知识资产域（高风险）
+    - path: "backend/apps/knowledge/**"
+      instructions: |
+        【高风险：知识资产写保护】
+        1. 向量 embedding 必须且只能通过 `apps.agent_gateway.services.get_qwen3_embedding(text)`
+        2. 禁止任何 embedding 降级/fallback 逻辑（fastembed、火山云 ARK、Jina 等）
+        3. `get_qwen3_embedding` 失败必须 raise RuntimeError，禁止返回 None 或调用其他模型
+        4. 知识库写操作必须有幂等保护（用 content_hash 去重），不得无条件覆盖
+
+    # ❹ 后端 Python/Django（通用规范）
+    - path: "backend/**/*.py"
+      instructions: |
+        【Django 后端规范】
+        1. API 响应格式：统一 `{code, msg, data}` 结构，使用 D/L 封装
+        2. 新增 models.py 字段或模型时，必须同时包含对应的迁移文件
+        3. 已 applied 的迁移文件禁止修改，迁移冲突用 `makemigrations --merge` 处理
+        4. 表名格式：`{DB_PREFIX}_{entity}`，如 `t_protocol`
+        5. Schema 命名规范：输入用 `XxxIn`，输出用 `XxxOut`
+        6. 禁止在代码中硬编码密钥、App Secret、服务器密码等敏感信息
+        7. 捕获异常时不得静默吞掉（`except Exception: pass` 仅允许在指标采集等非关键路径）
+
+    # ❺ 飞书 API 集成
+    - path: "backend/libs/feishu_client.py"
+      instructions: |
+        【飞书 API 客户端】
+        1. 确保所有新增 API 调用的 token 类型正确（user_access_token vs tenant_access_token）
+        2. 字段名需与飞书文档一致，不要猜测（常见混淆：`from` vs `head_from`，`address` vs `mail_address`）
+        3. 数组参数用重复 key 格式（`?ids=a&ids=b`），不要用 `?ids[0]=a`
+
+    # ❻ 前端 TypeScript
+    - path: "frontend/**"
+      instructions: |
+        【前端规范】
+        1. 飞书 OAuth 授权 URL 中的 app_id 必须是子衿（cli_a98b0babd020500e），禁止替换
+        2. OAuth URL 中禁止添加 `state` 参数（后端会校验 state，浏览器无 sessionStorage 时报 AUTH_STATE_INVALID）
+        3. redirect_uri 必须是已在飞书注册的地址（`http://118.196.64.48/login`）
+        4. 禁止在前端代码硬编码任何 App Secret
+
+    # ❼ GitHub Actions 工作流
+    - path: ".github/workflows/**"
+      instructions: |
+        【CI/CD 安全规范】
+        1. 生产环境（火山云 118.196.64.48）的部署步骤禁止自动触发，只能手动执行
+        2. 测试环境部署必须验证 `CELERY_PRODUCTION_TASKS_DISABLED=true`
+        3. 禁止在工作流中打印 secrets 内容
+        4. 新增 workflow 触发分支时，注意不要给个人特性分支开启自动部署
+
+    # ❽ 运维脚本
+    - path: "ops/**"
+      instructions: |
+        【运维脚本规范】
+        1. 涉及生产服务器的操作必须有二次确认步骤（read -p "确认？" 或明确的注释警告）
+        2. SSH 密钥路径统一为 `~/.ssh/openclaw1.1.pem`，禁止在脚本中硬编码密钥内容
+        3. 数据库操作脚本必须先备份再操作（pg_dump）
+
+    # ❾ 早晚报与通知任务
+    - path: "backend/apps/secretary/briefing_tasks.py"
+      instructions: |
+        【早晚报任务规范】
+        1. LLM prompt 字数建议控制在 400 token 以内（quick_chat max_tokens=400）
+        2. 所有数据采集函数必须有 try/except 保护，失败时返回默认空值而非让整个任务崩溃
+        3. 新增指标采集函数后，必须在 _collect_all_metrics() 中注册
+        4. Celery Beat 任务名称必须与 celery_config.py 中的 beat_schedule 保持一致
+
+chat:
+  auto_reply: true
