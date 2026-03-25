@@ -56,3 +56,6 @@ volcengine-python-sdk[ark]>=5.0.9
 
 # 监控（可选）
 sentry-sdk>=2.0.0
+
+# MySQL 连接（用于从 utest_platform 导入受试者历史数据）
+pymysql>=1.1.0
