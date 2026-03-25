@@ -13,21 +13,9 @@ import {
   PieChart,
   Sparkles,
   TrendingUp,
-<<<<<<< HEAD
-  Film,
-  UserCircle,
-  Clock,
-  FileStack,
-  Network,
-  Database,
-  Hammer,
-  BookMarked,
-  GitBranch,
-  Inbox,
-  Sparkles,
-  type LucideIcon,
-=======
->>>>>>> origin/main
+  MessageSquare,
+  BookOpen,
+  Brain,
 } from 'lucide-react'
 import { Link, Outlet } from 'react-router-dom'
 import { MobileWorkstationLayout, type MobileWorkstationNavItem } from '@cn-kis/ui-kit'
@@ -41,86 +29,17 @@ function ApiClientInit() {
   return null
 }
 
-<<<<<<< HEAD
-// 信息架构：岗位、治理、价值为主视角；每项带 permissions 供 canSeeMenu 使用
-const navGroups: NavGroup[] = [
-  {
-    label: '运营总览',
-    items: [
-      { path: '/portal', label: '数字员工门户', icon: Bot, permissions: [] },
-      { path: '/ops-overview', label: '运行总览', icon: LayoutDashboard, permissions: [] },
-      { path: '/actions', label: '动作中心', icon: MessageSquare, permissions: [] },
-      { path: '/replay', label: '执行回放', icon: Film, permissions: [] },
-      { path: '/policies', label: '策略中心', icon: List, permissions: [] },
-      { path: '/my-assistants', label: '我的助手', icon: UserCircle, permissions: [] },
-      { path: '/my-activity', label: '我的动态', icon: Clock, permissions: [] },
-      { path: '/daily-brief', label: '经营日报', icon: FileStack, permissions: [] },
-    ],
-  },
-  {
-    label: '邮件信号',
-    items: [
-      { path: '/mail-signals', label: '邮件事件', icon: Inbox, permissions: [] },
-      { path: '/mail-tasks', label: '任务草稿', icon: Sparkles, permissions: [] },
-    ],
-  },
-  {
-    label: '组织与花名册',
-    items: [
-      { path: '/roster', label: '数字员工花名册', icon: Users, permissions: [] },
-      { path: '/teams', label: '组织架构', icon: Network, permissions: [] },
-      { path: '/agents', label: 'Agent 目录', icon: Bot, permissions: ['dashboard.admin.manage'] },
-      { path: '/matrix', label: '工作台绑定矩阵', icon: Network, permissions: ['dashboard.admin.manage'] },
-    ],
-  },
-  {
-    label: '流程与协作',
-    items: [
-      { path: '/workflows', label: '协作流程定义', icon: Activity, permissions: ['dashboard.admin.manage'] },
-      { path: '/executions', label: '流程执行实况', icon: PlayCircle, permissions: [] },
-      { path: '/orchestration-monitor', label: '编排监控', icon: GitBranch, permissions: [] },
-    ],
-  },
-  {
-    label: '赋能中心',
-    items: [
-      { path: '/skills', label: '技能管理', icon: Wrench, permissions: ['dashboard.admin.manage'] },
-      { path: '/skill-registry', label: '技能注册表', icon: Database, permissions: [] },
-      { path: '/tools', label: '工具清单', icon: Hammer, permissions: [] },
-      { path: '/knowledge', label: '知识灌注', icon: BookOpen, permissions: [] },
-      { path: '/memory', label: '记忆档案', icon: BookMarked, permissions: [] },
-      { path: '/policy-learning', label: '策略学习', icon: Brain, permissions: [] },
-      { path: '/behavior', label: '行为策略配置', icon: Sliders, permissions: [] },
-      { path: '/knowledge-review', label: '知识委员会审核', icon: FileCheck, permissions: ['dashboard.admin.manage'] },
-    ],
-  },
-  {
-    label: '绩效与洞察',
-    items: [
-      { path: '/performance', label: '绩效仪表盘', icon: BarChart3, permissions: [] },
-      { path: '/value', label: '价值核算', icon: TrendingUp, permissions: [] },
-      { path: '/growth', label: '能力成长曲线', icon: Brain, permissions: [] },
-    ],
-  },
-  {
-    label: '治理与合规',
-    items: [
-      { path: '/audit', label: '行为审计', icon: FileText, permissions: [] },
-      { path: '/health', label: '通道健康与告警', icon: Radio, permissions: [] },
-      { path: '/gates', label: '验收门禁', icon: FileCheck, permissions: [] },
-      { path: '/upgrades', label: '升级管控', icon: TowerControl, permissions: [] },
-    ],
-  },
-=======
 const navItems = [
   { path: '/portal', label: '首页', icon: LayoutDashboard },
   { path: '/mail-signals', label: '邮件事件', icon: Inbox },
   { path: '/mail-tasks', label: '任务草稿', icon: Sparkles },
   { path: '/replay', label: '执行回放', icon: History },
-  { path: '/analytics', label: '复盘看板', icon: TrendingUp },
+  { path: '/daily-brief', label: '经营日报', icon: TrendingUp },
+  { path: '/analytics', label: '复盘看板', icon: PieChart },
   { path: '/proactive-insights', label: '主动洞察', icon: Eye },
-  { path: '/proactive-analytics', label: '洞察看板', icon: PieChart },
->>>>>>> origin/main
+  { path: '/proactive-analytics', label: '洞察看板', icon: Brain },
+  { path: '/chat', label: 'AI 对话', icon: MessageSquare },
+  { path: '/knowledge', label: '知识灌注', icon: BookOpen },
 ]
 
 function useVisibleNavItems(): MobileWorkstationNavItem[] {
