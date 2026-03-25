@@ -110,6 +110,8 @@ INSTALLED_APPS = [
     'apps.project_full_link',
     'apps.weekly_report',
     'apps.product_distribution',
+    # 数据采集入库
+    'apps.data_intake',
 ]
 
 MIDDLEWARE = [
