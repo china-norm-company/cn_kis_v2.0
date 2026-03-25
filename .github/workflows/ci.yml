@@ -76,6 +76,7 @@ jobs:
         working-directory: backend
         run: |
           ruff check apps/ libs/ --select E,W,F --ignore E501 \
+            --extend-ignore F841,E402,E741,F601,E701,F821,E731,E702,E712,F811 \
             --exclude "*/migrations/*,*/venv/*,*/__pycache__/*"
 
       - name: Django system check

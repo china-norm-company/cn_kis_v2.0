@@ -269,7 +269,7 @@ class EkbClient:
     def iter_roles(self) -> Iterator[List[dict]]:
         """遍历角色定义（roledefs 405，此接口不可用，返回空）"""
         return
-        yield  # noqa: unreachable
+        yield  # noqa: F704
 
     def iter_fee_types(self) -> Iterator[List[dict]]:
         """遍历费用类型（231 个，响应直接含 items 列表，无 count）"""
