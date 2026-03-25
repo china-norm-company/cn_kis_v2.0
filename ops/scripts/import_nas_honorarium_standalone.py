@@ -90,6 +90,52 @@ def hash_field(value: str) -> str:
 def mask_last4(value: str) -> str:
     return value[-4:] if len(value) >= 4 else value
 
+# 中国行政区划代码 → 省份名（前2位）
+_PROVINCE_CODE = {
+    '11': '北京', '12': '天津', '13': '河北', '14': '山西', '15': '内蒙古',
+    '21': '辽宁', '22': '吉林', '23': '黑龙江',
+    '31': '上海', '32': '江苏', '33': '浙江', '34': '安徽', '35': '福建',
+    '36': '江西', '37': '山东',
+    '41': '河南', '42': '湖北', '43': '湖南', '44': '广东', '45': '广西',
+    '46': '海南',
+    '50': '重庆', '51': '四川', '52': '贵州', '53': '云南', '54': '西藏',
+    '61': '陕西', '62': '甘肃', '63': '青海', '64': '宁夏', '65': '新疆',
+    '71': '台湾', '81': '香港', '82': '澳门',
+}
+
+def parse_idcard_info(ic: str) -> dict:
+    """
+    从18位身份证提取结构化信息：出生日期、性别、年龄、户籍省份。
+    ID 格式：RRRRRRYYYYMMDDXXXC
+      - 1-6:  行政区划代码
+      - 7-14: 出生日期 YYYYMMDD
+      - 15-17: 顺序码（第17位奇=男，偶=女）
+      - 18:   校验码
+    """
+    result = {'gender': '', 'birth_date': None, 'age': None, 'province': ''}
+    if not valid_idcard(ic) or len(ic) < 17:
+        return result
+    try:
+        year  = int(ic[6:10])
+        month = int(ic[10:12])
+        day   = int(ic[12:14])
+        birth_date = datetime.date(year, month, day)
+        today = datetime.date.today()
+        age = today.year - birth_date.year - (
+            (today.month, today.day) < (birth_date.month, birth_date.day)
+        )
+        gender = 'male' if int(ic[16]) % 2 == 1 else 'female'
+        province = _PROVINCE_CODE.get(ic[:2], '')
+        result.update({
+            'gender': gender,
+            'birth_date': birth_date,
+            'age': max(0, age),
+            'province': province,
+        })
+    except Exception:
+        pass
+    return result
+
 # ────────── 工具函数 ──────────────────────────────────────────────────────────
 PLATFORM_MAP = {
     '八羿': '八羿', '捷仕达': '福建捷仕达', '安徽创启': '安徽创启',
@@ -586,62 +632,138 @@ def main():
     ok_unmatched_pay = 0
     now_ts = datetime.datetime.now(datetime.timezone.utc)
 
-    # ── 第一步：为 unmatched 记录创建待审核受试者候选并获取其 subject_id ────────
-    # 策略：每个 unmatched 记录创建一个 t_subject（state='pending'）+ t_ext_ingest_candidate
-    # 这样礼金记录有合法的 subject_id 外键，且可通过审核界面处理
-    print('\n为未匹配记录创建受试者候选...')
-    unmatched_subject_ids = {}  # index -> subject_id
+    # ── 第一步：为 unmatched 记录创建完整受试者档案 ──────────────────────────────
+    # 策略：为每个 unmatched 记录创建完整的 t_subject + t_subject_profile
+    # subject_no 格式：NAS-{YYYYMM}-{seq:05d}（最长16字符，符合 VARCHAR(20) 限制）
+    # 从身份证推导 birth_date、gender、age，不丢弃任何可用信息
+    print('\n为未匹配记录创建完整受试者档案...')
 
-    cur.execute("SELECT MAX(id) FROM t_subject")
-    max_sid = cur.fetchone()[0] or 0
+    # 查询当前 NAS 导入序号最大值，续号
+    ym_str = datetime.date.today().strftime('%Y%m')
+    cur.execute(
+        "SELECT subject_no FROM t_subject WHERE subject_no LIKE %s ORDER BY subject_no DESC LIMIT 1",
+        (f'NAS-{ym_str}-%',)
+    )
+    row = cur.fetchone()
+    if row:
+        try:
+            nas_seq = int(row[0].split('-')[-1]) + 1
+        except Exception:
+            nas_seq = 1
+    else:
+        nas_seq = 1
 
-    unmatched_cand_rows = []
-    for idx, rec in enumerate(unmatched):
-        name   = rec.get('name', '') or '未知'
-        phone  = rec.get('phone', '') or ''
-        ic     = rec.get('id_card', '') or ''
-        note_c = rec.get('_conflict', '') or rec.get('note', '')
-        confidence = 'low' if not phone and not ic else ('medium' if ic else 'phone_only')
-        dup_f  = rec.get('_dup_flag', '')
+    # 为每个 unmatched 记录准备完整的 t_subject 数据
+    unmatched_subj_rows = []   # 用于插入 t_subject
+    unmatched_profile_data = []  # 用于插入 t_subject_profile（拿到 id 后填）
 
-        unmatched_cand_rows.append((
-            name, phone, ic[:4] if len(ic) >= 4 else '',  # name, phone, id_card_snippet
-            confidence, note_c[:200], dup_f[:200],
+    for rec in unmatched:
+        name  = (rec.get('name', '') or '').strip() or '未知'
+        phone = rec.get('phone', '') or ''
+        ic    = rec.get('id_card', '') or ''
+        ic_info = parse_idcard_info(ic)
+
+        gender   = ic_info.get('gender', '') or ('female' if '女' in name else '')
+        age      = ic_info.get('age')          # None 如果无法推导
+        province = ic_info.get('province', '')
+
+        sno = f'NAS-{ym_str}-{nas_seq:05d}'
+        nas_seq += 1
+
+        # 身份证加密存储
+        ic_enc  = encrypt_field(ic) if valid_idcard(ic) else ''
+        ic_hash = hash_field(ic) if valid_idcard(ic) else ''
+        ic_last4 = ic[-4:] if len(ic) >= 4 else ''
+
+        unmatched_subj_rows.append((
+            sno, name, phone, gender, age,
+            ic_enc,   # t_subject.id_card_encrypted
+            now_ts, now_ts,
         ))
+        unmatched_profile_data.append({
+            'birth_date': ic_info.get('birth_date'),
+            'ic_enc': ic_enc,
+            'ic_hash': ic_hash,
+            'ic_last4': ic_last4,
+            'province': province,
+            'gender': gender,
+        })
+        rec['_has_idcard'] = bool(ic_enc)
 
-    # 批量插入 t_subject（state='pending'），每个人一条
-    unmatched_subj_sql = """
-        INSERT INTO t_subject (name, phone, status, source_channel, create_time, update_time, is_deleted)
-        VALUES (%s, %s, 'pre_screening', '', %s, %s, false)
-        RETURNING id
-    """
-    unmatched_subj_sql = """
-        INSERT INTO t_subject (subject_no, name, phone, status, source_channel, create_time, update_time, is_deleted)
-        VALUES (%s, %s, %s, 'pre_screening', '', %s, %s, false)
+    # 批量插入 t_subject，并回收 id
+    subj_sql = """
+        INSERT INTO t_subject
+            (subject_no, name, phone, gender, age, id_card_encrypted,
+             skin_type, risk_level, status, source_channel,
+             auth_level, create_time, update_time, is_deleted)
+        VALUES (%s, %s, %s, %s, %s, %s, '', '', 'pending_review', 'nas_import', '', %s, %s, false)
+        ON CONFLICT (subject_no) DO NOTHING
         RETURNING id
     """
     conn.autocommit = False
     new_sids = []
     try:
-        # 生成唯一 subject_no（NAS-UNMATCHED-{timestamp}-{seq}）
-        ts_str = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
-        for seq_i, row in enumerate(unmatched_cand_rows):
-            name_v, phone_v = row[0], row[1]
-            sno = f'NAS-UNMATCHED-{ts_str}-{seq_i + 1:05d}'
-            cur.execute(unmatched_subj_sql, (sno, name_v, phone_v, now_ts, now_ts))
-            new_sid = cur.fetchone()[0]
-            new_sids.append(new_sid)
+        for i, row_data in enumerate(unmatched_subj_rows):
+            cur.execute(subj_sql, row_data)
+            result = cur.fetchone()
+            new_sids.append(result[0] if result else None)
         conn.commit()
-        print(f'  ✅ 已创建受试者候选: {len(new_sids)} 条')
+        created_count = sum(1 for s in new_sids if s is not None)
+        print(f'  ✅ 新建受试者: {created_count} 条（{len(unmatched) - created_count} 条因编号冲突跳过）')
     except Exception as e:
         conn.rollback()
-        print(f'  ⚠️  创建受试者候选失败: {e}，unmatched 礼金将以 note 形式记录到 t_ext_ingest_candidate')
+        print(f'  ❌ 创建受试者失败: {e}')
         new_sids = [None] * len(unmatched)
     conn.autocommit = True
 
+    # 批量插入 t_subject_profile（仅针对成功创建的新受试者）
+    profile_rows = []
+    for i, sid in enumerate(new_sids):
+        if not sid:
+            continue
+        pd = unmatched_profile_data[i]
+        profile_rows.append((
+            sid,
+            pd['birth_date'],
+            pd['ic_enc'],
+            pd['ic_hash'],
+            pd['ic_last4'],
+            pd['province'],  # 写入 province 字段
+            now_ts, now_ts,
+        ))
+
+    if profile_rows:
+        from psycopg2.extras import execute_values
+        profile_sql = """
+            INSERT INTO t_subject_profile
+                (subject_id, birth_date, id_card_encrypted, id_card_hash, id_card_last4,
+                 province, age, ethnicity, education, occupation, marital_status,
+                 name_pinyin, phone_backup, email, city, district, address, postal_code,
+                 emergency_contact_name, emergency_contact_phone, emergency_contact_relation,
+                 total_enrollments, total_completed, privacy_level,
+                 consent_data_sharing, consent_rwe_usage, consent_biobank, consent_follow_up,
+                 data_retention_years, create_time, update_time)
+            VALUES %s
+            ON CONFLICT (subject_id) DO NOTHING
+        """
+        profile_template = (
+            "(%s, %s, %s, %s, %s, %s, "
+            # age: 从 birth_date 推导（存入 profile.age）
+            "NULL, '', '', '', '', '', '', '', '', '', '', '', '', '', '', "
+            "0, 0, 'standard', false, false, false, false, 5, %s, %s)"
+        )
+        conn.autocommit = False
+        try:
+            execute_values(cur, profile_sql, profile_rows, template=profile_template, page_size=500)
+            conn.commit()
+            print(f'  ✅ 新建受试者 profile: {len(profile_rows)} 条（含 birth_date/id_card/province）')
+        except Exception as e:
+            conn.rollback()
+            print(f'  ❌ 创建受试者 profile 失败: {e}')
+        conn.autocommit = True
+
     for idx, rec in enumerate(unmatched):
         rec['_subject_id'] = new_sids[idx] if idx < len(new_sids) else None
-        rec['_has_idcard'] = False
 
     # ── 批量写入 t_subject_payment（matched + unmatched 全部）────────────────
     print('\n预加密银行卡号并准备批量数据...')
@@ -807,9 +929,10 @@ def main():
 def _run_backfill(cur, conn, db_by_phone, db_by_last4_name,
                   dry_run: bool, matched_records=None):
     """
-    反向补全：从礼金档案中找到完整身份证，更新 t_subject_profile.id_card_*
-    使用临时表批量 UPDATE，将 60K 次网络往返压缩为 3 次。
-    仅更新 id_card_encrypted 为空或 id_card_hash 为空的受试者。
+    反向补全：从礼金档案中找到完整身份证，更新已匹配受试者的：
+    - t_subject_profile: id_card_encrypted/hash/last4, birth_date, province
+    - t_subject: id_card_encrypted, gender（如为空）, age（如为空）
+    使用临时表批量 UPDATE，将大量网络往返压缩为少数几次。
     """
     if matched_records is None:
         print('[backfill-only] 重新扫描礼金文件获取身份证...')
@@ -820,7 +943,7 @@ def _run_backfill(cur, conn, db_by_phone, db_by_last4_name,
         files = [f for f in files if not os.path.basename(f).startswith('~')]
         matched_records = []
         for fp in files:
-            rows = parse_file(fp)
+            rows, _, _, _ = parse_file(fp)
             for r in rows:
                 phone = norm_phone(r.get('phone', ''))
                 ic    = norm_idcard(r.get('id_card', ''))
@@ -841,72 +964,101 @@ def _run_backfill(cur, conn, db_by_phone, db_by_last4_name,
                     })
         print(f'  backfill 候选: {len(matched_records)} 条')
 
-    # 收集需要补全的数据（去重：每个 subject_id 只取第一条有效身份证）
-    backfill_data = {}  # subject_id -> (ic_hash, ic_enc, ic_last4)
+    # 收集需要补全的数据（每个 subject_id 只取第一条有效身份证）
+    backfill_data = {}  # subject_id -> (ic_hash, ic_enc, ic_last4, birth_date, gender, age, province)
     for rec in matched_records:
         ic = norm_idcard(rec.get('id_card', ''))
         if not valid_idcard(ic):
             continue
-        if rec.get('_has_idcard'):
+        sid = rec.get('_subject_id')
+        if not sid or sid in backfill_data:
             continue
-        sid = rec['_subject_id']
-        if sid in backfill_data:
-            continue  # 同一受试者只用第一条
-        backfill_data[sid] = (hash_field(ic), encrypt_field(ic), ic[-4:])
+        ic_info = parse_idcard_info(ic)
+        backfill_data[sid] = (
+            hash_field(ic),
+            encrypt_field(ic),
+            ic[-4:],
+            ic_info.get('birth_date'),
+            ic_info.get('gender', ''),
+            ic_info.get('age'),
+            ic_info.get('province', ''),
+        )
 
     if not backfill_data:
         return 0
 
-    print(f'  需补全身份证的受试者: {len(backfill_data)} 人')
+    print(f'  需补全身份证/出生日期的受试者: {len(backfill_data)} 人')
 
     if dry_run:
         return len(backfill_data)
 
     from psycopg2.extras import execute_values
 
-    # 使用临时表批量 UPDATE（3 次网络往返替代 60K 次）
     conn.autocommit = False
     try:
         cur.execute("""
             CREATE TEMP TABLE _backfill_idcard (
-                subject_id BIGINT,
+                subject_id   BIGINT,
                 ic_encrypted TEXT,
-                ic_hash TEXT,
-                ic_last4 VARCHAR(4)
+                ic_hash      TEXT,
+                ic_last4     VARCHAR(4),
+                birth_date   DATE,
+                gender       VARCHAR(10),
+                age          INTEGER,
+                province     VARCHAR(50)
             ) ON COMMIT DROP
         """)
 
-        rows = [(sid, enc, hsh, l4) for sid, (hsh, enc, l4) in backfill_data.items()]
+        rows = [
+            (sid, enc, hsh, l4, bd, gd, ag, pv)
+            for sid, (hsh, enc, l4, bd, gd, ag, pv) in backfill_data.items()
+        ]
         execute_values(cur,
-            "INSERT INTO _backfill_idcard (subject_id, ic_encrypted, ic_hash, ic_last4) VALUES %s",
+            """INSERT INTO _backfill_idcard
+               (subject_id, ic_encrypted, ic_hash, ic_last4, birth_date, gender, age, province)
+               VALUES %s""",
             rows, page_size=2000
         )
 
+        # 更新 t_subject_profile：id_card 字段 + birth_date + province
         cur.execute("""
             UPDATE t_subject_profile sp
             SET id_card_encrypted = b.ic_encrypted,
                 id_card_hash      = b.ic_hash,
                 id_card_last4     = b.ic_last4,
+                birth_date        = COALESCE(sp.birth_date, b.birth_date),
+                province          = CASE WHEN sp.province = '' OR sp.province IS NULL
+                                         THEN b.province ELSE sp.province END,
                 update_time       = NOW()
             FROM _backfill_idcard b
             WHERE sp.subject_id = b.subject_id
               AND (sp.id_card_encrypted IS NULL OR sp.id_card_encrypted = ''
-                   OR sp.id_card_hash IS NULL OR sp.id_card_hash = '')
+                   OR sp.id_card_hash IS NULL OR sp.id_card_hash = ''
+                   OR sp.birth_date IS NULL)
         """)
         profile_updated = cur.rowcount
 
+        # 更新 t_subject：id_card_encrypted + gender（空时）+ age（空时）
         cur.execute("""
             UPDATE t_subject s
-            SET id_card_encrypted = b.ic_encrypted,
+            SET id_card_encrypted = CASE WHEN s.id_card_encrypted = '' OR s.id_card_encrypted IS NULL
+                                         THEN b.ic_encrypted ELSE s.id_card_encrypted END,
+                gender            = CASE WHEN s.gender = '' OR s.gender IS NULL
+                                         THEN b.gender ELSE s.gender END,
+                age               = CASE WHEN s.age IS NULL THEN b.age ELSE s.age END,
                 update_time       = NOW()
             FROM _backfill_idcard b
             WHERE s.id = b.subject_id
-              AND (s.id_card_encrypted IS NULL OR s.id_card_encrypted = '')
+              AND (s.id_card_encrypted = '' OR s.id_card_encrypted IS NULL
+                   OR s.gender = '' OR s.gender IS NULL
+                   OR s.age IS NULL)
         """)
         subject_updated = cur.rowcount
 
         conn.commit()
-        print(f'  ✅ 反向补全完成: t_subject_profile 更新 {profile_updated} 条，t_subject 更新 {subject_updated} 条')
+        print(f'  ✅ 反向补全完成:')
+        print(f'     t_subject_profile 更新 {profile_updated} 条（id_card + birth_date + province）')
+        print(f'     t_subject 更新 {subject_updated} 条（id_card + gender + age）')
         return profile_updated
 
     except Exception as e:
