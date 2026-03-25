@@ -41,6 +41,7 @@ import {
 } from '../components/ProjectFullLink/AiParseProgressDialog'
 import { TableOfContents } from '../components/ProjectFullLink/TableOfContents'
 import { ProjectFormViewer } from '../components/ProjectFullLink/ProjectFormViewer'
+import type { JSONObject } from '../components/ProjectFullLink/ProjectFormViewer'
 import { VisitPlanPreviewDialog } from '../components/ProjectFullLink/VisitPlanPreviewDialog'
 import { convertParsedDataToVisitPlan } from '../utils/visitPlanConverter'
 import { protocolExtractV2Api } from '../lib/protocolExtractV2'
@@ -51,8 +52,6 @@ import {
   extractSubagentResult,
   extractSubagentExtractions,
 } from '../lib/protocolExtractUtils'
-
-type JSONObject = Record<string, unknown>
 
 const buildDefaultAiProgressItems = (): AiParseProgressItem[] =>
   SUBAGENTS.map((s) => ({ subagent: s, status: 'pending' }))
