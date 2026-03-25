@@ -115,14 +115,15 @@ export function ManagerDashboardPage() {
     queryFn: () => api.get<FallbackMetricsResponse>('/agents/fallback/metrics', { params: { days: 7 } }),
   })
 
-  const projects = data?.data?.projects ?? []
-  const summary = data?.data?.summary ?? {}
-  const routeCoverage = data?.data?.route_governance_preset_coverage
-  const routeTrend = data?.data?.route_governance_preset_trend
-  const routeAlert = data?.data?.route_governance_preset_alert
+  const overview = data?.data as unknown as ManagerOverviewResponse | undefined
+  const projects = overview?.projects ?? []
+  const summary = overview?.summary ?? {}
+  const routeCoverage = overview?.route_governance_preset_coverage
+  const routeTrend = overview?.route_governance_preset_trend
+  const routeAlert = overview?.route_governance_preset_alert
   const routeThresholds = routeAlert?.thresholds || { coverage_rate_min: 0.5, applied_7d_min: 1 }
-  const thresholdTimeline = data?.data?.route_governance_threshold_change_timeline
-  const thresholdSummary = data?.data?.route_governance_threshold_change_summary
+  const thresholdTimeline = overview?.route_governance_threshold_change_timeline
+  const thresholdSummary = overview?.route_governance_threshold_change_summary
   const thresholdTimelineItems = thresholdTimeline?.items || []
 
   const timelineOperators = useMemo(() => {
