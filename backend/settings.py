@@ -345,6 +345,11 @@ FEISHU_APPROVAL_CODE_CONTRACT = os.getenv('FEISHU_APPROVAL_CODE_CONTRACT', '')
 FEISHU_APPROVAL_CODE_WORKORDER = os.getenv('FEISHU_APPROVAL_CODE_WORKORDER', '')
 FEISHU_APPROVAL_CODE_RESOURCE_DEMAND = os.getenv('FEISHU_APPROVAL_CODE_RESOURCE_DEMAND', '')
 
+# 维周·执行台：执行订单保存后可选 HTTP 推送 JSON（留空则不调用；见 apps.scheduling.workorder_sync）
+RECRUITMENT_WORKORDER_SYNC_URL = os.getenv('RECRUITMENT_WORKORDER_SYNC_URL', '').strip()
+RECEPTION_WORKORDER_SYNC_URL = os.getenv('RECEPTION_WORKORDER_SYNC_URL', '').strip()
+EVALUATOR_WORKORDER_SYNC_URL = os.getenv('EVALUATOR_WORKORDER_SYNC_URL', '').strip()
+
 # ============================================================================
 # 微信小程序（受试者端）
 # ============================================================================

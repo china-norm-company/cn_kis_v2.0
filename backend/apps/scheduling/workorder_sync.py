@@ -1,19 +1,20 @@
 """
-维周·执行台 — 工单同步到招招、和序
+维周·执行台 — 工单同步到接待台 / 招募台 / 评估台（及可选 HTTP）
 
 在「执行订单上传保存」与「详情页编辑保存」后：
 1. 直接写入本系统 product_distribution_work_order 表，供接待台工单管理展示（执行台→接待台数据联通）
-2. 若配置了 RECRUITMENT_WORKORDER_SYNC_URL / RECEPTION_WORKORDER_SYNC_URL，则额外推送 JSON 到对应 URL
+2. 若配置了 RECRUITMENT_WORKORDER_SYNC_URL / RECEPTION_WORKORDER_SYNC_URL / EVALUATOR_WORKORDER_SYNC_URL，则额外推送 JSON 到对应 URL
 
 触发时机：
 1. 执行订单上传并解析落库后（save_execution_order）
 2. 详情页编辑后保存（update_execution_order）
 
 推送内容：
-- 招招：项目信息 + 招募计划 + 排期计划
-- 和序：项目信息 + 排期计划 + 项目访视 + 样本数量 + 备份数量
+- 招募台（HTTP）：项目信息 + 招募计划 + 排期计划 + 访视计划（__projectVisitTable）
+- 和序（HTTP）：项目信息 + 排期计划 + 项目访视 + 样本数量 + 备份数量
+- 评估台（HTTP）：与和序同一套 payload（_build_payload_for_reception）
 
-若未配置 RECRUITMENT_WORKORDER_SYNC_URL / RECEPTION_WORKORDER_SYNC_URL，则跳过对应推送并打日志。
+若未配置上述 URL，则跳过对应 HTTP 推送并打日志。
 """
 import json
 import logging
@@ -164,27 +165,8 @@ def _ensure_serializable(val):
     return str(val)
 
 
-def _build_payload_for_recruitment(rec):
-    """组装发给招招的工单：项目信息 + 招募计划 + 排期计划。"""
-    first = _first_row_dict(rec)
-    project_info = {k: _ensure_serializable(first.get(k)) for k in PROJECT_FIELD_LABELS if k in first}
-    recruitment_plan = {k: _ensure_serializable(first.get(k)) for k in RECRUITMENT_FIELD_LABELS if k in first}
-    schedule_plan = {k: _ensure_serializable(first.get(k)) for k in SCHEDULE_PLAN_FIELD_LABELS if k in first}
-    return {
-        'execution_order_id': rec.id,
-        'project_info': project_info,
-        'recruitment_plan': recruitment_plan,
-        'schedule_plan': schedule_plan,
-    }
-
-
-def _build_payload_for_reception(rec):
-    """组装发给和序的工单：项目信息 + 排期计划 + 项目访视 + 样本数量 + 备份数量。"""
-    first = _first_row_dict(rec)
-    project_info = {k: _ensure_serializable(first.get(k)) for k in PROJECT_FIELD_LABELS if k in first}
-    schedule_plan = {k: _ensure_serializable(first.get(k)) for k in SCHEDULE_PLAN_FIELD_LABELS if k in first}
-    sample_size = first.get('样本数量') or first.get('样本量') or first.get('最低样本量') or ''
-    backup_sample_size = first.get('备份数量') or first.get('备份样本量') or ''
+def _project_visit_list_from_first(first: dict) -> list:
+    """从首行解析项目访视表（访视计划），与和序 payload 一致。"""
     project_visit_raw = first.get('__projectVisitTable')
     project_visit = []
     if project_visit_raw:
@@ -196,6 +178,33 @@ def _build_payload_for_reception(rec):
                 project_visit = [_ensure_serializable(row) for row in parsed] if isinstance(parsed, list) else []
             except (TypeError, ValueError):
                 pass
+    return project_visit
+
+
+def _build_payload_for_recruitment(rec):
+    """组装发给招募台的工单：项目信息 + 招募计划 + 排期计划 + 访视计划。"""
+    first = _first_row_dict(rec)
+    project_info = {k: _ensure_serializable(first.get(k)) for k in PROJECT_FIELD_LABELS if k in first}
+    recruitment_plan = {k: _ensure_serializable(first.get(k)) for k in RECRUITMENT_FIELD_LABELS if k in first}
+    schedule_plan = {k: _ensure_serializable(first.get(k)) for k in SCHEDULE_PLAN_FIELD_LABELS if k in first}
+    project_visit = _project_visit_list_from_first(first)
+    return {
+        'execution_order_id': rec.id,
+        'project_info': project_info,
+        'recruitment_plan': recruitment_plan,
+        'schedule_plan': schedule_plan,
+        'project_visit': project_visit,
+    }
+
+
+def _build_payload_for_reception(rec):
+    """组装发给和序 / 评估台的工单：项目信息 + 排期计划 + 项目访视 + 样本数量 + 备份数量。"""
+    first = _first_row_dict(rec)
+    project_info = {k: _ensure_serializable(first.get(k)) for k in PROJECT_FIELD_LABELS if k in first}
+    schedule_plan = {k: _ensure_serializable(first.get(k)) for k in SCHEDULE_PLAN_FIELD_LABELS if k in first}
+    sample_size = first.get('样本数量') or first.get('样本量') or first.get('最低样本量') or ''
+    backup_sample_size = first.get('备份数量') or first.get('备份样本量') or ''
+    project_visit = _project_visit_list_from_first(first)
     return {
         'execution_order_id': rec.id,
         'project_info': project_info,
@@ -283,7 +292,7 @@ def _post_json(url, payload):
 def sync_workorders_to_workstations(rec):
     """
     1. 将执行订单同步到 product_distribution_work_order（接待台工单管理）
-    2. 若已配置 URL，则额外推送 JSON 到招招、和序
+    2. 若已配置 URL，则额外推送 JSON 到招募台、和序、评估台
     """
     if not rec or not getattr(rec, 'data', None):
         return
@@ -291,18 +300,23 @@ def sync_workorders_to_workstations(rec):
         _sync_to_reception_workorder(rec)
     except Exception as e:
         logger.warning('工单同步至接待台失败 execution_order_id=%s: %s', getattr(rec, 'id', None), e)
-    url_recruitment = getattr(settings, 'RECRUITMENT_WORKORDER_SYNC_URL', None) or ''
-    url_reception = getattr(settings, 'RECEPTION_WORKORDER_SYNC_URL', None) or ''
-    if not url_recruitment.strip() and not url_reception.strip():
+    url_recruitment = (getattr(settings, 'RECRUITMENT_WORKORDER_SYNC_URL', None) or '').strip()
+    url_reception = (getattr(settings, 'RECEPTION_WORKORDER_SYNC_URL', None) or '').strip()
+    url_evaluator = (getattr(settings, 'EVALUATOR_WORKORDER_SYNC_URL', None) or '').strip()
+    if not url_recruitment and not url_reception and not url_evaluator:
         return
     try:
-        if url_recruitment.strip():
+        if url_recruitment:
             payload = _build_payload_for_recruitment(rec)
-            _post_json(url_recruitment.strip(), payload)
-            logger.info('工单同步已推送招招 execution_order_id=%s', rec.id)
-        if url_reception.strip():
+            _post_json(url_recruitment, payload)
+            logger.info('工单同步已推送招募台 execution_order_id=%s', rec.id)
+        if url_reception:
             payload = _build_payload_for_reception(rec)
-            _post_json(url_reception.strip(), payload)
+            _post_json(url_reception, payload)
             logger.info('工单同步已推送和序 execution_order_id=%s', rec.id)
+        if url_evaluator:
+            payload = _build_payload_for_reception(rec)
+            _post_json(url_evaluator, payload)
+            logger.info('工单同步已推送评估台 execution_order_id=%s', rec.id)
     except Exception as e:
         logger.warning('工单同步失败 execution_order_id=%s: %s', getattr(rec, 'id', None), e)

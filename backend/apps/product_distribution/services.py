@@ -313,6 +313,26 @@ def work_order_update(work_order_id: int, data: dict, user_id: Optional[int] = N
     }
 
 
+@transaction.atomic(using="default")
+def work_order_upsert_by_project_no(
+    data: dict, user_id: Optional[int] = None, user_name: Optional[str] = None
+) -> dict:
+    """按项目编号新建或更新工单（执行订单同步至接待台等场景）。返回含 updated: bool。"""
+    project_no = (data.get("project_no") or "").strip()
+    if not project_no:
+        raise ValueError("项目编号不能为空")
+    existing = ProductDistributionWorkOrder.objects.filter(project_no=project_no, is_delete=0).first()
+    if existing:
+        out = work_order_update(existing.id, data, user_id=user_id)
+        if out is None:
+            return {"updated": False, "error": "not_found", "project_no": project_no}
+        out["updated"] = True
+        return out
+    out = work_order_create(data, user_id=user_id, user_name=user_name)
+    out["updated"] = False
+    return out
+
+
 # ---------- 枚举（固定选项，与 KIS enum_mappings 语义一致） ----------
 
 EXECUTION_STAGE_OPTIONS = [
