@@ -125,7 +125,7 @@ export interface ConsentStats {
   returned_resign_row_count?: number
 }
 
-/** 按现场粗筛/到场日（PreScreeningRecord.pre_screening_date）拆分的批次进度 */
+/** 按现场初筛/到场日（PreScreeningRecord.pre_screening_date）拆分的批次进度 */
 export interface ScreeningBatchConsent {
   /** ISO 日期 YYYY-MM-DD */
   screening_date: string
@@ -137,7 +137,7 @@ export interface ScreeningBatchConsent {
   icf_count: number
   /** cohort_subject_count × icf_count，用于判断尚未生成签署任务 */
   expected_consent_rows: number
-  /** 来自知情配置「计划现场日」且当日尚无粗筛/筛选受试者映射时为 true */
+  /** 来自知情配置「计划现场日」且当日尚无初筛/筛选受试者映射时为 true */
   is_planned_placeholder?: boolean
   /** 该批次为测试筛选计划日（与正式筛选区分展示） */
   is_test_screening?: boolean
@@ -194,7 +194,7 @@ export interface ProtocolConsentOverview {
   screening_batch_count?: number
   earliest_screening_date?: string | null
   latest_screening_date?: string | null
-  /** screening=粗筛/正式筛选；consent_activity_fallback=无现场数据时按首条知情记录创建日拆分；none=无分日数据 */
+  /** screening=初筛/正式筛选；consent_activity_fallback=无现场数据时按首条知情记录创建日拆分；none=无分日数据 */
   screening_batch_source?: 'screening' | 'consent_activity_fallback' | 'none' | 'planned_config'
   /** 协议知情配置中登记的计划现场日（最多 4 天），供列表展示 */
   planned_screening_dates?: string[]

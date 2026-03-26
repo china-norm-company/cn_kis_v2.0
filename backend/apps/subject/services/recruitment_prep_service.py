@@ -1,7 +1,7 @@
 """
 招募准备材料生成服务（数字人驱动）
 
-从协议/招募计划生成：入排口径摘要、FAQ 草稿、粗筛问卷草稿、渠道文案、海报文案。
+从协议/招募计划生成：入排口径摘要、FAQ 草稿、初筛问卷草稿、渠道文案、海报文案。
 供 protocol-to-startup-pack 与招募台「生成招募准备包」使用。
 """
 import logging
@@ -18,7 +18,7 @@ def generate_recruitment_prep_draft(
     protocol_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
-    生成招募准备包草稿（海报文案、渠道策略、FAQ、粗筛问卷）。
+    生成招募准备包草稿（海报文案、渠道策略、FAQ、初筛问卷）。
 
     优先使用 plan_id（招募计划），否则用 protocol_id 从协议 parsed_data 抽取。
     """
@@ -84,7 +84,7 @@ def _build_faq_draft(title: str, inclusion: List, exclusion: List) -> List[Dict[
     faqs = [
         {'q': '本研究主要考察什么？', 'a': f'本研究为「{title}」，具体目的与访视安排以知情同意书为准。'},
         {'q': '参加研究需要满足哪些条件？', 'a': '需符合方案规定的入组标准且不符合排除标准，具体由研究医生判断。'},
-        {'q': '参加研究有哪些流程？', 'a': '报名后经粗筛、筛选、知情同意与基线访视后正式入组，之后按访视计划到院随访。'},
+        {'q': '参加研究有哪些流程？', 'a': '报名后经初筛、筛选、知情同意与基线访视后正式入组，之后按访视计划到院随访。'},
     ]
     if inclusion:
         faqs.append({

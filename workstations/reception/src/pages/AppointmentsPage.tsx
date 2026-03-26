@@ -39,7 +39,7 @@ function subjectPhonesMatch(stored: string | undefined, input: string | undefine
 }
 
 const TASK_LABEL_MAP: Record<QueueItem['task_type'], string> = {
-  pre_screening: '粗筛',
+  pre_screening: '初筛',
   screening: '筛选',
   visit: '访视',
   extra_visit: '加访',
@@ -2015,7 +2015,7 @@ export default function AppointmentsPage() {
                             <>
                               {item.task_type === 'pre_screening' && (
                                 <Button className="min-h-8 mr-1" size="sm" variant="outline" onClick={() => window.open(`/recruitment/#/prescreening?subject_id=${item.subject_id}`, '_blank')}>
-                                  发起粗筛
+                                  发起初筛
                                 </Button>
                               )}
                               {/* 打印流程卡：暂不展示，恢复时取消下面注释

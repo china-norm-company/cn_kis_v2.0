@@ -98,7 +98,7 @@ export default function ScreeningStatusPage() {
               active
             />
             <StepItem
-              label="粗筛"
+              label="初筛"
               status={entry.pre_screening?.result || (entry.pre_screening ? 'pending' : '')}
               date={entry.pre_screening?.date || undefined}
               active={!!entry.pre_screening}

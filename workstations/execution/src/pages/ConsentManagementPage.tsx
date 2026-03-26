@@ -2008,7 +2008,7 @@ const SCREENING_SCHEDULE_MAX_ROWS = 16
 
 /**
  * 将「签署进度」里已有但尚未写入 screening_schedule 的现场日补进编辑行（预约人数默认取该日到场面人数，至少 1）。
- * 解决列表批次来自粗筛/到场/知情兜底等数据，而计划未维护同日的问题。
+ * 解决列表批次来自初筛/到场/知情兜底等数据，而计划未维护同日的问题。
  */
 function mergeScreeningScheduleWithBatchDates(
   schedule: ScreeningDay[],

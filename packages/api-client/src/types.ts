@@ -299,6 +299,8 @@ export interface RecruitmentPlan {
   id: number
   plan_no: string
   protocol_id: number
+  /** 关联 Protocol.code，与预约管理 project_code 对齐 */
+  protocol_code?: string
   title: string
   description: string
   target_count: number

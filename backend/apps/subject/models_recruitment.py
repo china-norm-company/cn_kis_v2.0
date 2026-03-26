@@ -220,9 +220,9 @@ class RecruitmentAd(models.Model):
 class RegistrationStatus(models.TextChoices):
     REGISTERED = 'registered', '已报名'
     CONTACTED = 'contacted', '已联系'
-    PRE_SCREENING = 'pre_screening', '粗筛中'
-    PRE_SCREENED_PASS = 'pre_screened_pass', '粗筛通过'
-    PRE_SCREENED_FAIL = 'pre_screened_fail', '粗筛不通过'
+    PRE_SCREENING = 'pre_screening', '初筛中'
+    PRE_SCREENED_PASS = 'pre_screened_pass', '初筛通过'
+    PRE_SCREENED_FAIL = 'pre_screened_fail', '初筛不通过'
     SCREENING = 'screening', '筛选中'
     SCREENED_PASS = 'screened_pass', '筛选通过'
     SCREENED_FAIL = 'screened_fail', '筛选未通过'
@@ -477,7 +477,7 @@ class RecruitmentStrategy(models.Model):
 
 
 # ============================================================================
-# 粗筛记录
+# 初筛记录
 # ============================================================================
 class PreScreeningResult(models.TextChoices):
     PENDING = 'pending', '待评估'
@@ -488,9 +488,9 @@ class PreScreeningResult(models.TextChoices):
 
 class PreScreeningRecord(models.Model):
     """
-    受试者粗筛评估记录
+    受试者初筛评估记录
 
-    粗筛是正式筛选之前的专业评估环节。每个到场受试者必须建档，
+    初筛是正式筛选之前的专业评估环节。每个到场受试者必须建档，
     由专业人员按协议定义的检查表逐项评估。仪器数据和医学史写入
     Subject 模型体系（timeseries / profile），本模型仅保存聚合
     结果和判定信息。
@@ -498,7 +498,7 @@ class PreScreeningRecord(models.Model):
 
     class Meta:
         db_table = 't_pre_screening_record'
-        verbose_name = '粗筛记录'
+        verbose_name = '初筛记录'
         indexes = [
             models.Index(fields=['protocol', 'result']),
             models.Index(fields=['pre_screening_date', 'result']),
@@ -518,13 +518,13 @@ class PreScreeningRecord(models.Model):
         related_name='pre_screenings', verbose_name='关联协议',
     )
 
-    pre_screening_no = models.CharField('粗筛编号', max_length=50, unique=True, db_index=True)
+    pre_screening_no = models.CharField('初筛编号', max_length=50, unique=True, db_index=True)
 
     # --- 时间 ---
-    pre_screening_date = models.DateField('粗筛日期')
+    pre_screening_date = models.DateField('初筛日期')
     start_time = models.DateTimeField('开始时间', null=True, blank=True)
     end_time = models.DateTimeField('结束时间', null=True, blank=True)
-    location = models.CharField('粗筛地点', max_length=200, blank=True, default='')
+    location = models.CharField('初筛地点', max_length=200, blank=True, default='')
 
     # --- 检查结果（聚合摘要，详细数据在 Subject 子表中） ---
     hard_exclusion_checks = models.JSONField(
@@ -550,7 +550,7 @@ class PreScreeningRecord(models.Model):
 
     # --- 判定 ---
     result = models.CharField(
-        '粗筛结果', max_length=20,
+        '初筛结果', max_length=20,
         choices=PreScreeningResult.choices,
         default=PreScreeningResult.PENDING, db_index=True,
     )
@@ -568,7 +568,7 @@ class PreScreeningRecord(models.Model):
     # --- 后续安排 ---
     screening_appointment_id = models.IntegerField(
         '筛选预约ID', null=True, blank=True,
-        help_text='粗筛通过后创建的正式筛选预约 SubjectAppointment ID',
+        help_text='初筛通过后创建的正式筛选预约 SubjectAppointment ID',
     )
     compensation_amount = models.DecimalField(
         '交通补贴金额', max_digits=10, decimal_places=2,
@@ -577,7 +577,7 @@ class PreScreeningRecord(models.Model):
     compensation_paid = models.BooleanField('补贴已发放', default=False)
 
     # --- 人员 ---
-    screener_id = models.IntegerField('粗筛评估员ID', null=True, blank=True, help_text='Account ID')
+    screener_id = models.IntegerField('初筛评估员ID', null=True, blank=True, help_text='Account ID')
     reviewer_id = models.IntegerField('复核人ID', null=True, blank=True, help_text='Account ID')
 
     # --- 元数据 ---

@@ -149,9 +149,9 @@ export default function AppointmentPage() {
               <Text className='form-label'>访视点（可选）</Text>
               <View className='picker-value' onClick={() => {
                 Taro.showActionSheet({
-                  itemList: ['V0', 'V1', 'V2', '粗筛', '筛选', '基线', '其他', '不填'],
+                  itemList: ['V0', 'V1', 'V2', '初筛', '筛选', '基线', '其他', '不填'],
                 }).then(res => {
-                  const opts = ['V0', 'V1', 'V2', '粗筛', '筛选', '基线', '其他', '']
+                  const opts = ['V0', 'V1', 'V2', '初筛', '筛选', '基线', '其他', '']
                   setNewVisitPoint(opts[res.tapIndex])
                 })
               }}>

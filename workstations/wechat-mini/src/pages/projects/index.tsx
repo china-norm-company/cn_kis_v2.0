@@ -126,7 +126,7 @@ export default function ProjectsPage() {
                   </View>
                   <View className='projects-item__meta-block'>
                     <Text className='projects-item__meta-title'>参与流程</Text>
-                    <Text className='projects-item__meta-text'>报名 → 粗筛 → 正式筛选 → 入组 → 访视</Text>
+                    <Text className='projects-item__meta-text'>报名 → 初筛 → 正式筛选 → 入组 → 访视</Text>
                   </View>
                   <View className='projects-item__meta-block'>
                     <Text className='projects-item__meta-title'>补偿说明</Text>

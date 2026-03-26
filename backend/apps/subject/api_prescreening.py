@@ -1,8 +1,8 @@
 """
-粗筛管理 API
+初筛管理 API
 
 路由前缀：/pre-screening/
-覆盖：粗筛发起、列表、详情、草稿保存、完成判定、PI 复核、今日摘要、漏斗统计。
+覆盖：初筛发起、列表、详情、草稿保存、完成判定、PI 复核、今日摘要、漏斗统计。
 """
 from ninja import Router, Schema, Query
 from typing import Optional, List
@@ -44,6 +44,8 @@ class PreScreeningReviewIn(Schema):
 
 class PreScreeningQueryParams(Schema):
     pre_screening_date: Optional[date] = None
+    pre_screening_date_from: Optional[date] = None
+    pre_screening_date_to: Optional[date] = None
     result: Optional[str] = None
     plan_id: Optional[int] = None
     screener_id: Optional[int] = None
@@ -51,10 +53,15 @@ class PreScreeningQueryParams(Schema):
     page_size: int = 20
 
 
+class PreScreeningSyncFromAppointmentsIn(Schema):
+    """可选：指定预约日期；默认按服务器本地「今日」的初筛预约同步。"""
+    target_date: Optional[date] = None
+
+
 # ============================================================================
-# 粗筛 API
+# 初筛 API
 # ============================================================================
-@router.post('/start', summary='发起粗筛')
+@router.post('/start', summary='发起初筛')
 @require_permission('subject.recruitment.create')
 def start_pre_screening(request, payload: PreScreeningStartIn):
     account = _get_account_from_request(request)
@@ -70,11 +77,26 @@ def start_pre_screening(request, payload: PreScreeningStartIn):
         return {'code': 400, 'msg': str(e), 'data': None}
 
 
-@router.get('/', summary='粗筛记录列表')
+@router.post('/sync-from-appointments', summary='从预约同步初筛名单')
+@require_permission('subject.recruitment.create')
+def sync_from_appointments(request, payload: PreScreeningSyncFromAppointmentsIn):
+    """处理预约日为目标日（默认今日）的全部访视点预约。"""
+    account = _get_account_from_request(request)
+    result = svc.sync_prescreening_from_appointments(
+        target_date=payload.target_date,
+        screener_id=account.id,
+        created_by_id=account.id,
+    )
+    return {'code': 200, 'msg': 'OK', 'data': result}
+
+
+@router.get('/', summary='初筛记录列表')
 @require_permission('subject.recruitment.read')
 def list_pre_screenings(request, params: Query[PreScreeningQueryParams]):
     result = svc.list_pre_screenings(
         pre_screening_date=params.pre_screening_date,
+        pre_screening_date_from=params.pre_screening_date_from,
+        pre_screening_date_to=params.pre_screening_date_to,
         result=params.result,
         plan_id=params.plan_id,
         screener_id=params.screener_id,
@@ -84,7 +106,7 @@ def list_pre_screenings(request, params: Query[PreScreeningQueryParams]):
     return {'code': 200, 'msg': 'OK', 'data': result}
 
 
-@router.put('/records/{record_id}', summary='保存粗筛草稿')
+@router.put('/records/{record_id}', summary='保存初筛草稿')
 @require_permission('subject.recruitment.update')
 def save_draft(request, record_id: int, payload: PreScreeningDraftIn):
     try:
@@ -95,7 +117,7 @@ def save_draft(request, record_id: int, payload: PreScreeningDraftIn):
         return {'code': 400, 'msg': str(e), 'data': None}
 
 
-@router.post('/records/{record_id}/complete', summary='完成粗筛判定')
+@router.post('/records/{record_id}/complete', summary='完成初筛判定')
 @require_permission('subject.recruitment.update')
 def complete_pre_screening(request, record_id: int, payload: PreScreeningCompleteIn):
     try:
@@ -126,21 +148,21 @@ def review_pre_screening(request, record_id: int, payload: PreScreeningReviewIn)
         return {'code': 400, 'msg': str(e), 'data': None}
 
 
-@router.get('/today-summary', summary='今日粗筛摘要')
+@router.get('/today-summary', summary='今日初筛摘要')
 @require_permission('subject.recruitment.read')
 def today_summary(request):
     result = svc.get_today_summary()
     return {'code': 200, 'msg': 'OK', 'data': result}
 
 
-@router.get('/funnel', summary='粗筛漏斗数据')
+@router.get('/funnel', summary='初筛漏斗数据')
 @require_permission('subject.recruitment.read')
 def funnel(request, plan_id: Optional[int] = None):
     result = svc.get_pre_screening_funnel(plan_id)
     return {'code': 200, 'msg': 'OK', 'data': result}
 
 
-@router.get('/records/{record_id}', summary='粗筛记录详情')
+@router.get('/records/{record_id}', summary='初筛记录详情')
 @require_permission('subject.recruitment.read')
 def get_pre_screening(request, record_id: int):
     try:

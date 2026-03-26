@@ -1,5 +1,5 @@
 /**
- * 粗筛管理 API 模块
+ * 初筛管理 API 模块
  *
  * 对应后端：/api/v1/pre-screening/
  */
@@ -72,15 +72,31 @@ export interface PreScreeningFunnel {
   enrollment_rate: number
 }
 
+/** 从预约管理同步：全部访视点，预约日为目标日（默认今日） */
+export interface PreScreeningSyncFromAppointmentsResult {
+  target_date: string
+  created: number
+  skipped: number
+  errors: Array<{ appointment_id?: number; subject_id?: number; msg: string }>
+}
+
 export const preScreeningApi = {
-  /** 发起粗筛 */
+  /** 发起初筛 */
   start(data: { registration_id: number; protocol_id: number }) {
     return api.post<PreScreeningRecord>('/pre-screening/start', data)
   },
 
-  /** 粗筛记录列表 */
+  /** 从预约（全部访视点）同步初筛记录；需已有对应招募报名与协议编号 */
+  syncFromAppointments(data?: { target_date?: string }) {
+    return api.post<PreScreeningSyncFromAppointmentsResult>('/pre-screening/sync-from-appointments', data ?? {})
+  },
+
+  /** 初筛记录列表 */
   list(params?: {
+    /** 兼容旧参数：单日精确 */
     pre_screening_date?: string
+    pre_screening_date_from?: string
+    pre_screening_date_to?: string
     result?: string
     plan_id?: number
     screener_id?: number
@@ -92,17 +108,17 @@ export const preScreeningApi = {
     )
   },
 
-  /** 粗筛记录详情 */
+  /** 初筛记录详情 */
   getDetail(id: number) {
     return api.get<PreScreeningRecord>(`/pre-screening/records/${id}`)
   },
 
-  /** 保存粗筛草稿 */
+  /** 保存初筛草稿 */
   saveDraft(id: number, data: PreScreeningDraftIn) {
     return api.put<PreScreeningRecord>(`/pre-screening/records/${id}`, data)
   },
 
-  /** 完成粗筛判定 */
+  /** 完成初筛判定 */
   complete(id: number, data: { result: string; fail_reasons?: string[]; notes?: string }) {
     return api.post<PreScreeningRecord>(`/pre-screening/records/${id}/complete`, data)
   },
@@ -112,12 +128,12 @@ export const preScreeningApi = {
     return api.post<PreScreeningRecord>(`/pre-screening/records/${id}/review`, data)
   },
 
-  /** 今日粗筛摘要 */
+  /** 今日初筛摘要 */
   todaySummary() {
     return api.get<PreScreeningSummary>('/pre-screening/today-summary')
   },
 
-  /** 粗筛漏斗数据 */
+  /** 初筛漏斗数据 */
   funnel(planId?: number) {
     return api.get<PreScreeningFunnel>('/pre-screening/funnel', { params: planId ? { plan_id: planId } : undefined })
   },

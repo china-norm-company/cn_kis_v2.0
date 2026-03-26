@@ -105,7 +105,7 @@ def create_plan(protocol_id: int, title: str, target_count: int,
 
 def list_plans(protocol_id: int = None, status: str = None,
                page: int = 1, page_size: int = 20) -> dict:
-    qs = RecruitmentPlan.objects.all()
+    qs = RecruitmentPlan.objects.select_related('protocol')
     if protocol_id:
         qs = qs.filter(protocol_id=protocol_id)
     if status:
@@ -117,7 +117,7 @@ def list_plans(protocol_id: int = None, status: str = None,
 
 
 def get_plan(plan_id: int) -> Optional[RecruitmentPlan]:
-    return RecruitmentPlan.objects.filter(id=plan_id).first()
+    return RecruitmentPlan.objects.select_related('protocol').filter(id=plan_id).first()
 
 
 def update_plan(plan_id: int, **kwargs) -> Optional[RecruitmentPlan]:
@@ -455,7 +455,7 @@ def confirm_enrollment(enrollment_record_id: int) -> Optional[EnrollmentRecord]:
 
 
 def _resolve_subject_from_registration(reg) -> Optional['Subject']:
-    """从报名记录解析关联的 Subject（通过粗筛 or 筛选链条）"""
+    """从报名记录解析关联的 Subject（通过初筛 or 筛选链条）"""
     from ..models import Subject
     # 途径1：通过 PreScreeningRecord
     pre = reg.pre_screenings.select_related('subject').first() if hasattr(reg, 'pre_screenings') else None
@@ -795,7 +795,7 @@ def generate_recruitment_candidate_list(project_id: int) -> list:
     """
     根据项目入排标准生成按匹配度排序的候选人列表。
 
-    从已报名且通过粗筛/筛选的报名记录中，结合入排标准计算匹配度。
+    从已报名且通过初筛/筛选的报名记录中，结合入排标准计算匹配度。
     未筛选的报名人按信息完整度排序。
 
     Args:

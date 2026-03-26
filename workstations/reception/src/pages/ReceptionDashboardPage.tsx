@@ -724,7 +724,7 @@ export default function ReceptionDashboardPage() {
                                   variant="outline"
                                   onClick={() => window.open(getWorkstationUrl('recruitment', `#/prescreening?subject_id=${item.subject_id}`), '_blank')}
                                 >
-                                  发起粗筛
+                                  发起初筛
                                 </Button>
                               )}
                               <Button

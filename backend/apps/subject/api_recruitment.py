@@ -137,6 +137,9 @@ class AdUpdateIn(Schema):
 # 辅助函数
 # ============================================================================
 def _plan_dict(p) -> dict:
+    code = ''
+    if getattr(p, 'protocol', None) is not None:
+        code = (p.protocol.code or '').strip()
     return {
         'id': p.id, 'plan_no': p.plan_no, 'protocol_id': p.protocol_id,
         'title': p.title, 'description': p.description,
@@ -145,6 +148,7 @@ def _plan_dict(p) -> dict:
         'start_date': p.start_date.isoformat(), 'end_date': p.end_date.isoformat(),
         'status': p.status, 'completion_rate': p.completion_rate,
         'create_time': p.create_time.isoformat(),
+        'protocol_code': code,
     }
 
 
