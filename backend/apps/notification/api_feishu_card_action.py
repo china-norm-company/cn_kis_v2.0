@@ -15,6 +15,7 @@
 import json
 import logging
 import os
+from typing import Optional
 
 import httpx
 from django.http import HttpRequest, JsonResponse
@@ -36,7 +37,7 @@ GITHUB_REPO = 'china-norm-company/cn_kis_v2.0'
 AUTHORIZED_APPROVERS: list[str] = []
 
 
-def _get_feishu_token() -> str | None:
+def _get_feishu_token() -> Optional[str]:
     app_id = os.environ.get('FEISHU_APP_ID', '')
     app_secret = os.environ.get('FEISHU_APP_SECRET', '')
     if not app_id or not app_secret:
