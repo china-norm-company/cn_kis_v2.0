@@ -37,20 +37,20 @@
 
 **特征代码标志：**
 ```python
-# ❌ 旧 AppID，V2 禁用
-FEISHU_APP_ID = "cli_a907f21f0723dbce"
+# ❌ 错误的 AppID，禁止写入任何 V2 文件
+FEISHU_APP_ID = "cli_a98b0babd020500e"
 ```
 ```javascript
-// ❌ 旧 AppID，V2 禁用
-VITE_FEISHU_APP_ID=cli_a907f21f0723dbce
+// ❌ 错误的 AppID，禁止写入任何 V2 文件
+VITE_FEISHU_APP_ID=cli_a98b0babd020500e
 ```
 
-**V2 唯一合法值：**
+**V2 唯一合法值（与飞书开放平台「子衿 AI秘书助理」App ID 一致）：**
 ```
-cli_a98b0babd020500e（前后端统一）
+cli_a907f21f0723dbce（前后端统一）
 ```
 
-**AI 行为：** 看到 `cli_a907f21f0723dbce` 出现在任何 V2 文件中，必须立即报告并要求替换。
+**AI 行为：** 看到 `cli_a98b0babd020500e` 出现在任何 V2 文件中，必须立即报告并要求替换。
 
 ---
 
@@ -203,7 +203,7 @@ INSERT INTO cn_kis_v2.t_knowledge_entry SELECT * FROM cn_kis.knowledge_entry;
 ## 快速检查清单（每次 Code Review 必查）
 
 ```
-□ 无 cli_a907f21f0723dbce（F-03）
+□ 无 cli_a98b0babd020500e（F-03）
 □ refresh_token 写入有非空值保护（F-04）
 □ Celery 配置键全部小写（F-05）
 □ nginx 备份不在 sites-enabled/（F-06）
