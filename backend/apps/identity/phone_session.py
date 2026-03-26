@@ -7,6 +7,7 @@
 import hashlib
 import time
 import uuid
+from typing import Optional
 
 import jwt
 from django.conf import settings
@@ -45,7 +46,7 @@ def create_phone_session(
     return jwt.encode(payload, settings.JWT_SECRET, algorithm='HS256')
 
 
-def verify_phone_token(token: str) -> str | None:
+def verify_phone_token(token: str) -> Optional[str]:
     """验证 JWT Token 并提取手机号，同时检查黑名单"""
     try:
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=['HS256'])
@@ -86,7 +87,7 @@ def revoke_phone_session(token: str) -> bool:
     return True
 
 
-def get_phone_from_request(request) -> str | None:
+def get_phone_from_request(request) -> Optional[str]:
     """从请求中提取手机号（从 Authorization Header 的 JWT 中解析）"""
     auth_header = request.META.get('HTTP_AUTHORIZATION', '')
     if not auth_header.startswith('Bearer '):

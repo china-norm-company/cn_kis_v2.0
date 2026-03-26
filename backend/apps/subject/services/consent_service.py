@@ -14,7 +14,7 @@ from django.conf import settings
 from pathlib import Path
 import re
 from datetime import date, datetime, time as dt_time
-from typing import Dict, Iterable, Optional, List, Tuple
+from typing import Dict, Iterable, Optional, List, Tuple, Union
 import zipfile
 from io import BytesIO
 
@@ -409,7 +409,7 @@ def update_icf_version(
     is_active: bool = None,
     required_reading_duration_seconds: int = None,
     node_title: str = None,
-) -> ICFVersion | None:
+) -> Optional['ICFVersion']:
     """更新 ICF 版本（版本号、内容、是否激活、要求阅读时长）"""
     icf = ICFVersion.objects.filter(id=icf_id).first()
     if not icf:

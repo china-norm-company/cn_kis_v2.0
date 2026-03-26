@@ -21,7 +21,7 @@ import re
 import threading
 from ninja import Router, Schema, Query, File, Form, Body
 from ninja.files import UploadedFile
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Tuple
 from datetime import date, datetime
 from django.conf import settings as django_settings
 from django.http import FileResponse
@@ -1127,7 +1127,7 @@ def _build_consent_test_scan_url(request, protocol_id: int, token: str) -> str:
     return f'{scheme}://{host}/execution/#{frag}'
 
 
-def _build_consent_test_scan_icf_items(protocol: Protocol) -> tuple[list | None, str | None]:
+def _build_consent_test_scan_icf_items(protocol: Protocol) -> Tuple[Optional[list], Optional[str]]:
     """与 witness 联调队列结构一致，自协议首节点起全部待签 ICF。"""
     from apps.subject.models import ICFVersion
     from apps.protocol.services import protocol_service as protocol_svc
