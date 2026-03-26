@@ -148,6 +148,10 @@ DATABASES = {
         'PORT': os.getenv('DB_PORT', '5432'),
     }
 }
+# 可选：libpq 参数（联火山云/隧道时常用 sslmode=require，见 backend/.env.example）
+_db_sslmode = os.getenv('DB_SSLMODE', '').strip()
+if _db_sslmode:
+    DATABASES['default'].setdefault('OPTIONS', {})['sslmode'] = _db_sslmode
 
 if os.getenv('DB_REPLICA_HOST', '').strip():
     DATABASES['replica'] = {

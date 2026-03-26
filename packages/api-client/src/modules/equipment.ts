@@ -86,6 +86,10 @@ export interface EquipmentItem {
   quantity?: number
   initial_value?: number
   group?: string
+  /** LIMS 最后一次写入本设备台账字段的同步时间（ISO8601） */
+  lims_synced_at?: string | null
+  /** 对应 LIMS 导入批次号 */
+  lims_sync_batch_no?: string | null
 }
 
 /** 设备详情 */
@@ -328,6 +332,8 @@ export interface DetectionMethod {
   code: string
   name: string
   name_en: string
+  /** 设备名称分类（同规格统一类型） */
+  equipment_name_classification?: string
   category: string
   category_display: string
   description: string
@@ -343,8 +349,11 @@ export interface DetectionMethod {
 
 /** 检测方法详情 */
 export interface DetectionMethodDetail extends DetectionMethod {
+  qc_requirements?: string
   standard_procedure: string
   sop_reference: string
+  /** SOP 附件 URL（多为 /media/...） */
+  sop_attachment_url?: string
   sop_id: number | null
   temperature_min: number | null
   temperature_max: number | null
@@ -405,6 +414,15 @@ export const equipmentApi = {
     page?: number; page_size?: number; sort_by?: string
   }) {
     return api.get<Paginated<EquipmentItem>>('/equipment/ledger', { params })
+  },
+
+  /** 设备列表（与 listLedger 相同，兼容调用 /equipment/index 的场景） */
+  listLedgerIndex(params?: {
+    keyword?: string; category_id?: number; status?: string;
+    calibration_status?: string; location?: string;
+    page?: number; page_size?: number; sort_by?: string; lims_only?: boolean
+  }) {
+    return api.get<Paginated<EquipmentItem>>('/equipment/index', { params })
   },
 
   /** 设备详情 */
@@ -790,10 +808,24 @@ export const equipmentApi = {
     return api.get<DetectionMethodDetail>(`/equipment/detection-methods/${id}`)
   },
 
+  /** 上传检测方法 SOP 附件，返回 url 供创建/更新时填入 sop_attachment_url */
+  uploadDetectionMethodSop(file: File) {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post<{ url: string; original_filename: string }>(
+      '/equipment/detection-methods/sop-upload',
+      form,
+    )
+  },
+
   /** 创建检测方法 */
   createDetectionMethod(data: {
     code: string; name: string; category: string;
-    name_en?: string; description?: string;
+    name_en?: string;
+    equipment_name_classification?: string;
+    description?: string;
+    qc_requirements?: string;
+    sop_attachment_url?: string;
     estimated_duration_minutes?: number; preparation_time_minutes?: number;
     temperature_min?: number; temperature_max?: number;
     humidity_min?: number; humidity_max?: number;

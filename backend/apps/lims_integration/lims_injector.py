@@ -36,6 +36,7 @@ LIMS 数据注入器（P0 增强版）
 
 其余模块 -> KnowledgeEntry（知识库通用存储）
 """
+import contextvars
 import json
 import logging
 import re
@@ -46,6 +47,22 @@ from django.db import transaction
 from django.utils import timezone
 
 logger = logging.getLogger('cn_kis.lims.injector')
+
+# 当前注入批次上下文（供 _inject_equipment 写入 _lims_synced_at / 批次号）
+_lims_inject_context: contextvars.ContextVar[Optional[Dict[str, str]]] = contextvars.ContextVar(
+    'lims_inject_context', default=None
+)
+
+
+def _lims_inject_meta() -> Dict[str, str]:
+    """返回本次 LIMS 写入的同步时间与批次号（无上下文时仍给同步时间）"""
+    ctx = _lims_inject_context.get()
+    if ctx:
+        return dict(ctx)
+    return {
+        'synced_at': timezone.now().isoformat(),
+        'batch_no': '',
+    }
 
 
 # ============================================================================
@@ -343,6 +360,17 @@ class LimsInjector:
             'failed': 0,
         }
 
+    def _call_module_injector(self, injector_fn, raw_data):
+        """在上下文中调用模块注入器，写入批次号与同步时间戳（attributes._lims_synced_at）"""
+        token = _lims_inject_context.set({
+            'synced_at': timezone.now().isoformat(),
+            'batch_no': getattr(self.batch, 'batch_no', '') or '',
+        })
+        try:
+            return injector_fn(raw_data)
+        finally:
+            _lims_inject_context.reset(token)
+
     def inject_module(self, module: str) -> Dict[str, int]:
         """注入指定模块的所有待注入记录"""
         from apps.lims_integration.models import RawLimsRecord
@@ -418,7 +446,7 @@ class LimsInjector:
                     from django.db import transaction as db_transaction
                     try:
                         with db_transaction.atomic():
-                            result = injector_fn(raw_data)
+                            result = self._call_module_injector(injector_fn, raw_data)
                             if result:
                                 target_obj, action, before_data = result
                                 LimsInjectionLog.objects.create(
@@ -488,7 +516,7 @@ class LimsInjector:
 
         try:
             with transaction.atomic():
-                result = injector_fn(raw_data)
+                result = self._call_module_injector(injector_fn, raw_data)
             if result:
                 target_obj, action, before_data = result
                 LimsInjectionLog.objects.create(
@@ -738,6 +766,18 @@ def _inject_equipment(raw_data: dict):
                 or Account.objects.filter(username=manager_name, is_deleted=False).first()
             )
 
+        meta = _lims_inject_meta()
+        lims_attr = {
+            '_lims_source': True,
+            '_lims_dept': department,
+            '_lims_manager': manager_name,
+            '_lims_borrower': borrower_name,
+            'name_classification': name_classification_raw,
+            '_lims_synced_at': meta['synced_at'],
+        }
+        if meta.get('batch_no'):
+            lims_attr['_lims_sync_batch_no'] = meta['batch_no']
+
         defaults = {
             'name': name,
             'manufacturer': manufacturer or '',
@@ -745,13 +785,7 @@ def _inject_equipment(raw_data: dict):
             'serial_number': serial_number or '',
             'status': status,
             'location': f'{department}/{location}' if department and location else (department or location),
-            'attributes': {
-                '_lims_source': True,
-                '_lims_dept': department,
-                '_lims_manager': manager_name,
-                '_lims_borrower': borrower_name,
-                'name_classification': name_classification_raw,
-            },
+            'attributes': lims_attr,
         }
         if category:
             defaults['category'] = category
@@ -778,7 +812,7 @@ def _inject_equipment(raw_data: dict):
             if not created and manager_account and not obj.manager_id:
                 obj.manager_id = manager_account.id
                 obj.save(update_fields=['manager_id'])
-            # 已存在的 LIMS 设备：再次同步时刷新台账计划字段与名称分类
+            # 已存在的 LIMS 设备：再次同步时以 LIMS 为准刷新台账与扩展字段
             if not created:
                 prev_attrs = obj.attributes or {}
                 if prev_attrs.get('_lims_source'):
@@ -796,6 +830,16 @@ def _inject_equipment(raw_data: dict):
                         if val is not None:
                             setattr(obj, fld, val)
                             save_fields.append(fld)
+                    for fld in ('name', 'manufacturer', 'model_number', 'serial_number', 'status'):
+                        if fld in defaults:
+                            setattr(obj, fld, defaults[fld])
+                            save_fields.append(fld)
+                    if 'location' in defaults:
+                        obj.location = defaults['location']
+                        save_fields.append('location')
+                    if defaults.get('category'):
+                        obj.category = defaults['category']
+                        save_fields.append('category_id')
                     obj.save(update_fields=list(dict.fromkeys(save_fields)))
         else:
             obj = ResourceItem.objects.create(**defaults)

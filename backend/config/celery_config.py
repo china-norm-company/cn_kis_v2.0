@@ -103,11 +103,19 @@ beat_schedule = {
     },
 }
 
+# LIMS 设备台账定时同步（仅当显式开启；任务内仍会校验 LIMS_EQUIPMENT_SYNC_ENABLED）
+if os.getenv('LIMS_EQUIPMENT_SYNC_ENABLED', '').lower() == 'true':
+    beat_schedule['lims-equipment-sync-daily'] = {
+        'task': 'apps.lims_integration.tasks.sync_lims_equipment',
+        'schedule': crontab(hour=2, minute=40),
+    }
+
 # V2 安全开关：测试环境禁用生产采集类任务
 if PRODUCTION_TASKS_DISABLED:
     # 从 beat_schedule 中移除所有飞书采集类任务
     _production_tasks_to_disable = [
         'feishu-token-health-check',
+        'lims-equipment-sync-daily',
     ]
     for _task_key in _production_tasks_to_disable:
         beat_schedule.pop(_task_key, None)
@@ -147,4 +155,3 @@ if PRODUCTION_TASKS_DISABLED:
     # 'project-startup-readiness-check'
     # 'quality-kpi-daily-snapshot'
     # 'agent-monthly-budget-reset'
-}

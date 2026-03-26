@@ -202,7 +202,8 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------
 
     def _run_full_pipeline(self, options):
-        from apps.lims_integration.lims_fetcher import LimsFetcher, TIER_MODULES as TM
+        from apps.lims_integration.lims_fetcher import LimsFetcher
+        TM = TIER_MODULES
         from apps.lims_integration.lims_exporter import LimsExporter
         from apps.lims_integration.lims_injector import LimsInjector
         from apps.lims_integration.lims_dedup import LimsDedupReport

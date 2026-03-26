@@ -54,6 +54,12 @@ function fmtCycleDays(n: number | null | undefined) {
   return `${n} 天`
 }
 
+function fmtLimsSynced(iso: string | null | undefined) {
+  if (!iso) return '—'
+  const s = String(iso)
+  return s.length >= 16 ? s.slice(0, 16).replace('T', ' ') : s
+}
+
 export function EquipmentLedgerPage() {
   const queryClient = useQueryClient()
   const [keyword, setKeyword] = useState('')
@@ -452,6 +458,8 @@ function EquipmentDetailDrawer({ id, onClose }: { id: number; onClose: () => voi
             <div className="space-y-4">
               <InfoRow label="设备编号" value={detail.code} />
               <InfoRow label="名称分类" value={detail.name_classification || '—'} />
+              <InfoRow label="LIMS同步时间" value={fmtLimsSynced(detail.lims_synced_at)} />
+              <InfoRow label="LIMS批次" value={detail.lims_sync_batch_no || '—'} />
               <InfoRow label="类别路径" value={detail.category_path} />
               <InfoRow label="状态" value={detail.status_display} />
               <InfoRow label="存放位置" value={detail.location || '-'} />
