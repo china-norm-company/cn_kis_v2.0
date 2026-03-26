@@ -153,7 +153,7 @@ jobs:
               "control-plane", "admin", "digital-workforce", "data-platform", "common"
             ];
             const EXEMPT_BRANCHES = ["main", "staging", "develop"];
-            const branchPattern = /^(feature|fix|chore|hotfix|wave)\/([^/]+)\/(\d+)-.+$/;
+            const branchPattern = /^(feature|fix|chore|hotfix|wave|docs|refactor|test)\/([^/]+)\/(\d+)-.+$/;
             const branchMatch = headBranch.match(branchPattern);
             if (!EXEMPT_BRANCHES.includes(headBranch)) {
               if (!branchMatch) {
