@@ -1730,6 +1730,12 @@ def update_schedule_core(request, order_id: int, payload: TimelineScheduleUpdate
         schedule.payload = _ensure_json_serializable(payload.payload)
     account = _get_account_from_request(request)
     schedule.save(update_fields=['supervisor', 'research_group', 't0_date', 'split_days', 'payload', 'update_time'])
+    try:
+        from .workorder_sync import sync_workorders_to_workstations
+
+        sync_workorders_to_workstations(order)
+    except Exception as e:
+        logger.warning('排程核心保存后工单同步到接待台失败: %s', e)
     return {'code': 200, 'msg': '已更新', 'data': {'id': schedule.id}}
 
 

@@ -258,6 +258,24 @@ def work_order_create(data: dict, user_id: Optional[int] = None, user_name: Opti
     }
 
 
+def work_order_upsert_by_project_no(data: dict) -> dict:
+    """
+    按 project_no 创建或更新工单，供执行台→接待台同步使用。
+    若 project_no 已存在则更新，否则新建。返回工单 id 与是否更新。
+    """
+    project_no = (data.get("project_no") or "").strip()
+    if not project_no:
+        raise ValueError("project_no 不能为空")
+    existing = ProductDistributionWorkOrder.objects.filter(
+        project_no=project_no, is_delete=0
+    ).first()
+    if existing:
+        work_order_update(existing.id, data)
+        return {"id": existing.id, "updated": True}
+    result = work_order_create(data)
+    return {"id": result["id"], "updated": False}
+
+
 @transaction.atomic(using="default")
 def work_order_update(work_order_id: int, data: dict, user_id: Optional[int] = None) -> dict:
     try:
@@ -295,8 +313,9 @@ def work_order_update(work_order_id: int, data: dict, user_id: Optional[int] = N
     if "project_requirements" in data:
         row.project_requirements = _opt_str(data["project_requirements"])
 
-    if row.project_start_date and row.project_end_date and row.project_end_date <= row.project_start_date:
-        raise ValueError("项目结束日期必须大于启动日期")
+    # 与 work_order_create 一致：允许开始日=结束日（单日项目）；仅禁止结束早于开始
+    if row.project_start_date and row.project_end_date and row.project_end_date < row.project_start_date:
+        raise ValueError("项目结束日期不能早于启动日期")
     row.updated_by = user_id
     row.updated_at = datetime.now()
     row.save(using="default", update_fields=[
