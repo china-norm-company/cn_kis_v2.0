@@ -21,7 +21,7 @@
 
 ### 工作台路由
 
-- [ ] 20 个工作台路由均返回 200（运行 `pre_release_health_check.sh` 通过）
+- [ ] 19 个工作台路由均返回 200（运行 `pre_release_health_check.sh` 通过）
 - [ ] `/governance/` HTML 包含 `cli_a937515668b99cc9`（鹿鸣治理台独立 App ID）
 - [ ] `/data-platform/` HTML 包含 `cli_a93753da2c381cef`（洞明独立 App ID）
 
@@ -39,7 +39,7 @@
 
 ### 权限
 
-- [ ] `python manage.py seed_roles` 已在生产环境执行（20 个工作台角色已入库）
+- [ ] `python manage.py seed_roles` 已在生产环境执行（19 个工作台角色已入库）
 - [ ] 至少 1 名管理员账号已分配 `admin` 角色
 - [ ] EDC 重复路由已修复（见 P0-2，2026-03-21 已修复）
 - [ ] 知识检索 `execution_context` 已贯通（见 P0-1，2026-03-21 已修复）

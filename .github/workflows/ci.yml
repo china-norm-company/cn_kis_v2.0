@@ -95,6 +95,14 @@ jobs:
           python manage.py check --deploy 2>&1 | grep -v "^System check" | grep -v "^$" || true
           echo "Django check completed"
 
+      # ── 工作台注册表一致性检查（防止工作台数量/列表与唯一真相源不同步）─────
+      - name: Workstation registry consistency check
+        id: workstation-check
+        run: |
+          echo "=== 验证工作台注册表一致性 ==="
+          echo "唯一真相源：backend/configs/workstations.yaml"
+          python3 ops/scripts/workstation_consistency_check.py
+
       # ── 迁移一致性检查（防止 leaf node 冲突进入 main）────────────────────────
       - name: Check migration consistency
         id: migration-check
@@ -149,6 +157,7 @@ jobs:
           echo "| TypeScript typecheck | ${{ steps.ts-typecheck.outcome || '跳过' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Python ruff lint | ${{ steps.py-ruff.outcome || '跳过' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Django system check | ${{ steps.django-check.outcome || '跳过' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Workstation registry | ${{ steps.workstation-check.outcome || '跳过' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Migration consistency | ${{ steps.migration-check.outcome || '跳过' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "如果 CI 失败，在 Cursor 中说：「CI 第 X 步失败，错误是 [粘贴错误]，帮我修复」" >> $GITHUB_STEP_SUMMARY

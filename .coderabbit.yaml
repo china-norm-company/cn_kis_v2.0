@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 # CN KIS V2.0 CodeRabbit 配置
-# 项目：临床研究一体化信息系统，18 个工作台，飞书 OAuth + Django + TypeScript
+# 项目：临床研究一体化信息系统，19 个工作台，飞书 OAuth + Django + TypeScript
 # 所有 Review 反馈以中文输出
 
 language: "zh-CN"

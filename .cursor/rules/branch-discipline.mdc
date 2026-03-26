@@ -29,7 +29,9 @@ hotfix/<workstation>/<issue-id>-<slug>
 wave/<wave-number>/<issue-id>-<slug>
 ```
 
-合法 workstation：`secretary | finance | research | execution | quality | hr | crm | recruitment | equipment | material | facility | evaluator | lab-personnel | ethics | reception | control-plane | governance | digital-workforce | common`
+合法 workstation：`secretary | finance | research | execution | quality | hr | crm | recruitment | equipment | material | facility | evaluator | lab-personnel | ethics | reception | control-plane | admin | digital-workforce | data-platform | common`
+
+> **注意**：`governance`（旧名）和 `iam`（已合并入 admin）均不再是合法工作台标识。AI 如遇到这两个词作为工作台使用，必须纠正为 `admin`。
 
 ### Step 3：按情况处理
 

@@ -192,7 +192,7 @@
 | C4-03 | V2 与 V1 数据库完全独立 | V2 连接 `cn_kis_v2`，V1 连接 `cn_kis` | 两个数据库无交叉写入 | ✅ .env 配置验证 |
 | C4-04 | Django 部署安全检查通过 | `python manage.py check --deploy` | 无 ERROR 级别（Warning 可接受）| ⚠️ 需在服务器运行 |
 | C4-05 | 三个进程全部运行 | `ps aux \| grep -E "gunicorn\|celery"` | gunicorn + celery worker + celery beat 全部运行 | ⚠️ 需服务器检查 |
-| C4-06 | Nginx 所有工作台路由正常 | 访问 20 个工作台 URL | 每个返回 HTML 页面（200/302，非 404）| ✅ 截图存档（IAM/DP 已验证）|
+| C4-06 | Nginx 所有工作台路由正常 | 访问 19 个工作台 URL | 每个返回 HTML 页面（200/302，非 404）| ✅ 截图存档（IAM/DP 已验证）|
 | C4-07 | 无硬编码 IP | `grep -r "118.196.64.48" backend/ workstations/packages/` | 仅文档/注释中出现 | ✅ 2026-03-21 本地验证通过 |
 | C4-08 | Git 无冲突标记 | `grep -r "<<<<<<" docs/ backend/ workstations/` | 返回空 | ✅ 2026-03-21（research/.env 冲突已修复）|
 

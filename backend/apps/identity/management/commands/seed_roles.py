@@ -73,18 +73,18 @@ SYSTEM_ROLES = [
 # 此常量被 apps/identity/api.py 中的 _build_user_profile 直接引用
 # ============================================================================
 ROLE_WORKBENCH_MAP = {
-    # L10: 全部 18 个工作台
+    # L10: 全部 19 个工作台（唯一真相源：backend/configs/workstations.yaml）
     'superadmin': [
         'secretary', 'finance', 'research', 'execution', 'quality',
         'hr', 'crm', 'recruitment', 'equipment', 'material',
         'facility', 'evaluator', 'lab-personnel', 'ethics', 'reception',
-        'control-plane', 'admin', 'digital-workforce',
+        'control-plane', 'admin', 'digital-workforce', 'data-platform',
     ],
     'admin': [
         'secretary', 'finance', 'research', 'execution', 'quality',
         'hr', 'crm', 'recruitment', 'equipment', 'material',
         'facility', 'evaluator', 'lab-personnel', 'ethics', 'reception',
-        'control-plane', 'admin', 'digital-workforce',
+        'control-plane', 'admin', 'digital-workforce', 'data-platform',
     ],
     # L8: 全局+分管
     'general_manager':   ['secretary', 'digital-workforce', 'research', 'execution', 'quality', 'finance', 'hr', 'crm', 'recruitment', 'control-plane'],

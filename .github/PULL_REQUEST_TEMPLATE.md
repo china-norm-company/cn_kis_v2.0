@@ -43,6 +43,10 @@ Closes #
 - [ ] 本 PR 不向生产知识资产执行无保护写操作
 - [ ] content_hash 去重逻辑已保留
 
+### 工作台注册表（如本 PR 涉及 workstations.yaml / identity/api.py / seed_roles.py）
+
+- [ ] 已运行 `python3 ops/scripts/workstation_consistency_check.py` 并通过（19 个工作台全部一致）
+
 ---
 
 ## 测试步骤与结果
@@ -58,6 +62,17 @@ Closes #
 风险点：<描述可能的风险>
 
 回滚方案：<如何回滚，例如 `git revert` 或 migration rollback 命令>
+
+---
+
+### 学习循环影响（如本 PR 涉及数据导入、知识库或智能体）
+
+- [ ] 此 PR 改进了导入管线的学习能力（新增/改进 LearningReport 字段）
+- [ ] 此 PR 关闭了一个 `data-insight` Issue（请在"关联 Issue"中填写）
+- [ ] 此 PR 更新了 `docs/LEARNING_LOOP_STATUS.md` 中的 KPI 基线
+
+关闭的数据洞察 Issue：#  
+预期 KPI 变化（如适用）：
 
 ---
 
