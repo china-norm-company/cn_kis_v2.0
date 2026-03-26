@@ -61,6 +61,53 @@ export function buildSubjectEndpoints(api: ApiClient) {
     startIdentityVerify: (provider = 'volcengine_cert') => api.post(SUBJECT_ENDPOINTS.identityVerifyStart, { provider }),
     getIdentityVerifyResult: (verifyId: string) => api.get(`${SUBJECT_ENDPOINTS.identityVerifyResult}?verify_id=${encodeURIComponent(verifyId)}`),
     completeIdentityVerify: (data: Record<string, unknown>) => api.post(SUBJECT_ENDPOINTS.identityVerifyComplete, data),
+    getConsentBootstrap: async () => {
+      const [identityRes, consentsRes] = await Promise.all([
+        api.get(SUBJECT_ENDPOINTS.identityStatus),
+        api.get(SUBJECT_ENDPOINTS.consents),
+      ])
+      if (identityRes.code !== 200) return identityRes
+      if (consentsRes.code === 401) return consentsRes
+      const identityData = (identityRes.data as { auth_level?: string } | null) || null
+      const consentItems = ((consentsRes.data as { items?: Array<Record<string, unknown>> } | null)?.items || [])
+        .filter((item) => !item.is_signed && !!item.icf_version_id)
+      const projectMap = new Map<string, {
+        protocol_code: string
+        protocol_title: string
+        pending_consent_count: number
+        auth_ok_for_signing: boolean
+      }>()
+      for (const item of consentItems) {
+        const protocol_code = typeof item.protocol_code === 'string' ? item.protocol_code : ''
+        if (!protocol_code) continue
+        const protocol_title = typeof item.protocol_title === 'string' ? item.protocol_title : ''
+        const existing = projectMap.get(protocol_code)
+        if (existing) {
+          existing.pending_consent_count += 1
+          continue
+        }
+        projectMap.set(protocol_code, {
+          protocol_code,
+          protocol_title,
+          pending_consent_count: 1,
+          auth_ok_for_signing: identityData?.auth_level === 'identity_verified',
+        })
+      }
+      const projects = Array.from(projectMap.values())
+      return {
+        code: 200,
+        msg: 'OK',
+        data: {
+          identity_gate_required: identityData?.auth_level !== 'identity_verified',
+          total_pending_consent_count: consentItems.length,
+          allow_l1_pilot: false,
+          pilot_protocol_codes: projects.map((project) => project.protocol_code),
+          has_returned_for_resign: consentItems.some((item) => item.staff_audit_status === 'returned'),
+          projects,
+        },
+      }
+    },
+    devSkipIdentityVerify: () => api.post('/my/identity/dev-skip', {}),
     getMyConsents: () => api.get(SUBJECT_ENDPOINTS.consents),
     getIcfContent: (id: number) => api.get(`${SUBJECT_ENDPOINTS.consents}/icf/${id}`),
     faceSignConsent: (id: number, data: Record<string, unknown>) => api.post(`${SUBJECT_ENDPOINTS.consents}/${id}/face-sign`, data),
@@ -91,7 +138,7 @@ export function buildSubjectEndpoints(api: ApiClient) {
     getAgentCallStatus: (callId: string) => api.get(`/agents/calls/${encodeURIComponent(callId)}`),
     sendSmsVerifyCode: (data: { phone: string; scene?: string }) => api.post(AUTH_ENDPOINTS.smsSend, data, { auth: false }),
     verifySmsCodeLogin: (data: { phone: string; code: string; scene?: string }) => api.post(AUTH_ENDPOINTS.smsVerify, data, { auth: false }),
-    getSampleConfirmUrl: (dispensingId: number) => api.post(`/my/sample-confirm?dispensing_id=${dispensingId}`),
+    getSampleConfirmUrl: (dispensingId: number, data?: Record<string, unknown>) => api.post(`/my/sample-confirm?dispensing_id=${dispensingId}`, data || {}),
     getQrcodeImageUrl: (qrData: string) => `/api/v1/qrcode/image?data=${encodeURIComponent(qrData)}`,
   }
 }

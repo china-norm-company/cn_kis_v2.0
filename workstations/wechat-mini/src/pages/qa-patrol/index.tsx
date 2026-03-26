@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react'
 import { View, Text, ScrollView } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
-import { taroApiClient, taroAuthProvider } from '../../adapters/subject-core'
-import { getLocalRoles } from '../../utils/auth'
+import { taroApiClient, taroAuthProvider } from '@/adapters/subject-core'
+import { getLocalRoles } from '@/utils/auth'
 import { isQA, isManagement } from '@cn-kis/subject-core'
 import './index.scss'
 

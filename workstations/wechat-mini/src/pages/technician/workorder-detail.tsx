@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { View, Text, ScrollView } from '@tarojs/components'
 import Taro, { useRouter } from '@tarojs/taro'
 import { buildSubjectEndpoints, type EcrfTemplate as CRFTemplate, type EcrfRecord as CRFRecord } from '@cn-kis/subject-core'
-import { taroApiClient } from '../../adapters/subject-core'
-import MiniCRFField from '../../components/MiniCRFField'
+import { taroApiClient } from '@/adapters/subject-core'
+import MiniCRFField from '@/components/MiniCRFField'
 
 const subjectApi = buildSubjectEndpoints(taroApiClient)
 import './workorder-detail.scss'

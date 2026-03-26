@@ -1,7 +1,7 @@
 import { View, Text, Slider, Textarea } from '@tarojs/components'
 import Taro, { useRouter } from '@tarojs/taro'
 import { useState } from 'react'
-import { taroApiClient } from '../../adapters/subject-core'
+import { taroApiClient } from '@/adapters/subject-core'
 
 async function submitMyNps(data: { plan_id: number; score: number; comment: string }) {
   return taroApiClient.post('/my/nps', data)

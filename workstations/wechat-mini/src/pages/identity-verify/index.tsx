@@ -1,7 +1,8 @@
 import { View, Text, Button } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { buildSubjectEndpoints, AUTH_LEVEL, isL2 } from '@cn-kis/subject-core'
-import { taroApiClient } from '../../adapters/subject-core'
+import { taroApiClient } from '@/adapters/subject-core'
+import { shouldUseIdentityVerifyDevBypass } from '@/utils/api'
 import { useState, useRef, useEffect } from 'react'
 
 const subjectApi = buildSubjectEndpoints(taroApiClient)
@@ -84,6 +85,29 @@ export default function IdentityVerifyPage() {
     setResultStatus(null)
     setRejectReason('')
     setStartError('')
+    if (shouldUseIdentityVerifyDevBypass()) {
+      try {
+        const res = await subjectApi.devSkipIdentityVerify()
+        if (res.code === 200) {
+          setAuthLevel(AUTH_LEVEL.IDENTITY_VERIFIED)
+          refreshStatus()
+          Taro.showToast({ title: '本地开发：已跳过实名核验', icon: 'success' })
+        } else if (res.code === 404) {
+          const hint =
+            '本地后端需 DEBUG=true 且 .env 设置 IDENTITY_VERIFY_ALLOW_MANUAL_COMPLETE=true'
+          setStartError(hint)
+          Taro.showToast({ title: '请配置后端开发跳过', icon: 'none' })
+        } else {
+          Taro.showToast({ title: res?.msg || '跳过失败', icon: 'none' })
+        }
+      } catch {
+        setStartError('请求失败，请确认本地后端已启动且已配置开发跳过')
+        Taro.showToast({ title: '开发跳过请求失败', icon: 'none' })
+      } finally {
+        setSubmitting(false)
+      }
+      return
+    }
     const res = await subjectApi.startIdentityVerify()
     setSubmitting(false)
     const startData = res.data as { verify_id?: string; byted_token?: string; h5_config_id?: string } | null
