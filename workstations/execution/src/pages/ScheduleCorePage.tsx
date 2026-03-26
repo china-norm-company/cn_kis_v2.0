@@ -4,7 +4,7 @@
  * 从排程计划 Tab 待排程列表点击「开始排程」进入；不依赖项目管理模块。
  */
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 import { Button, Modal } from '@cn-kis/ui-kit'
@@ -12,25 +12,7 @@ import { ArrowLeft, Save, Users, FileText, Calendar, Plus, Trash2 } from 'lucide
 import { schedulingApi } from '@cn-kis/api-client'
 import { useTheme } from '../contexts/ThemeContext'
 import { ExecutionOrderDetailReadOnly } from '../components/ExecutionOrderDetailReadOnly'
-
-/** 从 headers + rows 得到第一行键值对；支持 row 为数组或对象 */
-function getFirstRowAsDict(headers: string[], rows: unknown[]): Record<string, string> {
-  const row = rows?.[0]
-  if (row == null) return {}
-  const out: Record<string, string> = {}
-  if (Array.isArray(row)) {
-    headers.forEach((h, i) => {
-      out[h] = String((row as unknown[])[i] ?? '')
-    })
-  } else if (typeof row === 'object') {
-    const obj = row as Record<string, unknown>
-    headers.forEach((h) => {
-      const v = obj[h]
-      out[h] = v != null ? String(v) : ''
-    })
-  }
-  return out
-}
+import { getFirstRowAsDict } from '../utils/executionOrderFirstRow'
 
 /** 从 firstRow 中按多个可能的 key 取第一个非空值 */
 function getByKeys(row: Record<string, string>, ...keys: string[]): string {
@@ -39,6 +21,24 @@ function getByKeys(row: Record<string, string>, ...keys: string[]): string {
     if (v) return v
   }
   return ''
+}
+
+/** 与 TimeSlotDetailPage 一致：空字符串也视为无值，便于回退到执行订单字段 */
+function firstNonEmpty(...vals: unknown[]): string {
+  for (const v of vals) {
+    if (v == null) continue
+    const s = String(v).trim()
+    if (s !== '') return s
+  }
+  return ''
+}
+
+/** 只读表格：执行日期单元格展示（支持 ISO 日期串） */
+function formatExecDateDisplay(v: string | undefined): string {
+  if (v == null || v === '') return '—'
+  const s = String(v).trim()
+  if (s.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
+  return s
 }
 
 /** 与 T0 同日的访视点（仅用于项目排期访视点解析与日期计算），不含 T24h、T48h 等 */
@@ -325,6 +325,8 @@ function addDaysToDate(baseYMD: string, offsetDays: number): string {
 export default function ScheduleCorePage() {
   const { executionOrderId } = useParams<{ executionOrderId: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const { theme } = useTheme()
   const isDark = theme === 'dark'
@@ -372,7 +374,49 @@ export default function ScheduleCorePage() {
   const firstRow = getFirstRowAsDict(headers, rows)
   const isTimelinePublished = schedule?.status === 'timeline_published' || schedule?.status === 'completed'
 
-  const [activeTab, setActiveTab] = useState<'project' | 'schedule'>('project')
+  /** 项目排期只读区：督导/研究组优先排程核心；库中为空时从执行订单首行同步（含常见表头别名）；解决 schedule 存了 '' 时 ?? 无法回退的问题 */
+  const supervisorForReadonly = useMemo(() => {
+    const direct = firstNonEmpty(
+      schedule?.supervisor,
+      getByKeys(firstRow, '督导', '现场督导', '项目经理', 'Monitor', 'CRA'),
+    )
+    if (direct) return direct
+    for (const [k, v] of Object.entries(firstRow)) {
+      if (!v?.trim()) continue
+      const nk = k.trim()
+      if (/督导|项目经理|CRA|Monitor|监查/i.test(nk)) return v.trim()
+    }
+    return ''
+  }, [schedule?.supervisor, headers, rows])
+
+  const researchGroupForReadonly = useMemo(() => {
+    const direct = firstNonEmpty(
+      schedule?.research_group,
+      getByKeys(firstRow, '研究组', '组别', '样本组别', '项目研究组', 'Group'),
+    )
+    if (direct) return direct
+    for (const [k, v] of Object.entries(firstRow)) {
+      if (!v?.trim()) continue
+      const nk = k.trim()
+      if (/研究组|^组别$|样本组别|项目研究组|Group/i.test(nk)) return v.trim()
+    }
+    return ''
+  }, [schedule?.research_group, headers, rows])
+
+  /** 入口：?tab=schedule 或 location.state.coreTab=schedule → 默认打开「项目排期」Tab */
+  const [activeTab, setActiveTab] = useState<'project' | 'schedule'>(() => {
+    if (searchParams.get('tab') === 'schedule') return 'schedule'
+    const st = (location.state as { coreTab?: string })?.coreTab
+    if (st === 'schedule') return 'schedule'
+    return 'project'
+  })
+
+  useEffect(() => {
+    const wantSchedule =
+      searchParams.get('tab') === 'schedule' ||
+      (location.state as { coreTab?: string })?.coreTab === 'schedule'
+    setActiveTab(wantSchedule ? 'schedule' : 'project')
+  }, [orderId])
 
   const initialSplitDays = Math.max(1, Number(schedule?.split_days) || 1)
   const [formSplitDays, setFormSplitDays] = useState(initialSplitDays)
@@ -383,6 +427,97 @@ export default function ScheduleCorePage() {
     is_grouped?: boolean
     group_quota?: GroupQuotaRow[]
   }
+
+  /**
+   * 已发布/已完成时只读区必须直接来自接口 schedule.payload.visit_blocks。
+   * 草稿态的 visitBlocks 状态会被「访视次数从项目信息同步」等 effect 改写，与库中真实排程不一致。
+   */
+  const publishedVisitBlocksFromPayload = useMemo(() => {
+    if (!schedule || schedule.status === 'draft') return null
+    const pl = (schedule.payload && typeof schedule.payload === 'object' ? schedule.payload : {}) as {
+      visit_blocks?: VisitBlock[]
+    }
+    const blocks = pl.visit_blocks
+    if (!Array.isArray(blocks) || blocks.length === 0) return []
+    return blocks.map((b) => ({
+      visit_point: String(b.visit_point ?? ''),
+      processes: (Array.isArray(b.processes) ? b.processes : []).map((p) => ({
+        code: String(p.code ?? ''),
+        process: String(p.process ?? ''),
+        sample_size: String(p.sample_size ?? ''),
+        exec_dates: Array.isArray(p.exec_dates) ? [...p.exec_dates] : [],
+      })),
+    }))
+  }, [schedule])
+
+  /** 只读区：执行日期列数 = max(排程拆分天数、订单字段、各流程 exec_dates 实际长度) */
+  const maxExecDateColsFromPublished = useMemo(() => {
+    if (!publishedVisitBlocksFromPayload || publishedVisitBlocksFromPayload.length === 0) return 1
+    let m = 1
+    for (const b of publishedVisitBlocksFromPayload) {
+      for (const p of b.processes) {
+        const len = Array.isArray(p.exec_dates) ? p.exec_dates.length : 0
+        m = Math.max(m, len)
+      }
+    }
+    return Math.max(1, m)
+  }, [publishedVisitBlocksFromPayload])
+
+  const splitDaysFromOrderFallback = useMemo(() => {
+    const direct = getByKeys(
+      firstRow,
+      '项目拆分天数',
+      '拆分天数',
+      '项目拆分',
+      'Field work',
+      'Field work days',
+      'split days',
+      'Split days',
+    )
+    let n = parseInt(direct, 10)
+    if (!Number.isNaN(n) && n >= 1) return n
+    for (const [k, v] of Object.entries(firstRow)) {
+      if (!v?.trim()) continue
+      const nk = k.trim()
+      if (/拆分天数|项目拆分|Field work|split\s*days/i.test(nk)) {
+        const x = parseInt(String(v).trim(), 10)
+        if (!Number.isNaN(x) && x >= 1) return x
+      }
+    }
+    return 0
+  }, [headers, rows])
+
+  const splitDaysForReadonly = useMemo(() => {
+    if (!schedule || schedule.status === 'draft') return Math.max(1, maxExecDateColsFromPublished)
+    const fromSchedule =
+      schedule.split_days != null && Number(schedule.split_days) >= 1
+        ? Math.max(1, Number(schedule.split_days))
+        : 0
+    const base = Math.max(fromSchedule, splitDaysFromOrderFallback, 1)
+    return Math.max(base, maxExecDateColsFromPublished, 1)
+  }, [schedule, splitDaysFromOrderFallback, maxExecDateColsFromPublished])
+
+  const visitCountForReadonly = useMemo(() => {
+    const bl = publishedVisitBlocksFromPayload?.length ?? 0
+    const fromPayload = typeof payloadData.visit_count === 'number' ? payloadData.visit_count : 0
+    const raw = getByKeys(firstRow, '访视次数')
+    const n = parseInt(raw, 10)
+    const fromOrder = !Number.isNaN(n) && n >= 1 ? n : 0
+    let extra = 0
+    for (const [k, v] of Object.entries(firstRow)) {
+      if (!v?.trim()) continue
+      const nk = k.trim()
+      if (/访视次数|访视点次数|visit\s*count/i.test(nk)) {
+        const x = parseInt(String(v).trim(), 10)
+        if (!Number.isNaN(x) && x >= 1) {
+          extra = Math.max(extra, x)
+          break
+        }
+      }
+    }
+    const m = Math.max(bl, fromPayload, fromOrder, extra)
+    return m > 0 ? m : null
+  }, [publishedVisitBlocksFromPayload, payloadData.visit_count, headers, rows])
 
   /** 从项目信息（执行订单解析结果）取访视次数，用于自动带出项目排期的访视次数 */
   const visitCountFromProjectInfo = useMemo(() => {
@@ -421,6 +556,16 @@ export default function ScheduleCorePage() {
   })
   const [visitCount, setVisitCount] = useState<number>(initialVisitCount)
   const [t0Date, setT0Date] = useState<string>(() => (schedule?.t0_date ? String(schedule.t0_date) : ''))
+  /** 只读区：T0 优先排程核心，其次执行订单常见表头 */
+  const t0LabelForReadonly = useMemo(() => {
+    if (!schedule || schedule.status === 'draft') return t0Date || '—'
+    const dt = firstNonEmpty(
+      schedule.t0_date != null ? String(schedule.t0_date) : '',
+      getByKeys(firstRow, 'T0基准日期', 'T0基准', 'T0 日期', '基准日期', 'T0', 'T0日期'),
+    )
+    if (dt) return String(dt).slice(0, 10)
+    return t0Date || '—'
+  }, [schedule, schedule?.status, schedule?.t0_date, t0Date, headers, rows])
   const [isGrouped, setIsGrouped] = useState<boolean>(payloadData.is_grouped ?? false)
   const [groupQuota, setGroupQuota] = useState<GroupQuotaRow[]>(() => {
     const q = payloadData.group_quota
@@ -442,9 +587,10 @@ export default function ScheduleCorePage() {
   )
   const groupQuotaKey = JSON.stringify(groupQuota)
   useEffect(() => {
+    if (!schedule || schedule.status !== 'draft') return
     if (maxSample <= 0) return
     setVisitBlocks((prev) => computeAndFillSampleSizes(prev, maxSample, formSplitDays, isGrouped, groupQuota))
-  }, [maxSample, formSplitDays, isGrouped, groupQuotaKey, sampleFillStructureKey])
+  }, [schedule, maxSample, formSplitDays, isGrouped, groupQuotaKey, sampleFillStructureKey])
 
   /** 打开组别配额模态框时，将问卷组行的样本量同步为项目最大样本量 */
   useEffect(() => {
@@ -465,6 +611,7 @@ export default function ScheduleCorePage() {
     hasSyncedVisitCountFromOrder.current = false
   }, [orderId])
   useEffect(() => {
+    if (!schedule || schedule.status !== 'draft') return
     if (visitCountFromProjectInfo == null || hasSyncedVisitCountFromOrder.current) return
     hasSyncedVisitCountFromOrder.current = true
     setVisitCount(visitCountFromProjectInfo)
@@ -489,7 +636,7 @@ export default function ScheduleCorePage() {
         visit_point: visitPointsFromProjectInfo[i] ?? block.visit_point,
       }))
     })
-  }, [visitCountFromProjectInfo, visitPointsFromProjectInfo, splitDays])
+  }, [schedule, visitCountFromProjectInfo, visitPointsFromProjectInfo, splitDays])
 
   const ensureExecDatesLength = useCallback((blocks: VisitBlock[], k: number): VisitBlock[] => {
     return blocks.map((b) => ({
@@ -1161,6 +1308,98 @@ export default function ScheduleCorePage() {
           </Button>
         </div>
       </section>
+      )}
+
+      {/* 时间线已发布后：草稿表单隐藏，此处只读展示访视点/流程/执行日期，避免「项目排程」Tab 只剩人员排程提示卡 */}
+      {schedule.status !== 'draft' && (
+        <section
+          className={clsx(
+            'rounded-xl border p-4 mt-4',
+            isDark ? 'border-[#3b434e] bg-slate-800/50' : 'border-slate-200 bg-white'
+          )}
+        >
+          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">项目排期</h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+            {schedule.status === 'completed'
+              ? '排程已完成。以下为已保存的项目排期（访视点、流程与执行日期），仅可查看。'
+              : '时间线已发布。以下为当前项目排期（访视点、流程与执行日期），仅可查看；如需改期请在时间槽详情或联系管理员。'}
+          </p>
+          <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-600 dark:text-slate-400 mb-4">
+            <span>
+              督导：
+              <span className="text-slate-800 dark:text-slate-200">
+                {supervisorForReadonly || '—'}
+              </span>
+            </span>
+            <span>
+              研究组：
+              <span className="text-slate-800 dark:text-slate-200">
+                {researchGroupForReadonly || '—'}
+              </span>
+            </span>
+            <span>
+              T0基准日期：<span className="text-slate-800 dark:text-slate-200">{t0LabelForReadonly}</span>
+            </span>
+            <span>
+              项目拆分天数：<span className="text-slate-800 dark:text-slate-200">{splitDaysForReadonly}</span>
+            </span>
+            <span>
+              访视次数：
+              <span className="text-slate-800 dark:text-slate-200">
+                {visitCountForReadonly ?? '—'}
+              </span>
+            </span>
+          </div>
+          {!publishedVisitBlocksFromPayload || publishedVisitBlocksFromPayload.length === 0 ? (
+            <p className="text-sm text-slate-500">暂无访视点数据（接口 payload.visit_blocks 为空）。</p>
+          ) : (
+            <div className="space-y-4">
+              {publishedVisitBlocksFromPayload.map((block, blockIdx) => (
+                <div
+                  key={blockIdx}
+                  className={clsx(
+                    'rounded-lg border p-4',
+                    isDark ? 'border-[#3b434e] bg-slate-800/30' : 'border-slate-200 bg-slate-50/50'
+                  )}
+                >
+                  <div className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
+                    访视点：{block.visit_point || '—'}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[520px] text-sm border-collapse">
+                      <thead>
+                        <tr className={clsx('border-b', isDark ? 'border-[#3b434e] bg-slate-700/50' : 'border-slate-200 bg-slate-100')}>
+                          <th className="px-3 py-2 text-left font-medium">编号</th>
+                          <th className="px-3 py-2 text-left font-medium">流程</th>
+                          <th className="px-3 py-2 text-left font-medium">样本量</th>
+                          {Array.from({ length: splitDaysForReadonly }, (_, i) => (
+                            <th key={i} className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                              执行日期{i + 1}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {block.processes.map((proc, procIdx) => (
+                          <tr key={procIdx} className={clsx('border-b', isDark ? 'border-slate-700' : 'border-slate-100')}>
+                            <td className="px-3 py-2">{proc.code || '—'}</td>
+                            <td className="px-3 py-2">{proc.process || '—'}</td>
+                            <td className="px-3 py-2">{proc.sample_size || '—'}</td>
+                            {Array.from({ length: splitDaysForReadonly }, (_, i) => (
+                              <td key={i} className="px-3 py-2 whitespace-nowrap">
+                                {formatExecDateDisplay(proc.exec_dates[i])}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
       {isTimelinePublished && (

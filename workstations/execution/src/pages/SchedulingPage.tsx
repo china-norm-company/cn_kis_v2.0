@@ -9,7 +9,7 @@
  * - 冲突面板：红色高亮冲突槽位
  * - 操作：创建排程计划、生成槽位、发布排程、里程碑管理
  */
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -103,6 +103,10 @@ const WEEKDAY_NAMES = ['一', '二', '三', '四', '五', '六', '日']
 export default function SchedulingPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const location = useLocation()
+  const locationRef = useRef(location)
+  locationRef.current = location
+
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [currentWeek, setCurrentWeek] = useState(new Date())
   const [currentMonth, setCurrentMonth] = useState({ year: new Date().getFullYear(), month: new Date().getMonth() })
@@ -110,7 +114,13 @@ export default function SchedulingPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showConflicts, setShowConflicts] = useState(false)
   const [conflictsList, setConflictsList] = useState<any[]>([])
-  const [activePlanTab, setActivePlanTab] = useState<'slots' | 'plans' | 'milestones' | 'lab'>('plans')
+  const [activePlanTab, setActivePlanTab] = useState<'slots' | 'plans' | 'milestones' | 'lab'>(() => {
+    const t = (location.state as { tab?: string })?.tab
+    if (t === 'plans' || t === 'slots' || t === 'milestones' || t === 'lab') return t
+    return 'plans'
+  })
+  /** 排程计划内：待排程任务 | 已排程任务（排程核心已完成发布的项目） */
+  const [planSubTab, setPlanSubTab] = useState<'pending' | 'completed'>('pending')
   const [showLabUploadModal, setShowLabUploadModal] = useState(false)
   const [labSchedulePage, setLabSchedulePage] = useState(1)
   const [labScheduleFilterPerson, setLabScheduleFilterPerson] = useState('')
@@ -123,7 +133,6 @@ export default function SchedulingPage() {
   const [labSubView, setLabSubView] = useState<'table' | 'calendar' | 'person'>('table')
   const [toastMsg, setToastMsg] = useState<string | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const location = useLocation()
 
   useEffect(() => {
     if (!toastMsg) return
@@ -134,8 +143,24 @@ export default function SchedulingPage() {
   }, [toastMsg])
   useEffect(() => {
     const tab = (location.state as { tab?: string })?.tab
-    if (tab === 'plans') setActivePlanTab('plans')
+    if (tab === 'plans' || tab === 'slots' || tab === 'milestones' || tab === 'lab') {
+      setActivePlanTab(tab)
+    }
   }, [location.state])
+
+  /** 将当前主 TAB 写入 history.state，避免仅改 React 状态导致刷新后仍沿用旧的 tab（如从时间线返回带 tab:slots） */
+  const syncScheduleMainTab = useCallback(
+    (tab: 'slots' | 'plans' | 'milestones' | 'lab') => {
+      setActivePlanTab(tab)
+      const prev = (locationRef.current.state ?? {}) as Record<string, unknown>
+      navigate(
+        { pathname: locationRef.current.pathname, search: locationRef.current.search, hash: locationRef.current.hash },
+        { replace: true, state: { ...prev, tab } }
+      )
+    },
+    [navigate]
+  )
+
   // Date ranges for queries
   const weekDates = useMemo(() => getWeekDates(currentWeek), [currentWeek])
   const monthDates = useMemo(() => getMonthDates(currentMonth.year, currentMonth.month), [currentMonth])
@@ -185,12 +210,22 @@ export default function SchedulingPage() {
   })
   const timelinePublishedItems: SchedulePlanListItem[] = (((timelinePublishedRes as any)?.data?.items) ?? []) as SchedulePlanListItem[]
 
-  /** 排程计划 Tab：排程已全部完成（排程核心 status=completed）的已发布时间线不再合并进列表，仅在时间槽等视图展示 */
+  /** 排程计划 Tab：排程已全部完成（排程核心 status=completed）的已发布时间线不再合并进「待排程」列表 */
   const timelinePublishedForPlansMerge = useMemo(
     () =>
       timelinePublishedItems.filter((item) => {
         const st = (item as { schedule_core_status?: string | null }).schedule_core_status
         return st !== 'completed'
+      }),
+    [timelinePublishedItems]
+  )
+
+  /** 「已排程任务」Tab：仅排程核心已完成的已发布时间线 */
+  const timelinePublishedCompletedOnly = useMemo(
+    () =>
+      timelinePublishedItems.filter((item) => {
+        const st = (item as { schedule_core_status?: string | null }).schedule_core_status
+        return st === 'completed'
       }),
     [timelinePublishedItems]
   )
@@ -240,7 +275,7 @@ export default function SchedulingPage() {
       queryClient.invalidateQueries({ queryKey: ['scheduling', 'timeline-upload'] })
       queryClient.invalidateQueries({ queryKey: ['scheduling', 'timeline-published'] })
       setShowCreateModal(false)
-      setActivePlanTab('slots')
+      syncScheduleMainTab('slots')
       setToastMsg('时间线数据已保存，已生成排程计划，刷新后仍会保留')
     },
     onError: () => {
@@ -255,7 +290,7 @@ export default function SchedulingPage() {
       queryClient.invalidateQueries({ queryKey: ['scheduling', 'lab-schedule'] })
       queryClient.invalidateQueries({ queryKey: ['scheduling', 'lab-schedule-month'] })
       setShowLabUploadModal(false)
-      setActivePlanTab('lab')
+      syncScheduleMainTab('lab')
       setToastMsg('实验室排期已上传')
     },
     onError: () => setToastMsg('上传失败，请重试'),
@@ -309,6 +344,44 @@ export default function SchedulingPage() {
       return code.includes(q)
     })
   }, [displayPlans, schedulePlanProjectCodeFilter])
+
+  /** 已排程任务：按项目编号去重，逻辑与 displayPlans 一致 */
+  const completedDisplayPlans = useMemo(() => {
+    const merged = [...timelinePublishedCompletedOnly]
+    const byCode = new Map<string, SchedulePlanListItem>()
+    for (const p of merged) {
+      const code = (p.protocol_code ?? (p as { project_code?: string }).project_code ?? '').toString().trim()
+      if (!code) {
+        byCode.set(`__empty_${byCode.size}`, p)
+        continue
+      }
+      const existing = byCode.get(code)
+      const curTime = (p.create_time ?? '').toString()
+      const existTime = (existing?.create_time ?? '').toString()
+      if (!existing || curTime >= existTime) {
+        byCode.set(code, p)
+      }
+    }
+    const result = Array.from(byCode.values())
+    result.sort((a, b) => {
+      const ta = (a.create_time ?? '').toString()
+      const tb = (b.create_time ?? '').toString()
+      return tb.localeCompare(ta)
+    })
+    return result
+  }, [timelinePublishedCompletedOnly])
+
+  const filteredCompletedDisplayPlans = useMemo(() => {
+    const q = schedulePlanProjectCodeFilter.trim().toLowerCase()
+    if (!q) return completedDisplayPlans
+    return completedDisplayPlans.filter((p) => {
+      const code = (p.protocol_code ?? (p as { project_code?: string }).project_code ?? '')
+        .toString()
+        .trim()
+        .toLowerCase()
+      return code.includes(q)
+    })
+  }, [completedDisplayPlans, schedulePlanProjectCodeFilter])
 
   const slots = (slotsRes?.data as any)?.items ?? [] as ScheduleSlot[]
   const slotsTotal = (slotsRes?.data as any)?.total ?? 0
@@ -478,7 +551,7 @@ export default function SchedulingPage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4 md:gap-4">
-        <StatCard label="排程计划" value={displayPlans.length} icon={<Calendar className="w-5 h-5" />} color="blue" />
+        <StatCard label="待排程任务" value={displayPlans.length} icon={<Calendar className="w-5 h-5" />} color="blue" />
         <StatCard label="待执行槽位" value={plannedCount} icon={<List className="w-5 h-5" />} color="amber" />
         <StatCard label="已完成" value={completedCount} icon={<Eye className="w-5 h-5" />} color="green" />
         <StatCard label="冲突" value={conflictCount} icon={<AlertTriangle className="w-5 h-5" />} color="red" />
@@ -489,7 +562,8 @@ export default function SchedulingPage() {
         {(['plans', 'slots', 'milestones', 'lab'] as const).map(tab => (
           <button
             key={tab}
-            onClick={() => setActivePlanTab(tab)}
+            type="button"
+            onClick={() => syncScheduleMainTab(tab)}
             className={clsx(
               'shrink-0 min-h-11 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
               activePlanTab === tab
@@ -504,36 +578,73 @@ export default function SchedulingPage() {
 
       {activePlanTab === 'plans' && (
         <>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <label htmlFor="schedule-plan-project-code-filter" className="text-sm font-medium text-slate-600 dark:text-slate-400 shrink-0">
               项目编号
             </label>
-            <div className="relative flex-1 min-w-[200px] max-w-md">
+            <div className="relative min-w-0 flex-1 max-w-md min-h-10">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
               <input
                 id="schedule-plan-project-code-filter"
                 type="search"
                 value={schedulePlanProjectCodeFilter}
                 onChange={(e) => setSchedulePlanProjectCodeFilter(e.target.value)}
-                placeholder="模糊筛选项目编号（待排程与已排程合并列表）"
+                placeholder={
+                  planSubTab === 'pending'
+                    ? '模糊筛选项目编号（待排程任务列表）'
+                    : '模糊筛选项目编号（已排程任务列表）'
+                }
                 className="w-full min-h-10 rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-[#3b434e] dark:bg-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                 autoComplete="off"
               />
             </div>
+            <div className="flex min-h-10 w-full shrink-0 justify-end gap-2 overflow-x-auto sm:ml-auto sm:w-auto">
+              {(['pending', 'completed'] as const).map((sub) => (
+                <button
+                  key={sub}
+                  type="button"
+                  onClick={() => setPlanSubTab(sub)}
+                  className={clsx(
+                    'shrink-0 min-h-10 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                    planSubTab === sub
+                      ? 'bg-primary-600 text-white shadow-sm dark:bg-primary-500 dark:text-white'
+                      : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-[#3b434e] dark:text-slate-200 dark:hover:bg-slate-700'
+                  )}
+                >
+                  {sub === 'pending' ? '待排程任务' : '已排程任务'}
+                </button>
+              ))}
+            </div>
           </div>
-          <PlansPanel
-            plans={filteredDisplayPlans}
-            projectCodeFilterKey={schedulePlanProjectCodeFilter}
-            emptyMessage={
-              displayPlans.length > 0 &&
-              filteredDisplayPlans.length === 0 &&
-              schedulePlanProjectCodeFilter.trim()
-                ? '无匹配项目编号，请调整筛选条件'
-                : undefined
-            }
-            onStartSchedule={(orderId) => navigate(`/scheduling/schedule-core/${orderId}`)}
-            onOfflinePlanClick={(planId) => navigate(`/scheduling/schedule-offline/${planId}`)}
-          />
+          {planSubTab === 'pending' ? (
+            <PlansPanel
+              plans={filteredDisplayPlans}
+              projectCodeFilterKey={schedulePlanProjectCodeFilter}
+              paginationResetKey={planSubTab}
+              emptyMessage={
+                displayPlans.length > 0 &&
+                filteredDisplayPlans.length === 0 &&
+                schedulePlanProjectCodeFilter.trim()
+                  ? '无匹配项目编号，请调整筛选条件'
+                  : undefined
+              }
+              onStartSchedule={(orderId) => navigate(`/scheduling/schedule-core/${orderId}`)}
+              onOfflinePlanClick={(planId) => navigate(`/scheduling/schedule-offline/${planId}`)}
+            />
+          ) : (
+            <CompletedPlansPanel
+              plans={filteredCompletedDisplayPlans}
+              projectCodeFilterKey={schedulePlanProjectCodeFilter}
+              paginationResetKey={planSubTab}
+              emptyMessage={
+                completedDisplayPlans.length > 0 &&
+                filteredCompletedDisplayPlans.length === 0 &&
+                schedulePlanProjectCodeFilter.trim()
+                  ? '无匹配项目编号，请调整筛选条件'
+                  : undefined
+              }
+            />
+          )}
         </>
       )}
       {activePlanTab === 'milestones' && <MilestonesPanel plans={plans} />}
@@ -1237,6 +1348,7 @@ const PLANS_PAGE_SIZE = 8
 function PlansPanel({
   plans,
   projectCodeFilterKey = '',
+  paginationResetKey,
   emptyMessage,
   onStartSchedule,
   onOfflinePlanClick,
@@ -1244,6 +1356,8 @@ function PlansPanel({
   plans: SchedulePlanListItem[]
   /** 项目编号筛选变化时重置分页 */
   projectCodeFilterKey?: string
+  /** 子 TAB 等切换时重置分页 */
+  paginationResetKey?: string | number
   /** 列表为空时的提示（如无匹配筛选） */
   emptyMessage?: string
   onStartSchedule?: (orderId: number) => void
@@ -1255,7 +1369,7 @@ function PlansPanel({
 
   useEffect(() => {
     setPage(1)
-  }, [projectCodeFilterKey])
+  }, [projectCodeFilterKey, paginationResetKey])
 
   const total = plans.length
   const totalPages = Math.max(1, Math.ceil(total / PLANS_PAGE_SIZE))
@@ -1365,6 +1479,187 @@ function PlansPanel({
   return (
     <div className={clsx('bg-white dark:bg-slate-800 rounded-xl', !isDark && 'border border-slate-200')}>
       <div className="overflow-x-auto" role="grid" aria-label="排程计划列表">
+        <div className="min-w-[1200px]">
+          <DataTable
+            columns={columns}
+            data={pagePlans}
+            rowKey="id"
+          />
+        </div>
+      </div>
+      <div className={clsx('flex flex-wrap items-center justify-between gap-3 px-6 py-3 text-xs text-slate-500 dark:text-slate-400', !isDark && 'border-t border-slate-100')}>
+        <span>共 {total} 条</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            disabled={!hasPrev}
+            onClick={() => hasPrev && setPage(p => p - 1)}
+            className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1.5 text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-[#3b434e] dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+          >
+            <ChevronLeft className="w-4 h-4" /> 上一页
+          </button>
+          <span className="text-slate-500 dark:text-slate-400">
+            第 {page} / {totalPages} 页
+          </span>
+          <span className="flex items-center gap-1">
+            <input
+              key={page}
+              type="number"
+              min={1}
+              max={totalPages}
+              defaultValue={page}
+              onKeyDown={(e) => e.key === 'Enter' && handlePageJump((e.target as HTMLInputElement).value)}
+              className="w-12 rounded border border-slate-200 bg-white px-1.5 py-1 text-center text-slate-700 dark:border-[#3b434e] dark:bg-slate-700 dark:text-slate-200 dark:focus:ring-1 dark:focus:ring-slate-400"
+              aria-label="跳转到页码"
+            />
+            <button
+              type="button"
+              onClick={(e) => {
+                const input = (e.currentTarget.previousElementSibling as HTMLInputElement | null)
+                if (input) handlePageJump(input.value)
+              }}
+              className="rounded border border-slate-200 bg-white px-2 py-1 text-slate-600 hover:bg-slate-50 dark:border-[#3b434e] dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+            >
+              跳转
+            </button>
+          </span>
+          <button
+            type="button"
+            disabled={!hasNext}
+            onClick={() => hasNext && setPage(p => p + 1)}
+            className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1.5 text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-[#3b434e] dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+          >
+            下一页 <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** 已排程任务：排程核心已完成；提供时间线、人员排程入口 */
+function CompletedPlansPanel({
+  plans,
+  projectCodeFilterKey = '',
+  paginationResetKey,
+  emptyMessage,
+}: {
+  plans: SchedulePlanListItem[]
+  projectCodeFilterKey?: string
+  paginationResetKey?: string | number
+  emptyMessage?: string
+}) {
+  const navigate = useNavigate()
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
+  const [page, setPage] = useState(1)
+
+  useEffect(() => {
+    setPage(1)
+  }, [projectCodeFilterKey, paginationResetKey])
+
+  const total = plans.length
+  const totalPages = Math.max(1, Math.ceil(total / PLANS_PAGE_SIZE))
+  const start = (page - 1) * PLANS_PAGE_SIZE
+  const pagePlans = plans.slice(start, start + PLANS_PAGE_SIZE)
+  const hasPrev = page > 1
+  const hasNext = page < totalPages
+  const handlePageJump = (value: string) => {
+    const n = parseInt(value, 10)
+    if (!Number.isNaN(n) && n >= 1 && n <= totalPages) setPage(n)
+  }
+
+  if (plans.length === 0) {
+    return (
+      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-[#3b434e] p-12">
+        <Empty message={emptyMessage ?? '暂无已全部完成发布的项目'} />
+      </div>
+    )
+  }
+
+  const dataSourceLabel = (p: SchedulePlanListItem) => {
+    const src = p.source_type ?? p.数据来源 ?? (p.source === 'execution_order' ? 'online' : 'online')
+    return src === 'offline' ? '线下' : '线上'
+  }
+
+  const columns = [
+    { key: 'protocol_code', header: '项目编号', align: 'center' as const, render: (p: SchedulePlanListItem) => <span className="text-sm text-slate-700 dark:text-slate-300">{p.protocol_code ?? '-'}</span> },
+    { key: 'protocol_title', header: '项目名称', align: 'center' as const, render: (p: SchedulePlanListItem) => <span className="text-sm text-slate-800 dark:text-slate-200 truncate max-w-[160px] block mx-auto" title={p.protocol_title ?? p.name}>{p.protocol_title ?? p.name ?? '-'}</span> },
+    { key: 'client', header: '客户', align: 'center' as const, render: (p: SchedulePlanListItem) => <span className="text-sm text-slate-600 dark:text-slate-300">{p.client ?? '-'}</span> },
+    { key: 'sample_size', header: '样本量', align: 'center' as const, render: (p: SchedulePlanListItem) => <span className="text-sm text-slate-600 dark:text-slate-300">{p.sample_size ?? '-'}</span> },
+    { key: 'visit_node_count', header: '访视点', align: 'center' as const, render: (p: SchedulePlanListItem) => <span className="text-sm text-slate-600 dark:text-slate-300">{p.visit_node_count ?? '-'}</span> },
+    { key: 'visit_node_count2', header: '访视数', align: 'center' as const, render: (p: SchedulePlanListItem) => <span className="text-sm text-slate-600 dark:text-slate-300">{p.visit_node_count ?? '-'}</span> },
+    { key: 'window_summary', header: '窗口期', align: 'center' as const, render: (p: SchedulePlanListItem) => <span className="text-xs text-slate-500 dark:text-slate-400 max-w-[120px] truncate block mx-auto" title={p.window_summary}>{p.window_summary ?? '-'}</span> },
+    { key: 'execution_period', header: '执行周期', align: 'center' as const, render: (p: SchedulePlanListItem) => (p.execution_period ? <Badge variant="field" size="sm">{formatExecutionPeriodToMMMMDDYY(p.execution_period)}</Badge> : <Badge variant="field" size="sm" className="opacity-75">-</Badge>) },
+    { key: '数据来源', header: '数据来源', align: 'center' as const, render: (p: SchedulePlanListItem) => <Badge variant={dataSourceLabel(p) === '线下' ? 'warning' : 'success'}>{dataSourceLabel(p)}</Badge> },
+    {
+      key: 'schedule_progress',
+      header: '排程进度',
+      align: 'center' as const,
+      render: (p: SchedulePlanListItem) => {
+        const label = p.schedule_progress_display ?? (p.status === 'draft' ? '待排程' : p.status === 'generated' ? '已排程' : p.status === 'published' ? '已发布' : p.status)
+        const progressDark =
+          'dark:shadow-sm dark:ring-1 dark:ring-white/15 dark:!shadow-[0_0_12px_-2px_rgba(255,255,255,0.12)]'
+        return (
+          <Badge variant="success" size="sm" className={clsx(progressDark, 'dark:!bg-emerald-800/75 dark:!text-emerald-50 dark:ring-emerald-400/45')}>
+            {label}
+          </Badge>
+        )
+      },
+    },
+    {
+      key: 'actions',
+      header: '操作',
+      align: 'center' as const,
+      render: (p: SchedulePlanListItem) => {
+        const idStr = String(p.id ?? '')
+        const isPublished = idStr.startsWith('tp-')
+        const planId = isPublished ? parseInt(idStr.replace(/^tp-/, ''), 10) : 0
+        const execOrderId = p.execution_order_id != null ? Number(p.execution_order_id) : NaN
+        const canTimeline = isPublished && !Number.isNaN(planId) && planId > 0
+        const canPersonnel = !Number.isNaN(execOrderId) && execOrderId > 0
+
+        return (
+          <div className="flex flex-wrap gap-1 justify-center">
+            {canTimeline && (
+              <Button
+                size="xs"
+                variant="secondary"
+                onClick={() => {
+                  if (!Number.isNaN(execOrderId) && execOrderId > 0) {
+                    navigate(`/scheduling/schedule-core/${execOrderId}?tab=schedule`)
+                  } else {
+                    navigate(`/scheduling/timeslot/${planId}`)
+                  }
+                }}
+                title={
+                  !Number.isNaN(execOrderId) && execOrderId > 0
+                    ? '排程核心 · 项目排期（访视点/流程/执行日期）'
+                    : '无执行订单关联时打开时间槽详情（快照与排程结果）'
+                }
+              >
+                {!Number.isNaN(execOrderId) && execOrderId > 0 ? '项目排期' : '时间槽'}
+              </Button>
+            )}
+            {canPersonnel && (
+              <Button
+                size="xs"
+                variant="primary"
+                onClick={() => navigate(`/scheduling/schedule-core/${execOrderId}/personnel`)}
+              >
+                人员排程
+              </Button>
+            )}
+            {!canTimeline && !canPersonnel && <span className="text-slate-400 text-sm">—</span>}
+          </div>
+        )
+      },
+    },
+  ]
+
+  return (
+    <div className={clsx('bg-white dark:bg-slate-800 rounded-xl', !isDark && 'border border-slate-200')}>
+      <div className="overflow-x-auto" role="grid" aria-label="已排程任务列表">
         <div className="min-w-[1200px]">
           <DataTable
             columns={columns}

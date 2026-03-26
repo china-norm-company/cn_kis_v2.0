@@ -1,20 +1,24 @@
 /**
- * 时间槽详情页：展示已发布排程的项目信息 + 行政/评估/技术排期，支持按日期/按人员/按项目三视图
+ * 时间槽详情页：项目信息 + 排程状态（四维度）+ 排程结果（项目 / 人员 / 日期 TAB，可筛选、可导出）
  * 路由：/scheduling/timeslot/:id （id 为 TimelinePublishedPlan.id）
  */
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 import { schedulingApi } from '@cn-kis/api-client'
-import { Button, Card, Tabs } from '@cn-kis/ui-kit'
-import { ArrowLeft, Calendar, Users, FolderOpen } from 'lucide-react'
+import { Button, Card, Tabs, Input, Select } from '@cn-kis/ui-kit'
+import { ArrowLeft, Calendar, Users, FolderOpen, Download, Pencil } from 'lucide-react'
 import { useTheme } from '../contexts/ThemeContext'
 import { ExecutionOrderDetailReadOnly } from '../components/ExecutionOrderDetailReadOnly'
 import { formatExecutionPeriodToMMMMDDYY } from '../utils/executionOrderPlanConfig'
-import { getProcessIndicesForTab } from '../utils/personnelProcessTab'
+import { computeAllFourDimensions, type StatusVariant } from '../utils/timeSlotDetailAggregation'
+import type { PersonnelPayload } from '../utils/personnelProcessTab'
+import { buildScheduleResultDimensionRows } from '../utils/timeSlotScheduleResultRows'
+import { downloadXlsxMultiSheet } from '../utils/exportTableXlsx'
+import { getFirstRowAsDict } from '../utils/executionOrderFirstRow'
 
-type ViewTabKey = 'byDate' | 'byPerson' | 'byProject'
+type ViewTabKey = 'byProject' | 'byPerson' | 'byDate'
 
 interface VisitBlock {
   visit_point?: string
@@ -32,22 +36,24 @@ interface VisitBlock {
   }>
 }
 
-function getFirstRowAsDict(headers: string[], rows: unknown[]): Record<string, string> {
-  const row = rows?.[0]
-  if (row == null) return {}
-  const out: Record<string, string> = {}
-  if (Array.isArray(row)) {
-    headers.forEach((h, i) => {
-      out[h] = String((row as unknown[])[i] ?? '')
-    })
-  } else if (typeof row === 'object') {
-    const obj = row as Record<string, unknown>
-    headers.forEach((h) => {
-      const v = obj[h]
-      out[h] = v != null ? String(v) : ''
-    })
+/** 依次取第一个「非空字符串」；避免 snapshot 里为 '' 时 ?? 无法回退到订单/schedule */
+function firstNonEmpty(...vals: unknown[]): string {
+  for (const v of vals) {
+    if (v == null) continue
+    const s = String(v).trim()
+    if (s !== '') return s
   }
-  return out
+  return ''
+}
+
+const STATUS_VARIANT_CLASS: Record<StatusVariant, string> = {
+  success:
+    'bg-emerald-50 text-emerald-900 border-emerald-200 dark:bg-emerald-900/25 dark:text-emerald-200 dark:border-emerald-800',
+  warning:
+    'bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-900/25 dark:text-amber-200 dark:border-amber-800',
+  neutral:
+    'bg-slate-50 text-slate-800 border-slate-200 dark:bg-slate-700/40 dark:text-slate-200 dark:border-slate-600',
+  muted: 'bg-slate-100/80 text-slate-600 border-slate-200 dark:bg-slate-800/60 dark:text-slate-400 dark:border-slate-600',
 }
 
 export default function TimeSlotDetailPage() {
@@ -55,7 +61,15 @@ export default function TimeSlotDetailPage() {
   const navigate = useNavigate()
   const { theme } = useTheme()
   const isDark = theme === 'dark'
-  const [activeView, setActiveView] = useState<ViewTabKey>('byDate')
+  const [activeView, setActiveView] = useState<ViewTabKey>('byProject')
+
+  const [projectKeyword, setProjectKeyword] = useState('')
+  /** 按人员 Tab：按「流程」名称精确筛选（选项来自当前 visit_blocks 展开后的流程集合） */
+  const [personProcessFilter, setPersonProcessFilter] = useState('')
+  const [personKeyword, setPersonKeyword] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [dateKeyword, setDateKeyword] = useState('')
 
   const planId = id ? parseInt(id, 10) : NaN
   const { data: detailRes, isLoading, error } = useQuery({
@@ -64,23 +78,245 @@ export default function TimeSlotDetailPage() {
     enabled: Number.isInteger(planId),
   })
 
-  const detail = (detailRes as any)?.data
+  const detail = (detailRes as { data?: unknown })?.data as Record<string, unknown> | undefined
   const snapshot = (detail?.snapshot || {}) as Record<string, unknown>
-  const personnelSnap = snapshot.personnel as
+  const sourceType = String(detail?.source_type ?? 'online')
+  const order = detail?.order as { headers?: string[]; rows?: unknown[] } | undefined
+  const schedule = detail?.schedule as
     | {
-        admin?: Array<{ visit_point?: string; processes?: Array<{ executor?: string; backup?: string; room?: string }> }>
-        eval?: Array<{ visit_point?: string; processes?: Array<{ executor?: string; backup?: string; room?: string }> }>
-        tech?: Array<{ visit_point?: string; processes?: Array<{ executor?: string; backup?: string; room?: string }> }>
+        admin_published?: boolean
+        eval_published?: boolean
+        tech_published?: boolean
+        execution_order_id?: number | null
+        supervisor?: string
+        research_group?: string
+        payload?: { visit_blocks?: VisitBlock[]; personnel?: PersonnelPayload }
       }
     | undefined
-  const order = detail?.order
-  const schedule = detail?.schedule
-  const payload = (schedule?.payload || {}) as { visit_blocks?: VisitBlock[] }
+  const executionOrderId =
+    schedule?.execution_order_id != null && !Number.isNaN(Number(schedule.execution_order_id))
+      ? Number(schedule.execution_order_id)
+      : null
+  const payload = (schedule?.payload || {}) as { visit_blocks?: VisitBlock[]; personnel?: PersonnelPayload }
   const visitBlocks = payload.visit_blocks || []
+  /** 人员排程保存在 payload.personnel；时间槽快照 snapshot 也会同步 personnel，与 schedule.payload 二选一合并 */
+  const personnelMerged = useMemo(() => {
+    return (payload.personnel ?? (snapshot.personnel as PersonnelPayload | undefined)) ?? null
+  }, [payload.personnel, snapshot])
 
   const headers = order?.headers || []
   const rows = order?.rows || []
   const firstRow = order ? getFirstRowAsDict(headers, rows) : {}
+
+  const four = useMemo(
+    () => computeAllFourDimensions(visitBlocks, schedule, personnelMerged),
+    [visitBlocks, schedule, personnelMerged]
+  )
+
+  const projectCtx = useMemo(
+    () => ({
+      projectCode: firstNonEmpty(snapshot['项目编号'], firstRow['项目编号']),
+      projectName: firstNonEmpty(snapshot['项目名称'], firstRow['项目名称'], firstRow['项目名'], firstRow['名称']),
+      group: firstNonEmpty(snapshot['组别'], firstRow['组别'], schedule?.research_group),
+      sample: firstNonEmpty(snapshot['样本量'], firstRow['样本量']),
+      supervisor: firstNonEmpty(snapshot['督导'], firstRow['督导'], schedule?.supervisor),
+      visitTimepoint: firstNonEmpty(snapshot['访视时间点'], firstRow['访视时间点']),
+    }),
+    [snapshot, firstRow, schedule]
+  )
+
+  const { project: projectRows, person: personRows, date: dateRows } = useMemo(
+    () => buildScheduleResultDimensionRows(visitBlocks, personnelMerged, projectCtx),
+    [visitBlocks, personnelMerged, projectCtx]
+  )
+
+  const personProcessOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const r of personRows) {
+      const p = (r.process || '').trim()
+      if (p) set.add(p)
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'zh-CN'))
+  }, [personRows])
+
+  useEffect(() => {
+    if (personProcessFilter && !personProcessOptions.includes(personProcessFilter)) {
+      setPersonProcessFilter('')
+    }
+  }, [personProcessFilter, personProcessOptions])
+
+  const filteredProjectRows = useMemo(() => {
+    const q = projectKeyword.trim().toLowerCase()
+    if (!q) return projectRows
+    return projectRows.filter((r) => {
+      const blob = [
+        r.projectCode,
+        r.projectName,
+        r.sample,
+        r.group,
+        r.supervisor,
+        r.visitTimepoint,
+        r.execDate,
+        String(r.visitCount),
+        r.process,
+        r.tester,
+        r.backup,
+        r.room,
+      ]
+        .join(' ')
+        .toLowerCase()
+      return blob.includes(q)
+    })
+  }, [projectRows, projectKeyword])
+
+  const filteredPersonRows = useMemo(() => {
+    let list = personRows
+    if (personProcessFilter) list = list.filter((r) => r.process === personProcessFilter)
+    const q = personKeyword.trim().toLowerCase()
+    if (q) {
+      list = list.filter((r) => {
+        const blob = [
+          r.tester,
+          r.backup,
+          r.process,
+          r.room,
+          r.projectCode,
+          r.projectName,
+          r.sample,
+          r.visitTimepoint,
+          r.execDate,
+        ]
+          .join(' ')
+          .toLowerCase()
+        return blob.includes(q)
+      })
+    }
+    return list
+  }, [personRows, personProcessFilter, personKeyword])
+
+  const filteredDateRows = useMemo(() => {
+    let list = dateRows
+    const q = dateKeyword.trim().toLowerCase()
+    if (q) {
+      list = list.filter((r) => {
+        const blob = [
+          r.execDate,
+          r.visitTimepoint,
+          r.sample,
+          r.projectCode,
+          r.projectName,
+          r.tester,
+          r.backup,
+          r.room,
+        ]
+          .join(' ')
+          .toLowerCase()
+        return blob.includes(q)
+      })
+    }
+    const from = dateFrom.trim()
+    const to = dateTo.trim()
+    if (from) list = list.filter((r) => r.execDate === '-' || r.execDate >= from)
+    if (to) list = list.filter((r) => r.execDate === '-' || r.execDate <= to)
+    return list
+  }, [dateRows, dateKeyword, dateFrom, dateTo])
+
+  const safeFileStem = useMemo(() => {
+    const code = String(snapshot['项目编号'] ?? 'timeslot')
+    return code.replace(/[^\w\u4e00-\u9fa5-]+/g, '_').slice(0, 40) || 'timeslot'
+  }, [snapshot])
+
+  /** 一次导出：工作簿含 3 个 Sheet（按项目 / 按人员 / 按日期），数据为各 Tab 当前筛选结果 */
+  const exportAllTabs = () => {
+    const projHeaders: (string | number)[] = [
+      '项目编号',
+      '项目名称',
+      '样本量',
+      '组别',
+      '督导',
+      '访视时间点',
+      '执行日期',
+      '访视次数',
+      '流程',
+      '测试人员',
+      '备份人员',
+      '房间',
+    ]
+    const projData = filteredProjectRows.map((r) => [
+      r.projectCode,
+      r.projectName,
+      r.sample,
+      r.group,
+      r.supervisor,
+      r.visitTimepoint,
+      r.execDate,
+      r.visitCount,
+      r.process,
+      r.tester,
+      r.backup,
+      r.room,
+    ])
+    const personHeaders: (string | number)[] = [
+      '测试人员',
+      '备份人员',
+      '流程',
+      '房间',
+      '项目编号',
+      '项目名称',
+      '样本量',
+      '访视时间点',
+      '执行日期',
+    ]
+    const personData = filteredPersonRows.map((r) => [
+      r.tester,
+      r.backup,
+      r.process,
+      r.room,
+      r.projectCode,
+      r.projectName,
+      r.sample,
+      r.visitTimepoint,
+      r.execDate,
+    ])
+    const dateHeaders: (string | number)[] = [
+      '执行日期',
+      '访视时间点',
+      '样本量',
+      '项目编号',
+      '项目名称',
+      '测试人员',
+      '备份人员',
+      '房间',
+    ]
+    const dateData = filteredDateRows.map((r) => [
+      r.execDate,
+      r.visitTimepoint,
+      r.sample,
+      r.projectCode,
+      r.projectName,
+      r.tester,
+      r.backup,
+      r.room,
+    ])
+    downloadXlsxMultiSheet(`时间槽排程-${safeFileStem}.xlsx`, [
+      { name: '按项目', rowsAoA: [projHeaders, ...projData] },
+      { name: '按人员', rowsAoA: [personHeaders, ...personData] },
+      { name: '按日期', rowsAoA: [dateHeaders, ...dateData] },
+    ])
+  }
+
+  const viewTabs = [
+    { key: 'byProject' as const, label: '按项目', icon: <FolderOpen className="w-4 h-4" /> },
+    { key: 'byPerson' as const, label: '按人员', icon: <Users className="w-4 h-4" /> },
+    { key: 'byDate' as const, label: '按日期', icon: <Calendar className="w-4 h-4" /> },
+  ]
+
+  const dimensionHeaders = [
+    { key: 'timeline', label: '时间线', status: four.timeline },
+    { key: 'admin', label: '行政', status: four.admin },
+    { key: 'eval', label: '评估', status: four.eval },
+    { key: 'tech', label: '技术', status: four.tech },
+  ]
 
   if (!Number.isInteger(planId)) {
     return (
@@ -115,51 +351,48 @@ export default function TimeSlotDetailPage() {
     )
   }
 
-  // 按日期：从 visit_blocks 展开 (日期, 访视点, 流程)
-  const byDateRows: { date: string; visit_point: string; process: string; sample_size: string }[] = []
-  for (const block of visitBlocks) {
-    const vp = (block.visit_point || '').trim()
-    for (const proc of block.processes || []) {
-      const processName = (proc.process || proc.code || '').trim()
-      const dates = proc.exec_dates || []
-      const sample = proc.sample_size != null ? String(proc.sample_size) : ''
-      for (const d of dates) {
-        if (d && String(d).trim()) byDateRows.push({ date: String(d).trim().slice(0, 10), visit_point: vp, process: processName, sample_size: sample })
-      }
-    }
-  }
-  byDateRows.sort((a, b) => a.date.localeCompare(b.date) || a.visit_point.localeCompare(b.visit_point))
-
-  // 按人员：按流程汇总行政/评估/技术人员（若有）
-  const byPersonRows: { role: string; person: string; room: string; visit_point: string; process: string; dates: string }[] = []
-  for (const block of visitBlocks) {
-    const vp = (block.visit_point || '').trim()
-    for (const proc of block.processes || []) {
-      const processName = (proc.process || proc.code || '').trim()
-      const dates = (proc.exec_dates || []).filter(Boolean).map((d) => String(d).slice(0, 10))
-      const datesStr = dates.length > 0 ? dates.join('、') : '-'
-      if (proc.admin_person) byPersonRows.push({ role: '行政', person: proc.admin_person, room: proc.admin_room || '-', visit_point: vp, process: processName, dates: datesStr })
-      if (proc.eval_person) byPersonRows.push({ role: '评估', person: proc.eval_person, room: proc.eval_room || '-', visit_point: vp, process: processName, dates: datesStr })
-      if (proc.tech_person) byPersonRows.push({ role: '技术', person: proc.tech_person, room: proc.tech_room || '-', visit_point: vp, process: processName, dates: datesStr })
-    }
-  }
-
-  const viewTabs = [
-    { key: 'byDate', label: '按日期', icon: <Calendar className="w-4 h-4" /> },
-    { key: 'byPerson', label: '按人员', icon: <Users className="w-4 h-4" /> },
-    { key: 'byProject', label: '按项目', icon: <FolderOpen className="w-4 h-4" /> },
-  ]
+  const exportScheduleButton = (
+    <Button
+      type="button"
+      variant="secondary"
+      onClick={exportAllTabs}
+      className="shrink-0 w-fit"
+      icon={<Download className="w-4 h-4" aria-hidden />}
+      iconPosition="left"
+    >
+      导出
+    </Button>
+  )
 
   return (
     <div className="space-y-6 p-4 md:p-6">
-      <div className="flex items-center gap-3">
-        <Button variant="secondary" onClick={() => navigate('/scheduling', { state: { tab: 'slots' } })}>
-          <ArrowLeft className="w-4 h-4 mr-1" /> 返回
-        </Button>
-        <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-200">时间槽详情</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="secondary" onClick={() => navigate('/scheduling', { state: { tab: 'slots' } })}>
+            <ArrowLeft className="w-4 h-4 mr-1" /> 返回
+          </Button>
+          <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-200">时间槽详情</h1>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {sourceType === 'online' && executionOrderId != null && (
+            <Button
+              variant="primary"
+              onClick={() => navigate(`/scheduling/schedule-core/${executionOrderId}`, { state: { from: 'timeslot' } })}
+            >
+              <Pencil className="w-4 h-4 mr-1" /> 继续编辑排程
+            </Button>
+          )}
+          {sourceType === 'offline' && (
+            <Button
+              variant="primary"
+              onClick={() => navigate(`/scheduling/schedule-offline/${planId}`, { state: { from: 'timeslot' } })}
+            >
+              <Pencil className="w-4 h-4 mr-1" /> 继续编辑线下排程
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* 项目信息：有 order 则用 ExecutionOrderDetailReadOnly，否则用 snapshot */}
       <Card className={clsx('p-4', isDark && 'bg-slate-800/50 border-[#3b434e]')}>
         <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">项目信息</h2>
         {order && headers.length > 0 && Object.keys(firstRow).length > 0 ? (
@@ -178,182 +411,255 @@ export default function TimeSlotDetailPage() {
         )}
       </Card>
 
-      {/* 排程状态与访视点流程 */}
-      {schedule && (
-        <Card className={clsx('p-4', isDark && 'bg-slate-800/50 border-[#3b434e]')}>
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">排程状态</h2>
-          <div className="flex flex-wrap gap-2 mb-4">
-            <span className={clsx('text-xs px-2 py-1 rounded', schedule.admin_published ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-600 dark:text-slate-300')}>
-              行政排程 {schedule.admin_published ? '已发布' : '未发布'}
-            </span>
-            <span className={clsx('text-xs px-2 py-1 rounded', schedule.eval_published ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-600 dark:text-slate-300')}>
-              评估排程 {schedule.eval_published ? '已发布' : '未发布'}
-            </span>
-            <span className={clsx('text-xs px-2 py-1 rounded', schedule.tech_published ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-600 dark:text-slate-300')}>
-              技术排程 {schedule.tech_published ? '已发布' : '未发布'}
-            </span>
-          </div>
-          {visitBlocks.length > 0 && (
-            <>
-              <h3 className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">访视点与流程</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className={clsx('border-b', isDark ? 'border-slate-600' : 'border-slate-200')}>
-                      <th className="px-3 py-2 text-left font-medium">访视点</th>
-                      <th className="px-3 py-2 text-left font-medium">流程</th>
-                      <th className="px-3 py-2 text-left font-medium">执行日期</th>
-                      <th className="px-3 py-2 text-left font-medium">样本量</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visitBlocks.flatMap((block) =>
-                      (block.processes || []).map((proc, idx) => (
-                        <tr key={`${block.visit_point}-${idx}`} className={clsx('border-b', isDark ? 'border-slate-700' : 'border-slate-100')}>
-                          <td className="px-3 py-2">{idx === 0 ? block.visit_point : ''}</td>
-                          <td className="px-3 py-2">{proc.process || proc.code || '-'}</td>
-                          <td className="px-3 py-2 text-xs">{(proc.exec_dates || []).filter(Boolean).join('、') || '-'}</td>
-                          <td className="px-3 py-2">{proc.sample_size != null ? proc.sample_size : '-'}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </Card>
-      )}
-
-      {personnelSnap && (personnelSnap.admin || personnelSnap.eval || personnelSnap.tech) && (
-        <Card className={clsx('p-4', isDark && 'bg-slate-800/50 border-[#3b434e]')}>
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">人员排程结果</h2>
-          {(['admin', 'eval', 'tech'] as const).map((role) => {
-            const label = role === 'admin' ? '行政' : role === 'eval' ? '评估' : '技术'
-            const blocks = personnelSnap[role] || []
-            if (!blocks.length) return null
-            return (
-              <div key={role} className="mb-4 last:mb-0">
-                <h3 className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">{label}</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm border-collapse min-w-[520px]">
-                    <thead>
-                      <tr className={clsx('border-b', isDark ? 'border-slate-600' : 'border-slate-200')}>
-                        <th className="px-2 py-2 text-left">访视点</th>
-                        <th className="px-2 py-2 text-left">流程</th>
-                        <th className="px-2 py-2 text-left">执行人员</th>
-                        <th className="px-2 py-2 text-left">备份人员</th>
-                        <th className="px-2 py-2 text-left">房间</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {blocks.flatMap((block, bi) => {
-                        const idxRow = getProcessIndicesForTab(visitBlocks, role)[bi] ?? []
-                        return (block.processes || []).map((row, pi) => {
-                          const globalPi = idxRow[pi]
-                          const procRef =
-                            globalPi != null ? visitBlocks[bi]?.processes?.[globalPi] : undefined
-                          const pnm = (procRef?.process || procRef?.code || '').trim() || '—'
-                          return (
-                          <tr key={`${role}-${bi}-${pi}`} className={clsx('border-b', isDark ? 'border-slate-700' : 'border-slate-100')}>
-                            <td className="px-2 py-2">{pi === 0 ? (block.visit_point || '—') : ''}</td>
-                            <td className="px-2 py-2">{pnm}</td>
-                            <td className="px-2 py-2">{row.executor || '—'}</td>
-                            <td className="px-2 py-2">{row.backup || '—'}</td>
-                            <td className="px-2 py-2">{row.room || '—'}</td>
-                          </tr>
-                          )
-                        })
-                      })}
-                    </tbody>
-                  </table>
+      {/* 排程状态：表头一行 + 内容一行，四列并排，小屏横向滚动；不随 TAB/筛选变化 */}
+      <Card className={clsx('p-4', isDark && 'bg-slate-800/50 border-[#3b434e]')}>
+        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">排程状态</h2>
+        <div className="overflow-x-auto -mx-1 px-1">
+          <div className="min-w-[720px] grid grid-cols-4 gap-3">
+            {dimensionHeaders.map((col) => (
+              <div key={col.key} className="flex flex-col gap-2 min-w-0">
+                <div
+                  className={clsx(
+                    'text-center text-xs font-semibold uppercase tracking-wide py-2 rounded-t-lg border-b',
+                    isDark ? 'bg-slate-700/40 text-slate-200 border-slate-600' : 'bg-slate-100 text-slate-700 border-slate-200'
+                  )}
+                >
+                  {col.label}
+                </div>
+                <div
+                  className={clsx(
+                    'rounded-lg border p-3 min-h-[5.5rem] flex flex-col justify-center',
+                    STATUS_VARIANT_CLASS[col.status.variant]
+                  )}
+                >
+                  <p className="text-sm font-medium leading-snug">{col.status.line1}</p>
+                  {col.status.line2 && <p className="text-xs mt-1.5 opacity-90 leading-relaxed">{col.status.line2}</p>}
                 </div>
               </div>
-            )
-          })}
-        </Card>
-      )}
+            ))}
+          </div>
+        </div>
+      </Card>
 
-      {/* 三视图 Tab */}
+      {/* 排程结果：项目 / 人员 / 日期 */}
       <Card className={clsx('p-4', isDark && 'bg-slate-800/50 border-[#3b434e]')}>
+        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">排程结果</h2>
         <Tabs
           tabs={viewTabs.map((t) => ({ key: t.key, label: t.label, icon: t.icon }))}
           value={activeView}
           onChange={(key) => setActiveView(key as ViewTabKey)}
           className={clsx('mb-0', isDark && 'border-slate-600')}
         />
-        {activeView === 'byDate' && (
-          <div className="overflow-x-auto mt-3">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className={clsx('border-b', isDark ? 'border-slate-600' : 'border-slate-200')}>
-                  <th className="px-3 py-2 text-left font-medium">日期</th>
-                  <th className="px-3 py-2 text-left font-medium">访视点</th>
-                  <th className="px-3 py-2 text-left font-medium">流程</th>
-                  <th className="px-3 py-2 text-left font-medium">样本量</th>
-                </tr>
-              </thead>
-              <tbody>
-                {byDateRows.length === 0 ? (
-                  <tr><td colSpan={4} className="px-3 py-4 text-slate-500 text-center">暂无按日期展开数据</td></tr>
-                ) : (
-                  byDateRows.map((r, i) => (
-                    <tr key={i} className={clsx('border-b', isDark ? 'border-slate-700' : 'border-slate-100')}>
-                      <td className="px-3 py-2">{r.date}</td>
-                      <td className="px-3 py-2">{r.visit_point}</td>
-                      <td className="px-3 py-2">{r.process}</td>
-                      <td className="px-3 py-2">{r.sample_size}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {activeView === 'byPerson' && (
-          <div className="overflow-x-auto mt-3">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className={clsx('border-b', isDark ? 'border-slate-600' : 'border-slate-200')}>
-                  <th className="px-3 py-2 text-left font-medium">角色</th>
-                  <th className="px-3 py-2 text-left font-medium">人员</th>
-                  <th className="px-3 py-2 text-left font-medium">房间</th>
-                  <th className="px-3 py-2 text-left font-medium">访视点</th>
-                  <th className="px-3 py-2 text-left font-medium">流程</th>
-                  <th className="px-3 py-2 text-left font-medium">执行日期</th>
-                </tr>
-              </thead>
-              <tbody>
-                {byPersonRows.length === 0 ? (
-                  <tr><td colSpan={6} className="px-3 py-4 text-slate-500 text-center">暂无人员排期数据，请在项目排期页填写行政/评估/技术排程并发布</td></tr>
-                ) : (
-                  byPersonRows.map((r, i) => (
-                    <tr key={i} className={clsx('border-b', isDark ? 'border-slate-700' : 'border-slate-100')}>
-                      <td className="px-3 py-2">{r.role}</td>
-                      <td className="px-3 py-2">{r.person}</td>
-                      <td className="px-3 py-2">{r.room}</td>
-                      <td className="px-3 py-2">{r.visit_point}</td>
-                      <td className="px-3 py-2">{r.process}</td>
-                      <td className="px-3 py-2 text-xs">{r.dates}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
+
         {activeView === 'byProject' && (
-          <div className="mt-3 space-y-3">
-            <div className={clsx('rounded-lg p-4', isDark ? 'bg-slate-700/30' : 'bg-slate-50')}>
-              <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                {String(snapshot['项目名称'] ?? snapshot['项目编号'] ?? '本项目')}
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">项目编号：{String(snapshot['项目编号'] ?? '-')}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">组别：{String(snapshot['组别'] ?? '-')}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">督导：{String(snapshot['督导'] ?? '-')}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">样本量：{String(snapshot['样本量'] ?? '-')}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">访视时间点：{String(snapshot['访视时间点'] ?? '-')}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">实际执行周期：{snapshot['实际执行周期'] ? formatExecutionPeriodToMMMMDDYY(String(snapshot['实际执行周期'])) : '-'}</p>
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end min-w-0">
+                <div className="w-full min-w-[200px] sm:flex-1">
+                  <Input
+                    placeholder="筛选：项目编号、流程、测试人员、房间等"
+                    value={projectKeyword}
+                    onChange={(e) => setProjectKeyword(e.target.value)}
+                    className={isDark ? 'bg-slate-900/40 border-slate-600' : undefined}
+                  />
+                </div>
+              </div>
+              {exportScheduleButton}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse min-w-[1400px]">
+                <thead>
+                  <tr className={clsx('border-b', isDark ? 'border-slate-600' : 'border-slate-200')}>
+                    {[
+                      '项目编号',
+                      '项目名称',
+                      '样本量',
+                      '组别',
+                      '督导',
+                      '访视时间点',
+                      '执行日期',
+                      '访视次数',
+                      '流程',
+                      '测试人员',
+                      '备份人员',
+                      '房间',
+                    ].map((h) => (
+                      <th key={h} className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredProjectRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={12} className="px-3 py-6 text-slate-500 text-center">
+                        <p>按项目：暂无匹配数据。</p>
+                        <p className="text-xs mt-1">请调整关键词，或确认已维护访视流程与人员排程。</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredProjectRows.map((r, i) => (
+                      <tr key={i} className={clsx('border-b', isDark ? 'border-slate-700' : 'border-slate-100')}>
+                        <td className="px-3 py-2 whitespace-nowrap">{r.projectCode || '-'}</td>
+                        <td className="px-3 py-2">{r.projectName || '-'}</td>
+                        <td className="px-3 py-2">{r.sample || '-'}</td>
+                        <td className="px-3 py-2">{r.group || '-'}</td>
+                        <td className="px-3 py-2">{r.supervisor || '-'}</td>
+                        <td className="px-3 py-2">{r.visitTimepoint || '-'}</td>
+                        <td className="px-3 py-2 text-xs whitespace-pre-wrap max-w-[220px]">{r.execDate}</td>
+                        <td className="px-3 py-2">{r.visitCount}</td>
+                        <td className="px-3 py-2">{r.process || '-'}</td>
+                        <td className="px-3 py-2">{r.tester}</td>
+                        <td className="px-3 py-2">{r.backup}</td>
+                        <td className="px-3 py-2">{r.room}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {activeView === 'byPerson' && (
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end min-w-0">
+                <div className="w-full sm:min-w-[200px] sm:max-w-[min(100%,320px)]">
+                  <Select
+                    options={[
+                      { value: '', label: '全部流程' },
+                      ...personProcessOptions.map((name) => ({ value: name, label: name })),
+                    ]}
+                    value={personProcessFilter}
+                    onChange={(e) => setPersonProcessFilter(e.target.value)}
+                    className={isDark ? 'bg-slate-900/40 border-slate-600 text-slate-200' : undefined}
+                  />
+                </div>
+                <div className="w-full flex-1 min-w-[200px]">
+                  <Input
+                    placeholder="筛选：测试/备份人员、项目编号、流程、执行日期等"
+                    value={personKeyword}
+                    onChange={(e) => setPersonKeyword(e.target.value)}
+                    className={isDark ? 'bg-slate-900/40 border-slate-600' : undefined}
+                  />
+                </div>
+              </div>
+              {exportScheduleButton}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse min-w-[1100px]">
+                <thead>
+                  <tr className={clsx('border-b', isDark ? 'border-slate-600' : 'border-slate-200')}>
+                    {['测试人员', '备份人员', '流程', '房间', '项目编号', '项目名称', '样本量', '访视时间点', '执行日期'].map((h) => (
+                      <th key={h} className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPersonRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-3 py-6 text-slate-500 text-center">
+                        <p>按人员：暂无匹配数据。</p>
+                        <p className="text-xs mt-1">请在「人员排程」中填写执行/备份/房间，或调整筛选条件。</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredPersonRows.map((r, i) => (
+                      <tr key={i} className={clsx('border-b', isDark ? 'border-slate-700' : 'border-slate-100')}>
+                        <td className="px-3 py-2">{r.tester}</td>
+                        <td className="px-3 py-2">{r.backup}</td>
+                        <td className="px-3 py-2">{r.process}</td>
+                        <td className="px-3 py-2">{r.room}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{r.projectCode}</td>
+                        <td className="px-3 py-2">{r.projectName}</td>
+                        <td className="px-3 py-2">{r.sample}</td>
+                        <td className="px-3 py-2">{r.visitTimepoint}</td>
+                        <td className="px-3 py-2 text-xs whitespace-pre-wrap">{r.execDate}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {activeView === 'byDate' && (
+          <div className="mt-4 space-y-3">
+            {/*
+              Input 根节点为 w-full，需用定宽容器包住日期框，否则在 flex 里会各占一整行。
+              开始日期、结束日期、关键词三框与导出按钮同一行横向排列（窄屏自动换行）。
+            */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex flex-1 flex-wrap items-end gap-2 min-w-0">
+                <div className="w-[148px] shrink-0">
+                  <Input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className={clsx(isDark && 'bg-slate-900/40 border-slate-600')}
+                    placeholder="开始日期"
+                  />
+                </div>
+                <div className="w-[148px] shrink-0">
+                  <Input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className={clsx(isDark && 'bg-slate-900/40 border-slate-600')}
+                    placeholder="结束日期"
+                  />
+                </div>
+                <div className="flex-1 min-w-[min(100%,200px)] basis-[200px]">
+                  <Input
+                    placeholder="筛选：执行日期、项目编号、测试人员、房间等"
+                    value={dateKeyword}
+                    onChange={(e) => setDateKeyword(e.target.value)}
+                    className={isDark ? 'bg-slate-900/40 border-slate-600' : undefined}
+                  />
+                </div>
+              </div>
+              {exportScheduleButton}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse min-w-[960px]">
+                <thead>
+                  <tr className={clsx('border-b', isDark ? 'border-slate-600' : 'border-slate-200')}>
+                    {['执行日期', '访视时间点', '样本量', '项目编号', '项目名称', '测试人员', '备份人员', '房间'].map((h) => (
+                      <th key={h} className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredDateRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-3 py-6 text-slate-500 text-center">
+                        <p>按日期：暂无匹配数据。</p>
+                        <p className="text-xs mt-1">请为流程填写执行日期，或调整日期范围 / 关键词筛选。</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredDateRows.map((r, i) => (
+                      <tr key={i} className={clsx('border-b', isDark ? 'border-slate-700' : 'border-slate-100')}>
+                        <td className="px-3 py-2 whitespace-nowrap">{r.execDate}</td>
+                        <td className="px-3 py-2">{r.visitTimepoint}</td>
+                        <td className="px-3 py-2">{r.sample}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{r.projectCode}</td>
+                        <td className="px-3 py-2">{r.projectName}</td>
+                        <td className="px-3 py-2">{r.tester}</td>
+                        <td className="px-3 py-2">{r.backup}</td>
+                        <td className="px-3 py-2">{r.room}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         )}

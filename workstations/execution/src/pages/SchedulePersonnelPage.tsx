@@ -2,7 +2,7 @@
  * 人员排程：行政 / 评估 / 技术三 Tab；流程按名称归入对应模块（见 personnelProcessTab），每类流程填写执行人员、备份人员、房间。
  * 路由：/scheduling/schedule-core/:executionOrderId/personnel（时间线已保存后可进入）
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { clsx } from 'clsx'
@@ -15,6 +15,7 @@ import {
   isPersonnelTabFilled,
   type PersonnelTabKey,
 } from '../utils/personnelProcessTab'
+import { getFirstRowAsDict } from '../utils/executionOrderFirstRow'
 
 type VisitBlock = {
   visit_point?: string
@@ -24,30 +25,50 @@ type VisitBlock = {
 export type PersonnelProcessRow = { executor: string; backup: string; room: string }
 export type PersonnelBlock = { visit_point: string; processes: PersonnelProcessRow[] }
 
-function getFirstRowAsDict(headers: string[], rows: unknown[]): Record<string, string> {
-  const row = rows?.[0]
-  if (row == null) return {}
-  const out: Record<string, string> = {}
-  if (Array.isArray(row)) {
-    headers.forEach((h, i) => {
-      out[h] = String((row as unknown[])[i] ?? '')
-    })
-  } else if (typeof row === 'object') {
-    const obj = row as Record<string, unknown>
-    headers.forEach((h) => {
-      const v = obj[h]
-      out[h] = v != null ? String(v) : ''
-    })
-  }
-  return out
-}
-
 function getByKeys(row: Record<string, string>, ...keys: string[]): string {
   for (const k of keys) {
     const v = row[k]?.trim()
     if (v) return v
   }
   return ''
+}
+
+function firstNonEmpty(...vals: unknown[]): string {
+  for (const v of vals) {
+    if (v == null) continue
+    const s = String(v).trim()
+    if (s !== '') return s
+  }
+  return ''
+}
+
+/** 表头与模板不完全一致时，按列名关键词匹配首行 */
+function scanFirstRowByKeyPattern(row: Record<string, string>, re: RegExp): string {
+  for (const [k, v] of Object.entries(row)) {
+    if (!v?.trim()) continue
+    const nk = k.trim()
+    if (re.test(nk)) return v.trim()
+  }
+  return ''
+}
+
+/** 与后端时间槽快照一致：用各访视点 visit_point 拼接 */
+function visitTimepointsFromVisitBlocks(blocks: VisitBlock[]): string {
+  const pts = blocks.map((b) => (b.visit_point ?? '').trim()).filter(Boolean)
+  if (pts.length === 0) return ''
+  return [...new Set(pts)].join('，')
+}
+
+/** 订单无样本量时，从各流程 sample_size 数字汇总作展示兜底 */
+function sampleTotalHintFromVisitBlocks(blocks: VisitBlock[]): string {
+  let sum = 0
+  for (const b of blocks) {
+    for (const p of b.processes ?? []) {
+      const n = parseInt(String(p.sample_size ?? '').replace(/\s/g, ''), 10)
+      if (!Number.isNaN(n) && n > 0) sum += n
+    }
+  }
+  return sum > 0 ? String(sum) : ''
 }
 
 function emptyBlocksForTab(visitBlocks: VisitBlock[], tab: PersonnelTabKey): PersonnelBlock[] {
@@ -242,9 +263,36 @@ export default function SchedulePersonnelPage() {
     updateMutation.mutate({ payload: merged })
   }
 
-  const projectCode = getByKeys(firstRow, '项目编号', '订单编号')
-  const sample = getByKeys(firstRow, '样本量', '样本数量')
-  const visitTp = getByKeys(firstRow, '访视时间点')
+  const firstRowSnapshot = JSON.stringify(firstRow)
+
+  const projectCodeDisplay = useMemo(
+    () =>
+      firstNonEmpty(
+        getByKeys(firstRow, '项目编号', '订单编号', '询期编号', '协议编号', '协议号', '项目代码'),
+        scanFirstRowByKeyPattern(firstRow, /项目编号|询期编号|协议编号|协议号|Protocol|Study\s*ID/i),
+      ),
+    [firstRowSnapshot]
+  )
+
+  const sampleDisplay = useMemo(
+    () =>
+      firstNonEmpty(
+        getByKeys(firstRow, '样本量', '样本数量', '备份样本量', '最大样本量'),
+        scanFirstRowByKeyPattern(firstRow, /^样本量$|^样本数$|样本数量|备份样本|总样本/i),
+        sampleTotalHintFromVisitBlocks(visitBlocks),
+      ),
+    [firstRowSnapshot, visitBlocks]
+  )
+
+  const visitTpDisplay = useMemo(
+    () =>
+      firstNonEmpty(
+        getByKeys(firstRow, '访视时间点', '访视时间', '访视计划', '访视点'),
+        scanFirstRowByKeyPattern(firstRow, /访视时间|访视点|访视计划|visit\s*time/i),
+        visitTimepointsFromVisitBlocks(visitBlocks),
+      ),
+    [firstRowSnapshot, visitBlocks]
+  )
 
   const tabDefs: { key: TabKey; label: string; icon: typeof ClipboardList }[] = [
     { key: 'admin', label: '行政', icon: ClipboardList },
@@ -325,15 +373,15 @@ export default function SchedulePersonnelPage() {
       >
         <div>
           <span className="text-slate-500 dark:text-slate-400">项目编号</span>
-          <p className="font-medium text-slate-800 dark:text-slate-100">{projectCode || '—'}</p>
+          <p className="font-medium text-slate-800 dark:text-slate-100">{projectCodeDisplay || '—'}</p>
         </div>
         <div>
           <span className="text-slate-500 dark:text-slate-400">样本量</span>
-          <p className="font-medium text-slate-800 dark:text-slate-100">{sample || '—'}</p>
+          <p className="font-medium text-slate-800 dark:text-slate-100">{sampleDisplay || '—'}</p>
         </div>
         <div>
           <span className="text-slate-500 dark:text-slate-400">访视时间点</span>
-          <p className="font-medium text-slate-800 dark:text-slate-100 break-all">{visitTp || '—'}</p>
+          <p className="font-medium text-slate-800 dark:text-slate-100 break-all">{visitTpDisplay || '—'}</p>
         </div>
       </section>
 

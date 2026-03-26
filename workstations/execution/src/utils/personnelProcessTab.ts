@@ -63,3 +63,107 @@ export function isPersonnelTabFilled(
   }
   return true
 }
+
+export type PersonnelPayload = {
+  admin?: PersonnelBlockLike[]
+  eval?: PersonnelBlockLike[]
+  tech?: PersonnelBlockLike[]
+}
+
+/** 流程行（用于回退到 visit_blocks 上的 *_person 字段） */
+export type ProcessPersonnelLike = {
+  process?: string
+  code?: string
+  admin_person?: string
+  admin_room?: string
+  eval_person?: string
+  eval_room?: string
+  tech_person?: string
+  tech_room?: string
+}
+
+/**
+ * 取某访视点下某条流程的测试人员/备份人员/房间：优先 personnel，其次 visit_blocks 上旧字段。
+ */
+export function getPersonnelCellsForProcess(
+  visitBlocks: Array<{ visit_point?: string; processes?: ProcessPersonnelLike[] }>,
+  personnel: PersonnelPayload | null | undefined,
+  blockIndex: number,
+  processIndex: number
+): { executor: string; backup: string; room: string } {
+  const proc = visitBlocks[blockIndex]?.processes?.[processIndex]
+  if (!proc) return { executor: '', backup: '', room: '' }
+  const tab = classifyPersonnelProcessTab(processLabel(proc))
+  const idxList = getProcessIndicesForTab(visitBlocks, tab)
+  const j = idxList[blockIndex]?.indexOf(processIndex) ?? -1
+  if (j >= 0) {
+    const row = personnel?.[tab]?.[blockIndex]?.processes?.[j]
+    if (row) {
+      return {
+        executor: String(row.executor ?? '').trim(),
+        backup: String(row.backup ?? '').trim(),
+        room: String(row.room ?? '').trim(),
+      }
+    }
+  }
+  if (tab === 'admin') {
+    return {
+      executor: String(proc.admin_person ?? '').trim(),
+      backup: '',
+      room: String(proc.admin_room ?? '').trim(),
+    }
+  }
+  if (tab === 'eval') {
+    return {
+      executor: String(proc.eval_person ?? '').trim(),
+      backup: '',
+      room: String(proc.eval_room ?? '').trim(),
+    }
+  }
+  return {
+    executor: String(proc.tech_person ?? '').trim(),
+    backup: '',
+    room: String(proc.tech_room ?? '').trim(),
+  }
+}
+
+const TAB_LABEL: Record<PersonnelTabKey, string> = { admin: '行政', eval: '评估', tech: '技术' }
+
+/** 从 personnel 快照生成「按人员」列表行（与人员排程页数据源一致） */
+export function buildPersonRowsFromPersonnelPayload(
+  visitBlocks: VisitBlockLike[],
+  personnel: PersonnelPayload | null | undefined
+): Array<{ role: string; person: string; room: string; visit_point: string; process: string; dates: string }> {
+  const out: Array<{ role: string; person: string; room: string; visit_point: string; process: string; dates: string }> = []
+  if (!personnel || !visitBlocks.length) return out
+  for (const tab of ['admin', 'eval', 'tech'] as const) {
+    const blocks = personnel[tab]
+    if (!blocks || blocks.length !== visitBlocks.length) continue
+    const idxList = getProcessIndicesForTab(visitBlocks, tab)
+    for (let bi = 0; bi < visitBlocks.length; bi++) {
+      const vp = (visitBlocks[bi].visit_point || '').trim()
+      const procs = visitBlocks[bi].processes ?? []
+      const rowList = blocks[bi]?.processes ?? []
+      const indices = idxList[bi]
+      for (let j = 0; j < indices.length; j++) {
+        const pi = indices[j]
+        const proc = procs[pi] as { process?: string; code?: string; exec_dates?: string[] } | undefined
+        const processName = ((proc?.process || proc?.code) || '').trim()
+        const dates = (proc?.exec_dates || []).filter(Boolean).map((d) => String(d).slice(0, 10))
+        const datesStr = dates.length ? dates.join('、') : '-'
+        const r = rowList[j]
+        const ex = (r?.executor ?? '').trim()
+        if (!ex) continue
+        out.push({
+          role: TAB_LABEL[tab],
+          person: ex,
+          room: (r?.room ?? '').trim() || '-',
+          visit_point: vp,
+          process: processName,
+          dates: datesStr,
+        })
+      }
+    }
+  }
+  return out
+}
