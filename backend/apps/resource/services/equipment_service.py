@@ -469,6 +469,8 @@ def update_equipment(equipment_id: int, **kwargs) -> Optional[ResourceItem]:
     item = _equipment_qs().filter(id=equipment_id).first()
     if not item:
         return None
+    if not kwargs:
+        return item
     for k, v in kwargs.items():
         if hasattr(item, k):
             setattr(item, k, v)

@@ -103,6 +103,7 @@ class EquipmentCreateIn(Schema):
     name: str
     code: str
     category_id: int
+    name_classification: Optional[str] = ''
     status: Optional[str] = 'active'
     location: Optional[str] = ''
     manufacturer: Optional[str] = ''
@@ -110,7 +111,12 @@ class EquipmentCreateIn(Schema):
     serial_number: Optional[str] = ''
     purchase_date: Optional[str] = None
     warranty_expiry: Optional[str] = None
+    next_calibration_date: Optional[str] = None
+    next_verification_date: Optional[str] = None
+    next_maintenance_date: Optional[str] = None
     calibration_cycle_days: Optional[int] = None
+    verification_cycle_days: Optional[int] = None
+    maintenance_cycle_days: Optional[int] = None
     manager_id: Optional[int] = None
 
 
@@ -118,13 +124,19 @@ class EquipmentUpdateIn(Schema):
     model_config = ConfigDict(protected_namespaces=())
 
     name: Optional[str] = None
+    name_classification: Optional[str] = None
     location: Optional[str] = None
     manufacturer: Optional[str] = None
     model_number: Optional[str] = None
     serial_number: Optional[str] = None
     purchase_date: Optional[str] = None
     warranty_expiry: Optional[str] = None
+    next_calibration_date: Optional[str] = None
+    next_verification_date: Optional[str] = None
+    next_maintenance_date: Optional[str] = None
     calibration_cycle_days: Optional[int] = None
+    verification_cycle_days: Optional[int] = None
+    maintenance_cycle_days: Optional[int] = None
     manager_id: Optional[int] = None
 
 
@@ -458,10 +470,17 @@ def create_ledger(request, payload: EquipmentCreateIn):
     kwargs.pop('name', None)
     kwargs.pop('code', None)
     kwargs.pop('category_id', None)
-    if 'purchase_date' in kwargs and kwargs['purchase_date']:
-        kwargs['purchase_date'] = dt_date.fromisoformat(kwargs['purchase_date'])
-    if 'warranty_expiry' in kwargs and kwargs['warranty_expiry']:
-        kwargs['warranty_expiry'] = dt_date.fromisoformat(kwargs['warranty_expiry'])
+    name_classification = (kwargs.pop('name_classification', '') or '').strip()
+    for field_name in (
+        'purchase_date', 'warranty_expiry',
+        'next_calibration_date', 'next_verification_date', 'next_maintenance_date',
+    ):
+        if field_name in kwargs and kwargs[field_name]:
+            kwargs[field_name] = dt_date.fromisoformat(kwargs[field_name])
+    if name_classification:
+        attrs = dict(kwargs.get('attributes') or {})
+        attrs['name_classification'] = name_classification
+        kwargs['attributes'] = attrs
     item = create_equipment(
         name=payload.name, code=payload.code,
         category_id=payload.category_id, **kwargs,
@@ -476,10 +495,20 @@ def update_ledger(request, equipment_id: int, payload: EquipmentUpdateIn):
     from .services.equipment_service import update_equipment
     from datetime import date as dt_date
     kwargs = payload.dict(exclude_unset=True)
-    if 'purchase_date' in kwargs and kwargs['purchase_date']:
-        kwargs['purchase_date'] = dt_date.fromisoformat(kwargs['purchase_date'])
-    if 'warranty_expiry' in kwargs and kwargs['warranty_expiry']:
-        kwargs['warranty_expiry'] = dt_date.fromisoformat(kwargs['warranty_expiry'])
+    name_classification = kwargs.pop('name_classification', None)
+    for field_name in (
+        'purchase_date', 'warranty_expiry',
+        'next_calibration_date', 'next_verification_date', 'next_maintenance_date',
+    ):
+        if field_name in kwargs and kwargs[field_name]:
+            kwargs[field_name] = dt_date.fromisoformat(kwargs[field_name])
+    if name_classification is not None:
+        item = update_equipment(equipment_id)
+        if not item:
+            return {'code': 404, 'msg': '设备不存在', 'data': None}
+        attrs = dict(item.attributes or {})
+        attrs['name_classification'] = (name_classification or '').strip()
+        kwargs['attributes'] = attrs
     item = update_equipment(equipment_id, **kwargs)
     if not item:
         return {'code': 404, 'msg': '设备不存在', 'data': None}

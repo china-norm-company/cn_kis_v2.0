@@ -429,7 +429,10 @@ function CreateEquipmentDrawer({ onClose, onSuccess }: { onClose: () => void; on
   const [form, setForm] = useState({
     name: '', code: '', category_id: 0, location: '',
     manufacturer: '', model_number: '', serial_number: '',
-    purchase_date: '', warranty_expiry: '', calibration_cycle_days: '',
+    name_classification: '',
+    purchase_date: '', warranty_expiry: '',
+    next_calibration_date: '', next_verification_date: '', next_maintenance_date: '',
+    calibration_cycle_days: '', verification_cycle_days: '', maintenance_cycle_days: '',
   })
   const [error, setError] = useState('')
 
@@ -443,7 +446,13 @@ function CreateEquipmentDrawer({ onClose, onSuccess }: { onClose: () => void; on
     mutationFn: () => equipmentApi.createEquipment({
       ...form,
       category_id: form.category_id,
+      name_classification: form.name_classification || undefined,
+      next_calibration_date: form.next_calibration_date || undefined,
+      next_verification_date: form.next_verification_date || undefined,
+      next_maintenance_date: form.next_maintenance_date || undefined,
       calibration_cycle_days: form.calibration_cycle_days ? Number(form.calibration_cycle_days) : undefined,
+      verification_cycle_days: form.verification_cycle_days ? Number(form.verification_cycle_days) : undefined,
+      maintenance_cycle_days: form.maintenance_cycle_days ? Number(form.maintenance_cycle_days) : undefined,
       purchase_date: form.purchase_date || undefined,
       warranty_expiry: form.warranty_expiry || undefined,
     }),
@@ -485,6 +494,13 @@ function CreateEquipmentDrawer({ onClose, onSuccess }: { onClose: () => void; on
             </select>
           </label>
 
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700">名称分类</span>
+            <input value={form.name_classification} onChange={e => set('name_classification', e.target.value)}
+              placeholder="如 电子天平、glossymeter"
+              className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" />
+          </label>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="text-sm font-medium text-slate-700">制造商</span>
@@ -523,12 +539,47 @@ function CreateEquipmentDrawer({ onClose, onSuccess }: { onClose: () => void; on
             </label>
           </div>
 
-          <label className="block">
-            <span className="text-sm font-medium text-slate-700">校准周期（天）</span>
-            <input type="number" value={form.calibration_cycle_days} onChange={e => set('calibration_cycle_days', e.target.value)}
-              placeholder="如 90"
-              className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" />
-          </label>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">下次校准</span>
+              <input type="date" value={form.next_calibration_date} onChange={e => set('next_calibration_date', e.target.value)}
+                className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">校准周期（天）</span>
+              <input type="number" value={form.calibration_cycle_days} onChange={e => set('calibration_cycle_days', e.target.value)}
+                placeholder="如 90"
+                className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">下次核查</span>
+              <input type="date" value={form.next_verification_date} onChange={e => set('next_verification_date', e.target.value)}
+                className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">核查周期（天）</span>
+              <input type="number" value={form.verification_cycle_days} onChange={e => set('verification_cycle_days', e.target.value)}
+                placeholder="如 180"
+                className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">下次维护</span>
+              <input type="date" value={form.next_maintenance_date} onChange={e => set('next_maintenance_date', e.target.value)}
+                className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">维护周期（天）</span>
+              <input type="number" value={form.maintenance_cycle_days} onChange={e => set('maintenance_cycle_days', e.target.value)}
+                placeholder="如 365"
+                className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" />
+            </label>
+          </div>
 
           <div className="pt-4 flex gap-3">
             <button onClick={onClose} className="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50">取消</button>
