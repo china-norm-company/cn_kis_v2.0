@@ -185,6 +185,16 @@ export default function SchedulingPage() {
   })
   const timelinePublishedItems: SchedulePlanListItem[] = (((timelinePublishedRes as any)?.data?.items) ?? []) as SchedulePlanListItem[]
 
+  /** 排程计划 Tab：排程已全部完成（排程核心 status=completed）的已发布时间线不再合并进列表，仅在时间槽等视图展示 */
+  const timelinePublishedForPlansMerge = useMemo(
+    () =>
+      timelinePublishedItems.filter((item) => {
+        const st = (item as { schedule_core_status?: string | null }).schedule_core_status
+        return st !== 'completed'
+      }),
+    [timelinePublishedItems]
+  )
+
   const { data: executionOrderPendingRes } = useQuery({
     queryKey: ['scheduling', 'execution-order-pending'],
     queryFn: () => schedulingApi.getExecutionOrderPending(),
@@ -263,7 +273,7 @@ export default function SchedulingPage() {
   const plans = (((plansRes?.data as any)?.items ?? []) as SchedulePlanListItem[])
   // 按项目编号去重，同一项目编号仅保留最新一条（以 create_time 为准）；合并后按 create_time 倒序
   const displayPlans = useMemo(() => {
-    const merged = [...plans, ...timelinePublishedItems, ...executionOrderPendingItems]
+    const merged = [...plans, ...timelinePublishedForPlansMerge, ...executionOrderPendingItems]
     const byCode = new Map<string, SchedulePlanListItem>()
     for (const p of merged) {
       const code = (p.protocol_code ?? (p as { project_code?: string }).project_code ?? '').toString().trim()
@@ -285,7 +295,7 @@ export default function SchedulingPage() {
       return tb.localeCompare(ta) // 最新在前
     })
     return result
-  }, [plans, timelinePublishedItems, executionOrderPendingItems])
+  }, [plans, timelinePublishedForPlansMerge, executionOrderPendingItems])
 
   const [schedulePlanProjectCodeFilter, setSchedulePlanProjectCodeFilter] = useState('')
   const filteredDisplayPlans = useMemo(() => {
@@ -892,6 +902,24 @@ function TimeSlotListView({
     const src = (p as { source_type?: string; 数据来源?: string }).source_type ?? (p as { source_type?: string; 数据来源?: string }).数据来源 ?? 'online'
     return src === 'offline' ? '线下' : '线上'
   }
+  /**
+   * 时间槽列表·排程进度：排程发布 | 排程撤回 | 排程变更
+   * - 排程发布：排程核心已完成（全模块发布）
+   * - 排程撤回：时间线已发布后曾从「完成」撤回再编辑（post_publish_edit_count>0）
+   * - 排程变更：时间线已发布且尚未发生撤回（进行中维护人员排程等）
+   */
+  const scheduleProgressLabel = (p: SchedulePlanListItem) => {
+    const st = (p as { schedule_core_status?: string | null }).schedule_core_status
+    const cnt = Number((p as { post_publish_edit_count?: number }).post_publish_edit_count ?? 0)
+    if (st === 'completed') return '排程发布'
+    if (st === 'timeline_published') {
+      if (cnt > 0) return '排程撤回'
+      return '排程变更'
+    }
+    if (st === 'draft') return '草稿'
+    const fallback = (p.schedule_progress_display ?? '').trim()
+    return fallback || '—'
+  }
   const columns = [
     { key: 'protocol_code', header: '项目编号', align: 'center' as const, render: (p: SchedulePlanListItem) => <span className="text-sm text-slate-700 dark:text-slate-300">{p.protocol_code ?? '-'}</span> },
     { key: 'protocol_title', header: '项目名称', align: 'center' as const, render: (p: SchedulePlanListItem) => <span className="text-sm text-slate-800 dark:text-slate-200 truncate max-w-[160px] block mx-auto" title={p.protocol_title ?? p.name}>{p.protocol_title ?? p.name ?? '-'}</span> },
@@ -925,11 +953,26 @@ function TimeSlotListView({
     } },
     { key: 'execution_period', header: '实际执行周期', align: 'center' as const, render: (p: SchedulePlanListItem) => (p.execution_period ? <span className="text-sm text-slate-600 dark:text-slate-300">{formatExecutionPeriodToMMMMDDYY(p.execution_period)}</span> : <span className="text-slate-400">-</span>) },
     { key: '数据来源', header: '数据来源', align: 'center' as const, render: (p: SchedulePlanListItem) => <Badge variant={dataSourceLabel(p) === '线下' ? 'warning' : 'success'}>{dataSourceLabel(p)}</Badge> },
+    {
+      key: 'schedule_progress',
+      header: '排程进度',
+      align: 'center' as const,
+      render: (p: SchedulePlanListItem) => {
+        const text = scheduleProgressLabel(p)
+        const st = (p as { schedule_core_status?: string | null }).schedule_core_status
+        const cnt = Number((p as { post_publish_edit_count?: number }).post_publish_edit_count ?? 0)
+        if (st === 'completed') return <Badge variant="success">{text}</Badge>
+        if (st === 'timeline_published' && cnt > 0) return <Badge variant="warning">{text}</Badge>
+        if (st === 'timeline_published') return <Badge variant="primary">{text}</Badge>
+        if (st === 'draft') return <Badge variant="default">{text}</Badge>
+        return <Badge variant="field">{text}</Badge>
+      },
+    },
   ]
   return (
     <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-[#3b434e]">
       <div className="overflow-x-auto">
-        <div className="min-w-[900px]">
+        <div className="min-w-[980px]">
           <DataTable columns={columns} data={items} onRowClick={onRowClick} />
         </div>
       </div>
@@ -1183,6 +1226,10 @@ type SchedulePlanListItem = SchedulePlan & {
   visit_points_display?: string
   /** 已发布且来自排程核心时，对应的执行订单 id，用于「进入排程」 */
   execution_order_id?: number | null
+  /** 排程核心 TimelineSchedule.status；completed 时不进入「排程计划」合并列表 */
+  schedule_core_status?: string | null
+  /** 发布后撤回再编辑次数；与 timeline_published 配合区分排程撤回 / 排程变更 */
+  post_publish_edit_count?: number
 }
 
 const PLANS_PAGE_SIZE = 8

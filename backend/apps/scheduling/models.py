@@ -266,6 +266,11 @@ class TimelineSchedule(models.Model):
     admin_published = models.BooleanField('行政排程已发布', default=False)
     eval_published = models.BooleanField('评估排程已发布', default=False)
     tech_published = models.BooleanField('技术排程已发布', default=False)
+    post_publish_edit_count = models.PositiveSmallIntegerField(
+        '发布后撤回再编辑已用次数',
+        default=0,
+        help_text='排程全部完成后，允许撤回再编辑合计次数上限为 3',
+    )
 
     payload = models.JSONField('排程数据', default=dict, blank=True)
 

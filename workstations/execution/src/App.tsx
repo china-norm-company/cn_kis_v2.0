@@ -21,6 +21,7 @@ import SchedulePlanDetailPage from './pages/SchedulePlanDetailPage'
 import TimelineRowDetailPage from './pages/TimelineRowDetailPage'
 import ResourceDemandDetailPage from './pages/ResourceDemandDetailPage'
 import ScheduleCorePage from './pages/ScheduleCorePage'
+import SchedulePersonnelPage from './pages/SchedulePersonnelPage'
 import ScheduleOfflinePage from './pages/ScheduleOfflinePage'
 import TimeSlotDetailPage from './pages/TimeSlotDetailPage'
 import AdverseEventListPage from './pages/AdverseEventListPage'
@@ -56,6 +57,7 @@ export default function App() {
             <Route path="scheduling/plan/:planId" element={<SchedulePlanDetailPage />} />
             <Route path="scheduling/timeline/:rowId" element={<TimelineRowDetailPage />} />
             <Route path="scheduling/schedule-core/:executionOrderId" element={<ScheduleCorePage />} />
+            <Route path="scheduling/schedule-core/:executionOrderId/personnel" element={<SchedulePersonnelPage />} />
             <Route path="scheduling/schedule-offline/:planId" element={<ScheduleOfflinePage />} />
             <Route path="scheduling/timeslot/:id" element={<TimeSlotDetailPage />} />
             <Route path="visits" element={<VisitPage />} />

@@ -12,6 +12,7 @@ import { ArrowLeft, Calendar, Users, FolderOpen } from 'lucide-react'
 import { useTheme } from '../contexts/ThemeContext'
 import { ExecutionOrderDetailReadOnly } from '../components/ExecutionOrderDetailReadOnly'
 import { formatExecutionPeriodToMMMMDDYY } from '../utils/executionOrderPlanConfig'
+import { getProcessIndicesForTab } from '../utils/personnelProcessTab'
 
 type ViewTabKey = 'byDate' | 'byPerson' | 'byProject'
 
@@ -65,6 +66,13 @@ export default function TimeSlotDetailPage() {
 
   const detail = (detailRes as any)?.data
   const snapshot = (detail?.snapshot || {}) as Record<string, unknown>
+  const personnelSnap = snapshot.personnel as
+    | {
+        admin?: Array<{ visit_point?: string; processes?: Array<{ executor?: string; backup?: string; room?: string }> }>
+        eval?: Array<{ visit_point?: string; processes?: Array<{ executor?: string; backup?: string; room?: string }> }>
+        tech?: Array<{ visit_point?: string; processes?: Array<{ executor?: string; backup?: string; room?: string }> }>
+      }
+    | undefined
   const order = detail?.order
   const schedule = detail?.schedule
   const payload = (schedule?.payload || {}) as { visit_blocks?: VisitBlock[] }
@@ -214,6 +222,55 @@ export default function TimeSlotDetailPage() {
               </div>
             </>
           )}
+        </Card>
+      )}
+
+      {personnelSnap && (personnelSnap.admin || personnelSnap.eval || personnelSnap.tech) && (
+        <Card className={clsx('p-4', isDark && 'bg-slate-800/50 border-[#3b434e]')}>
+          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">人员排程结果</h2>
+          {(['admin', 'eval', 'tech'] as const).map((role) => {
+            const label = role === 'admin' ? '行政' : role === 'eval' ? '评估' : '技术'
+            const blocks = personnelSnap[role] || []
+            if (!blocks.length) return null
+            return (
+              <div key={role} className="mb-4 last:mb-0">
+                <h3 className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">{label}</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-collapse min-w-[520px]">
+                    <thead>
+                      <tr className={clsx('border-b', isDark ? 'border-slate-600' : 'border-slate-200')}>
+                        <th className="px-2 py-2 text-left">访视点</th>
+                        <th className="px-2 py-2 text-left">流程</th>
+                        <th className="px-2 py-2 text-left">执行人员</th>
+                        <th className="px-2 py-2 text-left">备份人员</th>
+                        <th className="px-2 py-2 text-left">房间</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {blocks.flatMap((block, bi) => {
+                        const idxRow = getProcessIndicesForTab(visitBlocks, role)[bi] ?? []
+                        return (block.processes || []).map((row, pi) => {
+                          const globalPi = idxRow[pi]
+                          const procRef =
+                            globalPi != null ? visitBlocks[bi]?.processes?.[globalPi] : undefined
+                          const pnm = (procRef?.process || procRef?.code || '').trim() || '—'
+                          return (
+                          <tr key={`${role}-${bi}-${pi}`} className={clsx('border-b', isDark ? 'border-slate-700' : 'border-slate-100')}>
+                            <td className="px-2 py-2">{pi === 0 ? (block.visit_point || '—') : ''}</td>
+                            <td className="px-2 py-2">{pnm}</td>
+                            <td className="px-2 py-2">{row.executor || '—'}</td>
+                            <td className="px-2 py-2">{row.backup || '—'}</td>
+                            <td className="px-2 py-2">{row.room || '—'}</td>
+                          </tr>
+                          )
+                        })
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )
+          })}
         </Card>
       )}
 

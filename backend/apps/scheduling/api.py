@@ -1201,6 +1201,16 @@ def _timeline_published_to_list_item(rec) -> dict:
                 sample_size = _sample_total_from_first(first)
         except Exception:
             pass
+    schedule_core_status = None
+    post_publish_edit_count = 0
+    if getattr(rec, 'timeline_schedule_id', None) and getattr(rec, 'timeline_schedule', None):
+        try:
+            sch = rec.timeline_schedule
+            schedule_core_status = getattr(sch, 'status', None)
+            post_publish_edit_count = int(getattr(sch, 'post_publish_edit_count', 0) or 0)
+        except Exception:
+            schedule_core_status = None
+            post_publish_edit_count = 0
     return {
         'id': f'tp-{rec.id}',
         'visit_plan_id': None,
@@ -1229,6 +1239,10 @@ def _timeline_published_to_list_item(rec) -> dict:
         'source_type': source_type,
         'slot_dates': _slot_dates_from_plan(rec),
         'segments': _segments_from_plan(rec),
+        # 排程核心状态：completed 时前端「排程计划」Tab 不展示，仅「时间槽」等视图展示
+        'schedule_core_status': schedule_core_status,
+        # 发布后撤回再编辑次数；与 status 配合区分「排程变更 / 排程撤回」
+        'post_publish_edit_count': post_publish_edit_count,
     }
 
 
@@ -1973,6 +1987,7 @@ def get_schedule_core(request, order_id: int):
             'admin_published': schedule.admin_published,
             'eval_published': schedule.eval_published,
             'tech_published': schedule.tech_published,
+            'post_publish_edit_count': getattr(schedule, 'post_publish_edit_count', 0) or 0,
             'payload': schedule.payload or {},
         },
     }
@@ -2005,9 +2020,42 @@ def update_schedule_core(request, order_id: int, payload: TimelineScheduleUpdate
         schedule.split_days = payload.split_days
     if payload.payload is not None:
         schedule.payload = _ensure_json_serializable(payload.payload)
+        pl = schedule.payload if isinstance(schedule.payload, dict) else {}
+        _sanitize_personnel_tabs_saved(pl)
     account = _get_account_from_request(request)
-    schedule.save(update_fields=['supervisor', 'research_group', 't0_date', 'split_days', 'payload', 'update_time'])
-    return {'code': 200, 'msg': '已更新', 'data': {'id': schedule.id}}
+    update_fields = ['supervisor', 'research_group', 't0_date', 'split_days', 'payload', 'update_time']
+
+    # 时间线已发布且三模块人员尚未全部发布时：三模块人员均填齐且三模块均已分别保存后，自动发布三模块并完成排程
+    if payload.payload is not None:
+        pl = schedule.payload or {}
+        visit_blocks = pl.get('visit_blocks') or []
+        personnel = pl.get('personnel') or {}
+        if (
+            schedule.status == TimelineScheduleStatus.TIMELINE_PUBLISHED
+            and visit_blocks
+            and not (schedule.admin_published and schedule.eval_published and schedule.tech_published)
+            and _personnel_all_complete(personnel, visit_blocks)
+            and _personnel_tabs_all_saved(pl)
+        ):
+            schedule.admin_published = True
+            schedule.eval_published = True
+            schedule.tech_published = True
+            _maybe_set_completed(schedule)
+            update_fields.extend(['admin_published', 'eval_published', 'tech_published', 'status'])
+
+    schedule.save(update_fields=list(dict.fromkeys(update_fields)))
+    _sync_timeline_published_snapshot(schedule)
+    return {
+        'code': 200,
+        'msg': '已更新',
+        'data': {
+            'id': schedule.id,
+            'admin_published': schedule.admin_published,
+            'eval_published': schedule.eval_published,
+            'tech_published': schedule.tech_published,
+            'status': schedule.status,
+        },
+    }
 
 
 def _first_row_from_order(order) -> dict:
@@ -2047,6 +2095,99 @@ def _sample_total_from_first(first: dict) -> int:
     return main + backup
 
 
+def _personnel_process_tab_class(process_name: str) -> str:
+    """流程归属 Tab：含「评估」→ eval；含前台/知情/产品/问卷/清洁→ admin；其余→ tech（评估优先于行政关键词）。"""
+    n = (process_name or '').strip()
+    if '评估' in n:
+        return 'eval'
+    for kw in ('前台', '知情', '产品', '问卷', '清洁'):
+        if kw in n:
+            return 'admin'
+    return 'tech'
+
+
+def _personnel_expected_indices_for_tab(block: dict, tab_key: str) -> list:
+    """该访视点下属于 tab_key 的流程下标列表（与排期顺序一致）。"""
+    out = []
+    for j, p in enumerate(block.get('processes') or []):
+        if not isinstance(p, dict):
+            continue
+        name = (p.get('process') or p.get('code') or '') or ''
+        if _personnel_process_tab_class(name) == tab_key:
+            out.append(j)
+    return out
+
+
+def _personnel_tab_complete(tab_data, visit_blocks, tab_key: str) -> bool:
+    """人员 Tab 是否与 visit_blocks 中属于该 Tab 的流程条数一致且每条均已填写执行/备份/房间。"""
+    if not visit_blocks:
+        return True
+    if not tab_data or not isinstance(tab_data, list):
+        return False
+    if len(tab_data) != len(visit_blocks):
+        return False
+    for i, block in enumerate(visit_blocks):
+        if not isinstance(block, dict):
+            return False
+        tv = tab_data[i] if isinstance(tab_data[i], dict) else {}
+        processes = tv.get('processes') or []
+        expected_indices = _personnel_expected_indices_for_tab(block, tab_key)
+        if len(processes) != len(expected_indices):
+            return False
+        for pos in range(len(expected_indices)):
+            row = processes[pos] if pos < len(processes) else {}
+            if not isinstance(row, dict):
+                return False
+            ex = (row.get('executor') or '').strip()
+            bu = (row.get('backup') or '').strip()
+            rm = (row.get('room') or '').strip()
+            if not ex or not bu or not rm:
+                return False
+    return True
+
+
+def _personnel_all_complete(personnel: dict, visit_blocks) -> bool:
+    if not personnel or not isinstance(personnel, dict):
+        return False
+    for k in ('admin', 'eval', 'tech'):
+        if not _personnel_tab_complete(personnel.get(k), visit_blocks, k):
+            return False
+    return True
+
+
+def _sanitize_personnel_tabs_saved(pl: dict) -> None:
+    """未填齐的模块不得标记为已保存（防止前端状态不一致）。"""
+    pts = pl.get('personnel_tabs_saved')
+    if not isinstance(pts, dict):
+        return
+    personnel = pl.get('personnel') or {}
+    visit_blocks = pl.get('visit_blocks') or []
+    for k in ('admin', 'eval', 'tech'):
+        if pts.get(k) and not _personnel_tab_complete(personnel.get(k), visit_blocks, k):
+            pts[k] = False
+
+
+def _personnel_tabs_all_saved(pl: dict) -> bool:
+    """三个模块是否均已分别保存过（personnel_tabs_saved 全为 True）。"""
+    pts = pl.get('personnel_tabs_saved') or {}
+    if not isinstance(pts, dict):
+        return False
+    for k in ('admin', 'eval', 'tech'):
+        if not pts.get(k):
+            return False
+    return True
+
+
+def _sync_timeline_published_snapshot(schedule) -> None:
+    """时间线已发布且存在 TimelinePublishedPlan 时，将快照与排程核心对齐。"""
+    from .models import TimelinePublishedPlan
+    plan = TimelinePublishedPlan.objects.filter(timeline_schedule=schedule).first()
+    if not plan:
+        return
+    plan.snapshot = _build_timeslot_snapshot_from_schedule(schedule)
+    plan.save(update_fields=['snapshot', 'update_time'])
+
+
 def _build_timeslot_snapshot_from_schedule(schedule) -> dict:
     """从排程核心 + 执行订单构建时间槽列表用快照：项目编号、项目名称、组别、样本量、督导、访视时间点、实际执行周期。"""
     first = _first_row_from_order(schedule.execution_order_upload)
@@ -2072,7 +2213,7 @@ def _build_timeslot_snapshot_from_schedule(schedule) -> dict:
     project_name = (first.get('项目名称') or first.get('项目名') or first.get('名称') or '').strip()
     if project_name == project_code:
         project_name = ''  # 避免把项目编号当项目名称写入快照
-    return {
+    out = {
         '项目编号': project_code,
         '项目名称': project_name,
         '组别': (schedule.research_group or '').strip(),
@@ -2080,7 +2221,9 @@ def _build_timeslot_snapshot_from_schedule(schedule) -> dict:
         '督导': (schedule.supervisor or '').strip(),
         '访视时间点': '，'.join(visit_points),
         '实际执行周期': execution_period,
+        'personnel': payload.get('personnel') or {},
     }
+    return out
 
 
 @router.post('/execution-order/{order_id}/schedule-core/publish-timeline', summary='发布时间线')
@@ -2123,9 +2266,15 @@ def publish_admin(request, order_id: int):
         return {'code': 404, 'msg': '未找到排程核心', 'data': None}
     if schedule.status != TimelineScheduleStatus.TIMELINE_PUBLISHED:
         return {'code': 400, 'msg': '请先发布时间线', 'data': None}
+    pl = schedule.payload or {}
+    visit_blocks = pl.get('visit_blocks') or []
+    personnel = pl.get('personnel') or {}
+    if visit_blocks and not _personnel_tab_complete(personnel.get('admin'), visit_blocks, 'admin'):
+        return {'code': 400, 'msg': '行政排程：请为每个访视流程填写执行人员、备份人员、房间', 'data': None}
     schedule.admin_published = True
     _maybe_set_completed(schedule)
     schedule.save()
+    _sync_timeline_published_snapshot(schedule)
     return {'code': 200, 'msg': '行政排程已发布', 'data': {'admin_published': True, 'status': schedule.status}}
 
 
@@ -2139,9 +2288,15 @@ def publish_eval(request, order_id: int):
         return {'code': 404, 'msg': '未找到排程核心', 'data': None}
     if schedule.status != TimelineScheduleStatus.TIMELINE_PUBLISHED:
         return {'code': 400, 'msg': '请先发布时间线', 'data': None}
+    pl = schedule.payload or {}
+    visit_blocks = pl.get('visit_blocks') or []
+    personnel = pl.get('personnel') or {}
+    if visit_blocks and not _personnel_tab_complete(personnel.get('eval'), visit_blocks, 'eval'):
+        return {'code': 400, 'msg': '评估排程：请为每个访视流程填写执行人员、备份人员、房间', 'data': None}
     schedule.eval_published = True
     _maybe_set_completed(schedule)
     schedule.save()
+    _sync_timeline_published_snapshot(schedule)
     return {'code': 200, 'msg': '评估排程已发布', 'data': {'eval_published': True, 'status': schedule.status}}
 
 
@@ -2155,10 +2310,62 @@ def publish_tech(request, order_id: int):
         return {'code': 404, 'msg': '未找到排程核心', 'data': None}
     if schedule.status != TimelineScheduleStatus.TIMELINE_PUBLISHED:
         return {'code': 400, 'msg': '请先发布时间线', 'data': None}
+    pl = schedule.payload or {}
+    visit_blocks = pl.get('visit_blocks') or []
+    personnel = pl.get('personnel') or {}
+    if visit_blocks and not _personnel_tab_complete(personnel.get('tech'), visit_blocks, 'tech'):
+        return {'code': 400, 'msg': '技术排程：请为每个访视流程填写执行人员、备份人员、房间', 'data': None}
     schedule.tech_published = True
     _maybe_set_completed(schedule)
     schedule.save()
+    _sync_timeline_published_snapshot(schedule)
     return {'code': 200, 'msg': '技术排程已发布', 'data': {'tech_published': True, 'status': schedule.status}}
+
+
+@router.post(
+    '/execution-order/{order_id}/schedule-core/personnel-withdraw',
+    summary='发布后撤回再编辑（最多3次）',
+)
+@require_permission_or_anon_in_debug('scheduling.plan.create')
+def personnel_withdraw_for_reedit(request, order_id: int):
+    """排程全部完成后，撤回行政/评估/技术发布标记以便再编辑；合计最多 3 次。"""
+    from .models import TimelineSchedule, TimelineScheduleStatus
+    schedule = TimelineSchedule.objects.filter(execution_order_upload_id=order_id).first()
+    if not schedule:
+        return {'code': 404, 'msg': '未找到排程核心', 'data': None}
+    if schedule.status != TimelineScheduleStatus.COMPLETED:
+        return {'code': 400, 'msg': '仅当排程已全部完成时可撤回再编辑', 'data': None}
+    cnt = getattr(schedule, 'post_publish_edit_count', 0) or 0
+    if cnt >= 3:
+        return {'code': 400, 'msg': '发布后撤回再编辑次数已用尽（最多3次）', 'data': None}
+    schedule.post_publish_edit_count = cnt + 1
+    schedule.admin_published = False
+    schedule.eval_published = False
+    schedule.tech_published = False
+    schedule.status = TimelineScheduleStatus.TIMELINE_PUBLISHED
+    pl = dict(schedule.payload or {})
+    pl['personnel_tabs_saved'] = {'admin': False, 'eval': False, 'tech': False}
+    schedule.payload = _ensure_json_serializable(pl)
+    schedule.save(
+        update_fields=[
+            'post_publish_edit_count',
+            'admin_published',
+            'eval_published',
+            'tech_published',
+            'status',
+            'payload',
+            'update_time',
+        ]
+    )
+    _sync_timeline_published_snapshot(schedule)
+    return {
+        'code': 200,
+        'msg': '已撤回，可继续编辑人员排程',
+        'data': {
+            'post_publish_edit_count': schedule.post_publish_edit_count,
+            'status': schedule.status,
+        },
+    }
 
 
 def _maybe_set_completed(schedule):

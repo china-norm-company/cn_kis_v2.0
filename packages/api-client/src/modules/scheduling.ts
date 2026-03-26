@@ -342,6 +342,7 @@ export const schedulingApi = {
       admin_published: boolean
       eval_published: boolean
       tech_published: boolean
+      post_publish_edit_count?: number
       payload: Record<string, unknown>
     }>(`/scheduling/execution-order/${orderId}/schedule-core`)
   },
@@ -357,7 +358,13 @@ export const schedulingApi = {
       payload?: Record<string, unknown>
     },
   ) {
-    return api.patch<{ id: number }>(`/scheduling/execution-order/${orderId}/schedule-core`, payload)
+    return api.patch<{
+      id: number
+      admin_published?: boolean
+      eval_published?: boolean
+      tech_published?: boolean
+      status?: string
+    }>(`/scheduling/execution-order/${orderId}/schedule-core`, payload)
   },
 
   /** 排程核心：发布时间线 */
@@ -383,6 +390,13 @@ export const schedulingApi = {
   publishScheduleTech(orderId: number) {
     return api.post<{ tech_published: boolean; status: string }>(
       `/scheduling/execution-order/${orderId}/schedule-core/publish-tech`,
+    )
+  },
+
+  /** 排程全部完成后：撤回再编辑（合计最多 3 次） */
+  withdrawSchedulePersonnelForReedit(orderId: number) {
+    return api.post<{ post_publish_edit_count: number; status: string }>(
+      `/scheduling/execution-order/${orderId}/schedule-core/personnel-withdraw`,
     )
   },
 }

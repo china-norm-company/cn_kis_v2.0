@@ -8,7 +8,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 import { Button, Modal } from '@cn-kis/ui-kit'
-import { ArrowLeft, Send, Save, Users, ClipboardList, Wrench, FileText, Calendar, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Save, Users, FileText, Calendar, Plus, Trash2 } from 'lucide-react'
 import { schedulingApi } from '@cn-kis/api-client'
 import { useTheme } from '../contexts/ThemeContext'
 import { ExecutionOrderDetailReadOnly } from '../components/ExecutionOrderDetailReadOnly'
@@ -356,28 +356,6 @@ export default function ScheduleCorePage() {
       queryClient.invalidateQueries({ queryKey: ['scheduling', 'schedule-core', orderId] })
       queryClient.invalidateQueries({ queryKey: ['scheduling', 'execution-order-pending'] })
       queryClient.invalidateQueries({ queryKey: ['scheduling', 'timeline-published'] })
-    },
-  })
-
-  const publishAdminMutation = useMutation({
-    mutationFn: () => schedulingApi.publishScheduleAdmin(orderId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['scheduling', 'schedule-core', orderId] })
-      queryClient.invalidateQueries({ queryKey: ['scheduling', 'execution-order-pending'] })
-    },
-  })
-  const publishEvalMutation = useMutation({
-    mutationFn: () => schedulingApi.publishScheduleEval(orderId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['scheduling', 'schedule-core', orderId] })
-      queryClient.invalidateQueries({ queryKey: ['scheduling', 'execution-order-pending'] })
-    },
-  })
-  const publishTechMutation = useMutation({
-    mutationFn: () => schedulingApi.publishScheduleTech(orderId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['scheduling', 'schedule-core', orderId] })
-      queryClient.invalidateQueries({ queryKey: ['scheduling', 'execution-order-pending'] })
     },
   })
 
@@ -763,12 +741,18 @@ export default function ScheduleCorePage() {
 
   /** 保存并发布时间线（保存表单后自动调用发布，并同步到时间槽） */
   const handleSaveAndPublish = useCallback(() => {
+    const wasDraft = schedule?.status === 'draft'
     const payload = buildSavePayload()
     updateMutation
       .mutateAsync(payload)
-      .then(() => publishTimelineMutation.mutate())
+      .then(() => publishTimelineMutation.mutateAsync())
+      .then(() => {
+        if (wasDraft) {
+          navigate(`/scheduling/schedule-core/${orderId}/personnel`)
+        }
+      })
       .catch(() => {})
-  }, [buildSavePayload, updateMutation, publishTimelineMutation])
+  }, [buildSavePayload, updateMutation, publishTimelineMutation, navigate, orderId, schedule?.status])
 
   if (!Number.isInteger(orderId)) {
     return (
@@ -1180,99 +1164,32 @@ export default function ScheduleCorePage() {
       )}
 
       {isTimelinePublished && (
-        <section className={clsx('rounded-xl border p-4 mt-4', isDark ? 'border-[#3b434e] bg-slate-800/50' : 'border-slate-200 bg-white')}>
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">项目排期</h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400">时间线已发布。请完成行政、评估、技术排程并分别发布。</p>
+        <section
+          className={clsx(
+            'rounded-xl border p-4 mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3',
+            isDark ? 'border-[#3b434e] bg-slate-800/50' : 'border-slate-200 bg-white'
+          )}
+        >
+          <div>
+            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">人员排程（行政 / 评估 / 技术）</h2>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              时间线已保存。请在独立页面中为各访视流程填写执行人员、备份人员与房间；三模块均完成后保存将自动发布。
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">
+              状态：行政 {schedule.admin_published ? '已发布' : '未发布'} · 评估 {schedule.eval_published ? '已发布' : '未发布'} · 技术{' '}
+              {schedule.tech_published ? '已发布' : '未发布'}
+              {schedule.status === 'completed' ? ' · 排程已完成' : ''}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="primary"
+            className="shrink-0"
+            onClick={() => navigate(`/scheduling/schedule-core/${orderId}/personnel`)}
+          >
+            <Users className="w-4 h-4 mr-1" /> 进入人员排程
+          </Button>
         </section>
-      )}
-
-      {/* 行政 / 评估 / 技术 排程（时间线发布后才显示） */}
-      {isTimelinePublished && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <section
-            className={clsx(
-              'rounded-xl border p-4',
-              isDark ? 'border-[#3b434e] bg-slate-800/50' : 'border-slate-200 bg-white'
-            )}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                <ClipboardList className="w-4 h-4" /> 行政排程
-              </h2>
-              {schedule.admin_published ? (
-                <span className="text-xs text-green-600 dark:text-green-400">已发布</span>
-              ) : (
-                <Button
-                  size="xs"
-                  variant="primary"
-                  onClick={() => publishAdminMutation.mutate()}
-                  disabled={publishAdminMutation.isPending}
-                >
-                  <Send className="w-3 h-3 mr-1" /> 发布
-                </Button>
-              )}
-            </div>
-            {!schedule.admin_published && (
-              <p className="text-xs text-slate-500 dark:text-slate-400">请填写人员与房间后发布。表格编辑功能将在后续迭代中提供。</p>
-            )}
-          </section>
-
-          <section
-            className={clsx(
-              'rounded-xl border p-4',
-              isDark ? 'border-[#3b434e] bg-slate-800/50' : 'border-slate-200 bg-white'
-            )}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                <Users className="w-4 h-4" /> 评估排程
-              </h2>
-              {schedule.eval_published ? (
-                <span className="text-xs text-green-600 dark:text-green-400">已发布</span>
-              ) : (
-                <Button
-                  size="xs"
-                  variant="primary"
-                  onClick={() => publishEvalMutation.mutate()}
-                  disabled={publishEvalMutation.isPending}
-                >
-                  <Send className="w-3 h-3 mr-1" /> 发布
-                </Button>
-              )}
-            </div>
-            {!schedule.eval_published && (
-              <p className="text-xs text-slate-500 dark:text-slate-400">请填写人员与房间后发布。表格编辑功能将在后续迭代中提供。</p>
-            )}
-          </section>
-
-          <section
-            className={clsx(
-              'rounded-xl border p-4',
-              isDark ? 'border-[#3b434e] bg-slate-800/50' : 'border-slate-200 bg-white'
-            )}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                <Wrench className="w-4 h-4" /> 技术排程
-              </h2>
-              {schedule.tech_published ? (
-                <span className="text-xs text-green-600 dark:text-green-400">已发布</span>
-              ) : (
-                <Button
-                  size="xs"
-                  variant="primary"
-                  onClick={() => publishTechMutation.mutate()}
-                  disabled={publishTechMutation.isPending}
-                >
-                  <Send className="w-3 h-3 mr-1" /> 发布
-                </Button>
-              )}
-            </div>
-            {!schedule.tech_published && (
-              <p className="text-xs text-slate-500 dark:text-slate-400">请填写人员与房间后发布。表格编辑功能将在后续迭代中提供。</p>
-            )}
-          </section>
-        </div>
       )}
 
       {schedule.status === 'completed' && (
