@@ -30,7 +30,7 @@ _WORKSTATION_KEYWORDS: dict[str, list[str]] = {
     'hr':             ['人事', '员工', '培训', '绩效', '招聘'],
     'crm':            ['客户', '商务', '合作', '客户台'],
     'secretary':      ['门户', '秘书台', '首页', '登录', '入口'],
-    'governance':     ['权限', '角色', '账号', '治理台', '鹿鸣'],
+    'admin':          ['权限', '角色', '账号', '治理台', '鹿鸣'],
 }
 
 # ── 分类关键词 ─────────────────────────────────────────────────────────────────
@@ -191,13 +191,20 @@ def process_feedback_message(
     feedback.processed_at = tz.now()
     feedback.save()
 
-    launch_gap_id = None
     if feedback.github_issue_url:
-        from apps.identity.launch_governance_feedback_bridge import ensure_launch_gap_from_user_feedback
-
-        launch_gap_id = ensure_launch_gap_from_user_feedback(feedback)
-        if launch_gap_id is not None:
-            result = {**result, 'launch_gap_id': launch_gap_id}
+        try:
+            from apps.identity.launch_governance_feedback_bridge import (
+                ensure_launch_gap_from_user_feedback,
+            )
+            gap_id = ensure_launch_gap_from_user_feedback(feedback)
+            if gap_id is not None:
+                result['launch_gap_id'] = gap_id
+        except Exception as e:
+            logger.warning(
+                '上线治理缺口同步失败（不影响反馈主流程）: %s',
+                e,
+                exc_info=True,
+            )
 
     logger.info(
         '用户反馈处理完成 [%s] category=%s ws=%s action=%s',
