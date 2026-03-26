@@ -34,7 +34,7 @@ function App() {
     <ErrorBoundary workstation="finance">
       <OfflineBanner visible={offline} />
       <Toaster position="top-center" richColors />
-      <HashRouter>
+      <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/health" element={<HealthPage workstation="finance" />} />
           <Route path="/" element={<AppLayout />}>

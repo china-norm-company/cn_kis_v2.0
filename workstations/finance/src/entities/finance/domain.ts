@@ -11,7 +11,7 @@ import { BaseEntity } from "@/shared/types/entities";
 export type InvoiceStatus = 'draft' | 'issued' | 'paid' | 'partial' | 'overdue' | 'cancelled';
 
 /** 发票类型 */
-export type InvoiceType = '专票' | '普票' | '全电专票' | '全电普票';
+export type InvoiceType = '全电专票' | '全电普票' | '形式发票';
 
 /** 发票 */
 export interface Invoice extends BaseEntity {
@@ -64,10 +64,6 @@ export interface Invoice extends BaseEntity {
   
   // LIMS关联
   lims_report_submitted_at?: string;    // LIMS报告提交时间
-
-  // 易快报附件追踪
-  ekuaibao_attachment_count?: number;   // 附件数量（来自 EkbAttachmentIndex）
-  ekuaibao_reconcile_status?: 'match' | 'mismatch' | 'only_in_ekb' | 'only_in_new'; // 对账状态
   
   // 电子发票管理
   electronic_invoice_file?: string;        // 电子发票文件路径/URL
@@ -89,9 +85,6 @@ export interface ProjectExpense extends BaseEntity {
   // 易快报关联
   ekuaibao_no?: string;                 // 易快报单号（如 "B26000474"）
   ekuaibao_title?: string;              // 标题
-  ekuaibao_id?: string;                 // 易快报内部 flowId（唯一键）
-  import_source?: 'manual' | 'ekuaibao'; // 数据来源
-  import_batch_id?: string;             // 导入批次号（用于回滚溯源）
   
   // 项目关联
   project_code: string;                 // 项目编号

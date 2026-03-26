@@ -34,30 +34,16 @@ def create_expense(request, data: ExpenseCreateIn):
 def list_expenses(request, applicant_id: Optional[int] = None,
                    protocol_id: Optional[int] = None,
                    status: Optional[str] = None,
-                   import_source: Optional[str] = None,
-                   keyword: Optional[str] = None,
                    page: int = 1, page_size: int = 20):
     from apps.finance.services.expense_service import list_expenses as svc
     result = svc(applicant_id=applicant_id, protocol_id=protocol_id,
-                  status=status, import_source=import_source,
-                  keyword=keyword, page=page, page_size=page_size)
+                  status=status, page=page, page_size=page_size)
     return {'code': 200, 'msg': 'OK', 'data': {
         'items': [{
             'id': r.id, 'request_no': r.request_no,
             'applicant_name': r.applicant_name, 'expense_type': r.expense_type,
             'amount': str(r.amount), 'approval_status': r.approval_status,
             'description': r.description,
-            'import_source': r.import_source,
-            'ekuaibao_no': r.ekuaibao_no,
-            'import_batch_id': r.import_batch_id,
-            # 业务关联字段
-            'protocol_id': r.protocol_id,
-            'project_name': r.project_name,
-            'client_name': r.client_name,
-            'cost_department': r.cost_department,
-            'expense_template': r.expense_template,
-            'linked_budget_no': r.linked_budget_no,
-            'approval_chain': r.approval_chain,
         } for r in result['items']],
         'total': result['total'],
     }}

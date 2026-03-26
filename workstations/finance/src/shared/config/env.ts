@@ -1,6 +1,6 @@
 /**
  * 环境与 API 配置
- * 职责：解析 VITE_API_MODE（mock|real）、VITE_API_BASE_URL；开发默认 /api/v1，生产默认 http://127.0.0.1:8000/api/v1。
+ * 职责：解析 VITE_API_MODE、VITE_API_BASE_URL。本地未配 API_MODE 默认 mock；生产未配默认 real（发票团队共享）。
  * 主要导出：getApiMode、getApiBaseUrl、envConfig、ApiMode。被 client、mode、authService 等使用。
  * 依赖：无（仅 import.meta.env）。被 api/client、api/mode、auth、vite 代理等引用。
  * 涉及后端接口：getApiBaseUrl 作为所有 apiClient 与登录请求的 BaseURL。
@@ -9,28 +9,26 @@
 export type ApiMode = "mock" | "real";
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000/api/v1";
-// 开发环境默认使用 real 模式，确保联调开箱即用
-// 财务台「发票管理（新）」5 模块使用本地 mock，不依赖后端
-const DEFAULT_API_MODE: ApiMode = "mock";
+// 本地未配置时默认 mock；生产构建未配置时默认 real，否则发票走 localStorage、无法团队共享
+const DEFAULT_API_MODE_DEV: ApiMode = "mock";
+const DEFAULT_API_MODE_PROD: ApiMode = "real";
 
 const sanitizeBaseUrl = (baseUrl: string): string =>
   baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
 
 const normalizeApiMode = (mode: unknown): ApiMode => {
-  if (typeof mode !== "string") {
-    return DEFAULT_API_MODE;
+  if (typeof mode !== "string" || mode.trim() === "") {
+    return import.meta.env.PROD ? DEFAULT_API_MODE_PROD : DEFAULT_API_MODE_DEV;
   }
 
   const normalized = mode.trim().toLowerCase();
-  // 明确支持 "real" 和 "mock" 两种模式
   if (normalized === "real") {
     return "real";
   }
   if (normalized === "mock") {
     return "mock";
   }
-  // 其他值使用默认模式
-  return DEFAULT_API_MODE;
+  return import.meta.env.PROD ? DEFAULT_API_MODE_PROD : DEFAULT_API_MODE_DEV;
 };
 
 const resolveApiBaseUrl = (): string => {
@@ -42,11 +40,11 @@ const resolveApiBaseUrl = (): string => {
   }
 
   if (import.meta.env.DEV) {
-    // 开发环境使用 /api/v1，由 Vite 代理转发
     return "/api/v1";
   }
 
-  return DEFAULT_API_BASE_URL;
+  // 生产未配置时走同源 /api/v1（与 nginx 反代 Django 一致）；勿用 127.0.0.1（浏览器无法访问）
+  return "/api/v1";
 };
 
 export const getApiBaseUrl = (): string => resolveApiBaseUrl();

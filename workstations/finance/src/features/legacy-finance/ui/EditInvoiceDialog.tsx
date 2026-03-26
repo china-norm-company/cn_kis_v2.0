@@ -32,6 +32,12 @@ import { Loader2, Upload, X } from "lucide-react";
 import type { Invoice } from "@/entities/finance/domain";
 import { saveInvoiceFile } from "@/shared/services/fileStorage";
 
+// 可选数字：空字符串或 NaN 视为未填，仅上传电子发票时可不填到账金额
+const optionalNumber = z
+  .union([z.number(), z.literal("")])
+  .transform((v) => (v === "" || (typeof v === "number" && Number.isNaN(v)) ? undefined : v))
+  .optional();
+
 const editInvoiceSchema = z.object({
   invoice_no: z.string().min(1, "发票号码不能为空"),
   invoice_date: z.string().min(1, "开票日期不能为空"),
@@ -40,14 +46,14 @@ const editInvoiceSchema = z.object({
   invoice_currency: z.string().optional(),
   invoice_amount_tax_included: z.number().optional(),
   revenue_amount: z.number().min(0.01, "收入金额必须大于0"),
-  invoice_type: z.enum(["专票", "普票", "全电专票", "全电普票"]),
+  invoice_type: z.enum(["全电专票", "全电普票", "形式发票"]),
   company_name: z.string().min(1, "我司名称不能为空"),
   project_code: z.string().min(1, "项目编号不能为空"),
   po: z.string().optional(),
   payment_term: z.number().optional(),
   sales_manager: z.string().min(1, "客户经理不能为空"),
   payment_date: z.string().optional(),
-  payment_amount: z.number().optional(),
+  payment_amount: optionalNumber,
   status: z.enum(["draft", "issued", "paid", "partial", "overdue", "cancelled"]).optional(),
 });
 
@@ -107,7 +113,13 @@ export function EditInvoiceDialog({ open, onOpenChange, invoice, onSuccess }: Ed
         invoice_currency: invoice.invoice_currency,
         invoice_amount_tax_included: invoice.invoice_amount_tax_included,
         revenue_amount: invoice.revenue_amount,
-        invoice_type: invoice.invoice_type,
+        invoice_type: (["全电专票", "全电普票", "形式发票"] as const).includes(invoice.invoice_type)
+          ? invoice.invoice_type
+          : ((invoice.invoice_type as string) === "普票" || invoice.invoice_type === "全电普票"
+            ? "全电普票"
+            : (invoice.invoice_type as string) === "形式发票"
+              ? "形式发票"
+              : "全电专票"),
         company_name: invoice.company_name,
         project_code: invoice.project_code,
         po: invoice.po,
@@ -165,17 +177,26 @@ export function EditInvoiceDialog({ open, onOpenChange, invoice, onSuccess }: Ed
         }
       }
 
-      const result = await updateMutation.mutateAsync({
+      const payload: Record<string, unknown> = {
         id: invoice.id,
         ...values,
         status: calculatedStatus,
-        ...(electronicInvoiceFileId && electronicInvoiceFileNameValue
-          ? {
-              electronic_invoice_file: electronicInvoiceFileId,
-              electronic_invoice_file_name: electronicInvoiceFileNameValue,
-            }
-          : {}),
-      });
+      };
+      if (electronicInvoiceFileId && electronicInvoiceFileNameValue) {
+        payload.electronic_invoice_file = electronicInvoiceFileId;
+        payload.electronic_invoice_file_name = electronicInvoiceFileNameValue;
+      }
+      // 不提交 undefined/空，避免后端或序列化问题；仅上传电子发票时可不填到账金额
+      if (payload.payment_amount === undefined || payload.payment_amount === "") {
+        delete payload.payment_amount;
+      }
+      if (payload.payment_date === undefined || payload.payment_date === "") {
+        delete payload.payment_date;
+      }
+
+      const result = await updateMutation.mutateAsync(
+        payload as unknown as Parameters<typeof updateMutation.mutateAsync>[0],
+      );
       
       console.log('[编辑发票] ✅ 发票更新成功:', {
         invoice_id: result.id,
@@ -246,6 +267,29 @@ export function EditInvoiceDialog({ open, onOpenChange, invoice, onSuccess }: Ed
                     <FormControl>
                       <Input type="date" {...field} />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="invoice_type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>发票类型 *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="选择发票类型" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="全电专票">全电专票</SelectItem>
+                        <SelectItem value="全电普票">全电普票</SelectItem>
+                        <SelectItem value="形式发票">形式发票</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}

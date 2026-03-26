@@ -1,3 +1,4 @@
+import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -19,7 +20,6 @@ vi.mock('@cn-kis/api-client', () => ({
 }))
 
 vi.mock('recharts', () => {
-  const React = require('react')
   const mock = (name: string) => ({ children, ...props }: any) => React.createElement('div', { 'data-testid': name }, children)
   return {
     LineChart: mock('LineChart'), Line: mock('Line'),

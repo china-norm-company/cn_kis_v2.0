@@ -28,7 +28,7 @@ from .schema import (
     CustomerQueryParams, CustomerCreateIn, CustomerUpdateIn,
     InvoiceRequestQueryParams, InvoiceRequestCreateIn, InvoiceRequestUpdateIn,
 )
-from apps.identity.decorators import _get_account_from_request, require_permission
+from apps.identity.decorators import _get_account_from_request, require_permission, require_any_permission
 from apps.identity.filters import get_visible_object
 
 router = Router()
@@ -36,9 +36,11 @@ router = Router()
 from .api_payable import router as payable_router
 from .api_expense import router as expense_router
 from .api_settlement import router as settlement_router
+from .api_notifications import router as notifications_router
 router.add_router('/payables/', payable_router, tags=['应付管理'])
 router.add_router('/expenses/', expense_router, tags=['费用报销'])
 router.add_router('/settlements/', settlement_router, tags=['项目决算'])
+router.add_router('/notifications/', notifications_router, tags=['财务通知'])
 
 
 # ============================================================================
@@ -103,7 +105,82 @@ def _item_amount_inclusive(amount, amount_type: str, tax_rate) -> float:
     return am * (1 + rate)
 
 
-def _invoice_request_to_dict(req) -> dict:
+def _linked_electronic_meta_for_request(req) -> dict:
+    """根据 invoice_ids 关联 LegacyInvoice（优先取列表最后一项，与处理申请创建发票顺序一致）。"""
+    from .models_legacy_invoice import LegacyInvoice
+    empty = {
+        'linked_invoice_id': None,
+        'electronic_invoice_file': None,
+        'electronic_invoice_file_name': None,
+    }
+    ids = req.invoice_ids or []
+    if not ids:
+        return empty
+    id_list = []
+    for x in ids:
+        try:
+            id_list.append(int(x))
+        except (TypeError, ValueError):
+            continue
+    for iid in reversed(id_list):
+        inv = LegacyInvoice.objects.filter(id=iid, is_deleted=False).first()
+        if inv:
+            ef = (inv.electronic_invoice_file or '').strip() or None
+            en = (inv.electronic_invoice_file_name or '').strip() or None
+            return {
+                'linked_invoice_id': inv.id,
+                'electronic_invoice_file': ef,
+                'electronic_invoice_file_name': en,
+            }
+    return empty
+
+
+def _batch_linked_electronic_meta(requests: list) -> dict:
+    """req.id -> 电子发票摘要，批量查询避免列表 N+1。"""
+    from .models_legacy_invoice import LegacyInvoice
+    empty = {
+        'linked_invoice_id': None,
+        'electronic_invoice_file': None,
+        'electronic_invoice_file_name': None,
+    }
+    if not requests:
+        return {}
+    all_ids = set()
+    for req in requests:
+        for x in (req.invoice_ids or []):
+            try:
+                all_ids.add(int(x))
+            except (TypeError, ValueError):
+                continue
+    if not all_ids:
+        return {req.id: dict(empty) for req in requests}
+    inv_map = {
+        inv.id: inv
+        for inv in LegacyInvoice.objects.filter(id__in=all_ids, is_deleted=False)
+    }
+    out = {}
+    for req in requests:
+        meta = dict(empty)
+        for x in reversed(req.invoice_ids or []):
+            try:
+                iid = int(x)
+            except (TypeError, ValueError):
+                continue
+            inv = inv_map.get(iid)
+            if inv:
+                ef = (inv.electronic_invoice_file or '').strip() or None
+                en = (inv.electronic_invoice_file_name or '').strip() or None
+                meta = {
+                    'linked_invoice_id': inv.id,
+                    'electronic_invoice_file': ef,
+                    'electronic_invoice_file_name': en,
+                }
+                break
+        out[req.id] = meta
+    return out
+
+
+def _invoice_request_to_dict(req, electronic_meta: Optional[dict] = None) -> dict:
     amount_type = getattr(req, 'amount_type', None) or 'inclusive_of_tax'
     tax_rate = getattr(req, 'tax_rate', None)
     rate_val = float(tax_rate) if tax_rate is not None else 0.06
@@ -117,11 +194,11 @@ def _invoice_request_to_dict(req) -> dict:
             'amount_inclusive_of_tax': round(am_inclusive, 2),
             'service_content': i.service_content or '',
         })
-    return {
+    base = {
         'id': req.id,
         'request_date': req.request_date.isoformat(),
         'customer_name': req.customer_name,
-        'invoice_type': getattr(req, 'invoice_type', 'vat_special') or 'vat_special',
+        'invoice_type': getattr(req, 'invoice_type', 'full_elec_special') or 'full_elec_special',
         'amount_type': amount_type,
         'tax_rate': rate_val,
         'items': items,
@@ -137,6 +214,10 @@ def _invoice_request_to_dict(req) -> dict:
         'created_at': req.create_time.isoformat(),
         'updated_at': req.update_time.isoformat(),
     }
+    if electronic_meta is None:
+        electronic_meta = _linked_electronic_meta_for_request(req)
+    base.update(electronic_meta)
+    return base
 
 
 def _client_to_dict(c) -> dict:
@@ -261,70 +342,6 @@ def delete_quote_item(request, item_id: int):
     if not svc(item_id):
         return 404, {'code': 404, 'msg': '明细不存在'}
     return {'code': 200, 'msg': 'OK', 'data': None}
-
-
-@router.post('/quotes/{quote_id}/accept-inputs', summary='数字员工：采纳 AI 报价输入项写入明细')
-@require_permission('finance.quote.create')
-def accept_quote_inputs(request, quote_id: int):
-    """
-    数字员工流程内嵌：把编排产出的 quote_inputs 写入报价明细表。
-    前端动作卡片点击"全部采纳"时调用。
-    """
-    import json
-    from decimal import Decimal
-    from apps.finance.models import Quote, QuoteItem
-
-    quote = Quote.objects.filter(id=quote_id, is_deleted=False).first()
-    if not quote:
-        return 404, {'code': 404, 'msg': '报价不存在'}
-
-    body = {}
-    try:
-        body = json.loads(request.body) if request.body else {}
-    except Exception:
-        pass
-
-    items_data = body.get('items', [])
-    created = 0
-    for idx, item in enumerate(items_data):
-        item_name = item.get('item_name') or item.get('name') or f'报价项 {idx + 1}'
-        QuoteItem.objects.create(
-            quote=quote,
-            item_name=item_name,
-            specification=item.get('specification', ''),
-            unit=item.get('unit', '项'),
-            quantity=Decimal(str(item.get('quantity', 1))),
-            unit_price=Decimal(str(item.get('unit_price', 0))),
-            amount=Decimal(str(item.get('amount', 0))),
-            cost_estimate=Decimal(str(item.get('cost_estimate', 0))) if item.get('cost_estimate') else None,
-            sort_order=idx,
-        )
-        created += 1
-
-    if created > 0:
-        total = sum(qi.amount for qi in QuoteItem.objects.filter(quote=quote))
-        quote.total_amount = total
-        quote.save(update_fields=['total_amount', 'update_time'])
-
-    try:
-        from apps.secretary.runtime_plane import create_execution_task, finalize_execution_task
-        account = _get_account_from_request(request)
-        task_id = create_execution_task(
-            runtime_type='service',
-            name='accept-quote-inputs',
-            target='finance.accept_quote_inputs',
-            account_id=getattr(account, 'id', None),
-            input_payload={'quote_id': quote_id, 'items_count': created},
-            role_code='solution_designer',
-            workstation_key='finance',
-            business_object_type='opportunity',
-            business_object_id=str(quote_id),
-        )
-        finalize_execution_task(task_id, ok=True, output={'created': created})
-    except Exception:
-        pass
-
-    return {'code': 200, 'msg': 'OK', 'data': {'created': created, 'total_amount': str(quote.total_amount)}}
 
 
 @router.post('/quotes/{quote_id}/revise', summary='创建报价修订版')
@@ -525,6 +542,34 @@ def generate_payment_plans(request, contract_id: int):
 # ============================================================================
 # 发票 API
 # ============================================================================
+# 发票管理（新）— 与前端 GET /finance/invoices 对接，返回全部发票（团队共享，无按人过滤）
+from .api_legacy_invoices import (
+    list_legacy_invoices,
+    create_legacy_invoice,
+    get_legacy_invoice,
+    update_legacy_invoice,
+    delete_legacy_invoice,
+    LegacyInvoiceQueryParams,
+    LegacyInvoiceCreateIn,
+    LegacyInvoiceUpdateIn,
+)
+from .models_legacy_invoice import LegacyInvoice
+
+
+@router.get('/invoices', summary='发票列表（新，团队共享）')
+@require_permission('finance.invoice.read')
+def list_legacy_invoices_route(request, params: LegacyInvoiceQueryParams = Query(...)):
+    """与前端「发票管理（新）」对接，返回全部发票，不做按人过滤。"""
+    return list_legacy_invoices(request, params)
+
+
+@router.post('/invoices', summary='创建发票（新）')
+@require_permission('finance.invoice.create')
+def create_legacy_invoice_route(request, data: LegacyInvoiceCreateIn):
+    """与前端「发票管理（新）」对接。"""
+    return create_legacy_invoice(request, data)
+
+
 @router.get('/invoices/list', summary='发票列表')
 @require_permission('finance.invoice.read')
 def list_invoices(request, params: InvoiceQueryParams = Query(...)):
@@ -559,6 +604,10 @@ def create_invoice(request, data: InvoiceCreateIn):
 @router.get('/invoices/{invoice_id}', summary='发票详情')
 @require_permission('finance.invoice.read')
 def get_invoice(request, invoice_id: int):
+    # 优先按「发票（新）」查，与列表一致，团队共享
+    legacy_inv = LegacyInvoice.objects.filter(id=invoice_id, is_deleted=False).first()
+    if legacy_inv:
+        return get_legacy_invoice(request, invoice_id)
     account = _get_account_from_request(request)
     inv = get_visible_object(Invoice.objects.filter(id=invoice_id), account)
     if not inv:
@@ -568,11 +617,16 @@ def get_invoice(request, invoice_id: int):
 
 @router.put('/invoices/{invoice_id}', summary='更新发票')
 @require_permission('finance.invoice.create')
-def update_invoice(request, invoice_id: int, data: InvoiceUpdateIn):
+def update_invoice(request, invoice_id: int, data: LegacyInvoiceUpdateIn):
+    legacy_inv = LegacyInvoice.objects.filter(id=invoice_id, is_deleted=False).first()
+    if legacy_inv:
+        return update_legacy_invoice(request, invoice_id, data)
     account = _get_account_from_request(request)
     if not get_visible_object(Invoice.objects.filter(id=invoice_id), account):
         return 404, {'code': 404, 'msg': '发票不存在'}
-    inv = services.update_invoice(invoice_id, **data.dict(exclude_unset=True))
+    # 合同发票仅更新部分字段
+    payload = {k: v for k, v in data.dict(exclude_unset=True).items() if k in ('status', 'invoice_date')}
+    inv = services.update_invoice(invoice_id, **payload)
     if not inv:
         return 404, {'code': 404, 'msg': '发票不存在'}
     return {'code': 200, 'msg': 'OK', 'data': _invoice_to_dict(inv)}
@@ -581,6 +635,9 @@ def update_invoice(request, invoice_id: int, data: InvoiceUpdateIn):
 @router.delete('/invoices/{invoice_id}', summary='删除发票')
 @require_permission('finance.invoice.create')
 def delete_invoice(request, invoice_id: int):
+    legacy_inv = LegacyInvoice.objects.filter(id=invoice_id, is_deleted=False).first()
+    if legacy_inv:
+        return delete_legacy_invoice(request, invoice_id)
     account = _get_account_from_request(request)
     if not get_visible_object(Invoice.objects.filter(id=invoice_id), account):
         return 404, {'code': 404, 'msg': '发票不存在'}
@@ -606,10 +663,15 @@ def list_invoice_requests(request, params: InvoiceRequestQueryParams = Query(...
     total = result['total']
     page_size = result['page_size']
     total_pages = (total + page_size - 1) // page_size if page_size else 0
+    items = result['items']
+    batch_electronic = _batch_linked_electronic_meta(items)
     return {
         'code': 200, 'msg': 'OK',
         'data': {
-            'requests': [_invoice_request_to_dict(r) for r in result['items']],
+            'requests': [
+                _invoice_request_to_dict(r, electronic_meta=batch_electronic.get(r.id))
+                for r in items
+            ],
             'total_records': total,
             'total_pages': total_pages,
             'current_page': result['page'],
@@ -628,14 +690,14 @@ def get_invoice_request(request, req_id: int):
 
 
 @router.post('/invoice-requests', summary='创建开票申请')
-@require_permission('finance.invoice.create')
+@require_any_permission(['finance.invoice.create', 'finance.invoice_request.submit'])
 def create_invoice_request(request, data: InvoiceRequestCreateIn):
     account = _get_account_from_request(request)
     items = [it.dict() for it in data.items]
     req = services.create_invoice_request(
         request_date=data.request_date,
         customer_name=data.customer_name,
-        invoice_type=getattr(data, 'invoice_type', 'vat_special') or 'vat_special',
+        invoice_type=getattr(data, 'invoice_type', 'full_elec_special') or 'full_elec_special',
         amount_type=getattr(data, 'amount_type', 'inclusive_of_tax') or 'inclusive_of_tax',
         tax_rate=getattr(data, 'tax_rate', None),
         items=items,
@@ -649,26 +711,34 @@ def create_invoice_request(request, data: InvoiceRequestCreateIn):
 
 
 @router.put('/invoice-requests/{req_id}', summary='更新开票申请')
-@require_permission('finance.invoice.create')
+@require_any_permission(['finance.invoice.create', 'finance.invoice_request.submit'])
 def update_invoice_request(request, req_id: int, data: InvoiceRequestUpdateIn):
     account = _get_account_from_request(request)
-    if not get_visible_object(InvoiceRequest.objects.filter(id=req_id), account, scope_override='global'):
+    req = get_visible_object(InvoiceRequest.objects.filter(id=req_id), account, scope_override='global')
+    if not req:
         return 404, {'code': 404, 'msg': '开票申请不存在'}
     payload = data.dict(exclude_unset=True)
     if 'items' in payload and payload['items'] is not None:
         payload['items'] = [it.dict() if hasattr(it, 'dict') else it for it in payload['items']]
-    req = services.update_invoice_request(req_id, **payload)
-    if not req:
+    from .invoice_request_access import account_may_update_invoice_request
+    if not account_may_update_invoice_request(account, req, payload):
+        return 403, {'code': 403, 'msg': '无权限更新该开票申请（商务仅能修改本人待处理申请，且不可修改处理状态/关联发票）'}
+    updated = services.update_invoice_request(req_id, **payload)
+    if not updated:
         return 404, {'code': 404, 'msg': '开票申请不存在'}
-    return {'code': 200, 'msg': 'OK', 'data': _invoice_request_to_dict(req)}
+    return {'code': 200, 'msg': 'OK', 'data': _invoice_request_to_dict(updated)}
 
 
 @router.delete('/invoice-requests/{req_id}', summary='删除开票申请')
-@require_permission('finance.invoice.create')
+@require_any_permission(['finance.invoice.create', 'finance.invoice_request.submit'])
 def delete_invoice_request(request, req_id: int):
     account = _get_account_from_request(request)
-    if not get_visible_object(InvoiceRequest.objects.filter(id=req_id), account, scope_override='global'):
+    req = get_visible_object(InvoiceRequest.objects.filter(id=req_id), account, scope_override='global')
+    if not req:
         return 404, {'code': 404, 'msg': '开票申请不存在'}
+    from .invoice_request_access import account_may_delete_invoice_request
+    if not account_may_delete_invoice_request(account, req):
+        return 403, {'code': 403, 'msg': '无权限删除该开票申请'}
     ok = services.delete_invoice_request(req_id)
     if not ok:
         return 404, {'code': 404, 'msg': '开票申请不存在'}
