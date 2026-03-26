@@ -34,3 +34,22 @@ export interface MyProductReminderItem {
   title: string
   description: string
 }
+
+/** 格式化为 项目编号-名称-样品-样品编号，如 W26001111-面霜项目-面霜-123 */
+export function formatProductDisplayName(item: {
+  project_no?: string | null
+  project_name?: string | null
+  sample_name?: string | null
+  sample_no?: string | null
+  product_name?: string | null
+}): string {
+  const no = item.project_no || ''
+  const name = item.project_name || ''
+  const sample = item.sample_name || ''
+  const sampleNo = item.sample_no || ''
+  if (no || name || sample || sampleNo) {
+    const parts = [no, name, sample, sampleNo].filter(Boolean)
+    return parts.join('-')
+  }
+  return item.product_name || '研究产品'
+}
