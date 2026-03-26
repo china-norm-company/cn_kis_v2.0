@@ -1,15 +1,15 @@
 """
 飞书卡片交互回调接口
 
-处理审批人在飞书卡片上点击「批准合并」/「拒绝」按钮的回调，
-累计 2 个有效 approve 后自动调用 GitHub Commit Status API，
-使 PR 无需 GitHub 账号即可完成审批。
+处理审批人在飞书卡片上点击「批准合并」/「拒绝」/「发布到生产」按钮的回调：
+- approve_pr / reject_pr：PR 审批，2 人 approve 后自动设置 GitHub commit status
+- deploy_to_production：触发 GitHub Actions workflow_dispatch 进行生产部署
 
 配置要求：
   飞书开放平台 → 机器人 → 卡片请求网址 设置为：
-    https://118.196.64.48/api/v1/webhooks/feishu/card-action/
+    https://china-norm.com/api/v1/webhooks/feishu/card-action/
 
-  GitHub Actions Secret：GITHUB_PAT_STATUS（repo scope，用于设置 commit status）
+  GitHub Actions Secret：GITHUB_PAT_STATUS（repo scope，用于设置 commit status 和触发 workflow）
   本地 .env：GITHUB_TOKEN（已有，直接复用）
 """
 import json
@@ -116,6 +116,52 @@ def _send_feishu_group_message(chat_id: str, card: dict) -> None:
         )
     except Exception as e:
         logger.warning(f'发送飞书群消息失败：{e}')
+
+
+def _trigger_production_deploy(
+    pr_number: int,
+    commit_sha: str,
+    approver_name: str,
+    pr_title: str,
+) -> dict:
+    """
+    触发 GitHub Actions workflow_dispatch，启动生产部署。
+    只有 approver_name 在已知成员中才允许触发（防止任意人触发部署）。
+    """
+    token = os.environ.get('GITHUB_TOKEN', '')
+    if not token:
+        logger.error('GITHUB_TOKEN 未配置，无法触发 workflow')
+        return {'status': 'error', 'error': 'GITHUB_TOKEN 未配置'}
+
+    url = f'https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/backend-deploy-production.yml/dispatches'
+    payload = {
+        'ref': 'main',
+        'inputs': {
+            'pr_number': str(pr_number),
+            'commit_sha': commit_sha,
+            'approver_name': approver_name,
+            'pr_title': pr_title,
+        },
+    }
+    try:
+        resp = httpx.post(
+            url,
+            json=payload,
+            headers={
+                'Authorization': f'Bearer {token}',
+                'Accept': 'application/vnd.github+json',
+                'X-GitHub-Api-Version': '2022-11-28',
+            },
+            timeout=15,
+        )
+        if resp.status_code == 204:
+            logger.info(f'已触发生产部署 workflow：PR #{pr_number} by {approver_name}')
+            return {'status': 'triggered'}
+        logger.error(f'触发 workflow 失败：{resp.status_code} {resp.text[:300]}')
+        return {'status': 'error', 'error': f'HTTP {resp.status_code}'}
+    except Exception as e:
+        logger.error(f'触发 workflow 请求异常：{e}')
+        return {'status': 'error', 'error': str(e)}
 
 
 def _process_approval(
@@ -254,17 +300,34 @@ def feishu_card_action_webhook(request: HttpRequest) -> JsonResponse:
     commit_sha = value.get('commit_sha', '')
     repo = value.get('repo', GITHUB_REPO)
 
-    if pr_action not in ('approve_pr', 'reject_pr') or not pr_number or not commit_sha:
+    if pr_action not in ('approve_pr', 'reject_pr', 'deploy_to_production') or not pr_number or not commit_sha:
         logger.warning(f'无效的卡片回调参数：{value}')
         return JsonResponse({'code': 0, 'msg': 'ignored'})
 
     open_id = body.get('open_id', '')
-    approver_name = _get_user_name(open_id) if open_id else '未知审批人'
+    approver_name = _get_user_name(open_id) if open_id else '未知操作人'
 
     # 限制审批人（如配置了白名单）
     if AUTHORIZED_APPROVERS and open_id not in AUTHORIZED_APPROVERS:
         logger.warning(f'未授权的审批人：{open_id}')
         return JsonResponse({'toast': {'type': 'error', 'content': '您没有审批权限'}, 'code': 0})
+
+    # ── deploy_to_production 动作 ──────────────────────────────────────────
+    if pr_action == 'deploy_to_production':
+        pr_title = value.get('pr_title', f'PR #{pr_number}')
+        result = _trigger_production_deploy(
+            pr_number=int(pr_number),
+            commit_sha=commit_sha,
+            approver_name=approver_name,
+            pr_title=pr_title,
+        )
+        if result.get('status') == 'triggered':
+            return JsonResponse({'toast': {'type': 'success', 'content': f'🚀 已触发生产部署，{approver_name} 操作成功'}, 'code': 0})
+        else:
+            logger.error(f'触发生产部署失败：{result}')
+            return JsonResponse({'toast': {'type': 'error', 'content': f'触发失败：{result.get("error", "未知错误")}'}, 'code': 0})
+
+    # ── approve_pr / reject_pr ──────────────────────────────────────────
 
     action = PrApprovalRecord.ACTION_APPROVE if pr_action == 'approve_pr' else PrApprovalRecord.ACTION_REJECT
 

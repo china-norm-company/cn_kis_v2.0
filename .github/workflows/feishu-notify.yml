@@ -423,13 +423,24 @@ jobs:
               if (action === 'opened' || action === 'ready_for_review') {
                 const commitSha = pr.head.sha;
                 const repo_full = `${repo.owner}/${repo.repo}`;
+                // 根据 PR label 判断风险等级
+                const prLabels = (pr.labels || []).map(l => l.name);
+                const tier = prLabels.find(l => l.startsWith('tier-')) || 'tier-2';
+                const tierConfig = {
+                  'tier-0': { emoji: '🔴', text: 'Tier-0 红线域', template: 'red',    note: '⚠️ 需 CODEOWNERS 指定审批人（蒋艳雯/马蓓丽/孙华/宋小沫）在 GitHub Approve' },
+                  'tier-1': { emoji: '🟠', text: 'Tier-1 跨系统', template: 'orange', note: '跨系统变更，请审批人仔细核查影响范围' },
+                  'tier-2': { emoji: '🟡', text: 'Tier-2 工作台', template: 'blue',   note: '单工作台变更，点按钮即可完成审批' },
+                  'tier-3': { emoji: '🟢', text: 'Tier-3 低风险', template: 'green',  note: '低风险变更' },
+                };
+                const tc = tierConfig[tier] || tierConfig['tier-2'];
                 card = {
                   header: {
-                    title: { content: `🔔 新 PR 待审核 #${number}`, tag: 'plain_text' },
-                    template: 'blue',
+                    title: { content: `${tc.emoji} [${tc.text}] 新 PR 待审核 #${number}`, tag: 'plain_text' },
+                    template: tc.template,
                   },
                   elements: [
                     { tag: 'div', text: { content: `**标题**：${title}\n**作者**：${author}\n**分支**：\`${branch}\` → \`${base}\`\n\n需要 **2 人** 点击「✅ 批准合并」后方可合并。`, tag: 'lark_md' }},
+                    tier === 'tier-0' ? { tag: 'div', text: { tag: 'lark_md', content: `> 🔴 **红线域变更**：此 PR 触及认证/共享库/部署配置，需 CODEOWNERS 成员（蒋艳雯/马蓓丽/孙华/宋小沫）在 GitHub 上完成 Code Review 并 Approve。` }} : null,
                     { tag: 'hr' },
                     { tag: 'action', actions: [
                       {
@@ -456,8 +467,8 @@ jobs:
                       },
                       { tag: 'button', text: { content: '查看变更', tag: 'plain_text' }, url: `${url}/files`, type: 'default' },
                     ]},
-                    { tag: 'note', elements: [{ tag: 'plain_text', content: `点按钮即可完成审批，无需登录 GitHub · ${new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})} | CN KIS V2.0` }]},
-                  ],
+                    { tag: 'note', elements: [{ tag: 'plain_text', content: `${tc.note} · ${new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})} | CN KIS V2.0` }]},
+                  ].filter(Boolean),
                 };
               } else if (action === 'review_requested') {
                 const reviewers = (context.payload.pull_request.requested_reviewers || []).map(r => r.login).join(', ');
@@ -474,6 +485,11 @@ jobs:
                   ],
                 };
               } else if (action === 'closed' && pr.merged) {
+                const commitSha = pr.merge_commit_sha || pr.head.sha;
+                const repo_full = `${repo.owner}/${repo.repo}`;
+                const prLabels = (pr.labels || []).map(l => l.name);
+                const tier = prLabels.find(l => l.startsWith('tier-')) || 'tier-2';
+                const isTier0 = tier === 'tier-0';
                 card = {
                   header: {
                     title: { content: `✅ PR 已合并 #${number}`, tag: 'plain_text' },
@@ -483,9 +499,34 @@ jobs:
                     { tag: 'div', text: { content: `**${title}**\n作者：${author} ｜ 合入 \`${base}\``, tag: 'lark_md' }},
                     { tag: 'hr' },
                     { tag: 'div', text: { content: `📢 **请团队成员同步最新代码：**\n在 Cursor 终端运行：\`./ops/scripts/dev-task.sh sync-task\`\n或告诉 AI：「帮我同步最新代码」`, tag: 'lark_md' }},
+                    { tag: 'hr' },
+                    isTier0
+                      ? {
+                          tag: 'div',
+                          text: { tag: 'lark_md', content: `⚠️ **Tier-0 红线域变更**\n此 PR 触及认证/共享库/部署配置，**禁止自动部署生产**。\n\n请 @jiangyanwen-yoyo 评估后，在确认无误时手动执行生产部署。` },
+                        }
+                      : {
+                          tag: 'div',
+                          text: { tag: 'lark_md', content: `🚀 **发布到生产环境**\n代码已通过 CI + 飞书审批，点击按钮发布到生产（约 3 分钟）。` },
+                        },
                     { tag: 'action', actions: [
+                      isTier0
+                        ? { tag: 'button', text: { content: '🔴 Tier-0：需人工操作', tag: 'plain_text' }, url, type: 'danger' }
+                        : {
+                            tag: 'button',
+                            text: { content: '🚀 发布到生产', tag: 'plain_text' },
+                            type: 'primary',
+                            value: {
+                              action: 'deploy_to_production',
+                              pr_number: String(number),
+                              commit_sha: commitSha,
+                              repo: repo_full,
+                              pr_title: title,
+                            },
+                          },
                       { tag: 'button', text: { content: '查看合并记录', tag: 'plain_text' }, url, type: 'default' },
                     ]},
+                    { tag: 'note', elements: [{ tag: 'plain_text', content: `${tier.toUpperCase()} · ${new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})} | CN KIS V2.0` }]},
                   ],
                 };
               } else if (action === 'closed' && !pr.merged) {
