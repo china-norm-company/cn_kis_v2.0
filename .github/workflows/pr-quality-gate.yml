@@ -56,6 +56,38 @@ jobs:
               f === 'docs/V2_MIGRATION_CHARTER.md'
             );
 
+            // 0. 分支命名规范校验
+            const headBranch = context.payload.pull_request.head.ref;
+            const VALID_TYPES = ["feature", "fix", "chore", "hotfix", "wave"];
+            const VALID_WORKSTATIONS = [
+              "secretary", "finance", "research", "execution", "quality",
+              "hr", "crm", "recruitment", "equipment", "material", "facility",
+              "evaluator", "lab-personnel", "ethics", "reception",
+              "control-plane", "admin", "digital-workforce", "data-platform", "common"
+            ];
+            const EXEMPT_BRANCHES = ["main", "staging", "develop"];
+            const branchPattern = /^(feature|fix|chore|hotfix|wave)\/([^/]+)\/(\d+)-.+$/;
+            const branchMatch = headBranch.match(branchPattern);
+            if (!EXEMPT_BRANCHES.includes(headBranch)) {
+              if (!branchMatch) {
+                failures.push(
+                  `分支名 \`${headBranch}\` 不符合命名规范。\n` +
+                  `正确格式：\`<type>/<workstation>/<issue-id>-<描述>\`\n` +
+                  `示例：\`feature/execution/15-schedule-highlight\`、\`fix/finance/22-invoice-bug\`\n` +
+                  `合法 type：${VALID_TYPES.join(" | ")}\n` +
+                  `合法 workstation：${VALID_WORKSTATIONS.join(" | ")}`
+                );
+              } else {
+                const [, , branchWorkstation] = branchMatch;
+                if (!VALID_WORKSTATIONS.includes(branchWorkstation)) {
+                  failures.push(
+                    `分支中的工作台标识 \`${branchWorkstation}\` 不在合法列表中。\n` +
+                    `合法 workstation：${VALID_WORKSTATIONS.join(" | ")}`
+                  );
+                }
+              }
+            }
+
             // 1. 必须关联 Issue
             const hasIssueLink =
               /Closes\s+#\d+/i.test(body) ||

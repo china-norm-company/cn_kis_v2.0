@@ -25,7 +25,7 @@ reviews:
     drafts: false
     base_branches:
       - "main"
-      - "develop"
+      - "staging"
 
   # 只 Review 有实质代码价值的文件，排除文档/前端工作台/配置快照/迁移文件
   # 目的：将每次 PR Review 的文件数控制在 150 以内
@@ -84,9 +84,9 @@ reviews:
     - path: "backend/apps/knowledge/**"
       instructions: |
         【高风险：知识资产写保护】
-        1. 向量 embedding 必须且只能通过 `apps.agent_gateway.services.get_qwen3_embedding(text)`
-        2. 禁止任何 embedding 降级/fallback 逻辑（fastembed、火山云 ARK、Jina 等）
-        3. `get_qwen3_embedding` 失败必须 raise RuntimeError，禁止返回 None 或调用其他模型
+        1. 向量 embedding 使用 `get_ark_embedding(text)` 或 `get_local_embedding(text)`（均来自 apps.agent_gateway.services），两者向量空间不兼容，禁止混用或 fallback 降级
+        2. `get_ark_embedding` 返回 None 时必须 raise RuntimeError，禁止静默降级到 get_local_embedding
+        3. 禁止引用不存在的函数 `get_qwen3_embedding`
         4. 知识库写操作必须有幂等保护（用 content_hash 去重），不得无条件覆盖
 
     # ❹ 后端 Python/Django（通用规范）
