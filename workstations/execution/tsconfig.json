@@ -18,7 +18,10 @@
     "noFallthroughCasesInSwitch": true,
     "types": ["vite/client"],
     "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
+    "paths": {
+      "@/*": ["src/*"],
+      "@cn-kis/consent-placeholders": ["../../packages/consent-placeholders/src/index.ts"]
+    }
   },
   "include": ["src"],
   "exclude": ["src/__tests__"],

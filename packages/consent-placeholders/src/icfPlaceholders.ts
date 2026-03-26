@@ -264,7 +264,7 @@ export function applyIcfPlaceholdersWithSourceAnchors(
       const end = i + matched.length
       const inner = resolve(matched)
       const title = escapeAttr(matched)
-      out += `<span class="icf-src-anchor" data-icf-src-start="${start}" data-icf-src-end="${end}" title="点击定位源码：${title}">${inner}</span>`
+      out += `<span class="icf-src-anchor" data-icf-src-start="${start}" data-icf-src-end="${end}" data-icf-token="${title}" title="点击定位源码：${title}">${inner}</span>`
       i = end
     } else {
       out += raw[i]
