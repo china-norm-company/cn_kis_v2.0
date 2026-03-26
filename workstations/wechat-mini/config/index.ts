@@ -29,6 +29,9 @@ export default defineConfig(async (merge) => {
         : (process.env.NODE_ENV !== 'production'
           ? JSON.stringify('http://127.0.0.1:8001/api/v1')
           : JSON.stringify('')),
+      'process.env.TARO_APP_USE_DIRECT_API': JSON.stringify(
+        (process.env.TARO_APP_USE_DIRECT_API || '').trim(),
+      ),
     },
     copy: {
       patterns: [

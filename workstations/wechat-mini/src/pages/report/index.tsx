@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { View, Text, Textarea, Button, RadioGroup, Radio, Picker, Image } from '@tarojs/components'
 import Taro from '@tarojs/taro'
-import { taroApiClient } from '../../adapters/subject-core'
+import { taroApiClient } from '@/adapters/subject-core'
 import './index.scss'
 
 interface EnrolledRow {

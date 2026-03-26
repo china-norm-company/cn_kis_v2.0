@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Text } from '@tarojs/components'
 import { buildSubjectEndpoints, type MyResultItem } from '@cn-kis/subject-core'
-import { taroApiClient } from '../../adapters/subject-core'
-import { MiniPage, MiniCard, MiniEmpty } from '../../components/ui'
-import { PAGE_COPY } from '../../constants/copy'
+import { taroApiClient } from '@/adapters/subject-core'
+import { MiniPage, MiniCard, MiniEmpty } from '@/components/ui'
+import { PAGE_COPY } from '@/constants/copy'
 
 const subjectApi = buildSubjectEndpoints(taroApiClient)
 

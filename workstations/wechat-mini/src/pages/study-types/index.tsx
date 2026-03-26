@@ -1,5 +1,5 @@
 import { View, Text } from '@tarojs/components'
-import { MiniPage } from '../../components/ui'
+import { MiniPage } from '@/components/ui'
 import './index.scss'
 
 const STUDY_TYPES = [
