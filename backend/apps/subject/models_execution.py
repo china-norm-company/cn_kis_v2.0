@@ -24,6 +24,7 @@ class SubjectCheckin(models.Model):
         verbose_name = '签到记录'
         indexes = [
             models.Index(fields=['subject', 'checkin_date']),
+            models.Index(fields=['subject', 'checkin_date', 'project_code']),
             models.Index(fields=['enrollment', 'status']),
         ]
 
@@ -32,6 +33,8 @@ class SubjectCheckin(models.Model):
     work_order = models.ForeignKey('workorder.WorkOrder', on_delete=models.SET_NULL, null=True, blank=True, related_name='subject_checkins')
 
     checkin_date = models.DateField('签到日期')
+    # 与 SubjectAppointment.project_code 对齐；同日多项目到访时各项目一条签到，避免队列行共用同一记录
+    project_code = models.CharField('项目编号', max_length=128, blank=True, default='', db_index=True)
     checkin_time = models.DateTimeField('签到时间', null=True, blank=True)
     checkout_time = models.DateTimeField('签出时间', null=True, blank=True)
     status = models.CharField('状态', max_length=20, choices=CheckinStatus.choices, default=CheckinStatus.CHECKED_IN, db_index=True)

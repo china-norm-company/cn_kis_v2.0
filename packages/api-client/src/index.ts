@@ -57,7 +57,9 @@ export type {
   TimelineEvent,
   // Protocol
   Protocol,
+  ProtocolBasicUpdateIn,
   ProtocolCreateIn,
+  ScreeningDay,
   // Resource
   ResourceCategory,
   ResourceItem,
@@ -106,6 +108,20 @@ export { subjectApi } from './modules/subject'
 export { mySubjectApi } from './modules/my-subject'
 export type { MyHomeDashboardData, MyHomeDashboardProject } from './modules/my-subject'
 export { protocolApi } from './modules/protocol'
+export type {
+  ICFVersion,
+  MiniSignRules,
+  ConsentRecord,
+  ConsentPreviewData,
+  ConsentStats,
+  ProtocolConsentOverview,
+  ScreeningBatchConsent,
+  DualSignStaff,
+  ConsentSettings,
+  WitnessStaffRecord,
+  DualSignStaffVerificationStatus,
+  WitnessSignatureAuthStatus,
+} from './modules/protocol'
 export { resourceApi } from './modules/resource'
 export { qualityApi } from './modules/quality'
 export { auditApi } from './modules/audit'

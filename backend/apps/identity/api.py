@@ -1046,7 +1046,12 @@ def wechat_logout(request):
 def _ensure_subject_account_by_phone(phone: str):
     from .models import Account, AccountType
     from apps.subject.models import Subject, AuthLevel
-    from apps.subject.services.subject_service import generate_subject_no
+    from apps.subject.services.subject_service import (
+        generate_subject_no,
+        find_subjects_by_mobile_normalized,
+        normalize_subject_phone,
+        resolve_subject_for_mobile_session,
+    )
 
     account = Account.objects.filter(
         phone=phone, account_type=AccountType.SUBJECT, is_deleted=False
@@ -1066,13 +1071,18 @@ def _ensure_subject_account_by_phone(phone: str):
         account.phone = phone
         account.save(update_fields=['phone', 'update_time'])
 
-    subject = Subject.objects.filter(phone=phone, is_deleted=False).first()
+    n = normalize_subject_phone(phone)
+    subject = None
+    if n and find_subjects_by_mobile_normalized(n).exists():
+        subject = resolve_subject_for_mobile_session(phone, timezone.localdate())
+    if subject is None:
+        subject = Subject.objects.filter(phone=phone, is_deleted=False).first()
     if not subject:
         subject = Subject.objects.create(
             subject_no=generate_subject_no(),
             account=account,
             name='受试者',
-            phone=phone,
+            phone=n if n else phone,
             auth_level=AuthLevel.PHONE_VERIFIED,
         )
     else:

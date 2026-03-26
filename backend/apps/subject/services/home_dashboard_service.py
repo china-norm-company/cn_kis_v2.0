@@ -13,10 +13,9 @@ from django.utils import timezone
 from ..models import Enrollment, EnrollmentStatus, Subject
 from ..models_execution import (
     AppointmentStatus,
-    CheckinStatus,
     SubjectAppointment,
-    SubjectCheckin,
-    SubjectProjectSC,
+    ReceptionBoardCheckin,
+    ReceptionBoardProjectSc,
 )
 
 
@@ -45,17 +44,17 @@ def _format_sc_display(raw: str) -> str:
 
 def _queue_checkin_today(subject_id: int, as_of: date) -> str:
     rows = list(
-        SubjectCheckin.objects.filter(subject_id=subject_id, checkin_date=as_of).order_by(
+        ReceptionBoardCheckin.objects.filter(subject_id=subject_id, checkin_date=as_of).order_by(
             '-checkin_time', '-id'
         )
     )
     if not rows:
         return 'none'
     for r in rows:
-        if r.status in (CheckinStatus.CHECKED_IN, CheckinStatus.IN_PROGRESS):
+        if r.checkin_time and not r.checkout_time:
             return 'checked_in'
     top = rows[0]
-    if top.status == CheckinStatus.CHECKED_OUT:
+    if top.checkout_time:
         return 'checked_out'
     return 'none'
 
@@ -74,10 +73,11 @@ def _appointments_on_and_after(subject_id: int, as_of: date) -> List[SubjectAppo
 def _primary_project_code(subject_id: int, as_of: date, appts_all: List[SubjectAppointment]) -> Optional[str]:
     """附录 A §3，按优先级短路。"""
     # 1) 当日进行中签到 → 当日预约映射 project_code
-    active_exists = SubjectCheckin.objects.filter(
+    active_exists = ReceptionBoardCheckin.objects.filter(
         subject_id=subject_id,
         checkin_date=as_of,
-        status__in=[CheckinStatus.CHECKED_IN, CheckinStatus.IN_PROGRESS],
+        checkin_time__isnull=False,
+        checkout_time__isnull=True,
     ).exists()
     if active_exists:
         day_appts = [a for a in appts_all if a.appointment_date == as_of]
@@ -109,9 +109,9 @@ def _primary_project_code(subject_id: int, as_of: date, appts_all: List[SubjectA
         future.sort(key=lambda a: (a.appointment_date, _appt_time_sort_key(a)))
         return (future[0].project_code or '').strip()
 
-    # 4) SubjectProjectSC 最新 update_time
+    # 4) ReceptionBoardProjectSc 最新 update_time
     sc = (
-        SubjectProjectSC.objects.filter(subject_id=subject_id, is_deleted=False)
+        ReceptionBoardProjectSc.objects.filter(subject_id=subject_id)
         .order_by('-update_time', '-id')
         .first()
     )
@@ -183,9 +183,9 @@ def _resolve_enrollment_for_block(
 
 def _resolve_sc_rec(
     pc: str,
-    sc_map: Dict[str, SubjectProjectSC],
+    sc_map: Dict[str, ReceptionBoardProjectSc],
     en: Optional[Enrollment],
-) -> Optional[SubjectProjectSC]:
+) -> Optional[ReceptionBoardProjectSc]:
     r = sc_map.get(pc)
     if r is not None:
         return r
@@ -201,8 +201,8 @@ def _display_project_code(pc: str, en: Optional[Enrollment]) -> str:
     return pc
 
 
-def _dashboard_enrollment_status_label(sc_rec: Optional[SubjectProjectSC], en: Optional[Enrollment]) -> str:
-    """入组状态：优先 SubjectProjectSC（初筛合格/正式入组等），无 SC 时用入组记录状态文案。"""
+def _dashboard_enrollment_status_label(sc_rec: Optional[ReceptionBoardProjectSc], en: Optional[Enrollment]) -> str:
+    """入组状态：优先接待看板 ReceptionBoardProjectSc（初筛合格/正式入组等），无 SC 时用入组记录状态文案。"""
     if sc_rec and (sc_rec.enrollment_status or '').strip():
         return (sc_rec.enrollment_status or '').strip()
     if en:
@@ -254,7 +254,7 @@ def build_home_dashboard_data(subject: Subject, as_of: date) -> Dict[str, Any]:
         c = (a.project_code or '').strip()
         if c:
             codes.add(c)
-    sc_rows = list(SubjectProjectSC.objects.filter(subject_id=subject_id, is_deleted=False))
+    sc_rows = list(ReceptionBoardProjectSc.objects.filter(subject_id=subject_id))
     for rec in sc_rows:
         c = (rec.project_code or '').strip()
         if c:

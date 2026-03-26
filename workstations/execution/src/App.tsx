@@ -27,9 +27,23 @@ import TimeSlotDetailPage from './pages/TimeSlotDetailPage'
 import AdverseEventListPage from './pages/AdverseEventListPage'
 import AdverseEventDetailPage from './pages/AdverseEventDetailPage'
 import AdverseEventDashboardPage from './pages/AdverseEventDashboardPage'
+import ConsentManagementPage from './pages/ConsentManagementPage'
+import WitnessStaffPage from './pages/WitnessStaffPage'
+import WitnessFaceVerifyPage from './pages/WitnessFaceVerifyPage'
+import WitnessConsentDevPage from './pages/WitnessConsentDevPage'
+import ConsentTestScanPage from './pages/ConsentTestScanPage'
+
+/** 接待台 URL：本地开发时 execution(3007) 与 reception(3016) 不同端口，需用完整 URL */
+function getReceptionUrl(hashPath: string): string {
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost' && window.location.port === '3007') {
+    return `http://${window.location.hostname}:3016/reception/#${hashPath}`
+  }
+  return `/reception/#${hashPath}`
+}
 
 function LegacyReceptionRedirect({ target }: { target: string }) {
-  window.location.assign(target)
+  const url = target.startsWith('/reception/#') ? getReceptionUrl(target.replace('/reception/#', '')) : target
+  window.location.assign(url)
   return null
 }
 
@@ -43,6 +57,9 @@ export default function App() {
       <HashRouter>
         <Routes>
           <Route path="/health" element={<HealthPage workstation="execution" />} />
+          <Route path="/witness-verify" element={<WitnessFaceVerifyPage />} />
+          <Route path="/witness-consent-dev" element={<WitnessConsentDevPage />} />
+          <Route path="/consent-test-scan" element={<ConsentTestScanPage />} />
           <Route
             path="/reception/display"
             element={<LegacyReceptionRedirect target={getWorkstationUrl('reception', '#/display')} />}
@@ -62,6 +79,8 @@ export default function App() {
             <Route path="scheduling/timeslot/:id" element={<TimeSlotDetailPage />} />
             <Route path="visits" element={<VisitPage />} />
             <Route path="subjects" element={<SubjectPage />} />
+            <Route path="consent" element={<ConsentManagementPage />} />
+            <Route path="consent/witness-staff" element={<WitnessStaffPage />} />
             <Route path="workorders" element={<WorkOrderPage />} />
             <Route path="workorders/:id" element={<WorkOrderDetailPage />} />
             <Route path="changes" element={<ChangeManagementPage />} />

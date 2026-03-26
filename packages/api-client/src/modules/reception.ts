@@ -4,6 +4,7 @@
  * 对应后端：/api/v1/reception/
  */
 import { api } from '../client'
+import type { Subject, SubjectCreateIn } from '../types'
 
 export interface QueueItem {
   appointment_id: number | null
@@ -134,6 +135,26 @@ export interface FlowcardProgress {
 }
 
 export const receptionApi = {
+  appointmentSubjectList(params?: {
+    status?: string
+    keyword?: string
+    search?: string
+    page?: number
+    page_size?: number
+  }) {
+    return api.get<{ items: Subject[]; total: number; page: number; page_size: number }>(
+      '/reception/appointment-subject-list',
+      { params },
+    )
+  },
+
+  appointmentSubjectCreate(data: SubjectCreateIn) {
+    return api.post<{ id: number; subject_no: string; name: string; status: string }>(
+      '/reception/appointment-subject-create',
+      data,
+    )
+  },
+
   /**
    * 今日受试者队列。
    * source: execution=工单执行（独立 SC/RD/签到签出），board=接待看板（独立数据，两者互不影响）
@@ -189,11 +210,12 @@ export const receptionApi = {
     })
   },
 
-  /** 今日统计 */
-  todayStats(date?: string, projectCode?: string) {
+  /** 今日统计；source=board 时与接待看板队列同源，与工单执行统计独立 */
+  todayStats(date?: string, projectCode?: string, source?: 'execution' | 'board') {
     const params: Record<string, string> = {}
     if (date) params.target_date = date
     if (projectCode) params.project_code = projectCode
+    if (source === 'board' || source === 'execution') params.source = source
     return api.get<TodayStats>('/reception/today-stats', { params: Object.keys(params).length ? params : undefined })
   },
 
@@ -292,6 +314,23 @@ export const receptionApi = {
     rd_number?: string
   }) {
     return api.patch<{ enrollment_status?: string; rd_number?: string }>('/reception/project-sc', data)
+  },
+
+  /** 更新接待看板入组情况 / RD / SC（与工单执行 project-sc 独立） */
+  updateBoardProjectSc(data: {
+    subject_id: number
+    project_code: string
+    enrollment_status?: string
+    rd_number?: string
+    sc_number?: string
+  }) {
+    return api.patch<{
+      subject_id: number
+      project_code: string
+      enrollment_status?: string
+      rd_number?: string
+      sc_number?: string
+    }>('/reception/board-project-sc', data)
   },
 
   /** 跨工作台状态回写 */

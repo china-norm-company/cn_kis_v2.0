@@ -21,13 +21,16 @@ export function createWorkstationFeishuConfig(workstation: string): FeishuAuthCo
     throw new Error('[FeishuConfig] workstation 不能为空')
   }
 
-  // 浏览器环境：用当前页面 origin，避免部署到服务器后仍跳回 localhost（构建时 env 为 localhost）
-  // 非浏览器（SSR/测试）：用 env 或火山云默认
   const envBase = (import.meta.env.VITE_FEISHU_REDIRECT_BASE as string)?.trim()
+  const isDev = Boolean(import.meta.env.DEV)
+  const useFixedRedirectOrigin =
+    isDev && !!envBase && /^https?:\/\//i.test(envBase)
   const base =
-    (typeof window !== 'undefined' && window.location?.origin)
-      ? window.location.origin
-      : (envBase || VOLCENGINE_REDIRECT_BASE)
+    useFixedRedirectOrigin
+      ? envBase.replace(/\/+$/, '')
+      : (typeof window !== 'undefined' && window.location?.origin)
+        ? window.location.origin
+        : (envBase || VOLCENGINE_REDIRECT_BASE)
   const baseNorm = base.replace(/\/+$/, '')
 
   const redirectOverride = (import.meta.env.VITE_FEISHU_REDIRECT_URI as string)?.trim()
@@ -37,6 +40,8 @@ export function createWorkstationFeishuConfig(workstation: string): FeishuAuthCo
   } else if (redirectOverride && redirectOverride.startsWith('/')) {
     // 路径形式：与 base 拼接，便于本地开发配置（如 base=localhost:3001, uri=/secretary/）
     redirectUri = `${baseNorm}${redirectOverride.startsWith('/') ? '' : '/'}${redirectOverride}`
+  } else if (normalized === 'secretary') {
+    redirectUri = `${baseNorm}/login`
   } else {
     // 须与 Vite `base`（如 /secretary/）及飞书开放平台「重定向 URL」完全一致，否则授权页报 20029
     redirectUri = `${baseNorm}/${normalized}/`

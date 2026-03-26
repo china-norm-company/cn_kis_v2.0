@@ -122,8 +122,14 @@ def appointment_calendar(request, target_month: Optional[str] = None):
 
 @router.get('/today-stats', summary='今日统计')
 @require_permission('subject.subject.read')
-def today_stats(request, target_date: Optional[date] = None, project_code: Optional[str] = None):
-    result = svc.get_today_stats(target_date, project_code=project_code)
+def today_stats(
+    request,
+    target_date: Optional[date] = None,
+    project_code: Optional[str] = None,
+    source: str = 'execution',
+):
+    """source=execution 工单执行；source=board 接待看板（签到/入组/SC/RD 与 execution 独立）。"""
+    result = svc.get_today_stats(target_date, project_code=project_code, source=source)
     return {'code': 200, 'msg': 'OK', 'data': result}
 
 

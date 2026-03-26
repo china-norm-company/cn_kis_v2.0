@@ -18,16 +18,11 @@ deploy/.env.volcengine.plan-a
 # ============================================================
 __pycache__/
 *.py[cod]
-<<<<<<< HEAD
 *$py.class
 *.so
 *.egg
-=======
-.venv/
-venv/
 .python-version
 **/.python-version
->>>>>>> a9184b0 (feat(wechat): AE quality tracking, mini 4-level severity, check-in v1.1 and docs)
 *.egg-info/
 dist/
 build/
@@ -55,7 +50,7 @@ static_collected/
 # Node.js / pnpm 前端
 # ============================================================
 node_modules/
-apps/wechat-mini/.swc/
+workstations/wechat-mini/.swc/
 .pnpm-store/
 dist/
 .next/

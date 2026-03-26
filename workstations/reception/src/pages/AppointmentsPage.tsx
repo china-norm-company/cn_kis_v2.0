@@ -21,6 +21,23 @@ import {
 import { Button, Badge, Card, Empty, StatCard, Modal } from '@cn-kis/ui-kit'
 import * as XLSX from 'xlsx'
 
+/** 与后端 normalize_subject_phone 一致：取 11 位大陆手机号 */
+function normalizeSubjectPhone11(raw: string): string {
+  const digits = (raw || '').replace(/\D/g, '')
+  if (digits.length >= 11) {
+    const last = digits.slice(-11)
+    if (last.length === 11 && last.startsWith('1')) return last
+  }
+  return ''
+}
+
+function subjectPhonesMatch(stored: string | undefined, input: string | undefined): boolean {
+  const nStored = normalizeSubjectPhone11(stored || '')
+  const nInput = normalizeSubjectPhone11(input || '')
+  if (nStored && nInput) return nStored === nInput
+  return (stored || '').trim() === (input || '').trim()
+}
+
 const TASK_LABEL_MAP: Record<QueueItem['task_type'], string> = {
   pre_screening: '粗筛',
   screening: '筛选',
@@ -38,6 +55,9 @@ const TASK_BADGE_MAP: Record<QueueItem['task_type'], 'warning' | 'info' | 'succe
 
 /** 入组情况下拉选项（今日队列） */
 const ENROLLMENT_STATUS_OPTIONS = ['初筛合格', '正式入组', '不合格', '复筛不合格', '退出', '缺席'] as const
+
+/** 未签到时仍可选的入组情况（与后端 update_project_sc 一致） */
+const ENROLLMENT_ALLOWED_WITHOUT_CHECKIN = new Set<string>(['缺席', '退出'])
 
 /** 入组情况卡片展示顺序（对应 StatCard） */
 const ENROLLMENT_STATUS_CARDS = ['初筛合格', '正式入组', '不合格', '复筛不合格', '退出'] as const
@@ -468,7 +488,7 @@ function QueueEditDrawer({ item, queueDate, onClose, onSaved }: QueueEditDrawerP
   const [visitPoint, setVisitPoint] = useState(item.visit_point || '')
   const [subjectName, setSubjectName] = useState(item.subject_name || '')
   const [namePinyinInitials, setNamePinyinInitials] = useState(item.name_pinyin_initials || '')
-  const [gender, setGender] = useState(item.gender || '')
+  const [genderCode, setGenderCode] = useState<'' | 'male' | 'female' | 'other'>(() => normalizeGenderToDb(item.gender))
   const [age, setAge] = useState(String(item.age ?? ''))
   const [projectCode, setProjectCode] = useState(item.project_code || '')
   const [projectName, setProjectName] = useState(item.project_name || '')
@@ -480,15 +500,35 @@ function QueueEditDrawer({ item, queueDate, onClose, onSaved }: QueueEditDrawerP
     setVisitPoint(item.visit_point || '')
     setSubjectName(item.subject_name || '')
     setNamePinyinInitials(item.name_pinyin_initials || '')
-    setGender(item.gender || '')
+    setGenderCode(normalizeGenderToDb(item.gender))
     setAge(String(item.age ?? ''))
     setProjectCode(item.project_code || '')
     setProjectName(item.project_name || '')
   }, [item, queueDate])
 
   const handleSave = async () => {
+    const trimmedName = subjectName.trim()
+    if (!trimmedName) {
+      window.alert('受试者姓名不能为空')
+      return
+    }
+    const ageTrim = age.trim()
+    let ageNum: number | undefined
+    if (ageTrim !== '') {
+      const n = parseInt(ageTrim, 10)
+      if (Number.isNaN(n) || n < 1 || n > 120) {
+        window.alert('年龄请填写 1～120 的整数，或留空不修改')
+        return
+      }
+      ageNum = n
+    }
     setSaving(true)
     try {
+      await subjectApi.update(item.subject_id, {
+        name: trimmedName,
+        gender: genderCode,
+        ...(ageTrim === '' ? {} : { age: ageNum }),
+      })
       if (item.appointment_id) {
         await executionApi.updateAppointment(item.appointment_id, {
           appointment_date: appointmentDate,
@@ -549,7 +589,7 @@ function QueueEditDrawer({ item, queueDate, onClose, onSaved }: QueueEditDrawerP
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">受试者姓名</label>
-            <input type="text" value={subjectName} onChange={(e) => setSubjectName(e.target.value)} className="w-full min-h-10 px-3 py-2 border border-slate-200 rounded-lg text-sm" readOnly />
+            <input type="text" value={subjectName} onChange={(e) => setSubjectName(e.target.value)} placeholder="与现场证件一致" className="w-full min-h-10 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">拼音首字母</label>
@@ -557,11 +597,28 @@ function QueueEditDrawer({ item, queueDate, onClose, onSaved }: QueueEditDrawerP
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">性别</label>
-            <input type="text" value={formatGenderCell(gender)} readOnly className="w-full min-h-10 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50" />
+            <select
+              value={genderCode}
+              onChange={(e) => setGenderCode((e.target.value || '') as '' | 'male' | 'female' | 'other')}
+              className="w-full min-h-10 px-3 py-2 border border-slate-200 rounded-lg text-sm"
+            >
+              <option value="">请选择</option>
+              <option value="male">男</option>
+              <option value="female">女</option>
+              <option value="other">其他</option>
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">年龄</label>
-            <input type="text" value={age} readOnly className="w-full min-h-10 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50" />
+            <input
+              type="number"
+              min={1}
+              max={120}
+              value={age}
+              onChange={(e) => setAge(e.target.value)}
+              placeholder="岁，可留空"
+              className="w-full min-h-10 px-3 py-2 border border-slate-200 rounded-lg text-sm"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">项目编号</label>
@@ -655,6 +712,17 @@ function formatExportDateTime(value?: string | null): string {
   return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())} ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}:${pad2(dt.getSeconds())}`
 }
 
+/** 将队列/导入中的性别值规范为 Subject 表存储的英文码（male/female/other），无法识别则返回空 */
+function normalizeGenderToDb(value: unknown): '' | 'male' | 'female' | 'other' {
+  const s = String(value ?? '').trim()
+  if (!s) return ''
+  const lower = s.toLowerCase()
+  if (lower === 'male' || lower === 'm' || s === '男') return 'male'
+  if (lower === 'female' || lower === 'f' || s === '女') return 'female'
+  if (lower === 'other' || s === '其他') return 'other'
+  return ''
+}
+
 /**
  * 性别展示：受试者主档存的是 SubjectGender 英文码（male/female/other），接口会原样返回，故需转成中文；
  * 若为导入或手填的中文（男/女等）或其它非枚举值，则原样显示。
@@ -709,7 +777,7 @@ export default function AppointmentsPage() {
   const subjectsQuery = useQuery({
     queryKey: ['subjects', 'appointments'],
     queryFn: async () => {
-      const res = await subjectApi.list({ status: 'active', page_size: 150 })
+      const res = await subjectApi.list({ status: 'active', page_size: 400 })
       if (!res?.data) throw new Error('获取受试者列表失败')
       return res
     },
@@ -727,18 +795,24 @@ export default function AppointmentsPage() {
         ...(queueProjectFilter.trim() ? { project_code: queueProjectFilter.trim() } : {}),
       }),
     staleTime: 12 * 1000,
-    refetchInterval: 30000,
   })
   const appointmentCalendarQuery = useQuery({
     queryKey: ['reception', 'appointment-calendar', visibleMonth],
     queryFn: () => receptionApi.appointmentCalendar(visibleMonth),
     staleTime: 60 * 1000,
   })
-  const { data: statsRes } = useQuery({
-    queryKey: ['reception', 'today-stats', queueDate],
-    queryFn: () => receptionApi.todayStats(queueDate),
+  /** 项目下拉选项：始终用未筛选的今日统计，避免选中某项目后选项只剩一项 */
+  const { data: statsOptionsRes } = useQuery({
+    queryKey: ['reception', 'today-stats', queueDate, 'execution', 'all-projects'],
+    queryFn: () => receptionApi.todayStats(queueDate, undefined, 'execution'),
     staleTime: 12 * 1000,
-    refetchInterval: 30000,
+  })
+  /** 统计卡片：与后端 get_today_stats(source=execution, project_code) 一致，按项目筛选时为全量而非当前页 */
+  const projectCodeForStats = projectFilter.trim() || undefined
+  const { data: statsRes } = useQuery({
+    queryKey: ['reception', 'today-stats', queueDate, 'execution', projectCodeForStats ?? ''],
+    queryFn: () => receptionApi.todayStats(queueDate, projectCodeForStats, 'execution'),
+    staleTime: 12 * 1000,
   })
   const { data: queueQueueRes, isLoading: queueQueueLoading, refetch: refetchQueueQueue } = useQuery({
     queryKey: ['reception', 'today-queue', queueDate, queuePage, projectFilter],
@@ -751,9 +825,8 @@ export default function AppointmentsPage() {
         source: 'execution',
       }),
     staleTime: 12 * 1000,
-    refetchInterval: 30000,
   })
-  /** 搜索时拉取更多数据（500 条）以支持跨页模糊搜索 SC/RD/姓名/手机号 */
+  /** 搜索时拉取更多数据（500 条）以支持跨页模糊搜索 项目编号/名称、SC/RD、姓名、手机号 */
   const { data: searchQueueRes, isFetching: searchQueueFetching } = useQuery({
     queryKey: ['reception', 'today-queue', 'search', queueDate, projectFilter, queueSearch],
     queryFn: () =>
@@ -771,32 +844,62 @@ export default function AppointmentsPage() {
     queryKey: ['reception', 'pending-alerts', queueDate],
     queryFn: () => receptionApi.pendingAlerts(queueDate),
     staleTime: 12 * 1000,
-    refetchInterval: 30000,
   })
 
   const createMutation = useMutation({
     mutationFn: async () => {
       let subjectId = selectedSubject
       if (!subjectId && (quickPhone.trim() || quickName.trim())) {
-        const phone = quickPhone.trim()
+        const phoneRaw = quickPhone.trim()
         const name = quickName.trim()
-        let existing = allSubjects.find((s) => s.phone === phone || (phone && s.phone?.includes(phone)))
-        if (!existing && phone) {
-          const listRes = await subjectApi.list({ search: phone, page_size: 50 })
-          existing = (listRes as { data?: { items?: Subject[] } })?.data?.items?.find((s) => s.phone === phone)
+        const phoneNorm = normalizeSubjectPhone11(phoneRaw)
+
+        if (phoneNorm.length === 11) {
+          try {
+            const resolved = await subjectApi.resolveByPhone(phoneNorm)
+            const sub = resolved.data as Subject | undefined
+            if (sub?.id) subjectId = sub.id
+          } catch {
+            /* 无档案或无权限：走下方列表匹配 / 新建 */
+          }
         }
-        if (!existing && name) {
-          const listRes = await subjectApi.list({ search: name, page_size: 50 })
-          existing = (listRes as { data?: { items?: Subject[] } })?.data?.items?.find((s) => s.name === name)
+
+        if (!subjectId) {
+          let existing = allSubjects.find(
+            (s) =>
+              (phoneNorm && subjectPhonesMatch(s.phone, phoneNorm)) ||
+              (!!phoneRaw && s.phone === phoneRaw) ||
+              (!!phoneRaw && s.phone?.includes?.(phoneRaw)),
+          )
+          if (!existing && phoneNorm) {
+            existing = allSubjects.find((s) => subjectPhonesMatch(s.phone, phoneNorm))
+          }
+          if (!existing && phoneRaw) {
+            const listRes = await subjectApi.list({
+              search: phoneNorm || phoneRaw,
+              phone: phoneNorm || undefined,
+              page_size: 80,
+            })
+            const items = (listRes as { data?: { items?: Subject[] } })?.data?.items ?? []
+            existing = items.find(
+              (s) =>
+                subjectPhonesMatch(s.phone, phoneRaw) ||
+                (phoneNorm ? subjectPhonesMatch(s.phone, phoneNorm) : false),
+            )
+          }
+          if (!existing && name) {
+            const listRes = await subjectApi.list({ search: name, page_size: 80 })
+            existing = (listRes as { data?: { items?: Subject[] } })?.data?.items?.find((s) => s.name === name)
+          }
+          if (existing) subjectId = existing.id
         }
-        if (existing) {
-          subjectId = existing.id
-        } else {
-          if (!name && !phone) throw new Error('请选择受试者或录入姓名、手机号')
+
+        if (!subjectId) {
+          if (!name && !phoneRaw) throw new Error('请选择受试者或录入姓名、手机号')
           const ageNum = quickAge.trim() ? parseInt(quickAge.trim(), 10) : undefined
           const created = await subjectApi.create({
             name: name || '待补充',
-            phone: phone || '',
+            phone: phoneNorm || phoneRaw || '',
             gender: quickGender || undefined,
             age: Number.isFinite(ageNum) ? ageNum : undefined,
           })
@@ -973,12 +1076,12 @@ export default function AppointmentsPage() {
   const queuePageTotal = Math.max(1, Math.ceil(queueTotal / queuePageSize))
   /** 项目筛选：由 today-stats 内已加载的全日队列推导，避免额外请求 page_size=500 的 today-queue（服务端也不必再构建一遍队列） */
   const projectOptions = useMemo(() => {
-    const raw = statsRes?.data?.project_options
+    const raw = statsOptionsRes?.data?.project_options
     if (Array.isArray(raw) && raw.length > 0) {
       return [...raw].sort((a, b) => (a.name || a.code).localeCompare(b.name || b.code, 'zh-CN'))
     }
     return []
-  }, [statsRes])
+  }, [statsOptionsRes])
 
   useEffect(() => {
     if (!projectFilter.trim()) return
@@ -988,38 +1091,25 @@ export default function AppointmentsPage() {
       setQueuePage(1)
     }
   }, [projectOptions, projectFilter, queueDate])
-  const stats = statsRes?.data
-  const ENROLLMENT_STATUS_KEYS = ['初筛合格', '正式入组', '不合格', '复筛不合格', '退出', '缺席'] as const
-  const displayStats = useMemo(() => {
-    if (!projectFilter) return stats
-    const signedIn = queueRaw.filter((i: QueueItem) => i.checkin_id).length
-    const inProgress = queueRaw.filter((i: QueueItem) => i.status === 'in_progress' || i.status === 'checked_in').length
-    const counts: Record<string, number> = {}
-    ENROLLMENT_STATUS_KEYS.forEach((k) => { counts[k] = 0 })
-    queueRaw.forEach((i: QueueItem) => {
-      const s = (i.enrollment_status || '').trim()
-      if (s && counts[s] !== undefined) counts[s] += 1
-    })
-    return {
-      total_appointments: queueTotal,
-      checked_in: queueRaw.filter((i: QueueItem) => i.status === 'checked_in').length,
-      in_progress: inProgress,
-      checked_out: queueRaw.filter((i: QueueItem) => i.status === 'checked_out').length,
-      no_show: queueRaw.filter((i: QueueItem) => i.status === 'no_show').length,
-      total_signed_in: signedIn,
-      signed_in_count: signedIn,
-      enrollment_status_counts: counts,
-    }
-  }, [projectFilter, queueRaw, queueTotal, stats])
+  const displayStats = statsRes?.data
   const matchQueueSearch = (item: QueueItem, q: string): boolean => {
     if (!q || !q.trim()) return true
     const s = q.trim().toLowerCase()
     const sc = (item.sc_number ?? '').toLowerCase()
     const rd = (item.rd_number ?? '').toLowerCase()
     const name = (item.subject_name ?? '').toLowerCase()
+    const pc = (item.project_code ?? '').toLowerCase()
+    const pname = (item.project_name ?? '').toLowerCase()
     const phone = (item.phone ?? '').replace(/\s/g, '')
     const phoneS = s.replace(/\s/g, '')
-    return sc.includes(s) || rd.includes(s) || name.includes(s) || phone.includes(phoneS)
+    return (
+      sc.includes(s) ||
+      rd.includes(s) ||
+      name.includes(s) ||
+      pc.includes(s) ||
+      pname.includes(s) ||
+      phone.includes(phoneS)
+    )
   }
   const searchQueueRaw = (searchQueueRes?.data?.items ?? []) as QueueItem[]
   const queue = useMemo(() => {
@@ -1149,12 +1239,21 @@ export default function AppointmentsPage() {
     return new Map(items.map((item) => [item.date, item.total]))
   }, [appointmentCalendarQuery.data])
   const subjects = searchInput
-    ? allSubjects.filter(
-        (s) =>
-          s.name?.includes(searchInput) ||
-          s.subject_no?.includes(searchInput) ||
-          s.phone?.includes(searchInput),
-      )
+    ? allSubjects.filter((s) => {
+        const q = searchInput.trim()
+        const qn = normalizeSubjectPhone11(q)
+        if (qn)
+          return (
+            subjectPhonesMatch(s.phone, qn) ||
+            Boolean(s.name?.includes(q)) ||
+            Boolean(s.subject_no?.includes(q))
+          )
+        return (
+          Boolean(s.name?.includes(q)) ||
+          Boolean(s.subject_no?.includes(q)) ||
+          Boolean(s.phone?.includes(q))
+        )
+      })
     : allSubjects
 
   const handleSelectQueueDate = (dateKey: string) => {
@@ -1399,7 +1498,10 @@ export default function AppointmentsPage() {
                 </div>
               </div>
               <div className="border-t border-slate-200 pt-4">
-                <p className="text-sm text-slate-600 mb-2">或快速录入（未选中受试者可在此填写，将匹配/新建）</p>
+                <p className="text-sm text-slate-600 mb-2">
+                  或快速录入（未选中受试者可在此填写）。填写手机号时将<strong className="font-medium">优先按规范化号码匹配已有主档</strong>
+                  ，避免重复建档；无记录时再新建。
+                </p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">受试者姓名</label>
@@ -1692,8 +1794,8 @@ export default function AppointmentsPage() {
                   setQueueSearch(e.target.value)
                   setQueuePage(1)
                 }}
-                placeholder="搜索 SC号/RD号/姓名/手机号"
-                title="与项目筛选为且关系：先按项目筛选，再在结果中搜索"
+                placeholder="搜索 项目编号/SC号/RD号/姓名/手机号"
+                title="与项目筛选为且关系：先按项目筛选，再在结果中搜索（含项目名称）"
                 className="min-h-10 w-72 min-w-[200px] pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm"
               />
             </div>
@@ -1768,7 +1870,7 @@ export default function AppointmentsPage() {
         {(queueQueueLoading || (isSearchMode && searchQueueFetching)) ? (
           <p className="text-sm text-slate-400">加载中...</p>
         ) : displayQueue.length === 0 ? (
-          <Empty title={isSearchMode ? '未找到匹配的 SC号/RD号/姓名或手机号' : (queueDate === todayStr ? '今日暂无预约' : '当日暂无预约')} />
+          <Empty title={isSearchMode ? '未找到匹配的项目编号/名称、SC号、RD号、姓名或手机号' : (queueDate === todayStr ? '今日暂无预约' : '当日暂无预约')} />
         ) : (
           <div className="space-y-3">
             <div className="overflow-x-auto">
@@ -1799,7 +1901,7 @@ export default function AppointmentsPage() {
                     const queueRowKey = `${item.subject_id}-${(item.project_code || '').trim()}`
                     const isEnrolled = (item.enrollment_status || '').trim() === '正式入组'
                     const rdDisplay = pendingQueueRd[queueRowKey] ?? item.rd_number ?? (isEnrolled ? 'RD' : '')
-                    /** 未签到时仅「缺席」可选；初筛合格/正式入组等需先签到（与后端一致） */
+                    /** 未签到时仅「缺席」「退出」可选；其余需先签到（与后端一致） */
                     const hasExecutionCheckin = !!item.checkin_id
                     return (
                     <tr
@@ -1851,7 +1953,7 @@ export default function AppointmentsPage() {
                         >
                           <option value="">请选择</option>
                           {ENROLLMENT_STATUS_OPTIONS.map((opt) => (
-                            <option key={opt} value={opt} disabled={!hasExecutionCheckin && opt !== '缺席'}>{opt}</option>
+                            <option key={opt} value={opt} disabled={!hasExecutionCheckin && !ENROLLMENT_ALLOWED_WITHOUT_CHECKIN.has(opt)}>{opt}</option>
                           ))}
                         </select>
                       </td>

@@ -1,0 +1,77 @@
+.referral-hero__hint {
+  display: block;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+  margin-bottom: 8px;
+}
+
+.referral-hero__code {
+  display: block;
+  font-size: 28px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 4px;
+  margin-bottom: 16px;
+}
+
+.referral-hero__actions {
+  display: flex;
+  gap: 12px;
+}
+
+.referral-hero__action-item {
+  flex: 1;
+}
+
+.referral-hero__poster {
+  margin-top: 12px;
+}
+
+.referral-section-title {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 12px;
+}
+
+.referral-loading {
+  padding: 24px;
+  text-align: center;
+}
+
+.referral-loading__text {
+  color: #999;
+}
+
+.referral-item__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.referral-item__name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+}
+
+.referral-item__status {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #e2e8f0;
+  color: #4a5568;
+}
+
+.referral-item__status--done {
+  background: #c6f6d5;
+  color: #276749;
+}
+
+.referral-item__reward {
+  font-size: 14px;
+  color: #ed8936;
+  font-weight: 500;
+}

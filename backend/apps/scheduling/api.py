@@ -2185,6 +2185,12 @@ def update_schedule_core(request, order_id: int, payload: TimelineScheduleUpdate
 
     schedule.save(update_fields=list(dict.fromkeys(update_fields)))
     _sync_timeline_published_snapshot(schedule)
+    try:
+        from .workorder_sync import sync_workorders_to_workstations
+
+        sync_workorders_to_workstations(order)
+    except Exception as e:
+        logger.warning('排程核心保存后工单同步到接待台失败: %s', e)
     return {
         'code': 200,
         'msg': '已更新',

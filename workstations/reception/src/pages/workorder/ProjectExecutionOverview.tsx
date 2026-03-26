@@ -3,7 +3,7 @@
  * 参考工单执行页面预约列表下的月历布局
  */
 import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, CalendarCheck } from 'lucide-react'
 import { Card } from '@cn-kis/ui-kit'
 import { productDistributionApi } from '@cn-kis/api-client'
@@ -66,17 +66,21 @@ export function ProjectExecutionOverview() {
     setVisibleMonth(todayStr.slice(0, 7))
   }
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching, isError, error } = useQuery({
     queryKey: ['reception', 'execution-overview', selectedDate],
     queryFn: () => productDistributionApi.getExecutionOverview(selectedDate),
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
   })
 
   const { data: countsData } = useQuery({
     queryKey: ['reception', 'execution-overview-counts', visibleMonth],
     queryFn: () => productDistributionApi.getExecutionOverviewCounts(visibleMonth),
+    staleTime: 60_000,
   })
 
-  const items = (data as { items?: ExecutionOverviewRow[] } | null | undefined)?.items ?? []
+  const raw = data as { items?: ExecutionOverviewRow[] } | null | undefined
+  const items = Array.isArray(raw) ? raw : (raw?.items ?? [])
   const countByDate = (countsData as Record<string, number> | undefined) ?? {}
 
   return (
@@ -174,10 +178,17 @@ export function ProjectExecutionOverview() {
           当前日期：{selectedDate}
         </div>
 
-        {isLoading ? (
+        {isError ? (
+          <div className="px-4 py-6 text-center text-sm text-red-600">
+            加载失败：{error instanceof Error ? error.message : '请稍后重试'}
+          </div>
+        ) : isLoading && !items.length ? (
           <div className="px-4 py-6 text-center text-sm text-slate-500">加载中…</div>
         ) : items.length > 0 ? (
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
+            {isFetching && !isLoading && (
+              <div className="absolute right-3 top-0 text-xs text-slate-400">更新中…</div>
+            )}
             <table className="w-full text-sm">
               <thead className="bg-slate-50">
                 <tr>

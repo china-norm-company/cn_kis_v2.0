@@ -1,0 +1,74 @@
+.dev-api-page {
+  min-height: 100vh;
+  padding: 32rpx 24rpx;
+  background: #f5f7fa;
+  box-sizing: border-box;
+}
+
+.dev-api-card {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 32rpx 28rpx;
+}
+
+.dev-api-title {
+  font-size: 36rpx;
+  font-weight: 600;
+  color: #1a202c;
+  display: block;
+  margin-bottom: 16rpx;
+}
+
+.dev-api-sub {
+  font-size: 26rpx;
+  color: #4a5568;
+  line-height: 1.55;
+  display: block;
+  margin-bottom: 12rpx;
+}
+
+.dev-api-example {
+  font-size: 24rpx;
+  color: #2b6cb0;
+  display: block;
+  margin-bottom: 24rpx;
+}
+
+.dev-api-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 20rpx 24rpx;
+  font-size: 28rpx;
+  border: 1rpx solid #e2e8f0;
+  border-radius: 12rpx;
+  margin-bottom: 20rpx;
+}
+
+.dev-api-hint {
+  font-size: 22rpx;
+  color: #718096;
+  display: block;
+  margin-bottom: 24rpx;
+  word-break: break-all;
+}
+
+.dev-api-btn {
+  margin-bottom: 20rpx;
+  background: #2b6cb0 !important;
+  color: #fff !important;
+  font-size: 30rpx;
+  border-radius: 12rpx;
+}
+
+.dev-api-btn--secondary {
+  background: #edf2f7 !important;
+  color: #2d3748 !important;
+}
+
+.dev-api-foot {
+  font-size: 22rpx;
+  color: #a0aec0;
+  line-height: 1.5;
+  display: block;
+  margin-top: 16rpx;
+}

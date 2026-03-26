@@ -172,10 +172,24 @@ def _first_row_dict(rec):
     return first if isinstance(first, dict) else {}
 
 
+def _merge_same_project_rows(prev: dict, new: dict) -> dict:
+    """
+    new 覆盖 prev（与「同项目编号以后出现行为准」一致）。
+    研究员/督导：若 new 中为空而 prev 非空，则保留 prev，避免多行时末行空白列冲掉前面已填值。
+    """
+    merged = {**prev, **new}
+    for exact, sub in (('研究员', '研究员'), ('督导', '督导')):
+        new_c = _cell_by_exact_or_header_contains(new, exact, sub)
+        old_c = _cell_by_exact_or_header_contains(prev, exact, sub)
+        if old_c and not new_c:
+            merged[exact] = old_c
+    return merged
+
+
 def _unique_rows_by_project_no_last_wins(rec):
     """
     执行订单可能有多行（多项目）。同一项目编号出现多行时以后者为准（与详情页编辑非首行一致）。
-    返回 list[dict]，每个 dict 含该项目最新一行字段（含研究员、督导）。
+    研究员/督导：末行为空时保留较早行的非空值（见 _merge_same_project_rows）。
     """
     data = rec.data if isinstance(rec.data, dict) else {}
     headers = data.get('headers') or []
@@ -184,9 +198,48 @@ def _unique_rows_by_project_no_last_wins(rec):
     for row in rows:
         d = _row_to_dict(headers, row)
         pn = (d.get('项目编号') or '').strip()
-        if pn:
+        if not pn:
+            continue
+        if pn in last_by_pn:
+            last_by_pn[pn] = _merge_same_project_rows(last_by_pn[pn], d)
+        else:
             last_by_pn[pn] = d
     return list(last_by_pn.values())
+
+
+def _cell_by_exact_or_header_contains(row: dict, exact_key: str, header_substr: str) -> str:
+    """
+    先取精确表头 exact_key；为空时再找「表头字符串包含 header_substr」的列（兼容模板列名变体）。
+    与执行台详情 mapExecutionOrderToSections 展示逻辑对齐的补充。
+    """
+    v = (row.get(exact_key) or '').strip() if row else ''
+    if v:
+        return v
+    if not row or not header_substr:
+        return ''
+    for k, val in row.items():
+        if header_substr in str(k):
+            t = (str(val) if val is not None else '').strip()
+            if t:
+                return t
+    return ''
+
+
+def _timeline_schedule_supervisor(execution_order_upload_id) -> str:
+    """排程核心里维护的督导（执行台「项目排期」可编辑保存，不一定在执行订单行里）。"""
+    if not execution_order_upload_id:
+        return ''
+    try:
+        from .models import TimelineSchedule
+
+        ts = TimelineSchedule.objects.filter(
+            execution_order_upload_id=execution_order_upload_id
+        ).first()
+        if ts and (ts.supervisor or '').strip():
+            return ts.supervisor.strip()
+    except Exception as e:
+        logger.debug('读取排程核心督导失败 execution_order_id=%s: %s', execution_order_upload_id, e)
+    return ''
 
 
 def _ensure_serializable(val):
@@ -263,6 +316,8 @@ def _sync_to_reception_workorder(rec):
 
     from apps.product_distribution import services as pd_services
 
+    schedule_supervisor = _timeline_schedule_supervisor(getattr(rec, 'id', None))
+
     for first in row_dicts:
         project_no = (first.get('项目编号') or '').strip()
         if not project_no:
@@ -290,8 +345,10 @@ def _sync_to_reception_workorder(rec):
         except (TypeError, ValueError):
             visit_count = 0
         visit_count = max(0, visit_count)
-        researcher = (first.get('研究员') or '').strip() or None
-        supervisor = (first.get('督导') or '').strip() or None
+        researcher = _cell_by_exact_or_header_contains(first, '研究员', '研究员') or None
+        supervisor = _cell_by_exact_or_header_contains(first, '督导', '督导') or None
+        if not supervisor and schedule_supervisor:
+            supervisor = schedule_supervisor
         payload = {
             'project_no': project_no,
             'project_name': (first.get('项目名称') or '').strip() or project_no,
