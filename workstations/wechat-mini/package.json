@@ -12,6 +12,7 @@
     "lint": "tsc --noEmit",
     "build": "taro build --type weapp",
     "dev:weapp": "taro build --type weapp --watch",
+    "prebuild:weapp": "pnpm --filter @cn-kis/subject-core run build",
     "build:weapp": "taro build --type weapp",
     "preview:qr": "./scripts/gen-preview-qr.sh",
     "upload:weapp": "node ./scripts/upload.js",
@@ -22,6 +23,7 @@
     "gate:wechat-headed": "pnpm exec playwright test e2e/headed/product-lifecycle.spec.ts --project=wechat-mini-h5-mobile-headed && pnpm exec playwright test e2e/headed/product-lifecycle-exception.spec.ts --project=wechat-mini-h5-mobile-headed && pnpm exec playwright test e2e/headed/ui-quality-comprehensive.spec.ts --project=wechat-mini-h5-mobile-headed"
   },
   "dependencies": {
+    "@cn-kis/consent-placeholders": "workspace:*",
     "@cn-kis/subject-core": "workspace:*",
     "@tarojs/components": "^3.6.0",
     "@tarojs/helper": "^3.6.0",
