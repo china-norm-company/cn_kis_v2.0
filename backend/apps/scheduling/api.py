@@ -1703,7 +1703,7 @@ def get_schedule_core(request, order_id: int):
 @require_permission_or_anon_in_debug('scheduling.plan.create')
 def update_schedule_core(request, order_id: int, payload: TimelineScheduleUpdateIn):
     """更新时间线排程或 payload（草稿或时间线已发布时可更新 payload 中的行政/评估/技术）。"""
-    from .models import ExecutionOrderUpload, TimelineSchedule, TimelineScheduleStatus
+    from .models import ExecutionOrderUpload, TimelineSchedule
     order = ExecutionOrderUpload.objects.filter(id=order_id).first()
     if not order:
         return {'code': 404, 'msg': '未找到该执行订单', 'data': None}

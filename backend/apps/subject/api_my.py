@@ -10,7 +10,6 @@ from typing import Optional
 from datetime import date, datetime as dt_datetime, timedelta
 import logging
 
-from django.db import transaction
 from django.utils import timezone
 from django.db.models import Q
 
