@@ -91,6 +91,12 @@ class LedgerQueryIn(Schema):
     lims_only: Optional[bool] = None       # True = 只显示 LIMS 导入；False = 只显示手工录入
 
 
+class LedgerSummaryQueryIn(Schema):
+    keyword: Optional[str] = None
+    page: int = 1
+    page_size: int = 20
+
+
 class EquipmentCreateIn(Schema):
     model_config = ConfigDict(protected_namespaces=())
 
@@ -383,6 +389,32 @@ def list_equipment_index_alias(request, params: Query[LedgerQueryIn]):
         location=params.location, page=params.page,
         page_size=params.page_size, sort_by=params.sort_by,
         lims_only=params.lims_only,
+    )
+    return {'code': 0, 'msg': 'ok', 'data': data}
+
+
+@router.get('/ledger-categories', summary='设备类别台账')
+@require_permission('resource.equipment.read')
+def list_ledger_categories(request, params: Query[LedgerSummaryQueryIn]):
+    """按设备类别聚合设备数量，支持模糊检索类别名/编码。"""
+    from .services.equipment_service import list_equipment_category_ledger
+    data = list_equipment_category_ledger(
+        keyword=params.keyword,
+        page=params.page,
+        page_size=params.page_size,
+    )
+    return {'code': 0, 'msg': 'ok', 'data': data}
+
+
+@router.get('/ledger-name-classifications', summary='设备细分类别台账')
+@require_permission('resource.equipment.read')
+def list_ledger_name_classifications(request, params: Query[LedgerSummaryQueryIn]):
+    """按名称分类 + 设备类别聚合设备数量，支持模糊检索。"""
+    from .services.equipment_service import list_equipment_name_classification_ledger
+    data = list_equipment_name_classification_ledger(
+        keyword=params.keyword,
+        page=params.page,
+        page_size=params.page_size,
     )
     return {'code': 0, 'msg': 'ok', 'data': data}
 

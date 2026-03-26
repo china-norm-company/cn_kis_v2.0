@@ -34,6 +34,29 @@ def _equipment_qs():
     ).select_related('category')
 
 
+def _get_name_classification(attrs: Optional[dict]) -> str:
+    """统一读取设备名称分类，避免各接口重复拼 key。"""
+    attrs = attrs or {}
+    return (
+        attrs.get('name_classification')
+        or attrs.get('lims_name_classification')
+        or ''
+    )
+
+
+def _paginate_items(items: list, page: int, page_size: int) -> dict:
+    total = len(items)
+    safe_page = max(page, 1)
+    safe_size = max(page_size, 1)
+    offset = (safe_page - 1) * safe_size
+    return {
+        'items': items[offset:offset + safe_size],
+        'total': total,
+        'page': safe_page,
+        'page_size': safe_size,
+    }
+
+
 # ============================================================================
 # 仪表盘
 # ============================================================================
@@ -215,7 +238,7 @@ def list_equipment(
         cal_info = _get_calibration_info(item, today)
         attrs = item.attributes or {}
         # 名称分类仅来自 LIMS 写入的 attributes，与 ResourceCategory（设备类别）无关
-        name_cls = (attrs.get('name_classification') or attrs.get('lims_name_classification') or '')
+        name_cls = _get_name_classification(attrs)
         lims_synced = attrs.get('_lims_synced_at') or ''
         lims_batch = attrs.get('_lims_sync_batch_no') or ''
         result_items.append({
@@ -256,6 +279,79 @@ def list_equipment(
         })
 
     return {'items': result_items, 'total': total, 'page': page, 'page_size': page_size}
+
+
+def list_equipment_category_ledger(
+    keyword: str = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> dict:
+    """设备类别台账：展示设备类别及其下设备数量。"""
+    kw = (keyword or '').strip()
+    qs = ResourceCategory.objects.filter(
+        resource_type=ResourceType.EQUIPMENT,
+        is_active=True,
+    ).annotate(
+        equipment_count=Count('items', filter=Q(items__is_deleted=False)),
+    ).order_by('name', 'code')
+
+    if kw:
+        qs = qs.filter(
+            Q(name__icontains=kw) |
+            Q(code__icontains=kw) |
+            Q(description__icontains=kw)
+        )
+
+    items = [{
+        'id': c.id,
+        'category_name': c.name,
+        'category_code': c.code,
+        'category_path': c.full_path,
+        'equipment_count': c.equipment_count or 0,
+    } for c in qs]
+    return _paginate_items(items, page=page, page_size=page_size)
+
+
+def list_equipment_name_classification_ledger(
+    keyword: str = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> dict:
+    """
+    设备细分类别台账：按「名称分类 + 设备类别」聚合设备数量。
+
+    说明：
+    - 名称分类来自 ResourceItem.attributes.name_classification（LIMS 同步）。
+    - 设备类别来自 ResourceCategory。
+    """
+    kw = (keyword or '').strip().lower()
+    rows = {}
+    for item in _equipment_qs().only('id', 'name', 'category_id', 'attributes', 'category__name'):
+        name_cls = _get_name_classification(item.attributes) or '未分类'
+        category_name = item.category.name if item.category else ''
+        key = (name_cls, item.category_id or 0)
+        row = rows.get(key)
+        if not row:
+            row = {
+                'name_classification': name_cls,
+                'category_id': item.category_id,
+                'category_name': category_name,
+                'equipment_count': 0,
+            }
+            rows[key] = row
+        row['equipment_count'] += 1
+
+    items = sorted(
+        rows.values(),
+        key=lambda x: (x['category_name'] or '', x['name_classification'] or ''),
+    )
+    if kw:
+        items = [
+            item for item in items
+            if kw in (item['name_classification'] or '').lower()
+            or kw in (item['category_name'] or '').lower()
+        ]
+    return _paginate_items(items, page=page, page_size=page_size)
 
 
 def _get_calibration_info(item: ResourceItem, today: date) -> dict:
@@ -315,7 +411,7 @@ def get_equipment_detail(equipment_id: int) -> Optional[dict]:
     )
 
     attrs = item.attributes or {}
-    name_cls = (attrs.get('name_classification') or attrs.get('lims_name_classification') or '')
+    name_cls = _get_name_classification(attrs)
     lims_synced = attrs.get('_lims_synced_at') or ''
     lims_batch = attrs.get('_lims_sync_batch_no') or ''
 

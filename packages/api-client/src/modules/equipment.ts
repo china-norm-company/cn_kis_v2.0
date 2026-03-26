@@ -106,6 +106,21 @@ export interface EquipmentDetail extends EquipmentItem {
   authorizations: Authorization[]
 }
 
+export interface EquipmentCategoryLedgerItem {
+  id: number
+  category_name: string
+  category_code: string
+  category_path: string
+  equipment_count: number
+}
+
+export interface EquipmentNameClassificationLedgerItem {
+  name_classification: string
+  category_id: number | null
+  category_name: string
+  equipment_count: number
+}
+
 /** 校准记录 */
 export interface CalibrationRecord {
   id: number
@@ -428,6 +443,24 @@ export const equipmentApi = {
   /** 设备详情 */
   getLedgerDetail(id: number) {
     return api.get<EquipmentDetail>(`/equipment/ledger/${id}`)
+  },
+
+  /** 设备类别台账 */
+  listCategoryLedger(params?: {
+    keyword?: string
+    page?: number
+    page_size?: number
+  }) {
+    return api.get<Paginated<EquipmentCategoryLedgerItem>>('/equipment/ledger-categories', { params })
+  },
+
+  /** 设备细分类别台账 */
+  listNameClassificationLedger(params?: {
+    keyword?: string
+    page?: number
+    page_size?: number
+  }) {
+    return api.get<Paginated<EquipmentNameClassificationLedgerItem>>('/equipment/ledger-name-classifications', { params })
   },
 
   /** 批量导入设备（Excel） */
