@@ -1,22 +1,30 @@
-# Default owners for everything
-* @china-norm-company/business-team
+# CODEOWNERS — CN KIS V2.0
+#
+# 审批人员：马利民、蒋艳雯、马蓓丽
+# 填写方式：将下方路径规则的 @占位符 替换为对应的 GitHub 用户名
+# 例：backend/apps/identity/ @malimin-github @jiangyunwen-github
+#
+# 当前状态：未指定 Code Owner，PR 只需满足 Ruleset 中"1 人 Approve"要求即可合并
+# （任意有 Write 权限的协作者 Approve 均可）
 
-# Authentication and identity — requires architecture review
-backend/apps/identity/ @china-norm-company/business-team
-backend/apps/secretary/feishu_fetcher.py @china-norm-company/business-team
-backend/apps/secretary/models.py @china-norm-company/business-team
+# ── 高风险路径（建议优先指定 Code Owner）────────────────────────────
 
-# Knowledge assets — requires architecture review
-backend/apps/knowledge/ @china-norm-company/business-team
-backend/apps/ekuaibao_integration/models.py @china-norm-company/business-team
-backend/apps/lims_integration/models.py @china-norm-company/business-team
+# 认证 / Token 域
+# backend/apps/identity/ @
+# backend/apps/secretary/feishu_fetcher.py @
+# backend/apps/secretary/models.py @
 
-# Migration charter — requires lead approval
-docs/V2_MIGRATION_CHARTER.md @china-norm-company/business-team
+# 知识资产域
+# backend/apps/knowledge/ @
+# backend/apps/ekuaibao_integration/models.py @
+# backend/apps/lims_integration/models.py @
 
-# SSOT workstations registry
-backend/configs/workstations.yaml @china-norm-company/business-team
+# 迁移章程（变更需负责人确认）
+# docs/V2_MIGRATION_CHARTER.md @
 
-# Deployment configs
-ops/ @china-norm-company/business-team
-.github/workflows/ @china-norm-company/business-team
+# 工作台注册表（19 个工作台配置）
+# backend/configs/workstations.yaml @
+
+# 部署配置与 CI/CD
+# ops/ @
+# .github/workflows/ @
