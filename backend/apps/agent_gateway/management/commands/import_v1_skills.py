@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 从 V1.0 openclaw-skills 批量导入 Skills 到 t_agent_definition
 
@@ -17,7 +18,6 @@
   # 更新已存在的 skills（默认跳过已有的）
   python manage.py import_v1_skills --update-existing
 """
-from __future__ import annotations
 
 import os
 import re

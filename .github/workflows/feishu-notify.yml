@@ -142,10 +142,42 @@ jobs:
                                .map(i => `🐛 #${i.number} ${i.title.slice(0,35)}`),
             };
 
+            // ── 工作台波次状态（从 Issue Labels 统计）────────────────────────
+            // Wave A（可推广）：secretary / research / recruitment / admin
+            // Wave B（试点）：execution / quality / finance / digital-workforce
+            const WAVE_A = ['ws/secretary','ws/research','ws/recruitment','ws/admin'];
+            const WAVE_B = ['ws/execution','ws/quality','ws/finance','ws/digital-workforce'];
+
+            // 统计各波次的开放 Issue 数量
+            let waveAIssues = 0, waveBIssues = 0, waveCIssues = 0, hubIssues = 0;
+            let waveABlockers = [], waveBBlockers = [];
+
+            for (const issue of realIssues) {
+              const labelNames = (issue.labels || []).map(l => l.name);
+              const isBlocker = labelNames.includes('上线阻塞');
+              const isWaveA = labelNames.some(l => WAVE_A.includes(l));
+              const isWaveB = labelNames.some(l => WAVE_B.includes(l));
+              const isHub = labelNames.includes('hub-联动');
+
+              if (isHub) hubIssues++;
+              if (isWaveA) {
+                waveAIssues++;
+                if (isBlocker) waveABlockers.push(`#${issue.number} ${issue.title.slice(0,25)}`);
+              } else if (isWaveB) {
+                waveBIssues++;
+                if (isBlocker) waveBBlockers.push(`#${issue.number} ${issue.title.slice(0,25)}`);
+              } else {
+                waveCIssues++;
+              }
+            }
+
             // ── 生成判断文字（无 LLM 的启发式规则，后续升级为 LLM）────────
             function generateInsight(metrics, type) {
               const lines = [];
-              // 系统状态判断
+              // 上线阻塞告警（最高优先级）
+              if (waveABlockers.length > 0) {
+                lines.push(`🚨 Wave A 上线阻塞 ${waveABlockers.length} 个：${waveABlockers.slice(0,2).join(' | ')}，请今天优先处理！`);
+              }
               if (metrics.stalePRCount > 2) {
                 lines.push(`⚠️ 有 ${metrics.stalePRCount} 个 PR 挂起超过 3 天，请今天安排审核，否则阻塞后续开发`);
               }
@@ -155,8 +187,8 @@ jobs:
                 } else {
                   lines.push(`📌 昨日无代码合并，请确认各自任务分支进展`);
                 }
-                if (metrics.openIssueCount > 5) {
-                  lines.push(`📋 当前有 ${metrics.openIssueCount} 个开放 Issue，建议今天认领优先级最高的 Bug`);
+                if (waveAIssues === 0 && waveBIssues === 0) {
+                  lines.push(`📋 当前无工作台标签 Issue，建议给 ${metrics.openIssueCount} 个开放 Issue 标注所属工作台`);
                 }
               } else {
                 // 晚报
@@ -171,6 +203,15 @@ jobs:
             }
 
             const insight = generateInsight(metrics, briefType);
+
+            // ── 工作台波次状态文字 ────────────────────────────────────────────
+            const waveStatusLines = [
+              `**📊 上线波次状态**`,
+              `🟢 Wave A 可推广（secretary/research/recruitment/admin）：待处理 **${waveAIssues}** 个 Issue${waveABlockers.length > 0 ? ` ⚠️ 含 ${waveABlockers.length} 个阻塞` : ''}`,
+              `🟡 Wave B 试点陪跑（execution/quality/finance/dw）：待处理 **${waveBIssues}** 个 Issue${waveBBlockers.length > 0 ? ` ⚠️ 含 ${waveBBlockers.length} 个阻塞` : ''}`,
+              `🔴 Wave C 建设中（其余 10 个台）：待处理 **${waveCIssues}** 个 Issue`,
+              hubIssues > 0 ? `🔗 中枢台联动任务：**${hubIssues}** 个待处理` : '',
+            ].filter(Boolean).join('\n');
 
             // ── 构造飞书卡片 ─────────────────────────────────────────────
             let card;
@@ -214,18 +255,24 @@ jobs:
                     },
                   } : null,
                   { tag: 'hr' },
+                  // 工作台波次状态
+                  {
+                    tag: 'div',
+                    text: { tag: 'lark_md', content: waveStatusLines },
+                  },
+                  { tag: 'hr' },
                   // 操作按钮
                   {
                     tag: 'action',
                     actions: [
                       { tag: 'button', text: { content: '同步代码', tag: 'plain_text' }, url: `https://github.com/${repo.owner}/${repo.repo}`, type: 'primary' },
                       { tag: 'button', text: { content: '查看 PR', tag: 'plain_text' }, url: `https://github.com/${repo.owner}/${repo.repo}/pulls`, type: 'default' },
-                      { tag: 'button', text: { content: '认领 Issue', tag: 'plain_text' }, url: `https://github.com/${repo.owner}/${repo.repo}/issues`, type: 'default' },
+                      { tag: 'button', text: { content: '认领 Issue', tag: 'plain_text' }, url: `https://github.com/${repo.owner}/${repo.repo}/issues?q=is%3Aopen+label%3A上线阻塞`, type: 'danger' },
                     ],
                   },
                   {
                     tag: 'note',
-                    elements: [{ tag: 'plain_text', content: `子衿智能运营官 · ${dateStr} 09:00  |  下一步：LLM 摘要升级中` }],
+                    elements: [{ tag: 'plain_text', content: `子衿智能运营官 · ${dateStr} 09:00  |  上线波次追踪已启用` }],
                   },
                 ].filter(Boolean),
               };

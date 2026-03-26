@@ -203,6 +203,10 @@ if not is_registration_done():
     from apps.claw.api import router as claw_router
     _safe_add_router(api, '/claw/', claw_router, tags=['Claw数据总线'])
 
+    # 图像分析（唇部脱屑等）
+    from apps.image_analysis.api import router as image_analysis_router
+    _safe_add_router(api, '/lip-scaliness/', image_analysis_router, tags=['图像分析'])
+
     set_registration_done()
 
 # 样品发放（产品发放）- 读写 cn_kis default 库

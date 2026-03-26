@@ -6,6 +6,7 @@
   "packageManager": "pnpm@10.28.2",
   "//": "工作台目录已从 apps/ 重命名为 workstations/（V2 架构调整）",
   "scripts": {
+    "dev:backend": "bash ops/scripts/run_dev_backend.sh",
     "dev:secretary": "pnpm --filter @cn-kis/secretary dev",
     "dev:research": "pnpm --filter @cn-kis/research dev",
     "dev:quality": "pnpm --filter @cn-kis/quality dev",

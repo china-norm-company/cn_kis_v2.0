@@ -14,9 +14,7 @@ const ProposalListPage = lazy(() => import('./pages/ProposalListPage'))
 const ProposalDetailPage = lazy(() => import('./pages/ProposalDetailPage'))
 const ProposalCreatePage = lazy(() => import('./pages/ProposalCreatePage'))
 const QualityCheckPage = lazy(() => import('./pages/QualityCheckPage'))
-const AdminPermissionsPage = lazy(() => import('./pages/AdminPermissionsPage'))
 const CloseoutPage = lazy(() => import('./pages/CloseoutPage'))
-const PerformanceSettlementPage = lazy(() => import('./pages/PerformanceSettlementPage'))
 const TeamPage = lazy(() => import('./pages/TeamPage'))
 const KnowledgeBasePage = lazy(() => import('./pages/KnowledgeBasePage'))
 const ProjectDashboardPage = lazy(() => import('./pages/ProjectDashboardPage'))
@@ -136,7 +134,6 @@ export default function App() {
               <Route path="/proposals/quality-check" element={<QualityCheckPage />} />
               <Route path="/proposals/:id" element={<ProposalDetailPage />} />
               {/* 管理员 */}
-              <Route path="/admin/permissions" element={<AdminPermissionsPage />} />
               <Route path="/protocols" element={<ProtocolListPage />} />
               <Route path="/protocols/:id" element={<ProtocolDetailPage />} />
               <Route path="/project-full-link" element={<ProjectFullLinkListPage />} />
@@ -144,7 +141,6 @@ export default function App() {
               <Route path="/project-full-link/:id/edit" element={<ProjectFullLinkEditPage />} />
               <Route path="/projects/:id/dashboard" element={<ProjectDashboardPage />} />
               <Route path="/closeout" element={<CloseoutPage />} />
-              <Route path="/closeout/settlement" element={<PerformanceSettlementPage />} />
               {/* 执行管理 */}
               <Route path="/visits" element={<VisitListPage />} />
               <Route path="/subjects" element={<SubjectListPage />} />

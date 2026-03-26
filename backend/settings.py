@@ -84,6 +84,7 @@ INSTALLED_APPS = [
     # Wave 3: 知识与数据平面
     'apps.secretary',
     'apps.knowledge',
+    'apps.data_intake',
     'apps.ekuaibao_integration',
     'apps.lims_integration',
     # Wave 4: 企业扩展域
@@ -110,6 +111,8 @@ INSTALLED_APPS = [
     'apps.project_full_link',
     'apps.weekly_report',
     'apps.product_distribution',
+    # 图像分析工具（研究台：唇部脱屑等）
+    'apps.image_analysis',
 ]
 
 MIDDLEWARE = [

@@ -270,21 +270,30 @@ def _normalize_oauth_code(code: str) -> str:
 
 def _resolve_redirect_uri(state_payload: Optional[Dict[str, Any]] = None) -> str:
     """
-    根据 workstation 推导 redirect_uri（与前端 config.ts 逻辑完全一致）。
+    根据 workstation 推导 redirect_uri（与前端 packages/feishu-sdk/src/config.ts 对齐）。
 
     规则：
-    - secretary → {base}/login
+    - secretary → {base}/secretary/login（与秘书台 Vite base=/secretary/ 一致）
     - 其他工作台 → {base}/{workstation}/
-    - base 默认 http://118.196.64.48，可通过 FEISHU_REDIRECT_BASE 覆盖
+    - base：FEISHU_REDIRECT_BASE；未设置时生产默认 IP；DEBUG 下按工作台常见本地端口回退（与 vite 默认端口一致）
     """
-    base = (
+    raw = (
         getattr(settings, 'FEISHU_REDIRECT_BASE', '')
         or os.environ.get('FEISHU_REDIRECT_BASE', '')
-        or 'http://118.196.64.48'
-    ).rstrip('/')
+    ).strip()
     ws = (state_payload or {}).get('ws', 'secretary')
+    if raw:
+        base = raw.rstrip('/')
+    elif getattr(settings, 'DEBUG', False):
+        _debug_origin = {
+            'secretary': 'http://localhost:3001',
+            'research': 'http://localhost:3002',
+        }
+        base = _debug_origin.get(ws, 'http://localhost:3001')
+    else:
+        base = 'http://118.196.64.48'
     if ws == 'secretary':
-        return f'{base}/login'
+        return f'{base}/secretary/login'
     return f'{base}/{ws}/'
 
 
@@ -306,8 +315,8 @@ def feishu_oauth_login(
     _app_id = app_id or settings.FEISHU_APP_ID
     _app_secret = app_secret or settings.FEISHU_APP_SECRET
 
-    # 直接使用前端传来的 redirect_uri；JSSDK 流程前端不传，此处为 None
-    _redirect_uri = redirect_uri or None
+    # 直接使用前端传来的 redirect_uri；JSSDK 换 token 时前端须不传/空，此处为 None，不可强行推断
+    _redirect_uri = (redirect_uri or '').strip() or None
 
     body = {
         'grant_type': 'authorization_code',

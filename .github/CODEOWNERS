@@ -1,22 +1,109 @@
-# Default owners for everything
+# ============================================================
+# CODEOWNERS — CN KIS V2.0
+# ============================================================
+# 说明：
+#   每个路径指定的 GitHub Team 或用户，在对应 PR 提交时会自动被请求审查。
+#   Team 需在 https://github.com/orgs/china-norm-company/teams 提前创建。
+#
+# Team 规划（需在 GitHub 后台创建后才生效）：
+#   @china-norm-company/core-dev        架构师 / 技术负责人（有权 approve 高风险域）
+#   @china-norm-company/wave-a-dev      Wave A 工作台开发（secretary/research/recruitment/admin）
+#   @china-norm-company/wave-b-dev      Wave B 工作台开发（execution/quality/finance/digital-workforce）
+#   @china-norm-company/business-team   所有成员（兜底 owner，任何人都可 approve）
+#
+# 如尚未创建分组 Team，可临时用 GitHub 用户名替换，如 @yoyo-github-id
+# ============================================================
+
+
+# ── 默认：所有文件由全体成员兜底 ────────────────────────────
 * @china-norm-company/business-team
 
-# Authentication and identity — requires architecture review
-backend/apps/identity/ @china-norm-company/business-team
-backend/apps/secretary/feishu_fetcher.py @china-norm-company/business-team
-backend/apps/secretary/models.py @china-norm-company/business-team
 
-# Knowledge assets — requires architecture review
-backend/apps/knowledge/ @china-norm-company/business-team
-backend/apps/ekuaibao_integration/models.py @china-norm-company/business-team
-backend/apps/lims_integration/models.py @china-norm-company/business-team
+# ============================================================
+# 高风险域（需要 core-dev 审查，禁止无人审查合并）
+# ============================================================
 
-# Migration charter — requires lead approval
-docs/V2_MIGRATION_CHARTER.md @china-norm-company/business-team
+# 认证/权限底座 — Wave 1 红线，token 防覆盖逻辑在此
+backend/apps/identity/                              @china-norm-company/core-dev
+backend/apps/secretary/feishu_fetcher.py            @china-norm-company/core-dev
+backend/apps/secretary/feishu_token_store.py        @china-norm-company/core-dev
+backend/apps/secretary/models.py                    @china-norm-company/core-dev
 
-# SSOT workstations registry
-backend/configs/workstations.yaml @china-norm-company/business-team
+# 知识资产底座 — Embedding 向量写入，content_hash 去重
+backend/apps/knowledge/                             @china-norm-company/core-dev
+backend/apps/ekuaibao_integration/models.py         @china-norm-company/core-dev
+backend/apps/lims_integration/models.py             @china-norm-company/core-dev
 
-# Deployment configs
-ops/ @china-norm-company/business-team
-.github/workflows/ @china-norm-company/business-team
+# 向量网关 — 唯一授权的 Qwen3 embedding 通道
+backend/apps/agent_gateway/                         @china-norm-company/core-dev
+
+# 核心配置
+backend/settings.py                                 @china-norm-company/core-dev
+backend/configs/workstations.yaml                   @china-norm-company/core-dev
+
+# 迁移章程 — 需要系统负责人批准，PR 标题须加 [CHARTER]
+docs/V2_MIGRATION_CHARTER.md                        @china-norm-company/core-dev
+
+# 所有数据库迁移文件 — 防止 leaf node 冲突进入 main
+backend/apps/*/migrations/                          @china-norm-company/core-dev
+
+
+# ============================================================
+# CI/CD 与部署（需要 core-dev 审查）
+# ============================================================
+
+ops/                                                @china-norm-company/core-dev
+.github/workflows/                                  @china-norm-company/core-dev
+.github/CODEOWNERS                                  @china-norm-company/core-dev
+Dockerfile*                                         @china-norm-company/core-dev
+docker-compose*.yml                                 @china-norm-company/core-dev
+
+
+# ============================================================
+# Wave A 工作台（已推广，改动需谨慎，wave-a-dev 或 core-dev 审查）
+# ============================================================
+
+workstations/secretary/                             @china-norm-company/wave-a-dev @china-norm-company/core-dev
+workstations/research/                              @china-norm-company/wave-a-dev
+workstations/recruitment/                           @china-norm-company/wave-a-dev
+workstations/admin/                                 @china-norm-company/wave-a-dev @china-norm-company/core-dev
+
+backend/apps/secretary/                             @china-norm-company/wave-a-dev
+backend/apps/research/                              @china-norm-company/wave-a-dev
+backend/apps/recruitment/                           @china-norm-company/wave-a-dev
+
+
+# ============================================================
+# Wave B 工作台（试点中，wave-b-dev 审查即可）
+# ============================================================
+
+workstations/execution/                             @china-norm-company/wave-b-dev
+workstations/quality/                               @china-norm-company/wave-b-dev
+workstations/finance/                               @china-norm-company/wave-b-dev
+workstations/digital-workforce/                     @china-norm-company/wave-b-dev
+
+backend/apps/execution/                             @china-norm-company/wave-b-dev
+backend/apps/quality/                               @china-norm-company/wave-b-dev
+backend/apps/finance/                               @china-norm-company/wave-b-dev
+backend/apps/digital_workforce/                     @china-norm-company/wave-b-dev
+
+
+# ============================================================
+# 平台中枢（control-plane — 中枢台联动，需 core-dev 审查）
+# ============================================================
+
+workstations/control-plane/                         @china-norm-company/core-dev
+backend/apps/control_plane/                         @china-norm-company/core-dev
+backend/apps/audit/                                 @china-norm-company/core-dev
+backend/apps/core/                                  @china-norm-company/core-dev
+
+
+# ============================================================
+# 文档（所有人可改，core-dev 负责技术规范文档）
+# ============================================================
+
+docs/TECHNICAL_STANDARDS.md                         @china-norm-company/core-dev
+docs/DEVELOPMENT_FOUNDATION.md                      @china-norm-company/core-dev
+docs/API_STANDARDS.md                               @china-norm-company/core-dev
+docs/DATABASE_STANDARDS.md                          @china-norm-company/core-dev
+docs/DEPLOYMENT_STANDARDS.md                        @china-norm-company/core-dev

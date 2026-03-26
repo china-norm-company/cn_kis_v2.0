@@ -1,0 +1,169 @@
+# CodeRabbit 配置文件
+# 文档：https://docs.coderabbit.ai/guides/configure-coderabbit
+# 适配 CN KIS V2.0 项目结构（18 工作台 + 分层上线体系）
+# ============================================================
+
+language: "zh-CN"
+
+# ── 审查行为 ─────────────────────────────────────────────────
+reviews:
+  profile: "chill"               # assertive=严格 / chill=宽松，团队初期用 chill
+  request_changes_workflow: false # 不自动 Request Changes，只评论
+  high_level_summary: true        # 生成 PR 摘要
+  high_level_summary_placeholder: "@coderabbitai summary"
+  poem: false                     # 关闭诗歌（保持专业）
+  review_status: true
+  collapse_walkthrough: false
+  auto_review:
+    enabled: true
+    drafts: false                 # Draft PR 不自动审查
+    base_branches:
+      - main
+      - staging
+
+# ── 聊天交互 ─────────────────────────────────────────────────
+chat:
+  auto_reply: true
+
+# ── 工作台路径指令（告诉 CodeRabbit 各路径的业务含义）────────
+path_instructions:
+  # ── Wave A 工作台（可推广，改动需高度谨慎）─────────────────
+  - path: "workstations/secretary/**"
+    instructions: |
+      这是子衿·秘书台（Wave A，已推广）。
+      重点检查：
+      1. 早晚报内容正确性（数据来源、字段格式）
+      2. 飞书通知推送逻辑（token 类型、chat_id 正确性）
+      3. 工作台门户路由（15 个台的入口链接）
+      4. AI 对话上下文是否正确传递 account_id / workstation_key
+      任何改动都必须说明对"总经理30秒早报"体验的影响。
+
+  - path: "workstations/research/**"
+    instructions: |
+      这是采苓·研究台（Wave A，已推广）。
+      重点检查：
+      1. 项目画像查询是否返回完整的 project_profile 数据
+      2. 访视安排相关组件的日期处理（时区一致性）
+      3. CRC 协调员视角的受试者状态展示
+      4. 与执行台（execution）的数据共享边界
+
+  - path: "workstations/recruitment/**"
+    instructions: |
+      这是招招·招募台（Wave A，已推广）。
+      重点检查：
+      1. 受试者查询是否基于 subject_full_lifecycle / subject_beauty_profile
+      2. 入组漏斗计算逻辑（各阶段不能重复计数）
+      3. 受试者隐私数据脱敏（姓名/手机号不得明文暴露在日志）
+
+  - path: "workstations/admin/**"
+    instructions: |
+      这是鹿鸣·治理台（Wave A，已推广，中枢台之一）。
+      这是 RBAC 治理中心，改动风险最高。
+      强制检查：
+      1. 任何权限变更必须同时更新 seed_roles 和 visible_workbenches
+      2. account.is_deleted 软删除逻辑不能被跳过
+      3. 审计日志（AuditLog）写入不得被注释或删除
+      4. 角色分配必须经过 RBAC 校验，不能绕过中间件
+
+  # ── Wave B 工作台（试点，改动需说明对试点角色的影响）────────
+  - path: "workstations/quality/**"
+    instructions: |
+      这是怀瑾·质量台（Wave B，试点中）。
+      重点检查：
+      1. 偏差/CAPA 状态机转换是否完整
+      2. 质量经理角色的权限边界（不能越权查看其他项目数据）
+      3. 邮件信号与偏差记录的关联逻辑
+      注意：当前 SOP/法规知识库为空，禁止在 UI 展示"AI 合规判断"功能。
+
+  - path: "workstations/execution/**"
+    instructions: |
+      这是维周·执行台（Wave B，试点中）。
+      重点检查：
+      1. 工单状态流转（created→assigned→in_progress→completed）
+      2. 与研究台的数据共享（Protocol、Visit 数据不能重复存储）
+      3. 排期冲突检测逻辑
+
+  - path: "workstations/finance/**"
+    instructions: |
+      这是管仲·财务台（Wave B，试点中）。
+      重点检查：
+      1. 易快报数据同步的幂等性（content_hash 去重）
+      2. 冲突审核的审批链完整性
+      3. 金额字段精度（Decimal，禁止 float）
+
+  # ── 后端核心（所有工作台共享）────────────────────────────────
+  - path: "backend/apps/identity/**"
+    instructions: |
+      认证权限域——最高风险区域。
+      强制检查以下 3 个防线：
+      1. _save_feishu_user_token：禁止用空字符串覆盖 refresh_token
+      2. get_valid_user_token：只有 new_refresh 非空才更新 refresh_token
+      3. refresh_expires_at 不能为 None
+      任何改动必须在 PR 中勾选"refresh_token 防覆盖逻辑已保留"。
+
+  - path: "backend/apps/secretary/feishu_fetcher.py"
+    instructions: |
+      飞书 token 获取核心文件。
+      检查 pre-expiry buffer 是否仍为 1 小时（不能改回 5 分钟）。
+      检查 7 天内主动续期逻辑是否保留。
+
+  - path: "backend/apps/knowledge/**"
+    instructions: |
+      知识资产域。
+      强制检查：
+      1. Embedding 调用必须通过 get_qwen3_embedding()，禁止 fallback
+      2. content_hash 去重逻辑必须保留
+      3. status='published' 的写入必须有权限校验
+      4. 向量维度必须是 1024（Qwen3-embedding），禁止混入其他维度
+
+  - path: "backend/apps/secretary/mail_signal_ingest.py"
+    instructions: |
+      邮件信号处理核心。
+      检查：
+      1. is_external 判断逻辑的域名匹配
+      2. AI 分类器的开关（MAIL_SIGNAL_AI_CLASSIFY_ENABLED）
+      3. unknown 类型的 importance_score 不能被设置过高（避免垃圾邮件进入高优先级）
+
+  - path: "backend/configs/workstations.yaml"
+    instructions: |
+      工作台唯一真相源。
+      每次修改必须同步检查：
+      1. key 是否已在 nginx 路由中配置
+      2. port 是否与其他工作台冲突
+      3. app_id_env 是否正确指向子衿（cli_a98b0babd020500e）
+
+  - path: ".github/workflows/**"
+    instructions: |
+      CI/CD 和飞书通知管线。
+      检查：
+      1. 飞书通知的 chat_id 必须是 oc_cdfad80d9deb950414e8b4033f5ac1ff（开发群）
+      2. 不能在工作流中硬编码 FEISHU_APP_SECRET 等敏感值
+      3. 部署工作流必须有 environment 保护
+
+  - path: "backend/apps/secretary/management/commands/**"
+    instructions: |
+      管理命令。每个新命令必须：
+      1. 有 --dry-run 参数（不能只有执行模式）
+      2. 有进度输出（大批量操作必须打印进度）
+      3. 有异常捕获（单条失败不能中断整个批次）
+
+# ── 自动审查提示（面向开发小组的业务语境）──────────────────
+auto_review:
+  enabled: true
+
+# 以下文件改动触发额外审查提示
+finishing_touches:
+  docstrings:
+    enabled: true
+
+# ── 忽略路径 ─────────────────────────────────────────────────
+ignore:
+  - "**/*.lock"
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/build/**"
+  - "**/__pycache__/**"
+  - "**/*.min.js"
+  - "**/migrations/0001_initial.py"  # 初始迁移不需要审查
+  - "docs/acceptance/**"             # 验收截图不需要代码审查
+  - "Function Development/**"        # 功能开发测试文件

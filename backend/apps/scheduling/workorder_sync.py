@@ -1,3 +1,4 @@
+from typing import Optional
 """
 维周·执行台 — 工单同步到招招、和序
 
@@ -73,7 +74,7 @@ def _parse_schedule_overall_start_end(raw_schedule: str) -> tuple[str | None, st
     )
 
 
-def _parse_date_to_iso(val) -> str | None:
+def _parse_date_to_iso(val) -> Optional[str]:
     """将各种日期格式转为 YYYY-MM-DD。支持 ISO 字符串、Excel 序列号、MM/DD 等。"""
     if val is None or (isinstance(val, str) and not val.strip()):
         return None

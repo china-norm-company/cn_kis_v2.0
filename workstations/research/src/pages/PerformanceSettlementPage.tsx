@@ -1,5 +1,4 @@
 import { useFeishuContext } from '@cn-kis/feishu-sdk'
-import { canAccessPerformanceSettlement } from '../permissions/performanceSettlementAccess'
 
 /**
  * 绩效结算页面
@@ -14,7 +13,7 @@ const PERF_MASTER_URL = window.location.hostname === 'localhost'
 
 export default function PerformanceSettlementPage() {
   const ctx = useFeishuContext()
-  const allowed = canAccessPerformanceSettlement(ctx)
+  const allowed = ctx.hasPermission('closeout.settlement.read')
 
   if (!allowed) {
     return (

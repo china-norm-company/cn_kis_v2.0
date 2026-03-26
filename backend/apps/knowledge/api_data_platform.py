@@ -1,3 +1,4 @@
+from typing import Optional
 """
 洞明·数据台 API
 
@@ -1120,7 +1121,7 @@ def catalog_schema(request):
         't_staff_qualification': 'hr.HrStaffCertificate',  # 最近资质表（t_hr_staff_certificate）
     }
 
-    def _field_info(field) -> dict | None:
+    def _field_info(field) -> Optional[dict]:
         try:
             return {
                 'name': field.name,
@@ -1132,7 +1133,7 @@ def catalog_schema(request):
         except Exception:
             return None
 
-    def _row_count(table_name: str) -> int | None:
+    def _row_count(table_name: str) -> Optional[int]:
         try:
             with connection.cursor() as cursor:
                 cursor.execute(f'SELECT COUNT(*) FROM {table_name}')
@@ -1223,7 +1224,7 @@ def pipelines_schedule(request):
             return str(schedule)
 
     # 尝试读取最近一次审计日志来推断上次执行（部分任务会写日志）
-    def _last_run_hint(task_name: str) -> str | None:
+    def _last_run_hint(task_name: str) -> Optional[str]:
         try:
             from apps.audit.models import AuditLog
             hint = AuditLog.objects.filter(

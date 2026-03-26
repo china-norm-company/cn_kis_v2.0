@@ -887,9 +887,11 @@ def resource_conflicts(request, start_date: Optional[str] = None,
 
 
 @router.get('/my-todo', summary='个人待办聚合')
-@require_permission('dashboard.overview.read')
 def my_todo(request):
-    """聚合当前用户跨工作台待办：工单、审批、CAPA、培训、伦理 + 未读通知"""
+    """聚合当前用户跨工作台待办：工单、审批、CAPA、培训、伦理 + 未读通知
+
+    仅需登录；数据已按 account_id 隔离，不依赖 dashboard.overview.read（避免种子未同步时工作台首页不可用）。
+    """
     account = _get_account(request)
     if not account:
         return 401, {'code': 401, 'msg': '未授权', 'data': None}
@@ -1915,9 +1917,11 @@ def assistant_effect_metrics(request, days: int = 30):
 # ============================================================================
 
 @router.get('/claw/registry', summary='Claw 注册表（全部工作台）')
-@require_permission('dashboard.stats.read')
 def claw_registry_full(request):
-    """返回全部工作台的 Claw 技能和 Agent 绑定信息"""
+    """返回全部工作台的 Claw 技能和 Agent 绑定信息（静态配置；仅需登录）"""
+    account = _get_account(request)
+    if not account:
+        return 401, {'code': 401, 'msg': '未授权', 'data': None}
     from .claw_registry import get_full_registry, get_shared_skills
     return {'code': 200, 'msg': 'OK', 'data': {
         'shared_skills': get_shared_skills(),
@@ -1926,9 +1930,11 @@ def claw_registry_full(request):
 
 
 @router.get('/claw/registry/{workstation_key}', summary='Claw 注册表（单工作台）')
-@require_permission('dashboard.stats.read')
 def claw_registry_by_workstation(request, workstation_key: str):
-    """返回指定工作台的 Claw 技能、Agent 和快捷操作；异常时返回空配置避免前端整页报错"""
+    """返回指定工作台的 Claw 技能、Agent 和快捷操作；异常时返回空配置避免前端整页报错（仅需登录）"""
+    account = _get_account(request)
+    if not account:
+        return 401, {'code': 401, 'msg': '未授权', 'data': None}
     try:
         from .claw_registry import get_workstation_config
         config = get_workstation_config(workstation_key)

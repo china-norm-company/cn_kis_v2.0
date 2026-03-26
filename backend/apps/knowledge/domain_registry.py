@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 数据域注册表 — 洞明·数据台治理骨架
 
@@ -17,9 +18,8 @@
   retention_expectation : 数据保留期要求描述
 """
 
-from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Optional, Literal
 
 LifecycleStage = Literal['raw', 'staging', 'formal', 'content', 'knowledge', 'meta']
 OwnerRole = Literal['data_manager', 'tech_director', 'admin', 'compliance_officer']

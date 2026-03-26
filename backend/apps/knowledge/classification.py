@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 数据分类分级注册表 — Wave 5 后端治理引擎
 
@@ -11,10 +12,9 @@
   pseudonymized         : 是否已完成假名化处理（GCP+PI 冲突表必须为 True 后才可上线）
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, Union
+from typing import Optional, Literal, Union
 
 
 SecurityLevel = Literal['SEC-1', 'SEC-2', 'SEC-3', 'SEC-4']
