@@ -12,7 +12,6 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
-from django.db.models import Count, Q
 from ninja import Router, Schema
 from ninja.security import HttpBearer
 
@@ -239,7 +238,6 @@ def _get_pending_insights() -> list:
     try:
         from apps.secretary.models import ProactiveInsight
         from django.utils import timezone
-        from datetime import timedelta
 
         qs = ProactiveInsight.objects.filter(
             trigger_source__startswith='GapReporter',
@@ -320,7 +318,7 @@ def _build_recommended_actions(kpis: dict, pending_insights: list) -> list:
             actions.append({
                 'priority': 2,
                 'action': f'处理 {len(old_insights)} 条超 3 天的待处理数据洞察',
-                'command': f'访问 ProactiveInsight 管理界面或运行 gh issue list --label data-insight',
+                'command': '访问 ProactiveInsight 管理界面或运行 gh issue list --label data-insight',
                 'reason': f'{old_insights[0]["title"][:50]}... 等待决策',
             })
 

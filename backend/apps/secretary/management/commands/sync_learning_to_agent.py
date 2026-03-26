@@ -92,7 +92,7 @@ class Command(BaseCommand):
         days_back = options['days_back']
         cutoff = timezone.now() - timedelta(days=days_back)
 
-        self.stdout.write(f'=== 学习循环 → 智能体策略同步（C5 Track）===')
+        self.stdout.write('=== 学习循环 → 智能体策略同步（C5 Track）===')
         self.stdout.write(f'回溯：最近 {days_back} 天 | DRY-RUN：{"是" if dry_run else "否"}')
         self.stdout.write('')
 
@@ -202,7 +202,7 @@ class Command(BaseCommand):
 
         # ── 汇报 ─────────────────────────────────────────────────────────
         self.stdout.write('')
-        self.stdout.write(f'=== 结果 ===')
+        self.stdout.write('=== 结果 ===')
         self.stdout.write(f'创建 WorkerPolicyUpdate：{created_count} 条')
         self.stdout.write(f'跳过（已存在/不匹配）：{skipped_count} 条')
         self.stdout.write('')

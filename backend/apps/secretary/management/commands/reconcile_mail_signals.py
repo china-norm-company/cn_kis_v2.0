@@ -99,7 +99,7 @@ class Command(BaseCommand):
         confidence_threshold = options['confidence_threshold']
         min_confidence_for_publish = options['min_confidence_for_publish']
 
-        from apps.secretary.models import MailSignalEvent, MailSignalType, MailSignalStatus
+        from apps.secretary.models import MailSignalEvent, MailSignalType
 
         # ── 前置统计 ──────────────────────────────────────────────────────
         total_all = MailSignalEvent.objects.count()
@@ -108,7 +108,7 @@ class Command(BaseCommand):
         ).count()
         unknown_pct_before = (total_unknown / total_all * 100) if total_all > 0 else 0
 
-        self.stdout.write(f'=== MailSignalEvent 重分类（A2 Track）===')
+        self.stdout.write('=== MailSignalEvent 重分类（A2 Track）===')
         self.stdout.write(f'总记录数：{total_all:,} 条')
         self.stdout.write(f'UNKNOWN 数：{total_unknown:,} 条（{unknown_pct_before:.1f}%）')
         self.stdout.write(f'本次处理上限：{limit:,} 条')
@@ -312,7 +312,7 @@ class Command(BaseCommand):
     def _save_batch(self, batch_results: list, confidence_threshold: float,
                     min_confidence_for_publish: float):
         """批量保存重分类结果。"""
-        from apps.secretary.models import MailSignalEvent, MailSignalType, MailSignalStatus
+        from apps.secretary.models import MailSignalEvent, MailSignalStatus
 
         with transaction.atomic():
             for event, result in batch_results:
@@ -361,7 +361,7 @@ class Command(BaseCommand):
         # 规律发现
         report.add_pattern(
             'distribution', '邮件业务类型分布',
-            f'重分类后邮件类型分布：' + '、'.join(
+            '重分类后邮件类型分布：' + '、'.join(
                 f'{t}({cnt:,}条)' for t, cnt in sorted(
                     type_distribution.items(), key=lambda x: -x[1]
                 )

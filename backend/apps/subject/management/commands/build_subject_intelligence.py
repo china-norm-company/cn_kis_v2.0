@@ -20,10 +20,9 @@ A3 Gate 验收目标：
 """
 from __future__ import annotations
 
-import json
 import logging
 from collections import Counter, defaultdict
-from datetime import date, datetime
+from datetime import date
 
 from django.core.management.base import BaseCommand
 from django.db import connection, transaction
@@ -225,7 +224,6 @@ class Command(BaseCommand):
         """
         按价值分层标准对每名受试者分级，将结果写入 KnowledgeEntry 和受试者元数据字段。
         """
-        from apps.knowledge.models import KnowledgeEntry, KnowledgeEntity
 
         tier_counts = {'platinum': 0, 'gold': 0, 'silver': 0, 'bronze': 0, 'none': 0}
         entries_to_create = []
@@ -467,15 +465,15 @@ class Command(BaseCommand):
                 f'## 地域分布（Top 10 省份）\n'
                 + '\n'.join(f'- {p}: {c:,} 名（{c/total:.1%}）'
                             for p, c in province_counter.most_common(10))
-                + f'\n\n## 肤质分布\n'
+                + '\n\n## 肤质分布\n'
                 + '\n'.join(f'- {s}: {c:,} 名（{c/total:.1%}）'
                             for s, c in skin_counter.most_common())
-                + f'\n\n## 年龄分布\n'
+                + '\n\n## 年龄分布\n'
                 + '\n'.join(f'- {g}: {c:,} 名（{c/total:.1%}）'
                             for g, c in sorted(age_group_counter.items()))
                 + '\n\n## 应用说明\n'
-                f'此数据可用于招募推荐：根据项目的目标皮肤类型、年龄段、地域要求，'
-                f'智能体可快速筛选并匹配最合适的候选受试者。\n'
+                '此数据可用于招募推荐：根据项目的目标皮肤类型、年龄段、地域要求，'
+                '智能体可快速筛选并匹配最合适的候选受试者。\n'
             )
 
             result = run_pipeline(RawKnowledgeInput(
@@ -531,8 +529,8 @@ class Command(BaseCommand):
 
         report.add_agent_opportunity(
             scenario='招募推荐自动化（匹配受试者与新项目）',
-            current_pain=f'项目启动招募时，需要人工逐一查阅历史参与记录筛选适合受试者，'
-                        f'耗时数小时',
+            current_pain='项目启动招募时，需要人工逐一查阅历史参与记录筛选适合受试者，'
+                        '耗时数小时',
             agent_value=f'基于 {stats["participation_relations"]:,} 条参与关系图谱 + 肤质/年龄/地域画像，'
                        f'智能体可在 5 秒内推荐 Top 20 候选受试者，并标注历史参与项目',
             data_evidence=f'{stats["tier_platinum"] + stats["tier_gold"]:,} 名铂金/黄金受试者（高价值候选池）',
