@@ -36,7 +36,7 @@ _CONSENT_SCHEME_EXPIRE_SECONDS = 86400  # 1 天
 # 落地后由小程序首页根据 query 再 redirectTo 至下方分包知情页（见 apps/wechat-mini/src/pages/index/index.tsx）。
 CONSENT_TEST_SCAN_SCHEME_ENTRY_PATH = 'pages/index/index'
 # 最终业务页（供兜底页说明；勿用于 generatescheme 的 path 字段）
-CONSENT_TEST_SCAN_MINIPROGRAM_PATH = 'subpackages/pkg/pages/consent/index'
+CONSENT_TEST_SCAN_MINIPROGRAM_PATH = 'pages/consent/index'
 
 
 def _scheme_env_version() -> str:
