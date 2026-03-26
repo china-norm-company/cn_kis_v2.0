@@ -4,9 +4,7 @@
 包含：时序数据 CRUD、时间线聚合查询、RWE 数据脱敏导出。
 """
 import logging
-from typing import Optional
 from datetime import datetime, timedelta
-from itertools import chain
 from django.utils import timezone
 
 from ..models_timeseries import (

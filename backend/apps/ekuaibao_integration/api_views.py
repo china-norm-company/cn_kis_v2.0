@@ -121,7 +121,7 @@ def view_by_project(
         if proto_codes:
             with connection.cursor() as cursor:
                 cursor.execute("""
-                    SELECT 
+                    SELECT
                         pc,
                         COUNT(*) as total,
                         COUNT(*) FILTER (WHERE signal_types ? 'quote') as quotes,
@@ -492,7 +492,7 @@ def view_financial_signals(
     """
     从飞书邮件/IM/审批/文档中抽取的财务信号汇总。
     用于：报价历史、合同跟踪、发票催收、礼金核算、预算分析。
-    
+
     signal_type: quote / contract / invoice / payment / stipend / budget / purchase_order
     """
     from django.db import connection
@@ -512,7 +512,7 @@ def view_financial_signals(
             where_sql = ' AND '.join(where_clauses)
 
             cursor.execute(f"""
-                SELECT 
+                SELECT
                     pc as project_code,
                     COUNT(*) as total_mentions,
                     COUNT(*) FILTER (WHERE signal_types ? 'quote') as quotes,
@@ -585,7 +585,7 @@ def view_stipend_summary(request: HttpRequest, project_code: Optional[str] = Non
                 params.append(project_code)
 
             cursor.execute(f"""
-                SELECT 
+                SELECT
                     pc,
                     COUNT(*) as stipend_mentions,
                     array_agg(DISTINCT source_type) as sources,
@@ -639,7 +639,7 @@ def view_cost_structure(request: HttpRequest, project_code: Optional[str] = None
                 params.append(project_code)
 
             cursor.execute(f"""
-                SELECT 
+                SELECT
                     ci as cost_item,
                     COUNT(DISTINCT pc) as project_count,
                     COUNT(*) as total_mentions,

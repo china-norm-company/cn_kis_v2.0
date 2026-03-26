@@ -296,7 +296,6 @@ class IngestService:
         执行接入操作。返回 {'success': bool, 'message': str, 'record_id': int|None}
         """
         from .models import ExternalDataIngestCandidate, ReviewStatus
-        from django.utils import timezone as dj_tz
 
         try:
             candidate = ExternalDataIngestCandidate.objects.get(id=candidate_id)

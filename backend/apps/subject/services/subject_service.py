@@ -10,7 +10,7 @@ from typing import Optional
 from django.db.models import QuerySet
 from django.utils import timezone
 
-from ..models import Subject, SubjectStatus, SubjectRiskLevel
+from ..models import Subject, SubjectRiskLevel
 
 logger = logging.getLogger(__name__)
 

@@ -32,7 +32,7 @@ import re
 from pathlib import Path
 from typing import Literal
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 
 LayerKey = Literal['L2', 'L3', 'L4', 'L5', 'L6']
 
@@ -286,6 +286,6 @@ class Command(BaseCommand):
 
         if not dry_run and total_stats['created'] > 0:
             self.stdout.write(self.style.WARNING(
-                f'\n下一步：批量向量化\n'
-                f'  python manage.py vectorize_bulk --source-type=data_collection_import'
+                '\n下一步：批量向量化\n'
+                '  python manage.py vectorize_bulk --source-type=data_collection_import'
             ))

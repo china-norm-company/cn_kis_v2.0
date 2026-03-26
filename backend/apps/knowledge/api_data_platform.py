@@ -1,4 +1,3 @@
-from typing import Optional
 """
 洞明·数据台 API
 
@@ -90,7 +89,7 @@ def governance_overview(request):
     - 知识向量化进度
     - 写保护状态
     """
-    from apps.knowledge.domain_registry import DomainRegistry, DOMAIN_REGISTRY
+    from apps.knowledge.domain_registry import DomainRegistry
     from apps.knowledge.classification import ClassificationRegistry
 
     result = {
@@ -135,7 +134,6 @@ def governance_overview(request):
     # 外部接入候选汇总
     try:
         from apps.data_intake.models import ExternalDataIngestCandidate, ReviewStatus
-        from django.db.models import Count
         result['intake_summary'] = {
             'total': ExternalDataIngestCandidate.objects.count(),
             'pending': ExternalDataIngestCandidate.objects.filter(
@@ -358,7 +356,6 @@ def ingest_overview(request):
             .values_list('source_type', 'cnt')
         )
         # 去重统计：content_hash 相同的多条记录视为重复
-        from django.db.models import Max
         total_hashes = PersonalContext.objects.exclude(content_hash='').values('content_hash').distinct().count()
         has_hash = PersonalContext.objects.exclude(content_hash='').count()
         duplicates = has_hash - total_hashes if has_hash > total_hashes else 0
@@ -805,7 +802,7 @@ def classification_registry(request):
     每条记录包含：security_level / criticality / regulatory_categories /
     freshness_sla / retention_years / data_owner_role / pseudonymized
     """
-    from apps.knowledge.classification import ClassificationRegistry, DATA_CLASSIFICATION_REGISTRY
+    from apps.knowledge.classification import DATA_CLASSIFICATION_REGISTRY
 
     data = {}
     for table_name, dc in DATA_CLASSIFICATION_REGISTRY.items():
@@ -1020,7 +1017,7 @@ def knowledge_graph_edges(
     边格式（ReactFlow 兼容）：
       {id, source, target, label, data: {relation_type, confidence}}
     """
-    from apps.knowledge.models import KnowledgeRelation, KnowledgeEntity
+    from apps.knowledge.models import KnowledgeRelation
     from django.db.models import Q
 
     limit = min(limit, 1000)
@@ -1121,7 +1118,7 @@ def catalog_schema(request):
         't_staff_qualification': 'hr.HrStaffCertificate',  # 最近资质表（t_hr_staff_certificate）
     }
 
-    def _field_info(field) -> Optional[dict]:
+    def _field_info(field) -> dict | None:
         try:
             return {
                 'name': field.name,
@@ -1133,7 +1130,7 @@ def catalog_schema(request):
         except Exception:
             return None
 
-    def _row_count(table_name: str) -> Optional[int]:
+    def _row_count(table_name: str) -> int | None:
         try:
             with connection.cursor() as cursor:
                 cursor.execute(f'SELECT COUNT(*) FROM {table_name}')
@@ -1186,7 +1183,6 @@ def pipelines_schedule(request):
     从 celery_config.beat_schedule 中读取（无需连接 Celery，纯配置读取）。
     """
     from config import celery_config as cc
-    import re
 
     beat_schedule = getattr(cc, 'beat_schedule', {})
 
@@ -1224,7 +1220,7 @@ def pipelines_schedule(request):
             return str(schedule)
 
     # 尝试读取最近一次审计日志来推断上次执行（部分任务会写日志）
-    def _last_run_hint(task_name: str) -> Optional[str]:
+    def _last_run_hint(task_name: str) -> str | None:
         try:
             from apps.audit.models import AuditLog
             hint = AuditLog.objects.filter(
@@ -1312,7 +1308,6 @@ def storage_stats(request):
 
     # Redis
     try:
-        import django.core.cache as cache_module
         from django.conf import settings
         import redis as redis_lib
 
@@ -1674,7 +1669,7 @@ def conflicts_summary(request):
 
     # LIMS 冲突
     try:
-        from apps.lims_integration.models import LimsConflict, ConflictResolution
+        from apps.lims_integration.models import LimsConflict
         from django.db.models import Count
         lims_total = LimsConflict.objects.count()
         lims_pending = LimsConflict.objects.filter(resolution='pending').count()
@@ -2010,7 +2005,7 @@ def governance_gaps(request):
     - backup_gap: 备份超时（> 26h）的存储
     - vectorization_gap: 入库后长期未向量化的知识条目
     """
-    from apps.knowledge.classification import ClassificationRegistry, DATA_CLASSIFICATION_REGISTRY
+    from apps.knowledge.classification import ClassificationRegistry
 
     gaps = []
 
@@ -2200,7 +2195,7 @@ def create_pseudonymize_plan(request):
     if not table_name:
         return {'code': 400, 'msg': '缺少 table_name 参数', 'data': None}
 
-    from apps.knowledge.classification import DATA_CLASSIFICATION_REGISTRY, ClassificationRegistry
+    from apps.knowledge.classification import DATA_CLASSIFICATION_REGISTRY
     if table_name not in DATA_CLASSIFICATION_REGISTRY:
         return {'code': 404, 'msg': f'表 {table_name} 不在分类注册表中', 'data': None}
 
@@ -2303,7 +2298,6 @@ def knowledge_transformation(request):
         }
 
         # 质量分分布（分四段）
-        from django.db.models import Q
         result['quality_distribution'] = {
             'excellent': KnowledgeEntry.objects.filter(quality_score__gte=0.8).count(),
             'good': KnowledgeEntry.objects.filter(quality_score__gte=0.6, quality_score__lt=0.8).count(),

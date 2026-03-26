@@ -1,5 +1,5 @@
 """物料导出、审计日志、电子签名 API"""
-from ninja import Router, Schema, Query
+from ninja import Router, Schema
 from typing import Optional
 
 from apps.sample.services.export_service import export_service

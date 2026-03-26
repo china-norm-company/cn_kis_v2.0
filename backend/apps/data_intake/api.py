@@ -11,12 +11,11 @@
 """
 import json
 import logging
-from typing import Optional
 
 from ninja import Router
 from django.utils import timezone as dj_tz
 
-from apps.identity.decorators import require_any_permission, require_permission
+from apps.identity.decorators import require_any_permission
 from .models import ExternalDataIngestCandidate, ReviewStatus, RejectReason
 
 router = Router()

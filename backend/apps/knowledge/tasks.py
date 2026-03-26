@@ -281,7 +281,6 @@ def _store_embedding(entry_id: int, embedding: list, entry) -> str:
     2. 再写 Qdrant（主 ANN 召回层）
     3. 任一成功即可视为索引成功；两边都成功时返回主读后端 Qdrant
     """
-    import os
     preferred_backend = os.getenv('KNOWLEDGE_VECTOR_BACKEND', 'qdrant').strip().lower()
     write_qdrant = os.getenv('KNOWLEDGE_VECTOR_WRITE_QDRANT', 'true').strip().lower() in (
         '1', 'true', 'yes', 'on'
@@ -524,7 +523,7 @@ def knowledge_expiry_check():
     并通知对应 owner。
     """
     run = _knowledge_task_started('knowledge_expiry_check')
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timezone
     from .models import KnowledgeEntry
     from .quality_scorer import FRESHNESS_THRESHOLDS, DEFAULT_FRESHNESS_THRESHOLD_DAYS
 

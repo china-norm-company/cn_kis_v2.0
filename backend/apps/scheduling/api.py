@@ -31,7 +31,6 @@ _LAB_SCHEDULE_READ_PERMS = [
     'visit.plan.read',
 ]
 
-from . import services as sched_services
 
 logger = logging.getLogger(__name__)
 
@@ -358,7 +357,6 @@ def cross_project_overview(request):
     CRC主管/排程专员可查看所有项目的排程状态、完成率、冲突数
     """
     from .models import SchedulePlan, ScheduleSlot
-    from django.db.models import Count, Q
 
     plans = SchedulePlan.objects.filter(
         status__in=['draft', 'published'],

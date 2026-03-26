@@ -446,7 +446,6 @@ def resource_status_overview(request):
     """
     from django.utils import timezone
     from datetime import timedelta
-    from django.db.models import Count
 
     today = timezone.now().date()
     result = {}

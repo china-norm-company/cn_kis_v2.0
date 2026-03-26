@@ -1,0 +1,38 @@
+[
+  {
+    "id": "13aed3bc-a216-4acc-ab96-ce14aa2ee349",
+    "module_id": "005",
+    "saved_as": "smoke_test_log.txt",
+    "document_filename": "smoke_test.pdf",
+    "created_at": "2026-03-15T16:31:11Z",
+    "user_id": null,
+    "username": ""
+  },
+  {
+    "id": "10addb7c-d8ef-4b39-bb80-fb05608b8fac",
+    "module_id": "005",
+    "saved_as": "quick_test.txt",
+    "document_filename": "quick.pdf",
+    "created_at": "2026-03-15T16:27:13Z",
+    "user_id": null,
+    "username": ""
+  },
+  {
+    "id": "39bc8cf4-2c56-41f1-ae5c-82a8caa2e85e",
+    "module_id": "005",
+    "saved_as": "protocol_qc_2026-03-151603_005.txt",
+    "document_filename": "3-研究方案_V1.0_ 1款精华产品4周抗皱及改善肤质功效研究_C26005025_20260309.pdf",
+    "created_at": "2026-03-15T16:03:44Z",
+    "user_id": null,
+    "username": ""
+  },
+  {
+    "id": "f2d43486-f9d4-416c-b677-c6cf5e15e64f",
+    "module_id": "047",
+    "saved_as": "protocol_qc_2026-03-151518_047.txt",
+    "document_filename": "25-0266_M25047024_Final Protocol_20250916_V1.0 fully signed.docx.pdf",
+    "created_at": "2026-03-15T15:18:29Z",
+    "user_id": null,
+    "username": ""
+  }
+]

@@ -115,7 +115,6 @@ def _collect_user_metrics() -> dict:
         week_ago = now_utc - timedelta(days=7)
 
         # 北京时间昨日 0点-23:59
-        from datetime import datetime as _dt
         now_beijing = now_utc.astimezone(tz_beijing)
         yesterday_beijing_start = (now_beijing - timedelta(days=1)).replace(
             hour=0, minute=0, second=0, microsecond=0)
@@ -1026,7 +1025,7 @@ def _build_morning_card(m: dict, insight: str) -> dict:
                 f'工单：**{l2_bd.get("workorders", 0)}** 条  ·  '
                 f'偏差：**{l2_bd.get("deviations", 0)}** 条\n'
                 + ('⚠️ 全部为零 → 系统尚未进入真实业务使用，今日须创建首条记录' if l2_total == 0 else
-                   f'✅ 业务已在V2发生，继续扩大工作台覆盖')
+                   '✅ 业务已在V2发生，继续扩大工作台覆盖')
             )},
         },
         {'tag': 'hr'},
@@ -1035,7 +1034,7 @@ def _build_morning_card(m: dict, insight: str) -> dict:
         {
             'tag': 'div',
             'text': {'tag': 'lark_md', 'content': (
-                f'**📋 核心7台上线状态**（分配账号 · 7天活跃）\n'
+                '**📋 核心7台上线状态**（分配账号 · 7天活跃）\n'
                 + '\n'.join(core_ws_lines)
             )},
         },

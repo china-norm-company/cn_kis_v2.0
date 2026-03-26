@@ -1,58 +1,54 @@
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { ErrorBoundary, HealthPage, OfflineBanner } from '@cn-kis/ui-kit'
-import { useNetworkStatus } from '@cn-kis/feishu-sdk'
-import { AppLayout } from './layouts/AppLayout'
-import PlaceholderPage from './pages/PlaceholderPage'
-import RosterPage from './pages/RosterPage'
-import SkillsPage from './pages/SkillsPage'
-import WorkflowsPage from './pages/WorkflowsPage'
-import ExecutionsPage from './pages/ExecutionsPage'
-import PerformancePage from './pages/PerformancePage'
-import GrowthPage from './pages/GrowthPage'
-import BehaviorPage from './pages/BehaviorPage'
-import KnowledgeInfusionPage from './pages/KnowledgeInfusionPage'
-import EvidenceGatePage from './pages/EvidenceGatePage'
-import ValueDashboardPage from './pages/ValueDashboardPage'
-import ChangeAuditPage from './pages/ChangeAuditPage'
-import EvergreenWatchPage from './pages/EvergreenWatchPage'
-import ChannelHealthPage from './pages/ChannelHealthPage'
-import { PortalPage } from './pages/PortalPage'
-import OpsOverviewPage from './pages/OpsOverviewPage'
-import ActionsCenterPage from './pages/ActionsCenterPage'
-import ReplayCenterPage from './pages/ReplayCenterPage'
-import ReplayDetailPage from './pages/ReplayDetailPage'
-import PolicyCenterPage from './pages/PolicyCenterPage'
-import DailyBriefPage from './pages/DailyBriefPage'
-import MyAssistantsPage from './pages/MyAssistantsPage'
-import MyActivityPage from './pages/MyActivityPage'
-import MemoryArchivePage from './pages/MemoryArchivePage'
-import PolicyLearningPage from './pages/PolicyLearningPage'
-import OrchestrationMonitorPage from './pages/OrchestrationMonitorPage'
-import AgentDirectoryPage from './pages/AgentDirectoryPage'
-import SkillRegistryPage from './pages/SkillRegistryPage'
-import MatrixPage from './pages/MatrixPage'
-import PositionsPage from './pages/PositionsPage'
-import RoleDetailPage from './pages/RoleDetailPage'
-import ToolsPage from './pages/ToolsPage'
-import OrgChartPage from './pages/OrgChartPage'
-import KnowledgeReviewPage from './pages/KnowledgeReviewPage'
-import EvergreenWatchDetailPage from './pages/EvergreenWatchDetailPage'
-import { DevTokenInjectPage } from './pages/DevTokenInjectPage'
-import { MailSignalListPage } from './pages/MailSignalListPage'
-import { MailSignalDetailPage } from './pages/MailSignalDetailPage'
-import { MailTaskDraftPage } from './pages/MailTaskDraftPage'
-import ChatPage from './pages/ChatPage'
-import { AnalyticsPage } from './pages/AnalyticsPage'
-import { ProactiveInsightListPage } from './pages/ProactiveInsightListPage'
-import { ProactiveInsightDetailPage } from './pages/ProactiveInsightDetailPage'
-import { ProactiveAnalyticsPage } from './pages/ProactiveAnalyticsPage'
+import { ErrorBoundary, HealthPage } from '@cn-kis/ui-kit'
+import { AppLayout } from '@/layouts/AppLayout'
+import PlaceholderPage from '@/pages/PlaceholderPage'
+import RosterPage from '@/pages/RosterPage'
+import SkillsPage from '@/pages/SkillsPage'
+import WorkflowsPage from '@/pages/WorkflowsPage'
+import ExecutionsPage from '@/pages/ExecutionsPage'
+import PerformancePage from '@/pages/PerformancePage'
+import GrowthPage from '@/pages/GrowthPage'
+import BehaviorPage from '@/pages/BehaviorPage'
+import KnowledgeInfusionPage from '@/pages/KnowledgeInfusionPage'
+import EvidenceGatePage from '@/pages/EvidenceGatePage'
+import ValueDashboardPage from '@/pages/ValueDashboardPage'
+import ChangeAuditPage from '@/pages/ChangeAuditPage'
+import EvergreenWatchPage from '@/pages/EvergreenWatchPage'
+import ChannelHealthPage from '@/pages/ChannelHealthPage'
+import OpsOverviewPage from '@/pages/OpsOverviewPage'
+import ActionsCenterPage from '@/pages/ActionsCenterPage'
+import ReplayCenterPage from '@/pages/ReplayCenterPage'
+import ReplayDetailPage from '@/pages/ReplayDetailPage'
+import PolicyCenterPage from '@/pages/PolicyCenterPage'
+import DailyBriefPage from '@/pages/DailyBriefPage'
+import MyAssistantsPage from '@/pages/MyAssistantsPage'
+import MyActivityPage from '@/pages/MyActivityPage'
+import MemoryArchivePage from '@/pages/MemoryArchivePage'
+import PolicyLearningPage from '@/pages/PolicyLearningPage'
+import OrchestrationMonitorPage from '@/pages/OrchestrationMonitorPage'
+import AgentDirectoryPage from '@/pages/AgentDirectoryPage'
+import SkillRegistryPage from '@/pages/SkillRegistryPage'
+import MatrixPage from '@/pages/MatrixPage'
+import PositionsPage from '@/pages/PositionsPage'
+import RoleDetailPage from '@/pages/RoleDetailPage'
+import ToolsPage from '@/pages/ToolsPage'
+import OrgChartPage from '@/pages/OrgChartPage'
+import KnowledgeReviewPage from '@/pages/KnowledgeReviewPage'
+import EvergreenWatchDetailPage from '@/pages/EvergreenWatchDetailPage'
+import ChatPage from '@/pages/ChatPage'
+import { DevTokenInjectPage } from '@/pages/DevTokenInjectPage'
+import { PortalPage } from '@/pages/PortalPage'
+import { MailSignalListPage } from '@/pages/MailSignalListPage'
+import { MailSignalDetailPage } from '@/pages/MailSignalDetailPage'
+import { MailTaskDraftPage } from '@/pages/MailTaskDraftPage'
+import { AnalyticsPage } from '@/pages/AnalyticsPage'
+import { ProactiveInsightListPage } from '@/pages/ProactiveInsightListPage'
+import { ProactiveInsightDetailPage } from '@/pages/ProactiveInsightDetailPage'
+import { ProactiveAnalyticsPage } from '@/pages/ProactiveAnalyticsPage'
 
 export default function App() {
-  const { offline } = useNetworkStatus()
-
   return (
     <ErrorBoundary workstation="digital-workforce">
-      <OfflineBanner visible={offline} />
       <HashRouter>
         <Routes>
           <Route path="/health" element={<HealthPage workstation="digital-workforce" />} />
@@ -74,7 +70,7 @@ export default function App() {
             <Route path="mail-signals" element={<MailSignalListPage />} />
             <Route path="mail-signals/:signalId" element={<MailSignalDetailPage />} />
             <Route path="mail-tasks" element={<MailTaskDraftPage />} />
-            {/* 对话与分析（与 origin/main 合并） */}
+            {/* 对话与洞察 */}
             <Route path="chat" element={<ChatPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="proactive-insights" element={<ProactiveInsightListPage />} />
@@ -108,7 +104,7 @@ export default function App() {
             <Route path="growth" element={<GrowthPage />} />
             {/* 治理与合规 */}
             <Route path="audit" element={<ChangeAuditPage />} />
-            <Route path="health" element={<ChannelHealthPage />} />
+            <Route path="channel-health" element={<ChannelHealthPage />} />
             <Route path="gates" element={<EvidenceGatePage />} />
             <Route path="upgrades" element={<EvergreenWatchPage />} />
             <Route path="upgrades/:reportId" element={<EvergreenWatchDetailPage />} />

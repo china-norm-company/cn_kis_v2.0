@@ -11,7 +11,6 @@
 """
 import os
 import logging
-from typing import Optional
 
 import httpx
 from django.conf import settings

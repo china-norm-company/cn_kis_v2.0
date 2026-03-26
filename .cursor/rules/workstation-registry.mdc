@@ -1,0 +1,74 @@
+---
+description: 工作台注册表强制规范——禁止硬编码工作台列表，必须从唯一真相源读取
+alwaysApply: true
+---
+
+# 工作台注册表规范（强制）
+
+## 唯一真相源
+
+**所有工作台信息必须来自：`backend/configs/workstations.yaml`**
+
+```
+当前：19 个工作台
+  业务工作台（15）：secretary finance research execution quality hr crm
+                    recruitment equipment material facility evaluator lab-personnel ethics reception
+  平台工作台（4）：control-plane admin digital-workforce data-platform
+```
+
+## AI 强制行为
+
+### 每次涉及工作台数量/列表时，AI 必须：
+
+```
+Step 1: 先读 backend/configs/workstations.yaml（Read 工具）
+Step 2: 从 yaml 中提取 key 列表和数量
+Step 3: 使用读取到的实际数据，不使用记忆/推断
+```
+
+**禁止基于以下来源判断工作台数量：**
+- ❌ 训练数据或上下文记忆（"我记得是 18 个"）
+- ❌ 用户之前某次消息里提到的数字
+- ❌ 其他文档里的数字（文档可能已过时）
+- ❌ 目录列表（workstations/ 目录含非工作台目录：mobile-rn、wechat-mini、perf-master、governance）
+
+## 已废弃标识（绝对禁止使用）
+
+| 废弃标识 | 原因 | 正确替代 |
+|---------|------|---------|
+| `governance` | 旧名，已重命名为 admin | `admin`（鹿鸣·治理台） |
+| `iam` | 枢衡·权控台已合并入鹿鸣·治理台 | `admin` |
+
+**遇到这两个词作为工作台标识时，必须纠正，不得沿用。**
+
+## 修改工作台信息的规范
+
+当需要新增/修改/删除工作台时：
+1. **只改** `backend/configs/workstations.yaml`
+2. 同步修改 nginx 配置（`/etc/nginx/sites-enabled/cn-kis-v2`）
+3. 同步修改 `backend/apps/identity/api.py` 的 `VALID_WORKSTATION_KEYS`
+4. 同步修改 `backend/apps/identity/management/commands/seed_roles.py` 的超级管理员列表
+5. 运行验收测试：`python ops/scripts/workstation_consistency_check.py`
+
+## 历史变更记录（不得删除）
+
+| 时间 | 变更 | 旧值 | 新值 |
+|------|------|------|------|
+| 2026-03 | governance 重命名 | governance（治理台） | admin（鹿鸣·治理台） |
+| 2026-03 | iam 合并入 admin | iam（枢衡·权控台，独立） | admin（已吸收枢衡功能） |
+| 2026-03 | data-platform 补录 | 缺失 | data-platform（洞明·数据台，第19个） |
+
+## 文档/规则中提到工作台数量时的标准写法
+
+✅ 正确：「19 个工作台」「全部 19 个工作台」
+❌ 错误：「18 个工作台」「20 个工作台」「17 个工作台」
+
+## 违规的严重后果
+
+历史上因工作台标识/数量错误导致的问题：
+- nginx 路由缺失 data-platform，用户无法访问数据台
+- seed_roles 超级管理员缺少 data-platform 权限，管理员登录后看不到数据台
+- 分支命名规范引用废弃的 governance，导致 AI 在已废弃路径下创建分支
+- OAuth 白名单缺少 data-platform，导致数据台无法登录
+
+每次出错都需要人工排查和修复，影响已上线用户。

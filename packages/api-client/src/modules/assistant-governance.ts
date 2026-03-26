@@ -45,6 +45,57 @@ export interface ManagerOverviewResponse {
   governance_presets?: unknown[]
   governance_trends?: unknown[]
   alerts?: unknown[]
+  projects?: Array<{ status?: string; [k: string]: unknown }>
+  summary?: {
+    total_projects?: number
+    active_projects?: number
+    completion_rate?: number
+    [k: string]: unknown
+  }
+  route_governance_preset_coverage?: {
+    total_accounts?: number
+    enabled_accounts?: number
+    coverage_rate?: number
+    approval_modes?: { graded?: number; direct?: number }
+    [k: string]: unknown
+  }
+  route_governance_preset_trend?: {
+    applied_7d?: number
+    applied_30d?: number
+    applied_window?: number
+    window_days?: number
+    daily_window?: Array<{ date: string; applied: number }>
+    [k: string]: unknown
+  }
+  route_governance_preset_alert?: {
+    enabled?: boolean
+    level?: string
+    message?: string
+    thresholds?: { coverage_rate_min?: number; applied_7d_min?: number }
+    [k: string]: unknown
+  }
+  route_governance_threshold_change_timeline?: {
+    total?: number
+    window_days?: number
+    items?: Array<{
+      operator_name?: string
+      operator_id?: string | number
+      changed_fields?: string[]
+      change_time?: string
+      at?: string
+      description?: string
+      old_value?: Record<string, unknown>
+      new_value?: Record<string, unknown>
+      diff_summary?: string
+      [k: string]: unknown
+    }>
+  }
+  route_governance_threshold_change_summary?: {
+    total_changes?: number
+    operators_count?: number
+    top_changed_fields?: Array<{ field: string; count: number }>
+    [k: string]: unknown
+  }
 }
 
 export interface AssistantMetricsResponse {

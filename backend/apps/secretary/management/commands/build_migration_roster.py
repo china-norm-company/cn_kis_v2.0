@@ -218,7 +218,6 @@ class Command(BaseCommand):
     def _load_token_map(self):
         """从 FeishuUserToken 表加载所有有效或可刷新的 token。"""
         from apps.secretary.models import FeishuUserToken
-        from django.utils import timezone
 
         now = timezone.now()
         tokens = FeishuUserToken.objects.filter(

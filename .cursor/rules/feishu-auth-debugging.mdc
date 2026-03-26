@@ -25,7 +25,7 @@ alwaysApply: true
 
 ## 子衿主授权架构
 
-- 子衿 App ID（全工作台统一）: `cli_a907f21f0723dbce`
-- 所有 18 个工作台统一使用子衿 OAuth
+- 子衿 App ID: `cli_a98b0babd020500e`
+- 所有 **19 个工作台**统一使用子衿 OAuth
 - 前端 JS bundle 中硬编码的 app_id 必须是子衿
 - 后端 force_primary=True 强制所有 callback 用子衿凭证换 token

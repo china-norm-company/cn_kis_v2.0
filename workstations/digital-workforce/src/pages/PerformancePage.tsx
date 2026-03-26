@@ -151,7 +151,7 @@ export default function PerformancePage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {(roleKpiStats ?? []).map((item) => {
               const kpiLabels: Record<string, string> = {}
-              ;((item.kpis.kpi_labels as string[]) ?? []).forEach((label) => {
+              ;(((item.kpis.kpi_labels as unknown) as string[]) ?? []).forEach((label) => {
                 const [key, desc] = label.split('=')
                 if (key && desc) kpiLabels[key] = desc
               })

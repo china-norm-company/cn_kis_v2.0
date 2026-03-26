@@ -341,7 +341,7 @@ def link_entry_to_dw_packages(entry_id: int, role_codes: List[str], lifecycle_st
     将知识条目关联到对应数字员工专题包并更新 facet 覆盖计数。
     返回成功挂载的 package_id 列表。
     """
-    from apps.knowledge.models import KnowledgeEntry, TopicPackage
+    from apps.knowledge.models import KnowledgeEntry
 
     entry = KnowledgeEntry.objects.filter(id=entry_id, is_deleted=False).first()
     if not entry:

@@ -6,7 +6,6 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        # 0031_reception_board_project_sc 在部分分支未合入；线性依赖改为 0030
         ('subject', '0030_add_subject_pseudonym_and_global_registry'),
     ]
 

@@ -207,7 +207,6 @@ def generate_station_qrcode(request, data: StationGenerateIn):
     account = _get_account_from_request(request)
     from .models import QRCodeRecord, EntityType
     from .services import BASE_URL, _generate_hash
-    import hashlib
 
     entity_type = EntityType.STATION
     entity_id = data.station_id

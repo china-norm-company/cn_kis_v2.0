@@ -8,12 +8,11 @@ LIMS 双轨去重与对比报告生成器
 4. 双轨并行期数据一致性监控
 """
 import csv
-import json
 import logging
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from django.db import transaction
 from django.utils import timezone

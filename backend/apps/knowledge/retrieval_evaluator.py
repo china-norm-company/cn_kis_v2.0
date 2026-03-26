@@ -15,11 +15,10 @@
 - 每周评测报告
 - 检索参数调优
 """
-import json
 import logging
 import math
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger('cn_kis.knowledge.retrieval_evaluator')
 

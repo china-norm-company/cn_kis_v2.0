@@ -3,7 +3,6 @@
 """
 import logging
 from typing import Optional
-from django.utils import timezone
 
 from apps.ethics.models_regulation import Regulation
 

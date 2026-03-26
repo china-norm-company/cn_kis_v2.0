@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
-  Inbox, RefreshCw, Check, X, Edit3, ChevronDown, ChevronUp,
+  Inbox, RefreshCw, Check, X, Edit3,
   AlertTriangle, Zap, Clock, CheckCircle, XCircle, ArrowLeft,
   Database, FileText, Mail, MessageSquare,
 } from 'lucide-react'

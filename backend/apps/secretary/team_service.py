@@ -7,7 +7,7 @@ import logging
 from datetime import date, timedelta
 from typing import Dict, List, Any, Optional
 
-from django.db.models import Count, Q
+from django.db.models import Count
 
 logger = logging.getLogger(__name__)
 

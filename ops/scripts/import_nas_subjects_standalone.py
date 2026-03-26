@@ -207,9 +207,17 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help='预演：只打印，不写库')
     parser.add_argument('--report-only', action='store_true', help='只生成 Excel 报告，不写库')
     parser.add_argument('--db-password', type=str, default='', help='V2 数据库密码')
+    parser.add_argument('--db-host', type=str, default='', help='数据库主机（覆盖默认 PG_HOST）')
+    parser.add_argument('--db-port', type=int, default=0, help='数据库端口（覆盖默认 PG_PORT）')
+    parser.add_argument('--db-name', type=str, default='', help='数据库名（覆盖默认 PG_DB）')
+    parser.add_argument('--db-user', type=str, default='', help='数据库用户（覆盖默认 PG_USER）')
     parser.add_argument('--batch-size', type=int, default=50, help='每批提交条数（autocommit 模式无效）')
     args = parser.parse_args()
 
+    db_host = args.db_host or PG_HOST
+    db_port = args.db_port or PG_PORT
+    db_name = args.db_name or PG_DB
+    db_user = args.db_user or PG_USER
     db_pass = args.db_password or PG_PASS
     if not db_pass and not args.dry_run and not args.report_only:
         db_pass = input('输入 cn_kis_v2 数据库密码: ').strip()
@@ -312,14 +320,9 @@ def main():
     print('步骤 3: 与 V2 数据库匹配')
     print('=' * 68)
 
-    if args.dry_run or args.report_only:
-        conn = psycopg2.connect(host=PG_HOST, port=PG_PORT, dbname=PG_DB,
-                                user=PG_USER, password=db_pass,
-                                connect_timeout=10)
-    else:
-        conn = psycopg2.connect(host=PG_HOST, port=PG_PORT, dbname=PG_DB,
-                                user=PG_USER, password=db_pass,
-                                connect_timeout=10)
+    conn = psycopg2.connect(host=db_host, port=db_port, dbname=db_name,
+                            user=db_user, password=db_pass,
+                            connect_timeout=10)
     conn.autocommit = True
     cur = conn.cursor()
 
@@ -651,3 +654,26 @@ def _save_report(matched_list, unmatched_list, project_stats, dry_run=False):
 
 if __name__ == '__main__':
     main()
+    # ── 学习型集成（B2 Track）─────────────────────────────────────────────
+    try:
+        import sys as _sys, os as _os
+        _backend_dir = _os.path.join(_os.path.dirname(__file__), '..', '..', 'backend')
+        if _os.path.isdir(_backend_dir):
+            _sys.path.insert(0, _os.path.abspath(_backend_dir))
+        from apps.data_intake.learning_runner import LearningReport, GapReporter
+        _rpt = LearningReport(source_name='nas_subjects_standalone')
+        _rpt.add_pattern(
+            'distribution', 'NAS 受试者独立名单导入',
+            '受试者独立名单档案（含银行卡/身份信息脱敏处理）批量导入完成。'
+            '此来源的受试者拥有更完整的金融信息，是高质量数据集。',
+        )
+        _rpt.add_agent_opportunity(
+            scenario='受试者完整性评分',
+            current_pain='现有受试者档案字段完整率参差不齐，无法快速评估档案质量',
+            agent_value='基于关键字段（手机/身份证/肤质/省份）出现率，'
+                       '自动生成受试者档案完整性评分（0-100分）',
+            implementation_hint='在 build_subject_intelligence 中增加 completeness_score 计算',
+        )
+        GapReporter(dry_run=False).report(_rpt)
+    except Exception:
+        pass

@@ -21,14 +21,13 @@
 - AI洞察: /crm/clients/{id}/insight   (已有增强)
 """
 from ninja import Router, Schema, Query
-from typing import Optional, List
+from typing import Optional
 from datetime import date
 from decimal import Decimal
 
 from . import services
 from .models import (
     Client, Opportunity, Ticket,
-    ClientContact, ClientOrgMap,
     ClientProductLine, InnovationCalendar,
     ClientHealthScore, ClientAlert,
     ClientValueInsight, ClientBrief, ProjectValueTag,

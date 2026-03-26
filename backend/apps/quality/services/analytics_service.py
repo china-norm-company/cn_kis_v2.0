@@ -5,13 +5,11 @@
 """
 import logging
 from datetime import date, timedelta
-from collections import defaultdict
 from django.db.models import Count, Q, F
 from django.db.models.functions import TruncMonth
 
 from ..models import (
-    Deviation, DeviationStatus, DeviationSeverity,
-    CAPA, CAPAStatus, SOP, SOPStatus,
+    Deviation, DeviationStatus, CAPA, CAPAStatus, SOP, SOPStatus,
 )
 
 logger = logging.getLogger(__name__)

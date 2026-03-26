@@ -7,7 +7,7 @@ DataBus — Claw 统一数据总线
 import logging
 from abc import ABC, abstractmethod
 from datetime import date, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from django.db.models import Q
 
@@ -555,7 +555,7 @@ class HRAdapter(ModuleAdapter):
 
     def get_snapshot(self, filters=None) -> dict:
         try:
-            from apps.hr.services import list_staff, list_assessments, get_staff_stats
+            from apps.hr.services import get_staff_stats
             stats = get_staff_stats()
 
             from apps.hr.models import Staff

@@ -6,7 +6,7 @@
 """
 from ninja import Router, Schema, Query
 from typing import Optional, List
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 from apps.identity.decorators import require_permission, require_any_permission, _get_account_from_request
 

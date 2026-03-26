@@ -118,9 +118,8 @@ class Command(BaseCommand):
         if not skip_resource_check:
             self._enforce_storage_guardrails(stage='startup')
 
-        from apps.secretary.models import FeishuMigrationCheckpoint, FeishuMigrationBatch
+        from apps.secretary.models import FeishuMigrationCheckpoint
         from apps.identity.models import Account
-        from apps.secretary.feishu_fetcher import fetch_all_sources_full_history
 
         if reset_inactive_sources:
             self._reset_inactive_sources(names_filter, inactive_only, sources)
@@ -226,7 +225,6 @@ class Command(BaseCommand):
     def _run_one_pass(self, accounts, sources, batch_id, lookback_days, delay, no_deposit, skip_resource_check: bool = False):
         """执行一轮全量采集（创建批次、遍历账号、更新 checkpoint），返回 (batch, total_stats)。"""
         from apps.secretary.models import FeishuMigrationCheckpoint, FeishuMigrationBatch
-        from apps.identity.models import Account
         from apps.secretary.feishu_fetcher import fetch_all_sources_full_history
 
         batch, _ = FeishuMigrationBatch.objects.get_or_create(

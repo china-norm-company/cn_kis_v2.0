@@ -19,7 +19,6 @@ verify_p0_injection — P0 注入效果验证与回滚演练命令
   # 生成详细验证报告
   python manage.py verify_p0_injection --batch 20260318_143000 --report
 """
-import json
 import logging
 from pathlib import Path
 from datetime import datetime
@@ -55,7 +54,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        from apps.lims_integration.models import LimsImportBatch, LimsInjectionLog, RawLimsRecord
+        from apps.lims_integration.models import LimsImportBatch, LimsInjectionLog
 
         batch_no = options['batch']
         batch = LimsImportBatch.objects.filter(batch_no=batch_no).first()
@@ -81,12 +80,12 @@ class Command(BaseCommand):
             by_module.setdefault(mod, {'created': 0, 'updated': 0, 'failed': 0})
             by_module[mod][log.action] = by_module[mod].get(log.action, 0) + 1
 
-        self.stdout.write(f'\n[注入日志汇总]')
+        self.stdout.write('\n[注入日志汇总]')
         self.stdout.write(f'  总注入: {total_injected} 条')
         for action, cnt in by_action.items():
             self.stdout.write(f'  {action}: {cnt} 条')
 
-        self.stdout.write(f'\n[按模块]')
+        self.stdout.write('\n[按模块]')
         for mod, counts in by_module.items():
             self.stdout.write(
                 f'  {mod:<30} 新建:{counts.get("created", 0):>5} 更新:{counts.get("updated", 0):>5}'
@@ -104,7 +103,7 @@ class Command(BaseCommand):
         conflicts = LimsConflict.objects.filter(batch=batch)
         total_conflicts = conflicts.count()
         pending_conflicts = conflicts.filter(resolution='pending').count()
-        self.stdout.write(f'\n[冲突统计]')
+        self.stdout.write('\n[冲突统计]')
         self.stdout.write(f'  总冲突: {total_conflicts} 条')
         self.stdout.write(f'  待审核: {pending_conflicts} 条')
         by_type = {}

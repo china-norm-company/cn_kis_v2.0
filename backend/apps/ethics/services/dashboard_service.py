@@ -2,7 +2,7 @@
 伦理台仪表盘服务
 """
 from django.utils import timezone
-from django.db.models import Count, Q
+from django.db.models import Q
 
 from apps.ethics.models import (
     EthicsApplication, ApprovalDocument, EthicsApplicationStatus,

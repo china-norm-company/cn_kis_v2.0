@@ -25,7 +25,6 @@ from apps.identity.models import Account
 from apps.protocol.models import Protocol
 from apps.crm.models import Client, Opportunity
 from apps.workorder.models import WorkOrder
-from apps.workorder.services import get_work_order_stats
 from apps.agent_gateway.services import quick_chat
 from apps.agent_gateway.models import AgentProvider
 
@@ -2641,7 +2640,7 @@ def get_feishu_auth_monitor_stats() -> Dict[str, Any]:
     - never_preflight_count：从未做过预检（last_preflight_at 为空）的数量
     - missing_capability_breakdown：按缺失能力分类统计（mail/im/calendar/task/wiki/docx/drive_file/minutes）
     """
-    from django.db.models import Count, Q
+    from django.db.models import Count
 
     qs = FeishuUserToken.objects.all()
     total = qs.count()
@@ -4777,7 +4776,7 @@ def _fallback_to_llm_summary(
         status=NotificationStatus.DELIVERED,
     )
     refs.append({'type': 'notification', 'id': note.id, 'trace_id': trace_id, 'llm_fallback': True})
-    return {'status': 'success', 'message': f'已生成分析结果并推送到通知中心', 'target_refs': refs}
+    return {'status': 'success', 'message': '已生成分析结果并推送到通知中心', 'target_refs': refs}
 
 
 def _execute_kimi_claw_adapter(

@@ -43,7 +43,6 @@ export function TodayOperationsPage() {
   const dep = depQuery.data
   const health = healthQuery.data
   const canOpen = dep?.allOk ?? false
-  const readyScenarios = scenarios.filter((s) => s.status === 'ready')
   const blockedScenarios = scenarios.filter((s) => s.status === 'blocked' || s.status === 'degraded')
 
   return (

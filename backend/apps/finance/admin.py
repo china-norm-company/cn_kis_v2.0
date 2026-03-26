@@ -4,7 +4,7 @@ from .models import (
     Contract, ContractPaymentTerm, ContractChange,
     Invoice, InvoiceItem,
     Payment,
-    BudgetCategory, ProjectBudget, BudgetItem, BudgetAdjustment,
+    BudgetCategory, ProjectBudget, BudgetAdjustment,
     CostRecord,
     PaymentPlan, PaymentRecord, OverdueFollowup,
     FinancialReport, ProfitAnalysis, CashFlowRecord,

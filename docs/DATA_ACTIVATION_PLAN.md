@@ -205,7 +205,7 @@ python manage.py reconcile_feishu_data --reclassify-signals --limit 10000
 
 测试命令（通过 API）：
 ```bash
-curl -X POST http://118.196.64.48/v2/api/v1/agents/chat \
+curl -X POST http://118.196.64.48:8080/api/v1/agents/chat \
   -H "Authorization: Bearer <TOKEN>" \
   -d '{"agent_id": "subject-coordinator", "message": "SPF26002项目有哪些受试者？", "context_window": 5}'
 ```

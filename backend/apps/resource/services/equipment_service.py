@@ -4,20 +4,18 @@
 覆盖设备台账、校准管理、维护工单、使用记录、操作授权、检测方法的完整业务逻辑。
 """
 import logging
-from datetime import date, timedelta, datetime
+from datetime import date, timedelta
 from typing import Optional
-from django.db.models import Q, Count, Avg, F, Value, CharField
-from django.db.models.functions import Coalesce
+from django.db.models import Q, Count
 from django.utils import timezone
 
 from ..models import (
-    ResourceItem, ResourceCategory, ResourceStatus, ResourceType,
+    ResourceItem, ResourceStatus, ResourceType,
     EquipmentCalibration, EquipmentVerification, EquipmentMaintenance, EquipmentUsage,
     EquipmentAuthorization,
 )
 from ..models_detection_method import (
     DetectionMethodTemplate, DetectionMethodResource, DetectionMethodPersonnel,
-    MethodStatus, MethodCategory,
 )
 
 logger = logging.getLogger(__name__)

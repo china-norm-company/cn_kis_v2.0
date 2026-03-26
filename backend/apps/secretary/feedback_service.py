@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
-from datetime import datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -298,13 +296,12 @@ def _generate_question_reply(text: str, workstation: str) -> Optional[str]:
 
 def _reply_to_feishu_group(message_id: str, text: str) -> None:
     """在反馈群中回复消息（发送到反馈群而非私聊）。
-    
+
     飞书 IM v1 的「回复指定消息」接口需要 message_id 作 parent，
     FeishuClient 当前未封装该接口。此处退化为直接发到群聊，效果相同。
     """
     import json
     import os
-    import urllib.request
     try:
         from libs.feishu_client import FeishuClient
         client = FeishuClient()

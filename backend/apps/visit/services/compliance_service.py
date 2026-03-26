@@ -6,7 +6,7 @@ S4-5：检查访视执行完整性，生成合规报告，同步多维表格
 import logging
 from typing import Dict
 
-from apps.visit.models import VisitPlan, VisitNode, VisitActivity
+from apps.visit.models import VisitPlan, VisitNode
 from apps.scheduling.models import ScheduleSlot, SlotStatus
 
 logger = logging.getLogger(__name__)

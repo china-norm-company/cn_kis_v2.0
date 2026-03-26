@@ -15,12 +15,10 @@ verify_lims_business_logic — LIMS 注入后业务逻辑自验证
   python manage.py verify_lims_business_logic --check gate3 gate4
   python manage.py verify_lims_business_logic --report
 """
-import json
 from datetime import date
-from typing import Dict, List, Any
+from typing import Dict
 
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 
 
 CHECK_ITEMS = ['role_access', 'equipment', 'gate3', 'gate4', 'dispatch', 'client_link']
@@ -91,7 +89,7 @@ class Command(BaseCommand):
     # ──────────────────────────────────────────────────────────────────────
 
     def _check_role_access(self, sample_size: int) -> Dict:
-        from apps.identity.models import Account, AccountRole, Role
+        from apps.identity.models import Account, AccountRole
         from apps.lims_integration.p0_mapping import GROUP_TO_ROLES
 
         # 抽取各组别的人员样本
@@ -185,7 +183,6 @@ class Command(BaseCommand):
 
     def _check_gate3(self, sample_size: int) -> Dict:
         from apps.lab_personnel.models import MethodQualification, LabStaffProfile
-        from apps.hr.models import Staff
 
         details = []
         pass_count = 0
@@ -274,7 +271,7 @@ class Command(BaseCommand):
     # ──────────────────────────────────────────────────────────────────────
 
     def _check_dispatch(self, sample_size: int) -> Dict:
-        from apps.identity.models import Account, AccountRole
+        from apps.identity.models import Account
 
         details = []
 
@@ -292,7 +289,7 @@ class Command(BaseCommand):
         for account in evaluator_accounts:
             try:
                 from apps.hr.models import Staff
-                from apps.lab_personnel.models import LabStaffProfile, MethodQualification
+                from apps.lab_personnel.models import MethodQualification
                 staff = Staff.objects.filter(account_fk=account, is_deleted=False).first()
                 if not staff:
                     continue

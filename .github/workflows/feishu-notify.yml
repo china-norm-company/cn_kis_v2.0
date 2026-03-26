@@ -9,6 +9,8 @@ on:
     - cron: '0 10 * * 1-5'   # 晚报：北京时间 18:00，周一至周五
   pull_request:
     types: [opened, closed, ready_for_review, review_requested]
+  pull_request_review:
+    types: [submitted]
   issues:
     types: [opened, assigned, closed]
   push:
@@ -22,6 +24,7 @@ permissions:
   contents: read
   pull-requests: read
   issues: read
+  checks: read
 
 jobs:
   # ══════════════════════════════════════════════════════════════
@@ -44,6 +47,7 @@ jobs:
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SYSTEM_PULSE_TOKEN: ${{ secrets.SYSTEM_PULSE_TOKEN }}
         with:
           script: |
             // ── 工具函数：发送飞书消息 ─────────────────────────────────────
@@ -97,6 +101,68 @@ jobs:
             const since24h = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
             const since48h = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
 
+            // ── 采集系统脉搏数据（学习循环 KPI）──────────────────────────
+            let pulseData = null;
+            const pulseToken = process.env.SYSTEM_PULSE_TOKEN;
+            const serverBase = 'http://118.196.64.48:8080';
+            if (pulseToken) {
+              try {
+                const pulseResp = await fetch(`${serverBase}/api/v1/internal/system-pulse/`, {
+                  headers: { 'Authorization': `Bearer ${pulseToken}` },
+                  signal: AbortSignal.timeout(8000),
+                });
+                if (pulseResp.ok) {
+                  pulseData = await pulseResp.json();
+                  core.info('系统脉搏数据获取成功');
+                } else {
+                  core.warning(`系统脉搏 API 返回 ${pulseResp.status}`);
+                }
+              } catch(e) {
+                core.warning('系统脉搏数据获取失败（服务器不可达）: ' + e.message);
+              }
+            } else {
+              core.info('SYSTEM_PULSE_TOKEN 未配置，跳过知识库健康度');
+            }
+
+            // 格式化系统脉搏摘要文本
+            function formatPulseSummary(pulse) {
+              if (!pulse) return null;
+              const kh = pulse.knowledge_health || {};
+              const kpis = pulse.learning_loop_kpis || {};
+              const lines = [];
+
+              lines.push(`**📚 知识库** 总条目 **${(kh.entry_total||0).toLocaleString()}** · 已发布 **${(kh.entry_published||0).toLocaleString()}** · 向量化 ${kh.vector_rate||0}%`);
+              lines.push(`**🕸 图谱** ${(kh.relation_total||0).toLocaleString()} 条关系 · 协作关系 **${(kh.collaborates_with||0).toLocaleString()}** / 目标 10,000`);
+
+              const a2 = kpis.a2_mail_signal_unknown_pct;
+              if (a2) {
+                const v = a2.value || 0;
+                const icon = v < 30 ? '✅' : v < 50 ? '⚠️' : '🔴';
+                lines.push(`**📧 邮件信号** UNKNOWN ${icon} ${v}%（目标 <15%）`);
+              }
+
+              const actions = pulse.recommended_actions || [];
+              if (actions.length > 0) {
+                lines.push(`\n**🎯 今日推荐行动**`);
+                actions.slice(0, 2).forEach((a, i) => {
+                  lines.push(`${i+1}. ${a.action}`);
+                });
+              }
+
+              const pending = pulse.pending_insights || [];
+              if (pending.length > 0) {
+                lines.push(`\n**💡 待处理数据洞察** ${pending.length} 条（ProactiveInsight draft）`);
+                pending.slice(0, 2).forEach(p => {
+                  const badge = p.days_pending >= 3 ? ' ⚠️ 超3天' : '';
+                  lines.push(`• ${p.title.slice(0, 40)}${badge}`);
+                });
+              }
+
+              return lines.join('\n');
+            }
+
+            const pulseSummary = formatPulseSummary(pulseData);
+
             // 开放 PR
             const { data: openPRs } = await github.rest.pulls.list({
               ...repo, state: 'open', per_page: 20,
@@ -142,42 +208,10 @@ jobs:
                                .map(i => `🐛 #${i.number} ${i.title.slice(0,35)}`),
             };
 
-            // ── 工作台波次状态（从 Issue Labels 统计）────────────────────────
-            // Wave A（可推广）：secretary / research / recruitment / admin
-            // Wave B（试点）：execution / quality / finance / digital-workforce
-            const WAVE_A = ['ws/secretary','ws/research','ws/recruitment','ws/admin'];
-            const WAVE_B = ['ws/execution','ws/quality','ws/finance','ws/digital-workforce'];
-
-            // 统计各波次的开放 Issue 数量
-            let waveAIssues = 0, waveBIssues = 0, waveCIssues = 0, hubIssues = 0;
-            let waveABlockers = [], waveBBlockers = [];
-
-            for (const issue of realIssues) {
-              const labelNames = (issue.labels || []).map(l => l.name);
-              const isBlocker = labelNames.includes('上线阻塞');
-              const isWaveA = labelNames.some(l => WAVE_A.includes(l));
-              const isWaveB = labelNames.some(l => WAVE_B.includes(l));
-              const isHub = labelNames.includes('hub-联动');
-
-              if (isHub) hubIssues++;
-              if (isWaveA) {
-                waveAIssues++;
-                if (isBlocker) waveABlockers.push(`#${issue.number} ${issue.title.slice(0,25)}`);
-              } else if (isWaveB) {
-                waveBIssues++;
-                if (isBlocker) waveBBlockers.push(`#${issue.number} ${issue.title.slice(0,25)}`);
-              } else {
-                waveCIssues++;
-              }
-            }
-
             // ── 生成判断文字（无 LLM 的启发式规则，后续升级为 LLM）────────
             function generateInsight(metrics, type) {
               const lines = [];
-              // 上线阻塞告警（最高优先级）
-              if (waveABlockers.length > 0) {
-                lines.push(`🚨 Wave A 上线阻塞 ${waveABlockers.length} 个：${waveABlockers.slice(0,2).join(' | ')}，请今天优先处理！`);
-              }
+              // 系统状态判断
               if (metrics.stalePRCount > 2) {
                 lines.push(`⚠️ 有 ${metrics.stalePRCount} 个 PR 挂起超过 3 天，请今天安排审核，否则阻塞后续开发`);
               }
@@ -187,8 +221,8 @@ jobs:
                 } else {
                   lines.push(`📌 昨日无代码合并，请确认各自任务分支进展`);
                 }
-                if (waveAIssues === 0 && waveBIssues === 0) {
-                  lines.push(`📋 当前无工作台标签 Issue，建议给 ${metrics.openIssueCount} 个开放 Issue 标注所属工作台`);
+                if (metrics.openIssueCount > 5) {
+                  lines.push(`📋 当前有 ${metrics.openIssueCount} 个开放 Issue，建议今天认领优先级最高的 Bug`);
                 }
               } else {
                 // 晚报
@@ -203,15 +237,6 @@ jobs:
             }
 
             const insight = generateInsight(metrics, briefType);
-
-            // ── 工作台波次状态文字 ────────────────────────────────────────────
-            const waveStatusLines = [
-              `**📊 上线波次状态**`,
-              `🟢 Wave A 可推广（secretary/research/recruitment/admin）：待处理 **${waveAIssues}** 个 Issue${waveABlockers.length > 0 ? ` ⚠️ 含 ${waveABlockers.length} 个阻塞` : ''}`,
-              `🟡 Wave B 试点陪跑（execution/quality/finance/dw）：待处理 **${waveBIssues}** 个 Issue${waveBBlockers.length > 0 ? ` ⚠️ 含 ${waveBBlockers.length} 个阻塞` : ''}`,
-              `🔴 Wave C 建设中（其余 10 个台）：待处理 **${waveCIssues}** 个 Issue`,
-              hubIssues > 0 ? `🔗 中枢台联动任务：**${hubIssues}** 个待处理` : '',
-            ].filter(Boolean).join('\n');
 
             // ── 构造飞书卡片 ─────────────────────────────────────────────
             let card;
@@ -246,6 +271,15 @@ jobs:
                     },
                   },
                   { tag: 'hr' },
+                  // 系统脉搏（学习循环 KPI）
+                  pulseSummary ? {
+                    tag: 'div',
+                    text: {
+                      tag: 'lark_md',
+                      content: `**📊 系统脉搏（学习循环）**\n${pulseSummary}`,
+                    },
+                  } : null,
+                  pulseSummary ? { tag: 'hr' } : null,
                   // Bug Issue
                   metrics.topIssues.length > 0 ? {
                     tag: 'div',
@@ -255,24 +289,18 @@ jobs:
                     },
                   } : null,
                   { tag: 'hr' },
-                  // 工作台波次状态
-                  {
-                    tag: 'div',
-                    text: { tag: 'lark_md', content: waveStatusLines },
-                  },
-                  { tag: 'hr' },
                   // 操作按钮
                   {
                     tag: 'action',
                     actions: [
                       { tag: 'button', text: { content: '同步代码', tag: 'plain_text' }, url: `https://github.com/${repo.owner}/${repo.repo}`, type: 'primary' },
                       { tag: 'button', text: { content: '查看 PR', tag: 'plain_text' }, url: `https://github.com/${repo.owner}/${repo.repo}/pulls`, type: 'default' },
-                      { tag: 'button', text: { content: '认领 Issue', tag: 'plain_text' }, url: `https://github.com/${repo.owner}/${repo.repo}/issues?q=is%3Aopen+label%3A上线阻塞`, type: 'danger' },
+                      { tag: 'button', text: { content: '认领 Issue', tag: 'plain_text' }, url: `https://github.com/${repo.owner}/${repo.repo}/issues`, type: 'default' },
                     ],
                   },
                   {
                     tag: 'note',
-                    elements: [{ tag: 'plain_text', content: `子衿智能运营官 · ${dateStr} 09:00  |  上线波次追踪已启用` }],
+                    elements: [{ tag: 'plain_text', content: `子衿智能运营官 · ${dateStr} 09:00  |  数据维度: ${pulseSummary ? '✅ 已获取' : '⏸ 服务器离线'}` }],
                   },
                 ].filter(Boolean),
               };
@@ -304,6 +332,15 @@ jobs:
                     },
                   },
                   { tag: 'hr' },
+                  // 系统脉搏
+                  pulseSummary ? {
+                    tag: 'div',
+                    text: {
+                      tag: 'lark_md',
+                      content: `**📊 系统脉搏（学习循环）**\n${pulseSummary}`,
+                    },
+                  } : null,
+                  pulseSummary ? { tag: 'hr' } : null,
                   {
                     tag: 'div',
                     text: {
@@ -324,7 +361,7 @@ jobs:
                   },
                   {
                     tag: 'note',
-                    elements: [{ tag: 'plain_text', content: `子衿智能运营官 · ${dateStr} 18:00  |  LLM 工作台推广分析升级中` }],
+                    elements: [{ tag: 'plain_text', content: `子衿智能运营官 · ${dateStr} 18:00  |  数据维度: ${pulseSummary ? '✅ 已获取' : '⏸ 服务器离线'}` }],
                   },
                 ].filter(Boolean),
               };
@@ -351,12 +388,14 @@ jobs:
         env:
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_BOT_WEBHOOK_URL }}
           FEISHU_CHAT_ID: ${{ secrets.FEISHU_DEV_GROUP_CHAT_ID }}
+          FEISHU_APPROVAL_CHAT_ID: ${{ secrets.FEISHU_APPROVAL_CHAT_ID }}
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
         with:
           script: |
             const webhook = process.env.FEISHU_WEBHOOK;
             const chatId  = process.env.FEISHU_CHAT_ID;
+            const approvalChatId = process.env.FEISHU_APPROVAL_CHAT_ID;
             const appId   = process.env.FEISHU_APP_ID;
             const appSecret = process.env.FEISHU_APP_SECRET;
 
@@ -382,18 +421,54 @@ jobs:
               const base   = pr.base.ref;
 
               if (action === 'opened' || action === 'ready_for_review') {
+                const commitSha = pr.head.sha;
+                const repo_full = `${repo.owner}/${repo.repo}`;
+                // 根据 PR label 判断风险等级
+                const prLabels = (pr.labels || []).map(l => l.name);
+                const tier = prLabels.find(l => l.startsWith('tier-')) || 'tier-2';
+                const tierConfig = {
+                  'tier-0': { emoji: '🔴', text: 'Tier-0 红线域', template: 'red',    note: '⚠️ 需 CODEOWNERS 指定审批人（蒋艳雯/马蓓丽/孙华/宋小沫）在 GitHub Approve' },
+                  'tier-1': { emoji: '🟠', text: 'Tier-1 跨系统', template: 'orange', note: '跨系统变更，请审批人仔细核查影响范围' },
+                  'tier-2': { emoji: '🟡', text: 'Tier-2 工作台', template: 'blue',   note: '单工作台变更，点按钮即可完成审批' },
+                  'tier-3': { emoji: '🟢', text: 'Tier-3 低风险', template: 'green',  note: '低风险变更' },
+                };
+                const tc = tierConfig[tier] || tierConfig['tier-2'];
                 card = {
                   header: {
-                    title: { content: `🔔 新 PR 待审核 #${number}`, tag: 'plain_text' },
-                    template: 'blue',
+                    title: { content: `${tc.emoji} [${tc.text}] 新 PR 待审核 #${number}`, tag: 'plain_text' },
+                    template: tc.template,
                   },
                   elements: [
-                    { tag: 'div', text: { content: `**标题**：${title}\n**作者**：${author}\n**分支**：\`${branch}\` → \`${base}\``, tag: 'lark_md' }},
+                    { tag: 'div', text: { content: `**标题**：${title}\n**作者**：${author}\n**分支**：\`${branch}\` → \`${base}\`\n\n需要 **2 人** 点击「✅ 批准合并」后方可合并。`, tag: 'lark_md' }},
+                    tier === 'tier-0' ? { tag: 'div', text: { tag: 'lark_md', content: `> 🔴 **红线域变更**：此 PR 触及认证/共享库/部署配置，需 CODEOWNERS 成员（蒋艳雯/马蓓丽/孙华/宋小沫）在 GitHub 上完成 Code Review 并 Approve。` }} : null,
+                    { tag: 'hr' },
                     { tag: 'action', actions: [
-                      { tag: 'button', text: { content: '查看 PR', tag: 'plain_text' }, url, type: 'primary' },
+                      {
+                        tag: 'button',
+                        text: { content: '✅ 批准合并', tag: 'plain_text' },
+                        type: 'primary',
+                        value: {
+                          action: 'approve_pr',
+                          pr_number: String(number),
+                          commit_sha: commitSha,
+                          repo: repo_full,
+                        },
+                      },
+                      {
+                        tag: 'button',
+                        text: { content: '🔴 拒绝', tag: 'plain_text' },
+                        type: 'danger',
+                        value: {
+                          action: 'reject_pr',
+                          pr_number: String(number),
+                          commit_sha: commitSha,
+                          repo: repo_full,
+                        },
+                      },
+                      { tag: 'button', text: { content: '查看变更', tag: 'plain_text' }, url: `${url}/files`, type: 'default' },
                     ]},
-                    { tag: 'note', elements: [{ tag: 'plain_text', content: `${new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})} | CN KIS V2.0` }]},
-                  ],
+                    { tag: 'note', elements: [{ tag: 'plain_text', content: `${tc.note} · ${new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})} | CN KIS V2.0` }]},
+                  ].filter(Boolean),
                 };
               } else if (action === 'review_requested') {
                 const reviewers = (context.payload.pull_request.requested_reviewers || []).map(r => r.login).join(', ');
@@ -410,6 +485,11 @@ jobs:
                   ],
                 };
               } else if (action === 'closed' && pr.merged) {
+                const commitSha = pr.merge_commit_sha || pr.head.sha;
+                const repo_full = `${repo.owner}/${repo.repo}`;
+                const prLabels = (pr.labels || []).map(l => l.name);
+                const tier = prLabels.find(l => l.startsWith('tier-')) || 'tier-2';
+                const isTier0 = tier === 'tier-0';
                 card = {
                   header: {
                     title: { content: `✅ PR 已合并 #${number}`, tag: 'plain_text' },
@@ -419,9 +499,34 @@ jobs:
                     { tag: 'div', text: { content: `**${title}**\n作者：${author} ｜ 合入 \`${base}\``, tag: 'lark_md' }},
                     { tag: 'hr' },
                     { tag: 'div', text: { content: `📢 **请团队成员同步最新代码：**\n在 Cursor 终端运行：\`./ops/scripts/dev-task.sh sync-task\`\n或告诉 AI：「帮我同步最新代码」`, tag: 'lark_md' }},
+                    { tag: 'hr' },
+                    isTier0
+                      ? {
+                          tag: 'div',
+                          text: { tag: 'lark_md', content: `⚠️ **Tier-0 红线域变更**\n此 PR 触及认证/共享库/部署配置，**禁止自动部署生产**。\n\n请 @jiangyanwen-yoyo 评估后，在确认无误时手动执行生产部署。` },
+                        }
+                      : {
+                          tag: 'div',
+                          text: { tag: 'lark_md', content: `🚀 **发布到生产环境**\n代码已通过 CI + 飞书审批，点击按钮发布到生产（约 3 分钟）。` },
+                        },
                     { tag: 'action', actions: [
+                      isTier0
+                        ? { tag: 'button', text: { content: '🔴 Tier-0：需人工操作', tag: 'plain_text' }, url, type: 'danger' }
+                        : {
+                            tag: 'button',
+                            text: { content: '🚀 发布到生产', tag: 'plain_text' },
+                            type: 'primary',
+                            value: {
+                              action: 'deploy_to_production',
+                              pr_number: String(number),
+                              commit_sha: commitSha,
+                              repo: repo_full,
+                              pr_title: title,
+                            },
+                          },
                       { tag: 'button', text: { content: '查看合并记录', tag: 'plain_text' }, url, type: 'default' },
                     ]},
+                    { tag: 'note', elements: [{ tag: 'plain_text', content: `${tier.toUpperCase()} · ${new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})} | CN KIS V2.0` }]},
                   ],
                 };
               } else if (action === 'closed' && !pr.merged) {
@@ -435,6 +540,75 @@ jobs:
                     { tag: 'action', actions: [
                       { tag: 'button', text: { content: '查看详情', tag: 'plain_text' }, url, type: 'default' },
                     ]},
+                  ],
+                };
+              }
+            }
+
+            // ── CodeRabbit AI Review 完成通知 ────────────────────────────────────
+            else if (ev === 'pull_request_review') {
+              const review   = context.payload.review;
+              const reviewer = review.user.login;
+              const state    = review.state; // 'approved' | 'changes_requested' | 'commented'
+              const pr       = context.payload.pull_request;
+              const prNumber = pr.number;
+              const prTitle  = pr.title;
+              const prAuthor = pr.user.login;
+              const prUrl    = pr.html_url;
+              const reviewUrl = review.html_url;
+              // 取 review body 前 300 字符作为摘要
+              const reviewSummary = (review.body || '').replace(/<!--[\s\S]*?-->/g, '').trim().slice(0, 300);
+
+              // 只处理 CodeRabbit 的 approved 和 changes_requested，忽略普通 comment
+              if (reviewer === 'coderabbitai[bot]' && (state === 'approved' || state === 'changes_requested')) {
+                const isApproved = state === 'approved';
+                card = {
+                  header: {
+                    title: {
+                      content: isApproved
+                        ? `🤖 AI Review 通过 · PR #${prNumber}`
+                        : `🤖 AI Review 需要修改 · PR #${prNumber}`,
+                      tag: 'plain_text',
+                    },
+                    template: isApproved ? 'green' : 'yellow',
+                  },
+                  elements: [
+                    {
+                      tag: 'div',
+                      text: {
+                        tag: 'lark_md',
+                        content: [
+                          `**${prTitle}**`,
+                          `作者：${prAuthor}`,
+                          ``,
+                          isApproved
+                            ? `✅ **CodeRabbit 已批准合并**，代码质量通过 AI 检查`
+                            : `⚠️ **CodeRabbit 要求修改**，请 ${prAuthor} 查看评审意见`,
+                          reviewSummary ? `\n> ${reviewSummary.split('\n').slice(0, 4).join('\n> ')}` : '',
+                        ].filter(Boolean).join('\n'),
+                      },
+                    },
+                    { tag: 'hr' },
+                    {
+                      tag: 'div',
+                      text: {
+                        tag: 'lark_md',
+                        content: isApproved
+                          ? `💡 **下一步**：等待人工 Review（至少 1 人）后即可合并\n请相关同学前往 GitHub 完成最终审核`
+                          : `💡 **处理方式**：\n在 Cursor 中说：「PR #${prNumber} 有 CodeRabbit 评审意见，帮我逐条处理」\n修改后 push，CodeRabbit 会自动重新 Review`,
+                      },
+                    },
+                    {
+                      tag: 'action',
+                      actions: [
+                        { tag: 'button', text: { content: '查看 AI Review', tag: 'plain_text' }, url: reviewUrl, type: 'primary' },
+                        { tag: 'button', text: { content: '查看 PR', tag: 'plain_text' }, url: prUrl, type: 'default' },
+                      ],
+                    },
+                    {
+                      tag: 'note',
+                      elements: [{ tag: 'plain_text', content: `CodeRabbit AI · ${new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})} | CN KIS V2.0` }],
+                    },
                   ],
                 };
               }
@@ -564,6 +738,37 @@ jobs:
 
             const payload = { msg_type: 'interactive', card: JSON.stringify(card) };
 
+            // 判断是否需要同时发到审批群（PR opened / review_requested 才需要）
+            const isPrApprovalEvent = (
+              (ev === 'pull_request' && ['opened', 'ready_for_review', 'review_requested'].includes(context.payload.action))
+            );
+
+            // ── 发送函数（App Bot 模式）─────────────────────────────────────
+            async function sendToChat(targetChatId, cardPayload) {
+              const tokenResp = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+              });
+              const tokenData = await tokenResp.json();
+              if (tokenData.code !== 0) {
+                core.warning(`获取飞书 token 失败：${JSON.stringify(tokenData)}`);
+                return;
+              }
+              const accessToken = tokenData.tenant_access_token;
+              const msgResp = await fetch('https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ receive_id: targetChatId, ...cardPayload }),
+              });
+              const msgData = await msgResp.json();
+              if (msgData.code === 0) {
+                core.info(`飞书通知发送成功 → ${targetChatId}`);
+              } else {
+                core.warning(`飞书通知失败：${JSON.stringify(msgData)}`);
+              }
+            }
+
             // ── 发送方式 1：自定义机器人 Webhook（推荐，最简单）────────────────
             if (webhook) {
               const resp = await fetch(webhook, {
@@ -580,28 +785,10 @@ jobs:
             }
             // ── 发送方式 2：App Bot（需要 FEISHU_APP_ID + FEISHU_APP_SECRET + FEISHU_DEV_GROUP_CHAT_ID）
             else if (chatId && appId && appSecret) {
-              // 先获取 tenant_access_token
-              const tokenResp = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
-              });
-              const tokenData = await tokenResp.json();
-              if (tokenData.code !== 0) {
-                core.warning(`获取飞书 token 失败：${JSON.stringify(tokenData)}`);
-                return;
-              }
-              const accessToken = tokenData.tenant_access_token;
-
-              const msgResp = await fetch('https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ receive_id: chatId, ...payload }),
-              });
-              const msgData = await msgResp.json();
-              if (msgData.code === 0) {
-                core.info('飞书通知发送成功（App Bot 模式）');
-              } else {
-                core.warning(`飞书通知失败：${JSON.stringify(msgData)}`);
+              // 发到开发群
+              await sendToChat(chatId, payload);
+              // PR 审批事件同时发到审批群（带批准/拒绝按钮的那条）
+              if (isPrApprovalEvent && approvalChatId && approvalChatId !== chatId) {
+                await sendToChat(approvalChatId, payload);
               }
             }

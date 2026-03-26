@@ -16,7 +16,7 @@ lims_data_governance — LIMS 历史数据长期治理命令
 """
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 from django.core.management.base import BaseCommand
@@ -224,7 +224,7 @@ class Command(BaseCommand):
         ]
 
         try:
-            from apps.identity.models import Permission, Role
+            from apps.identity.models import Permission
 
             missing = []
             for module, function, action, scope, desc in expected_permissions:

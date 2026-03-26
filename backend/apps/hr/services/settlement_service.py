@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Optional
 
 from django.db import transaction
-from django.db.models import Sum, Count, Q, Avg
+from django.db.models import Sum, Q
 from django.utils import timezone
 
 from apps.hr.models import (

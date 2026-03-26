@@ -73,7 +73,7 @@ def _dt_iso_utc8_stored(dt):
 
 
 from django.db import transaction
-from django.db.models import Sum, Q, F, Max, Count
+from django.db.models import Sum, Q, Max
 from django.utils import timezone as djtzone
 from django.db.models.functions import Coalesce
 

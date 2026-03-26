@@ -104,14 +104,14 @@ class Command(BaseCommand):
         self.stdout.write('飞书全量迁移进度报告')
         self.stdout.write('=' * 70)
 
-        self.stdout.write(f'\n【总体进度】')
+        self.stdout.write('\n【总体进度】')
         self.stdout.write(f'  Checkpoint 总数: {total}')
         self.stdout.write(f'  完成率: {pct} ({completed}/{total})')
         for status, count in sorted(by_status.items()):
             bar = '█' * min(count * 30 // (total or 1), 30)
             self.stdout.write(f'  {status:<12} {count:>6}  {bar}')
 
-        self.stdout.write(f'\n【分数据源统计】')
+        self.stdout.write('\n【分数据源统计】')
         self.stdout.write(
             f'  {"数据源":<15} {"总数":>6} {"完成":>6} {"待处理":>6} {"失败":>6} '
             f'{"跳过":>6} {"采集":>8} {"入库":>8}'
@@ -125,7 +125,7 @@ class Command(BaseCommand):
                 f'{(row["fetched"] or 0):>8} {(row["deposited"] or 0):>8}'
             )
 
-        self.stdout.write(f'\n【存储统计】')
+        self.stdout.write('\n【存储统计】')
         pc_total = 0
         for row in pc_stats:
             self.stdout.write(f'  PersonalContext [{row["source_type"]}]: {row["count"]} 条')
@@ -133,14 +133,14 @@ class Command(BaseCommand):
         self.stdout.write(f'  PersonalContext 合计: {pc_total} 条')
         self.stdout.write(f'  KnowledgeEntry (飞书): {ke_count} 条')
 
-        self.stdout.write(f'\n【资源状态】')
+        self.stdout.write('\n【资源状态】')
         for item in storage_stats:
             self.stdout.write(
                 f'  {item["label"]:<8} path={item["path"]} '
                 f'used={item["used_pct"]}% free={item["free_gb"]}GB'
             )
 
-        self.stdout.write(f'\n【最近批次记录】')
+        self.stdout.write('\n【最近批次记录】')
         if not batches:
             self.stdout.write('  暂无批次记录')
         for b in batches:
@@ -164,7 +164,7 @@ class Command(BaseCommand):
         # 失败详情
         failed_cps = FeishuMigrationCheckpoint.objects.filter(status='failed').order_by('-updated_at')[:10]
         if failed_cps:
-            self.stdout.write(f'\n【失败详情（最近 10 条）】')
+            self.stdout.write('\n【失败详情（最近 10 条）】')
             for cp in failed_cps:
                 self.stdout.write(
                     f'  {cp.user_name:<15} [{cp.source_type:<12}] '

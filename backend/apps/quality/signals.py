@@ -41,7 +41,7 @@ def on_capa_saved(sender, instance, created, **kwargs):
         if status == 'overdue':
             _notify_quality_event(
                 title=f'CAPA 逾期: {getattr(instance, "title", f"CAPA#{instance.id}")}',
-                content=f'截止日期已过，请尽快处理',
+                content='截止日期已过，请尽快处理',
                 source_type='capa_overdue',
                 source_id=instance.id,
                 priority='high',

@@ -9,7 +9,7 @@
 
 ## 飞书应用
 
-- 子衿 `cli_a907f21f0723dbce`，作为全部 18 工作台的 OAuth 主签发应用
+- 子衿（秘书台）`cli_a98b0babd020500e`，同时作为全部 **19 工作台**的 OAuth 主签发应用
 - **统一主授权**：`FEISHU_PRIMARY_AUTH_FORCE=1`，所有 callback 用子衿凭证换 token
 
 ## 部署（双环境）

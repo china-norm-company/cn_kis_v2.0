@@ -1,0 +1,3328 @@
+[
+  {
+    "id": "2345f295-7929-4974-8d70-4a61500b153b",
+    "created_at": "2026-03-15T16:31:09Z",
+    "module_id": "104",
+    "document_filename": "3-研究方案_V1.0_ 1款精华产品4周抗皱及改善肤质功效研究_C26005025_20260309.pdf",
+    "summary": {
+      "total": 28,
+      "high": 4,
+      "medium": 9,
+      "low": 15,
+      "by_module": {
+        "104": {
+          "label": "104客户端方案",
+          "count": 28
+        }
+      }
+    },
+    "issues_count": 28,
+    "by_category": {
+      "大模型辅助检查": 10,
+      "表述一致性": 1,
+      "文档撰写基本要求": 4,
+      "中文术语一致性": 5,
+      "结构完整性": 4,
+      "数字与单位规范": 1,
+      "标点符号": 3
+    },
+    "by_severity": {
+      "high": 4,
+      "medium": 9,
+      "low": 15
+    },
+    "samples": [
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "纳入标准中'非敏感肌'定义模糊，无法量化核查，可能导致筛选标准不一致。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "排除标准中'通过研究者评估判断研究参与者显现出正患有稳定的或逐渐恶化的疾病'表述主观，缺乏具体疾病列表或评估标准。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "样本量描述不一致：研究概况中'入组约65名'，但'至少60名完成问卷调查，至少40名完成临床测试'，未说明65名是否为计划入组总数，且未说明样本量计算依据。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "统计方法中，对于分类变量（如临床评估等级）仅描述'采用Shapiro-Wilk检验正态性，正态用ANOVA，非正态用Wilcoxon Signed Rank Test'，但未说明如何处理有序分类数据（如格里菲斯10分制）。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "不良事件定义中，'后遗症和医疗决定（每当不良事件中出现指定药物治疗，则必须将治疗原因记录在案）'表述不完整，未明确'后遗症'的定义和记录要求。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "知情同意与伦理表述中，'研究者必须至少每年向独立伦理委员会提交研究年度报告'，但未明确报告的具体内容和时限要求。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "low",
+        "description": "术语不一致：'研究参与者'和'受试者'在文中混用，如'研究参与者注意事项'和'受试者权益'。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "方案可执行性中，'辅助产品使用方法'中'辅助防晒每日早上使用一次，全天可按需重复使用'，但未明确'按需'的具体标准（如出汗后是否需要补涂）。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "访视时间点不一致：研究步骤中'访视2：T0（基线）、Timm（产品使用后15分钟）'，但流程表中'访视2'对应'T0'，'访视3'对应'Timm'，存在矛盾。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "不良事件报告表中'Nature of AE 性质'要求'请使用简明的言语并描述病症'，但未提供标准术语或编码系统，可能导致记录不一致。"
+      },
+      {
+        "category": "表述一致性",
+        "severity": "low",
+        "description": "「investigational product」在全文存在多种写法（如单复数/大小写不统一）：investigational \nproduct, investigational product。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 6376 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（11 行），建议统一段落间距。"
+      },
+      {
+        "category": "中文术语一致性",
+        "severity": "low",
+        "description": "「研究产品」在全文存在多种表述：试验产品、研究产品，建议统一使用同一写法。"
+      },
+      {
+        "category": "中文术语一致性",
+        "severity": "low",
+        "description": "缩略词「EC」首次出现未给出中文全称（应为「伦理委员会（EC）」）。"
+      },
+      {
+        "category": "中文术语一致性",
+        "severity": "low",
+        "description": "缩略词「ICH」首次出现未给出中文全称（应为「人用药品注册技术国际协调会（ICH）」）。"
+      },
+      {
+        "category": "中文术语一致性",
+        "severity": "low",
+        "description": "缩略词「SAE」首次出现未给出中文全称（应为「严重不良事件（SAE）」）。"
+      },
+      {
+        "category": "中文术语一致性",
+        "severity": "low",
+        "description": "缩略词「AE」首次出现未给出中文全称（应为「不良事件（AE）」）。"
+      },
+      {
+        "category": "结构完整性",
+        "severity": "medium",
+        "description": "未发现与「纳入/排除标准」相关的章节或表述。"
+      },
+      {
+        "category": "结构完整性",
+        "severity": "medium",
+        "description": "未发现与「受试者」相关的章节或表述。"
+      },
+      {
+        "category": "数字与单位规范",
+        "severity": "low",
+        "description": "方案中存在汉字数字与阿拉伯数字混用（如「十例」与「10例」并存），建议统一使用阿拉伯数字。"
+      },
+      {
+        "category": "结构完整性",
+        "severity": "medium",
+        "description": "未发现与「纳入/排除标准」相关的章节或表述。"
+      },
+      {
+        "category": "结构完整性",
+        "severity": "medium",
+        "description": "未发现与「受试者」相关的章节或表述。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（11 行），建议统一段落间距。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 5401 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      }
+    ],
+    "user_id": null,
+    "username": ""
+  },
+  {
+    "id": "d2da1de8-d568-48d0-b074-a48b97f70219",
+    "created_at": "2026-03-15T16:30:43Z",
+    "module_id": "047",
+    "document_filename": "V1.0_25-0331_MT4229543_Protocol_M25047027_20251110_-fully Signed.pdf",
+    "summary": {
+      "total": 52,
+      "high": 2,
+      "medium": 3,
+      "low": 47,
+      "by_module": {
+        "047": {
+          "label": "047客户端方案",
+          "count": 52
+        }
+      }
+    },
+    "issues_count": 52,
+    "by_category": {
+      "大模型辅助检查": 7,
+      "表述一致性": 1,
+      "文档撰写基本要求": 15,
+      "标点符号": 27,
+      "拼写检查": 2
+    },
+    "by_severity": {
+      "high": 2,
+      "medium": 3,
+      "low": 47
+    },
+    "samples": [
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "协议中声明“本研究无需IRB审查”，这是严重的伦理和违规行为。所有涉及人类受试者的临床研究在启动前都必须经过伦理审查委员会（IRB/EC）的审查和批准。\nThe protocol states 'No IRB review is needed for this study' which is a significant ethical and regulatory violation. All c"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "研究目标声称将评估“单次应用后12小时内的持妆效果和保湿效果”。然而，统计计划（4.3.1）仅比较了T12h与T0的保湿数据，并未为主要持妆终点（褪色、色彩真实、晕染、脱妆）制定统计分析计划。这是一个关键疏漏，因为主要有效性终点缺乏正式的统计验证方案。\nThe objective states the study will evaluate 'the wear effect and hydrati"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "纳入标准规定受试者必须是“测试产品类别的使用者和/或测试产品的接受者”。这表述模糊且主观。“使用者”和“接受者”未明确定义，导致难以确保受试者选择的统一性，并可能引入偏倚。\nThe inclusion criteria state subjects must be 'a user of the test product category and/or an acceptor of the test"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "协议规定“照片分级将由1名经过验证的专家进行”。这存在高度偏倚和可靠性不足的风险。单一评分员可能受到个人疲劳、情绪或系统性误差的影响。最佳实践是至少安排两名盲法评分员，并评估评分者间的一致性。\nThe protocol states 'Photo-grading will be conducted by 1 validated expert'. This introduces a high ris"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "主观评估问卷的统计计划（4.3.1）不清晰且可能存在缺陷。它要求“使用单侧二项检验分析积极选项和消极选项之间的差异”，并且“如果积极选项显著高于消极选项且积极回答的比例显著优于50%”。这种表述令人困惑，且不是分析李克特量表数据的标准方法。\nThe statistical plan for the subjective assessment questionnaire (4.3.1) is unc"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "low",
+        "description": "研究设计被描述为“单中心、全唇单次应用设计研究”。这不是标准术语，且对研究结构的描述不够清晰。应更精确地定义，例如，称为“单中心、单臂、开放标签研究”。\nThe study design is described as a 'single center, entire-lip single application design study'. This is not a standard term"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "low",
+        "description": "纳入标准规定“中等至丰满唇（等级≥3），由主要研究者或指定人员进行现场分级（参见附录A的唇部丰满度量表）”。然而，附录A的标题是“照片分级图谱”，似乎不包含“唇部丰满度量表”。这是对不存在或放错位置的文件的引用。\nThe inclusion criteria specify 'Medium to Full lips (Grade≥3) live-graded by PI or designee ("
+      },
+      {
+        "category": "表述一致性",
+        "severity": "low",
+        "description": "「investigational product」在全文存在多种写法（如单复数/大小写不统一）：investigational \nproduct, investigational product。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 6409 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1455 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1339 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2007 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1275 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2681 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（6 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（6 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 6409 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1455 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1339 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2007 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1275 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2681 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（5 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      }
+    ],
+    "user_id": null,
+    "username": ""
+  },
+  {
+    "id": "c2af3364-276e-422b-91c0-961a1516c677",
+    "created_at": "2026-03-15T16:28:54Z",
+    "module_id": "005",
+    "document_filename": "25-07562 Protocol_Lotion 909515 23A Efficacy Study_C25005109-clean.pdf",
+    "summary": {
+      "total": 90,
+      "high": 2,
+      "medium": 4,
+      "low": 84,
+      "by_module": {
+        "005": {
+          "label": "005客户端方案",
+          "count": 90
+        }
+      }
+    },
+    "issues_count": 90,
+    "by_category": {
+      "大模型辅助检查": 7,
+      "结构完整性": 1,
+      "表述一致性": 2,
+      "文档撰写基本要求": 51,
+      "标点符号": 25,
+      "拼写检查": 4
+    },
+    "by_severity": {
+      "high": 2,
+      "medium": 4,
+      "low": 84
+    },
+    "samples": [
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "受试者数量不一致：要求60名受试者，但临床和照片评估仅需40名，存在招募和分析风险。\nInconsistent subject numbers across assessments: 60 total subjects required, but only 40 for clinical/photo assessments, creating potential recruitment and a"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "“自我感知敏感肌”未明确定义或标准化，可能导致受试者选择偏倚和研究结果不可重复。\nThe term 'self-perceived sensitive skin' is not defined or standardized, leading to potential subject selection bias and lack of reproducibility."
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "皮肤类型（干性、油性、中性、混合性）的入组标准要求“每种类型至少2名受试者”，但总受试者数（60）不能被4整除，此要求无法满足。\nThe inclusion criteria for skin types (dry, oily, normal, combination) requires 'at least 2 volunteers for each skin type,' but the tot"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "时间表显示“所选炎症后色素沉着（PIH）的可见性”仅在访视4（D56）进行评估，但第5.1节和“一般信息”中明确指出应在D0、D28和D56进行评估。\nThe schedule table shows 'Clinical Grading for Efficacy' for 'Visibility of the selected PIH' at Visit 4 (D56) only, but the"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "“色斑可见性”的入组标准存在歧义。它要求“至少一个≥2mm的、定义明确的同质色斑”，但又提到“不是痘印”，这与PIH（炎症后色素沉着）的标准可能冲突。\nThe inclusion criteria for 'Visibility of dark spots' is ambiguous. It requires 'at least one well defined homogeneous spot "
+      },
+      {
+        "category": "结构完整性",
+        "severity": "medium",
+        "description": "未发现与「Eligibility / 入选排除」相关的章节或表述。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "low",
+        "description": "照片拍摄部分提到了“标准2”光照，但未定义其具体内容，而其他光照模式（如交叉偏振光）均有说明。\nThe photo capture section mentions 'Standard 2' lighting but does not define what 'Standard 2' is, unlike the other lighting modes which are described ("
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "low",
+        "description": "协议在时间表和评估项目中提到了“D0Timm”，但未定义“Timm”的含义（例如，“产品涂抹后即刻”）。\nThe protocol mentions 'D0Timm' in the schedule and measurements but does not define what 'Timm' stands for (e.g., 'Time immediately after applicati"
+      },
+      {
+        "category": "表述一致性",
+        "severity": "low",
+        "description": "「informed consent」在全文存在多种写法（如单复数/大小写不统一）：informed \nconsent, informed consent。"
+      },
+      {
+        "category": "表述一致性",
+        "severity": "low",
+        "description": "「investigational product」在全文存在多种写法（如单复数/大小写不统一）：investigational \nproduct, investigational product。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 5141 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2655 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2300 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2446 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2350 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2575 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1441 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1243 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1215 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1517 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2193 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1974 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1578 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 3019 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1499 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1564 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1577 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2235 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2301 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2667 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2350 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1228 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1378 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1303 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1987 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（15 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 5141 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（15 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2396 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2041 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2187 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2091 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2317 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1441 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      }
+    ],
+    "user_id": null,
+    "username": ""
+  },
+  {
+    "id": "f4576d96-0cc5-4d5c-b9fa-e588172a99e0",
+    "created_at": "2026-03-15T16:27:09Z",
+    "module_id": "047",
+    "document_filename": "V1.0_25-0331_MT4229543_Protocol_M25047027_20251110_-fully Signed.pdf",
+    "summary": {
+      "total": 52,
+      "high": 2,
+      "medium": 2,
+      "low": 48,
+      "by_module": {
+        "047": {
+          "label": "047客户端方案",
+          "count": 52
+        }
+      }
+    },
+    "issues_count": 52,
+    "by_category": {
+      "大模型辅助检查": 6,
+      "表述一致性": 1,
+      "文档撰写基本要求": 15,
+      "标点符号": 27,
+      "拼写检查": 3
+    },
+    "by_severity": {
+      "high": 2,
+      "medium": 2,
+      "low": 48
+    },
+    "samples": [
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "协议中声明“本研究无需IRB审查”，这是严重的伦理和违规行为。所有涉及人类受试者的临床研究在启动前都必须经过伦理审查委员会（IRB/EC）的审查和批准。\nThe protocol states 'No IRB review is needed for this study' which is a significant ethical and regulatory violation. All c"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "关于唇部饱满度的纳入标准（等级≥3）提到了“附录A中的唇部饱满度量表”，但附录A的标题是“照片分级图集”，其中并未包含唇部饱满度量表。这是一个关键缺失，将妨碍对受试者的正确筛选。\nThe inclusion criteria for lip fullness (Grade≥3) refers to a 'lip fullness scale in Appendix A', but Appendix"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "统计分析方案中缺少对研究人群（如符合方案集、意向治疗集）的明确定义。方案提到“将对符合方案人群进行描述性统计”，但未定义纳入该人群的标准，这是数据分析的关键要素。\nThe statistical analysis plan lacks a clear definition of the study population (e.g., Per-Protocol, Intent-to-Treat). "
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "照片分级流程说明将在“所有图像采集完成后，即研究访视日后4天”由“1名经过验证的专家”进行。这引入了很高的回忆偏倚风险，并且缺乏关于专家验证如何执行和记录的细节。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "low",
+        "description": "研究目标称将评估产品“对中国女性正常唇部”的效果，但“正常唇部”的纳入标准仅定义为“由主要研究者或指定人员现场分级”。这过于主观，缺乏关于“正常唇部”的客观、标准化标准。\nThe study objective states it will evaluate the product 'by Chinese women with normal lips', but the inclusion cri"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "low",
+        "description": "协议提到了“随机化表（附录G）”，但未描述随机化方法（如区组随机化、分层）。缺乏这些细节难以评估分配过程的有效性。\nThe protocol mentions a 'randomization table (Appendix G)' but does not describe the randomization method (e.g., block randomization, stratifi"
+      },
+      {
+        "category": "表述一致性",
+        "severity": "low",
+        "description": "「investigational product」在全文存在多种写法（如单复数/大小写不统一）：investigational \nproduct, investigational product。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 6409 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1455 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1339 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2007 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1275 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2681 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（6 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（6 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 6409 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1455 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1339 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2007 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1275 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2681 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（5 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "拼写检查",
+        "severity": "low",
+        "description": "「answere」未通过拼写检查（英语词典 + GLM 双重校验），请确认拼写是否正确。"
+      }
+    ],
+    "user_id": null,
+    "username": ""
+  },
+  {
+    "id": "af95eed6-ad18-440d-bfbf-016f82853de9",
+    "created_at": "2026-03-15T16:26:32Z",
+    "module_id": "047",
+    "document_filename": "V1.0_25-0331_MT4229543_Protocol_M25047027_20251110_-fully Signed.pdf",
+    "summary": {
+      "total": 71,
+      "high": 2,
+      "medium": 3,
+      "low": 66,
+      "by_module": {
+        "047": {
+          "label": "047客户端方案",
+          "count": 71
+        }
+      }
+    },
+    "issues_count": 71,
+    "by_category": {
+      "大模型辅助检查": 7,
+      "表述一致性": 1,
+      "文档撰写基本要求": 15,
+      "标点符号": 27,
+      "拼写检查": 21
+    },
+    "by_severity": {
+      "high": 2,
+      "medium": 3,
+      "low": 66
+    },
+    "samples": [
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "协议中声明“本研究无需IRB审查”，这严重违反了伦理和法规要求。所有涉及人类受试者的临床研究都必须经过IRB/IEC批准。\nThe protocol states 'No IRB review is needed for this study' which is a major ethical and regulatory violation. All clinical research invo"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "研究目标和摘要声称将评估“保湿效果”，但Corneometer仅在T0（基线）和T12h（12小时）进行测量，缺乏中间时间点的数据来评估12小时内的保湿效果变化。\nThe objective and synopsis state the study will evaluate 'hydration effect' but the Corneometer measurement is only ta"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "关于唇部饱满度（Grade≥3）的纳入标准引用了“附录A”，但附录A的标题是“照片分级图集”，其中并未包含唇部饱满度量表。\nThe inclusion criteria for lip fullness (Grade≥3) refers to 'Appendix A' but Appendix A is titled 'Photo-grading Atlas' and does not conta"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "协议规定照片分级将由“1名经过验证的专家”进行，但未定义验证过程、专家资质，也未提供关于评估者间可靠性（inter-rater reliability）的详细信息。\nThe protocol states photo-grading will be conducted by '1 validated expert' but does not define the validation proces"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "照片分级的统计计划中提到“平均值≤3即为通过”，但未定义用于此主要疗效终点的统计检验或检验的假设。\nThe statistical plan for photo-grading states 'The mean values <=3 means pass' but does not define the statistical test or the hypothesis being tested"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "low",
+        "description": "文档中“China-Norm”的拼写不一致（例如“China -Norm”、“China-Norm”、“China Norm”）。\nThere is inconsistency in the spelling of 'China-Norm' throughout the document (e.g., 'China -Norm', 'China-Norm', 'China Norm')."
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "low",
+        "description": "“活动表”中使用“Timm”作为时间点，这种写法不规范。更标准的写法应为“T15min”或“T0.25h”。\nThe 'Activities Table' uses 'Timm' as a timepoint, which is unconventional. 'T15min' or 'T0.25h' would be more standard notation."
+      },
+      {
+        "category": "表述一致性",
+        "severity": "low",
+        "description": "「investigational product」在全文存在多种写法（如单复数/大小写不统一）：investigational \nproduct, investigational product。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 6409 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1455 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1339 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2007 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1275 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2681 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（6 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（6 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 6409 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1455 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1339 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2007 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1275 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2681 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（5 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      }
+    ],
+    "user_id": null,
+    "username": ""
+  },
+  {
+    "id": "d9559f88-dc62-43d9-ae0f-294b079d73c4",
+    "created_at": "2026-03-15T16:26:04Z",
+    "module_id": "005",
+    "document_filename": "25-07562 Protocol_Lotion 909515 23A Efficacy Study_C25005109-clean.pdf",
+    "summary": {
+      "total": 87,
+      "high": 2,
+      "medium": 4,
+      "low": 81,
+      "by_module": {
+        "005": {
+          "label": "005客户端方案",
+          "count": 87
+        }
+      }
+    },
+    "issues_count": 87,
+    "by_category": {
+      "大模型辅助检查": 6,
+      "结构完整性": 1,
+      "表述一致性": 2,
+      "文档撰写基本要求": 51,
+      "标点符号": 25,
+      "拼写检查": 2
+    },
+    "by_severity": {
+      "high": 2,
+      "medium": 4,
+      "low": 81
+    },
+    "samples": [
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "受试者数量不一致：方案计划入组65名受试者，目标完成60名，但5.1、5.2、5.3和5.4节对不同评估项目指定了40或60的最小样本量，未明确说明受试者如何分配到这些亚组。\nInconsistent subject numbers: Protocol states enrollment of 65 subjects with a target of 60 completions, but sec"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "“自我感知敏感肌肤”定义模糊。纳入标准要求“至少50%为自我感知敏感肌肤”，但未提供标准化的问卷或定义来界定何为“自我感知敏感肌肤”，可能导致入组偏倚。\nAmbiguous definition of 'self-perceived sensitive skin'. The inclusion criterion requires 'at least 50% self-perceived sens"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "自我评估问卷时间点不一致。“一般信息”部分列出的时间点是D0、D0Timm、D7、D28和D56，但“研究设计”时间表中显示为D0、D0 Timm、D7、D28和D56。“D0 Timm”中的多余空格是格式不一致的小问题，应予以统一。\nInconsistent timing for self-assessment questionnaires. The General Information se"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "安全性评估流程不完整。仅描述了在D0和D28询问受试者不适感，但未规定如何对客观体征（红斑、水肿、干燥）进行分级或评分，这对安全性数据分析至关重要。\nThe safety assessment procedure is incomplete. It only describes asking subjects about discomfort at D0 and D28 but does not "
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "“所选炎症后色素沉着（PIH）可见度”的定义不明确。方案提到“至少一个可见的痤疮印记（非炎性），可被追踪”，但未说明选择标准，以及如何在不同受试者间一致地识别和测量。\nThe definition for 'Visibility of the selected PIH' is unclear. It mentions 'at least one acne mark (non-inflammator"
+      },
+      {
+        "category": "结构完整性",
+        "severity": "medium",
+        "description": "未发现与「Eligibility / 入选排除」相关的章节或表述。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "low",
+        "description": "研究标题存在 minor 格式不一致。标题中使用了不一致的空格和连字符（例如，“Asia Male Skin”、“Self -perceived”、“whole face  application”）。\nMinor formatting inconsistency in the study title. The title uses inconsistent spacing and hyphena"
+      },
+      {
+        "category": "表述一致性",
+        "severity": "low",
+        "description": "「informed consent」在全文存在多种写法（如单复数/大小写不统一）：informed \nconsent, informed consent。"
+      },
+      {
+        "category": "表述一致性",
+        "severity": "low",
+        "description": "「investigational product」在全文存在多种写法（如单复数/大小写不统一）：investigational \nproduct, investigational product。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 5141 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2655 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2300 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2446 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2350 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2575 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1441 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1243 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1215 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1517 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2193 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1974 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1578 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 3019 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1499 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1564 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1577 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2235 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2301 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2667 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2350 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1228 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1378 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1303 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1987 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（15 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 5141 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（15 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2396 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2041 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2187 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2091 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2317 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1441 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1215 字符），建议适当分段以符合文档撰写规范。"
+      }
+    ],
+    "user_id": null,
+    "username": ""
+  },
+  {
+    "id": "9dca9c14-00da-48d4-b0f8-fd022f91d100",
+    "created_at": "2026-03-15T16:25:01Z",
+    "module_id": "005",
+    "document_filename": "25-07562 Protocol_Lotion 909515 23A Efficacy Study_C25005109-clean.pdf",
+    "summary": {
+      "total": 87,
+      "high": 2,
+      "medium": 5,
+      "low": 80,
+      "by_module": {
+        "005": {
+          "label": "005客户端方案",
+          "count": 87
+        }
+      }
+    },
+    "issues_count": 87,
+    "by_category": {
+      "大模型辅助检查": 7,
+      "结构完整性": 1,
+      "表述一致性": 2,
+      "文档撰写基本要求": 51,
+      "标点符号": 25,
+      "拼写检查": 1
+    },
+    "by_severity": {
+      "high": 2,
+      "medium": 5,
+      "low": 80
+    },
+    "samples": [
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "受试者数量不一致：方案计划入组60名受试者，但临床评估和照片采集要求至少40人，而安全评估和自我评估要求至少60人。这导致目标人群和分析组别存在歧义。\nInconsistent subject numbers across assessments: The protocol states 60 subjects will be enrolled, but requires 40 for clini"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "“自我感知敏感肌肤”定义模糊：方案要求50%的受试者具备此特征，但未提供其操作性定义或验证过的问卷，可能导致不合适的受试者入组。\nAmbiguous definition of 'self-perceived sensitive skin'. The protocol requires 50% of subjects to have this characteristic but provides"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "自我评估问卷时间点不一致：在“一般信息”部分，时间点列为D0, D0Timm, D7, D28, D56，但在“研究设计”的时间表中显示为D0, D0Timm, D7, D28, D56。此差异可能导致执行时的困惑。\nInconsistent timing for self-assessment questionnaires. The General Information section lis"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "临床评估的“测量”部分提及“改良的格里菲斯10分量表”，但未提供所有参数的完整定义（如皮肤清晰度、皮肤透明度）。部分参数仅有描述性锚点。\nThe 'Measurement' section for clinical assessment mentions a 'modified Griffiths 10-point scale' but does not provide the full defi"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "排除标准中“入组前14天内使用非甾体抗炎药（外用）”表述模糊，可能指NSAIDs或其他非甾体抗炎药，应予以明确。\nThe exclusion criteria list 'Non steroid inflammatory medication (topical) within 14 days before study enrolment.' This is ambiguous as it coul"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "安全评估程序不完整：方案描述了在D0和D28询问受试者不适感，但未说明客观体征（红斑、水肿、干燥）将如何分级或测量。这是安全数据收集的关键缺失环节。\nThe safety assessment procedure is incomplete. It describes asking subjects about discomfort at D0 and D28 but does not speci"
+      },
+      {
+        "category": "结构完整性",
+        "severity": "medium",
+        "description": "未发现与「Eligibility / 入选排除」相关的章节或表述。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "low",
+        "description": "研究标题存在微小不一致：第1页的标题在“60 Healthy Asia Male Skin”后有逗号，而第2页的标题没有。这是一个应被标准化的印刷错误。\nMinor inconsistency in the study title. The title on page 1 has a comma after '60 Healthy Asia Male Skin', while the title "
+      },
+      {
+        "category": "表述一致性",
+        "severity": "low",
+        "description": "「informed consent」在全文存在多种写法（如单复数/大小写不统一）：informed \nconsent, informed consent。"
+      },
+      {
+        "category": "表述一致性",
+        "severity": "low",
+        "description": "「investigational product」在全文存在多种写法（如单复数/大小写不统一）：investigational \nproduct, investigational product。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 5141 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2655 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2300 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2446 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2350 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2575 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1441 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1243 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1215 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1517 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2193 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1974 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1578 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 3019 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1499 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1564 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1577 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2235 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2301 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2667 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2350 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1228 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1378 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1303 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1987 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（15 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 5141 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（15 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2396 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2041 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2187 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2091 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2317 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1441 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      }
+    ],
+    "user_id": null,
+    "username": ""
+  },
+  {
+    "id": "ac915154-c345-43f7-a1b9-d5cbc08ae9c0",
+    "created_at": "2026-03-15T16:03:13Z",
+    "module_id": "005",
+    "document_filename": "3-研究方案_V1.0_ 1款精华产品4周抗皱及改善肤质功效研究_C26005025_20260309.pdf",
+    "summary": {
+      "total": 21,
+      "high": 2,
+      "medium": 8,
+      "low": 11,
+      "by_module": {
+        "005": {
+          "label": "005客户端方案",
+          "count": 21
+        }
+      }
+    },
+    "issues_count": 21,
+    "by_category": {
+      "大模型辅助检查": 7,
+      "结构完整性": 5,
+      "表述一致性": 1,
+      "文档撰写基本要求": 4,
+      "评估指标描述检查": 1,
+      "标点符号": 3
+    },
+    "by_severity": {
+      "high": 2,
+      "medium": 8,
+      "low": 11
+    },
+    "samples": [
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "方案在纳入标准中未明确定义“非敏感肌”，这是目标人群的关键特征。此模糊性可能导致受试者选择不一致，影响研究结果的有效性。\nThe protocol lacks a clear definition of 'non-sensitive skin' in the inclusion criteria, which is a critical characteristic for the target "
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "排除标准列表存在冗余和重叠项（例如，“免疫力低下”、“过敏史”、“光敏感”）。这种冗余可能导致筛选过程中的混淆和应用排除标准时的潜在错误。\nThe exclusion criteria list is redundant and contains overlapping items (e.g., 'immunocompromised', 'allergic history', 'sun sensi"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "方案要求至少40名受试者完成临床测试，但未说明如何处理另外20名未完成临床测试的受试者的数据。如果脱落不随机或数据未在统计分析中得到妥善处理，可能会引入偏倚。\nThe protocol states that at least 40 out of 60 participants must complete the clinical testing, but it does not specify "
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "随机表（附件9.3）仅指定了Glossymeter和Cutometer的左右测量侧，但未描述将受试者随机分配至临床测试组或仅问卷组的流程。此细节缺失损害了随机化的完整性。\nThe randomization table (Attachment 9.3) only assigns left/right measurement sides for Glossymeter and Cutometer b"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "方案提到了“产品使用日记”，但未说明其内容或如何客观依从性。仅依赖自我报告的使用情况而不进行验证，可能导致产品使用依从性数据不准确。\nThe protocol mentions a 'product usage diary' but does not specify its content or how compliance will be objectively measured. Relian"
+      },
+      {
+        "category": "结构完整性",
+        "severity": "medium",
+        "description": "未发现与「Objectives / 研究目的」相关的章节或表述。"
+      },
+      {
+        "category": "结构完整性",
+        "severity": "medium",
+        "description": "未发现与「Study Design / 研究设计」相关的章节或表述。"
+      },
+      {
+        "category": "结构完整性",
+        "severity": "medium",
+        "description": "未发现与「Eligibility / 入选排除」相关的章节或表述。"
+      },
+      {
+        "category": "结构完整性",
+        "severity": "medium",
+        "description": "未发现与「Statistics / 统计」相关的章节或表述。"
+      },
+      {
+        "category": "结构完整性",
+        "severity": "medium",
+        "description": "未发现与「Informed Consent / 知情同意」相关的章节或表述。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "low",
+        "description": "研究计划中列出了“T next morning”访视，但在仅问卷组的访视描述中不完整。提到了步骤7，但未列出临床测试组描述中存在的后续步骤（8-12），造成不一致。\nThe study schedule lists 'T next morning' as a visit, but the description for this visit in the study steps for the q"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "low",
+        "description": "方案同时使用“T0”和“T0（基线）”来指代基线访视。虽然不是大问题，但全文使用一致的术语可以提高清晰度和专业性。\nThe protocol uses both 'T0' and 'T0（基线）' to refer to the baseline visit. While not a major issue, consistent terminology throughout the docume"
+      },
+      {
+        "category": "表述一致性",
+        "severity": "low",
+        "description": "「investigational product」在全文存在多种写法（如单复数/大小写不统一）：investigational \nproduct, investigational product。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 6376 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（11 行），建议统一段落间距。"
+      },
+      {
+        "category": "评估指标描述检查",
+        "severity": "low",
+        "description": "Clinical Assessment/Grading 涉及分级量表，但未明确提及指标/参数（Parameter）或分级类型（Type of Grading）。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（11 行），建议统一段落间距。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 5401 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      }
+    ],
+    "user_id": null,
+    "username": ""
+  },
+  {
+    "id": "dc0a2fcf-2fe5-4d43-99a0-80d9a4d0a19f",
+    "created_at": "2026-03-15T16:02:58Z",
+    "module_id": "005",
+    "document_filename": "3-研究方案_V1.0_ 1款精华产品4周抗皱及改善肤质功效研究_C26005025_20260309.pdf",
+    "summary": {
+      "total": 25,
+      "high": 2,
+      "medium": 7,
+      "low": 16,
+      "by_module": {
+        "005": {
+          "label": "005客户端方案",
+          "count": 25
+        }
+      }
+    },
+    "issues_count": 25,
+    "by_category": {
+      "大模型辅助检查": 7,
+      "表述一致性": 1,
+      "文档撰写基本要求": 4,
+      "中文术语一致性": 5,
+      "结构完整性": 4,
+      "数字与单位规范": 1,
+      "标点符号": 3
+    },
+    "by_severity": {
+      "high": 2,
+      "medium": 7,
+      "low": 16
+    },
+    "samples": [
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "纳入标准中'非敏感肌'定义模糊，无法量化核查，可能导致入组标准不一致。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "样本量计算依据缺失，仅说明'入组约65名'，未提供计算公式、参数（如α、β、效应量）或来源。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "访视时间点'使用后第二天早上（T next morning）'在流程表中与'访视3'对应，但在'3.5.1 研究步骤'描述中访视3包含'使用后第二天早上'和'基线'两个阶段，逻辑矛盾。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "统计方法中'5.2.1 时间点间对比'仅说明使用Timm/T next morning/T1w/T4w vs T0，未明确主要/次要指标对应的统计方法，且未考虑多重比较校正。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "不良事件定义中'4.1 不良事件的定义'表述不够严谨，如'任何不利事件和意外事件'范围过宽，未区分与研究产品的关系。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "low",
+        "description": "术语不一致：'研究参与者'与'受试者'在文中混用（如'6.2 获得知情同意的程序'使用'受试者'，其他章节多用'研究参与者'）。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "low",
+        "description": "方案可执行性：'3.5.2 研究方法'中临床评估的'Griffith 10分制'和'皮肤老化图谱'未提供具体评分标准或培训要求，可能影响评估一致性。"
+      },
+      {
+        "category": "表述一致性",
+        "severity": "low",
+        "description": "「investigational product」在全文存在多种写法（如单复数/大小写不统一）：investigational \nproduct, investigational product。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 6376 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（11 行），建议统一段落间距。"
+      },
+      {
+        "category": "中文术语一致性",
+        "severity": "low",
+        "description": "「研究产品」在全文存在多种表述：试验产品、研究产品，建议统一使用同一写法。"
+      },
+      {
+        "category": "中文术语一致性",
+        "severity": "low",
+        "description": "缩略词「EC」首次出现未给出中文全称（应为「伦理委员会（EC）」）。"
+      },
+      {
+        "category": "中文术语一致性",
+        "severity": "low",
+        "description": "缩略词「ICH」首次出现未给出中文全称（应为「人用药品注册技术国际协调会（ICH）」）。"
+      },
+      {
+        "category": "中文术语一致性",
+        "severity": "low",
+        "description": "缩略词「SAE」首次出现未给出中文全称（应为「严重不良事件（SAE）」）。"
+      },
+      {
+        "category": "中文术语一致性",
+        "severity": "low",
+        "description": "缩略词「AE」首次出现未给出中文全称（应为「不良事件（AE）」）。"
+      },
+      {
+        "category": "结构完整性",
+        "severity": "medium",
+        "description": "未发现与「纳入/排除标准」相关的章节或表述。"
+      },
+      {
+        "category": "结构完整性",
+        "severity": "medium",
+        "description": "未发现与「受试者」相关的章节或表述。"
+      },
+      {
+        "category": "数字与单位规范",
+        "severity": "low",
+        "description": "方案中存在汉字数字与阿拉伯数字混用（如「十例」与「10例」并存），建议统一使用阿拉伯数字。"
+      },
+      {
+        "category": "结构完整性",
+        "severity": "medium",
+        "description": "未发现与「纳入/排除标准」相关的章节或表述。"
+      },
+      {
+        "category": "结构完整性",
+        "severity": "medium",
+        "description": "未发现与「受试者」相关的章节或表述。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（11 行），建议统一段落间距。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 5401 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      }
+    ],
+    "user_id": null,
+    "username": ""
+  },
+  {
+    "id": "60b068c9-c83a-4107-b073-a328ec1239b5",
+    "created_at": "2026-03-15T15:12:34Z",
+    "module_id": "047",
+    "document_filename": "25-0266_M25047024_Final Protocol_20250916_V1.0 fully signed.docx.pdf",
+    "summary": {
+      "total": 52,
+      "high": 3,
+      "medium": 3,
+      "low": 46,
+      "by_module": {
+        "047": {
+          "label": "047客户端方案",
+          "count": 52
+        }
+      }
+    },
+    "issues_count": 52,
+    "by_category": {
+      "大模型辅助检查": 6,
+      "结构完整性": 1,
+      "表述一致性": 1,
+      "文档撰写基本要求": 18,
+      "标点符号": 26
+    },
+    "by_severity": {
+      "high": 3,
+      "medium": 3,
+      "low": 46
+    },
+    "samples": [
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "协议中声明“本研究无需IRB审查”，这是严重的违规行为。所有涉及人类受试者的临床试验都必须经过机构审查委员会（IRB）或伦理委员会（EC）的伦理审查和批准，以确保受试者的权利和安全得到保护。\nThe protocol states 'No IRB review is needed for this study,' which is a critical regulatory violation. "
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "纳入标准中提到“常规气垫粉底使用者”，但未定义“常规”的具体标准。这种缺乏清晰、客观定义的做法会引入受试者选择的显著差异，可能混淆研究结果，降低数据的可靠性。\nThe inclusion criteria state 'Regular cushion users' without defining what constitutes 'regular.' This lack of a clear, "
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "排除标准中两次列出了“牛皮癣”（第7项和第12项），这是不一致且冗余的。这可能导致在受试者筛选过程中产生混淆，也是协议编辑不佳的迹象。\nThe exclusion criteria list 'psoriasis' twice (items 7 and 12), which is inconsistent and redundant. This could lead to confusion du"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "协议规定“照片分级将在研究访视日后4天进行”。这会引入显著的回忆偏倚和分级者间不一致的风险，因为评估不是在照片拍摄后立即进行，可能会损害主要疗效终点的有效性。\nThe protocol states that photo grading will be conducted '4 days after the study visit day.' This introduces a significa"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "照片分级的统计计划规定“平均值≤3即为通过”。这是一个不寻常且在科学上值得质疑的疗效标准。疗效应根据统计学显著性或预先设定的临床有意义的变化来评估，而不是简单的通过/不通过阈值。\nThe statistical plan for photo grading states that 'The mean values <= 3 means pass.' This is an unusual and s"
+      },
+      {
+        "category": "结构完整性",
+        "severity": "medium",
+        "description": "未发现与「Objectives / 研究目的」相关的章节或表述。"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "low",
+        "description": "文档中存在一些小的拼写错误和格式不一致，例如将“T0m”或“T15m”误写为“Timm”，以及日期中有多余的空格（“16th September , 202 5”）。虽然不影响科学有效性，但这些损害了协议的专业性和清晰度。\nThe document contains minor typographical errors and formatting inconsistencies, such as"
+      },
+      {
+        "category": "表述一致性",
+        "severity": "low",
+        "description": "「informed consent」在全文存在多种写法（如单复数/大小写不统一）：informed \nconsent, informed consent。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 6872 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1505 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2161 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1456 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1369 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2497 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1303 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1463 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2404 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（6 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（6 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 6608 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1446 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1787 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1456 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2497 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1342 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（5 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      }
+    ],
+    "user_id": null,
+    "username": ""
+  },
+  {
+    "id": "a948bc02-62e6-4cb0-bff6-2aa8ddc284d5",
+    "created_at": "2026-03-15T15:04:49Z",
+    "module_id": "005",
+    "document_filename": "V2.0_25-14192 Protocol_12-week Product 2076503 92 Efficacy Study_C26005009-clean.pdf",
+    "summary": {
+      "total": 158,
+      "high": 5,
+      "medium": 5,
+      "low": 148,
+      "by_module": {
+        "005": {
+          "label": "005客户端方案",
+          "count": 158
+        }
+      }
+    },
+    "issues_count": 158,
+    "by_category": {
+      "大模型辅助检查": 12,
+      "表述一致性": 2,
+      "文档撰写基本要求": 50,
+      "标点符号": 94
+    },
+    "by_severity": {
+      "high": 5,
+      "medium": 5,
+      "low": 148
+    },
+    "samples": [
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "Study title contains inconsistent and unclear information. The title states '60 Healthy Asia Skin with All Skin Type, 50% Self-perceived Sensitive Skin', which is grammatically incorrect and ambiguous"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "Inconsistency in sample size reporting. The title and general information state '60 Healthy Asia Skin', but the 'Selection of Subjects' section states '70 female adult subjects will be enrolled... at "
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "Ambiguous and inconsistent use of 'Asia Skin' and 'Chinese'. The title mentions 'Asia Skin', but inclusion criterion #2 specifies '100% Chinese'. This is contradictory and could mislead about the gene"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "Inclusion criterion #3 states 'All skin types (10% of each normal, oily, dry, combination)', but this is mathematically impossible for a sample of 60 or 70 subjects (10% of 60 is 6, but 6 does not div"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "The 'Responsibilities' section states that study performance is based on 'ISO 9001:2015', but later mentions 'approximating the main principles of GCP'. This is vague and does not explicitly state ful"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "The 'General Information' section lists 'Test Areas: Face, neck and decollete', but the title and much of the protocol focus only on the face. This inconsistency could lead to confusion about the scop"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "Inclusion criterion #9 states 'Users of serum (5-7x/week) with no antiaging and anti-pigmentation ingredients/claims', but inclusion criterion #10 allows 'basic moisturizers and sunscreen products SPF"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "Exclusion criterion #9 lists 'eczema, seborrheic dermatitis, severe excoriations' as conditions that would exclude subjects, but inclusion criterion #5 requires 'mild to moderate' scores for various a"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "high",
+        "description": "The 'Study Schedule' table in section 4 lists 'VISIA-CR – (C/L/R)' at all visits, but the description in section 5.1.1 only mentions 'Standard photos on face captured by VISIA-CR' at T0, Timm, W2, W4,"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "medium",
+        "description": "The 'Subject Instructions for Study Visits' state 'Apply the test material as scheduled in the evening of the day prior to each post-baseline clinic visit', but it does not specify the exact time (e.g"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "low",
+        "description": "The 'General Information' section lists 'Efficacy Topline: Week 2: March 16th 2026', but the study duration is listed as 'January 27th 2026 ~ April 26th 2026'. Week 2 would be February 10th, not March"
+      },
+      {
+        "category": "大模型辅助检查",
+        "severity": "low",
+        "description": "The 'Responsibilities' section mentions 'CRO study#: C2 600500 9' with a space in the number, while other instances list it as 'C26005009' without a space. This inconsistency in formatting should be s"
+      },
+      {
+        "category": "表述一致性",
+        "severity": "low",
+        "description": "「informed consent」在全文存在多种写法（如单复数/大小写不统一）：informed \nconsent, informed consent。"
+      },
+      {
+        "category": "表述一致性",
+        "severity": "low",
+        "description": "「investigational product」在全文存在多种写法（如单复数/大小写不统一）：investigational \nproduct, investigational product。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 4567 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2448 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1882 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2457 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2501 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2708 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2602 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2438 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1522 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1603 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2090 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2129 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1374 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2226 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 3057 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1572 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1421 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2090 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1863 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2461 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1353 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1434 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2699 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1907 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（15 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 4567 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（15 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2219 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1882 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2228 字符），建议适当分段以符合文档撰写规范。"
+      }
+    ],
+    "user_id": null,
+    "username": ""
+  },
+  {
+    "id": "be2cb254-a071-4e08-a5b0-94ba086737d4",
+    "created_at": "2026-03-15T15:04:41Z",
+    "module_id": "104",
+    "document_filename": "V2.0_25-14192 Protocol_12-week Product 2076503 92 Efficacy Study_C26005009-clean.pdf",
+    "summary": {
+      "total": 146,
+      "high": 0,
+      "medium": 0,
+      "low": 146,
+      "by_module": {
+        "104": {
+          "label": "104客户端方案",
+          "count": 146
+        }
+      }
+    },
+    "issues_count": 146,
+    "by_category": {
+      "表述一致性": 2,
+      "文档撰写基本要求": 50,
+      "标点符号": 94
+    },
+    "by_severity": {
+      "low": 146
+    },
+    "samples": [
+      {
+        "category": "表述一致性",
+        "severity": "low",
+        "description": "「informed consent」在全文存在多种写法（如单复数/大小写不统一）：informed \nconsent, informed consent。"
+      },
+      {
+        "category": "表述一致性",
+        "severity": "low",
+        "description": "「investigational product」在全文存在多种写法（如单复数/大小写不统一）：investigational \nproduct, investigational product。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 4567 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2448 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1882 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2457 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2501 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2708 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2602 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2438 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1522 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1603 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2090 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2129 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1374 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2226 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 3057 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1572 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1421 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2090 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1863 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2461 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1353 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1434 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2699 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1907 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（15 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 4567 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（15 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2219 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1882 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2228 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2272 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2480 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2373 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2209 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      }
+    ],
+    "user_id": null,
+    "username": ""
+  },
+  {
+    "id": "349e7491-86e4-4f2c-8b91-8188173c2460",
+    "created_at": "2026-03-15T14:19:42Z",
+    "module_id": "104",
+    "document_filename": "25-07562 Protocol_Lotion 909515 23A Efficacy Study_C25005109-clean.pdf",
+    "summary": {
+      "total": 79,
+      "high": 0,
+      "medium": 1,
+      "low": 78,
+      "by_module": {
+        "104": {
+          "label": "104客户端方案",
+          "count": 79
+        }
+      }
+    },
+    "issues_count": 79,
+    "by_category": {
+      "结构完整性": 1,
+      "表述一致性": 2,
+      "文档撰写基本要求": 51,
+      "标点符号": 25
+    },
+    "by_severity": {
+      "medium": 1,
+      "low": 78
+    },
+    "samples": [
+      {
+        "category": "结构完整性",
+        "severity": "medium",
+        "description": "未发现与「Eligibility / 入选排除」相关的章节或表述。"
+      },
+      {
+        "category": "表述一致性",
+        "severity": "low",
+        "description": "「informed consent」在全文存在多种写法（如单复数/大小写不统一）：informed \nconsent, informed consent。"
+      },
+      {
+        "category": "表述一致性",
+        "severity": "low",
+        "description": "「investigational product」在全文存在多种写法（如单复数/大小写不统一）：investigational \nproduct, investigational product。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 5141 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2655 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2300 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2446 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2350 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2575 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1441 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1243 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1215 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1517 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2193 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1974 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1578 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 3019 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1499 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1564 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1577 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2235 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2301 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2667 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2350 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1228 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1378 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1303 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1987 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（15 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 5141 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过多连续空行（15 行），建议统一段落间距。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2396 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2041 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2187 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2091 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 2317 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1441 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1215 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1258 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "句号后缺少空格，下一句首字母未大写或未空格。"
+      },
+      {
+        "category": "文档撰写基本要求",
+        "severity": "low",
+        "description": "存在过长段落（约 1934 字符），建议适当分段以符合文档撰写规范。"
+      },
+      {
+        "category": "标点符号",
+        "severity": "low",
+        "description": "文中存在逗号前多余空格。"
+      }
+    ],
+    "user_id": null,
+    "username": ""
+  }
+]

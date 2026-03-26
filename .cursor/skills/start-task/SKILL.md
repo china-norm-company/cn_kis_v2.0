@@ -17,7 +17,9 @@
 向用户确认以下信息（如对话中已有则直接使用）：
 
 1. **Issue 编号**：GitHub 上的 Issue 编号（纯数字，如 231）
-2. **工作台**：从 18 个工作台中选一个（secretary/finance/research/execution/quality/hr/crm/recruitment/equipment/material/facility/evaluator/lab-personnel/ethics/reception/control-plane/governance/digital-workforce/common）
+2. **工作台**：从 **19 个工作台**中选一个（secretary/finance/research/execution/quality/hr/crm/recruitment/equipment/material/facility/evaluator/lab-personnel/ethics/reception/control-plane/admin/digital-workforce/data-platform/common）
+
+   > ⚠️ **注意**：`governance`（旧名，已废弃）和 `iam`（已合并入 admin）不是合法工作台标识，禁止使用。正确的工作台标识以 `backend/configs/workstations.yaml` 为准。
 3. **任务简述**：3-5 个英文单词，用连字符分隔（如 `sample-rule-editor`）
 4. **变更类型**：feature（新功能）/ fix（修复）/ chore（配置/文档）/ wave（迁移波次）/ hotfix（紧急修复）
 

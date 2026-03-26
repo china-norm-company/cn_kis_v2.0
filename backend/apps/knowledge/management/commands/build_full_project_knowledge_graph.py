@@ -15,12 +15,9 @@ build_full_project_knowledge_graph — 三源全量项目协作图谱构建
   python manage.py build_full_project_knowledge_graph --reset-source email
 """
 import re
-import json
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta
 from django.core.management.base import BaseCommand
-from django.db import transaction, connection
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +86,7 @@ class Command(BaseCommand):
         limit = options['limit']
         reset_source = options.get('reset_source')
 
-        from apps.knowledge.models import KnowledgeEntry, KnowledgeEntity, KnowledgeRelation
+        from apps.knowledge.models import KnowledgeEntity, KnowledgeRelation
 
         self.stdout.write(f'\n{"="*65}')
         self.stdout.write('  三源全量项目协作图谱构建')
@@ -124,7 +121,6 @@ class Command(BaseCommand):
         # 最终汇总
         from apps.knowledge.models import KnowledgeRelation
         total_rels = KnowledgeRelation.objects.count()
-        from apps.knowledge.models import KnowledgeEntity
         total_entities = KnowledgeEntity.objects.count()
 
         self.stdout.write(f'\n{"="*65}')
@@ -325,7 +321,7 @@ class Command(BaseCommand):
                     )
                     if self._upsert_relation(
                         proj_ent, 'has_lifecycle_stage', stage_ent,
-                        source=f'fpkg:email:stage', confidence=0.85,
+                        source='fpkg:email:stage', confidence=0.85,
                     ):
                         rel_created += 1
 

@@ -9,7 +9,6 @@ VisitPlan → 汇总所有 Activity 的 BOM → 生成 ResourceDemand
 """
 import logging
 from collections import defaultdict
-from typing import Optional
 
 from django.db import transaction
 

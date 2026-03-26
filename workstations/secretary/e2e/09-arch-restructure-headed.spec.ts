@@ -3,7 +3,7 @@
  *
  * 验收范围：
  *   Part A — UI 行为（本地 dev server，headed 可视化）
- *     1. 子衿门户：18 个工作台卡片渲染、平台台权限过滤
+ *     1. 子衿门户：19 个工作台卡片渲染、平台台权限过滤
  *     2. 子衿导航：仅剩 6 个菜单，无 AI/admin 入口
  *     3. 子衿路由：已移除路由返回 404 或重定向
  *     4. 鹿鸣治理台：标题/侧边栏/登录页均显示"鹿鸣·治理台"
@@ -14,7 +14,7 @@
  *     7. /auth/profile 返回 visible_menu_items.secretary 不含已迁移项
  *     8. /auth/profile 返回 visible_menu_items.admin 含完整菜单
  *     9. /auth/profile 返回 visible_menu_items.digital-workforce 含 AI 菜单
- *    10. 18 个工作台路由全部可达（HTTP 200）
+ *    10. 19 个工作台路由全部可达（HTTP 200）
  *    11. 后端 feishu_callback 参数结构验证
  *
  * 运行方式：
@@ -114,7 +114,7 @@ async function mockProfileApi(page: Page) {
 
 test.describe('Part A: UI 行为验证', () => {
 
-  test('A-1 子衿门户渲染 18 个工作台卡片（管理员）', async ({ page }) => {
+  test('A-1 子衿门户渲染 19 个工作台卡片（管理员）', async ({ page }) => {
     await injectAuth(page, { isAdmin: true })
     await mockProfileApi(page)
     await page.goto(`${LOCAL_BASE}/secretary/#/portal`)
@@ -345,7 +345,7 @@ test.describe('Part B: 生产 API 验证', () => {
     }
   })
 
-  test('B-5 18 个工作台路由全部可达（HTTP 200）', async ({ request }) => {
+  test('B-5 19 个工作台路由全部可达（HTTP 200）', async ({ request }) => {
     const pathMap: Record<string, string> = {
       secretary: '/secretary/',
       finance: '/finance/',
