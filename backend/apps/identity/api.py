@@ -1578,7 +1578,7 @@ def list_accounts(
 # 工作台配置管理 API（渐进上线支持）
 # ============================================================================
 
-# 18 个工作台的合法标识（来自 workstation-independence.mdc）
+# 19 个工作台的合法标识（来自 workstations.yaml）
 VALID_WORKSTATION_KEYS = {
     'secretary',
     'finance',
@@ -1598,6 +1598,7 @@ VALID_WORKSTATION_KEYS = {
     'control-plane',
     'admin',
     'digital-workforce',
+    'data-platform',
 }
 
 VALID_MODES = {'blank', 'pilot', 'full'}
