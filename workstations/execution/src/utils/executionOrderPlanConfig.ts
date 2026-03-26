@@ -9,10 +9,134 @@
  * 每个计划为一个模块：左上角模块标题，下方为字段名与解析出的内容（上下布局）
  */
 
+/** 英文月份名 → 1–12（含 January / Mar. 等前缀匹配） */
+function monthNameToNum(name: string): number | null {
+  const n = name.trim().toLowerCase().replace(/\./g, '')
+  const map: Record<string, number> = {
+    january: 1,
+    jan: 1,
+    february: 2,
+    feb: 2,
+    march: 3,
+    mar: 3,
+    april: 4,
+    apr: 4,
+    may: 5,
+    june: 6,
+    jun: 6,
+    july: 7,
+    jul: 7,
+    august: 8,
+    aug: 8,
+    september: 9,
+    sep: 9,
+    sept: 9,
+    october: 10,
+    oct: 10,
+    november: 11,
+    nov: 11,
+    december: 12,
+    dec: 12,
+  }
+  if (map[n] != null) return map[n]
+  const short = n.slice(0, 3)
+  return map[short] ?? null
+}
+
+/**
+ * 解析英文「月 日 年」单段，如 Jan,03,2026、Mar.30,2026、January 3, 2026
+ */
+function parseEnglishMonthDayYearToken(s: string): { y: number; m: number; d: number } | null {
+  const t = s.trim()
+  const patterns = [
+    /^([A-Za-z]{3,})\s*[.,]\s*(\d{1,2})\s*[.,]\s*(\d{4})$/,
+    /^([A-Za-z]{3,})\.(\d{1,2})[.,](\d{4})$/,
+    /^([A-Za-z]{3,})\s+(\d{1,2})\s*[.,]\s*(\d{4})$/,
+  ]
+  for (const re of patterns) {
+    const m = t.match(re)
+    if (!m) continue
+    const mo = monthNameToNum(m[1])
+    if (mo == null) continue
+    const d = parseInt(m[2], 10)
+    const y = parseInt(m[3], 10)
+    if (d >= 1 && d <= 31 && y >= 1900 && y <= 2100) return { y, m: mo, d }
+  }
+  return null
+}
+
+/** 英文范围 Jan,03,2026-Mar.30,2026 → 内部斜杠格式便于后续拆分 */
+function tryNormalizeEnglishExecutionPeriodRange(s: string): string | null {
+  const t = s.trim()
+  const m = t.match(
+    /^([A-Za-z]{3,})[.,\s]+(\d{1,2})[.,\s]+(\d{4})\s*[-–~～]\s*([A-Za-z]{3,})[.,\s]+(\d{1,2})[.,\s]+(\d{4})$/
+  )
+  if (!m) return null
+  const mo1 = monthNameToNum(m[1])
+  const mo2 = monthNameToNum(m[4])
+  if (mo1 == null || mo2 == null) return null
+  const d1 = parseInt(m[2], 10)
+  const y1 = parseInt(m[3], 10)
+  const d2 = parseInt(m[5], 10)
+  const y2 = parseInt(m[6], 10)
+  if (d1 < 1 || d1 > 31 || d2 < 1 || d2 > 31) return null
+  return `${y1}/${mo1}/${d1}~${y2}/${mo2}/${d2}`
+}
+
+/**
+ * Excel 导出/解析时常把「文本日期」与「单元格序列号」拼在同一格，如 `2026/3/26-31 46111`。
+ * 若末尾为合法 Excel 序列号且前半段已像日期，则去掉末尾数字再格式化。
+ */
+function stripTrailingExcelSerialSuffix(s: string): string {
+  const t = s.trim()
+  const m = t.match(/^(.+?)\s+(\d{4,6})$/)
+  if (!m) return s
+  const tailStr = m[2]
+  /** 仅 5～6 位视为 Excel 序列号；4 位常为年份（如 …Mar.30, 2026），不可剥 */
+  if (tailStr.length < 5) return s
+  const head = m[1].trim()
+  const n = parseInt(tailStr, 10)
+  if (Number.isNaN(n) || n < 1 || n > 2958465) return s
+  const fromSerial = excelSerialToDateStr(n)
+  if (!fromSerial || !/^\d{4}年\d{1,2}月\d{1,2}日$/.test(fromSerial)) return s
+  const headLooksLikeDate =
+    /[\d\/\-\.年月日]/.test(head) ||
+    /(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i.test(head)
+  if (!headLooksLikeDate) return s
+  return head
+}
+
+/**
+ * 同年同月「起始日-结束日」简写：2026/3/26-31 → 2026/3/26~2026/3/31（结束段仅为日）
+ */
+function expandSameMonthTrailingDayOnlyRange(s: string): string {
+  const t = s.trim()
+  const m = t.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\s*-\s*(\d{1,2})$/)
+  if (!m) return s
+  const y = m[1]
+  const mo = m[2]
+  const dStart = m[3]
+  const dEnd = m[4]
+  return `${y}/${mo}/${dStart}~${y}/${mo}/${dEnd}`
+}
+
+/** 上传解析出的执行周期：先展开特殊简写，再交给原有分段逻辑 */
+function normalizeExecutionPeriodRawInput(s: string): string {
+  let t = s.trim()
+  const enRange = tryNormalizeEnglishExecutionPeriodRange(t)
+  if (enRange) t = enRange
+  else t = expandSameMonthTrailingDayOnlyRange(t)
+  return t
+}
+
 /** 将日期片段格式化为中文 YYYY年M月D日（如 2026年3月12日） */
 function formatOneDateToChinese(part: string, defaultYear: number): string {
   const s = part.trim()
   if (!s) return ''
+  const en = parseEnglishMonthDayYearToken(s)
+  if (en) {
+    return `${en.y}年${en.m}月${en.d}日`
+  }
   const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
   if (iso) {
     const y = parseInt(iso[1], 10)
@@ -107,13 +231,16 @@ function formatOneDateToChinese(part: string, defaultYear: number): string {
 /**
  * 执行周期展示用：统一为中文 YYYY年M月D日，范围用 ~ 连接。
  * 支持原始格式：3/2~4/8、2025-03-02~2025-04-08、2026.03.02-2026.03.25、2026/1/16-1/23、
- * 2026/3.15～4.17、2026-3-30 ~ 4-12、3月2日-3月24日 等。
+ * 2026/3/15～4.17、2026-3-30 ~ 4-12、3月2日-3月24日、2026/3/26-31（同月日止简写）、
+ * Jan,03,2026-Mar.30,2026（英文月范围）、以及末尾误粘 Excel 序列号如 `2026/3/26-31 46111` 等。
  */
 export function formatExecutionPeriodToMMMMDDYY(value: string): string {
-  const s = (value || '')
+  const s0 = (value || '')
     .trim()
     .replace(/[－–—]/g, '-')
-  if (!s) return ''
+  if (!s0) return ''
+  const stripped = stripTrailingExcelSerialSuffix(s0)
+  const s = normalizeExecutionPeriodRawInput(stripped)
   const defaultYear = new Date().getFullYear()
   // 范围分隔符：~ ～ ; ； 或「-」后接四位年、中文年、M月D日、M/D、M.D 等
   const parts = s
