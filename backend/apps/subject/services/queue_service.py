@@ -11,7 +11,6 @@ from datetime import date
 from typing import Optional
 
 from django.utils import timezone
-from django.db.models import Avg, F
 
 from libs.time_format import format_local_hhmm
 
@@ -19,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 # 过号顺延位数（插在即将被叫的下一位之后 N 位）
 MISSED_CALL_DELAY_SLOTS = 3
+# 等候时间估算口径：每位受试者按 2 分钟计算
+QUEUE_WAIT_MINUTES_PER_PERSON = 2
 
 
 def _get_project_code_for_checkin(checkin, today: date) -> str:
@@ -306,23 +307,5 @@ def get_display_board(target_date=None) -> dict:
 
 
 def estimate_wait_time(position: int) -> int:
-    """基于当日历史平均服务时长估算等候分钟数"""
-    from ..models_execution import SubjectCheckin
-
-    today = timezone.now().date()
-    completed_today = SubjectCheckin.objects.filter(
-        checkin_date=today,
-        status='checked_out',
-        checkin_time__isnull=False,
-        checkout_time__isnull=False,
-    ).annotate(
-        service_duration=F('checkout_time') - F('checkin_time'),
-    )
-
-    if completed_today.exists():
-        avg = completed_today.aggregate(avg_dur=Avg('service_duration'))['avg_dur']
-        if avg:
-            avg_minutes = avg.total_seconds() / 60
-            return max(1, int(avg_minutes * position))
-
-    return position * 15  # default 15min per person
+    """按固定口径估算等候分钟数：每位受试者 2 分钟。"""
+    return max(0, int(position)) * QUEUE_WAIT_MINUTES_PER_PERSON

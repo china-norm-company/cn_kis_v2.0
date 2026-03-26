@@ -1549,7 +1549,10 @@ def get_my_queue_position(request):
         return 404, {'code': 404, 'msg': '未找到受试者信息'}
     try:
         from .models_execution import ReceptionBoardCheckin
-        from .services.queue_service import format_local_hhmm
+        from .services.queue_service import (
+            QUEUE_WAIT_MINUTES_PER_PERSON,
+            format_local_hhmm,
+        )
 
         today = timezone.localdate()
         rows = list(
@@ -1575,7 +1578,7 @@ def get_my_queue_position(request):
         )
         ahead_count = sum(1 for r in open_rows if r.subject_id != subject.id and (r.checkin_time or dt_datetime.min) < (latest.checkin_time or dt_datetime.min))
         position = ahead_count + 1
-        wait_minutes = ahead_count * 10
+        wait_minutes = ahead_count * QUEUE_WAIT_MINUTES_PER_PERSON
         result = {
             'position': position,
             'ahead_count': ahead_count,
