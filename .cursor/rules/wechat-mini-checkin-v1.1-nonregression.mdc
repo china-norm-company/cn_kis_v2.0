@@ -1,6 +1,6 @@
 ---
 description: 微信小程序扫码签到 V1.1 非回归约束与需求文档
-globs: apps/wechat-mini/**,backend/apps/subject/**,backend/apps/identity/**,packages/api-client/**
+globs: workstations/wechat-mini/**,backend/apps/subject/**,backend/apps/identity/**,packages/api-client/**
 alwaysApply: false
 ---
 

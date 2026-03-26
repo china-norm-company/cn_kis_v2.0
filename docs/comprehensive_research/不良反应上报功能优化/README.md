@@ -11,8 +11,8 @@
 
 | 灞傜骇 | 璺緞/璇存槑 |
 |------|-----------|
-| 灏忕▼搴忎笂鎶ラ〉 | `apps/wechat-mini/src/pages/report/index.tsx` 鈥?鐥囩姸銆佽交涓噸搴︺€佸彂鐢熸棩鏈熴€佺収鐗?UI锛?*鐓х墖鏈殢鎻愪氦涓婁紶**锛?|
-| 灏忕▼搴忚褰曞垪琛?| `apps/wechat-mini/src/pages/report/history.tsx` 鈥?`GET /my/adverse-events` |
+| 灏忕▼搴忎笂鎶ラ〉 | `workstations/wechat-mini/src/pages/report/index.tsx` 鈥?鐥囩姸銆佽交涓噸搴︺€佸彂鐢熸棩鏈熴€佺収鐗?UI锛?*鐓х墖鏈殢鎻愪氦涓婁紶**锛?|
+| 灏忕▼搴忚褰曞垪琛?| `workstations/wechat-mini/src/pages/report/history.tsx` 鈥?`GET /my/adverse-events` |
 | 鍙楄瘯鑰?API | `backend/apps/subject/api_my.py` 鈥?`POST /my/report-ae`銆乣GET /my/adverse-events`銆乣GET /my/adverse-events/{id}` |
 | 棰嗗煙妯″瀷 | `backend/apps/safety/models.py` 鈥?`AdverseEvent`銆乣AESeverity`銆乣AERelation`銆乣AEStatus`銆乣AEFollowUp` |
 | 鍒涘缓閫昏緫 | `backend/apps/safety/services.py` 鈥?`create_adverse_event`锛堝惈 SAE 鏃跺姞鎬?鍋忓樊/鍙樻洿绛夊垎鏀紱**灏忕▼搴忚矾寰勬湭浼?`open_id`锛岄涔﹀鎵瑰彲鑳芥湭瑙﹀彂**锛?|
