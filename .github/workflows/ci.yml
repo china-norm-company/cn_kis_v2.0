@@ -53,6 +53,9 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build shared packages (required before type-check)
+        run: pnpm --filter './packages/**' build
+
       - name: TypeScript type check (shared packages)
         run: pnpm type-check
         continue-on-error: false
