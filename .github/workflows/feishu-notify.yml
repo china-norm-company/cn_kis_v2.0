@@ -491,7 +491,7 @@ jobs:
               // 取 review body 前 300 字符作为摘要
               const reviewSummary = (review.body || '').replace(/<!--[\s\S]*?-->/g, '').trim().slice(0, 300);
 
-              // 只处理 CodeRabbit 的 approved 和 changes_requested，忽略普通 comment
+              // ── CodeRabbit AI Review 通知 ─────────────────────────────────────
               if (reviewer === 'coderabbitai[bot]' && (state === 'approved' || state === 'changes_requested')) {
                 const isApproved = state === 'approved';
                 card = {
@@ -540,6 +540,54 @@ jobs:
                     {
                       tag: 'note',
                       elements: [{ tag: 'plain_text', content: `CodeRabbit AI · ${new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})} | CN KIS V2.0` }],
+                    },
+                  ],
+                };
+              }
+
+              // ── 人工 Review 通知（Approve / Request Changes）──────────────────────
+              else if (reviewer !== 'coderabbitai[bot]' && (state === 'approved' || state === 'changes_requested')) {
+                const isApproved = state === 'approved';
+                card = {
+                  header: {
+                    title: {
+                      content: isApproved
+                        ? `✅ PR #${prNumber} 已获批准`
+                        : `🔴 PR #${prNumber} 需要修改`,
+                      tag: 'plain_text',
+                    },
+                    template: isApproved ? 'green' : 'red',
+                  },
+                  elements: [
+                    {
+                      tag: 'div',
+                      text: {
+                        tag: 'lark_md',
+                        content: isApproved
+                          ? `**${prTitle}**\n作者：${prAuthor} ｜ 审批人：**${reviewer}**\n\n✅ 已批准，满足合并条件，可以合并到 \`main\``
+                          : `**${prTitle}**\n作者：${prAuthor} ｜ 审批人：**${reviewer}**\n\n🔴 审批人要求修改，PR 当前**不可合并**\n${reviewSummary ? `\n审批意见摘要：\n> ${reviewSummary.split('\n').slice(0, 4).join('\n> ')}` : ''}`,
+                      },
+                    },
+                    { tag: 'hr' },
+                    {
+                      tag: 'div',
+                      text: {
+                        tag: 'lark_md',
+                        content: isApproved
+                          ? `💡 **下一步（${prAuthor}）**：\n在 Cursor 终端运行：\`gh pr merge ${prNumber} --squash\`\n或告诉 AI：「帮我合并 PR #${prNumber}」`
+                          : `💡 **下一步（${prAuthor}）**：\n在 Cursor 中说：「PR #${prNumber} 被要求修改，帮我处理审批意见」\n修改后 push，重新请求审查`,
+                      },
+                    },
+                    {
+                      tag: 'action',
+                      actions: [
+                        { tag: 'button', text: { content: isApproved ? '立即合并' : '查看修改意见', tag: 'plain_text' }, url: reviewUrl, type: isApproved ? 'primary' : 'danger' },
+                        { tag: 'button', text: { content: '查看 PR', tag: 'plain_text' }, url: prUrl, type: 'default' },
+                      ],
+                    },
+                    {
+                      tag: 'note',
+                      elements: [{ tag: 'plain_text', content: `人工审批 · ${new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})} | CN KIS V2.0` }],
                     },
                   ],
                 };
