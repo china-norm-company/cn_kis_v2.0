@@ -559,7 +559,7 @@ jobs:
               // 取 review body 前 300 字符作为摘要
               const reviewSummary = (review.body || '').replace(/<!--[\s\S]*?-->/g, '').trim().slice(0, 300);
 
-              // 只处理 CodeRabbit 的 approved 和 changes_requested，忽略普通 comment
+              // ── CodeRabbit AI 审查通知 ────────────────────────────────────────────
               if (reviewer === 'coderabbitai[bot]' && (state === 'approved' || state === 'changes_requested')) {
                 const isApproved = state === 'approved';
                 card = {
@@ -611,6 +611,132 @@ jobs:
                     },
                   ],
                 };
+              }
+
+              // ── 真人审查通知（团队成员 Approve / Request Changes / Comment）────
+              else if (reviewer !== 'coderabbitai[bot]' && reviewer !== 'github-actions[bot]') {
+                const nowBJ = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+
+                if (state === 'approved') {
+                  card = {
+                    header: {
+                      title: { content: `✅ PR #${prNumber} 已获人工批准`, tag: 'plain_text' },
+                      template: 'green',
+                    },
+                    elements: [
+                      {
+                        tag: 'div',
+                        text: {
+                          tag: 'lark_md',
+                          content: [
+                            `**${prTitle}**`,
+                            `PR 作者：${prAuthor}`,
+                            `审批人：**${reviewer}** ✅ 已批准合并`,
+                            reviewSummary ? `\n> ${reviewSummary.split('\n').slice(0, 2).join('\n> ')}` : '',
+                          ].filter(Boolean).join('\n'),
+                        },
+                      },
+                      { tag: 'hr' },
+                      {
+                        tag: 'div',
+                        text: {
+                          tag: 'lark_md',
+                          content: `💡 **下一步**：确认 CI 通过后即可合并到 main`,
+                        },
+                      },
+                      {
+                        tag: 'action',
+                        actions: [
+                          { tag: 'button', text: { content: '查看 PR', tag: 'plain_text' }, url: prUrl, type: 'primary' },
+                          { tag: 'button', text: { content: '查看审批详情', tag: 'plain_text' }, url: reviewUrl, type: 'default' },
+                        ],
+                      },
+                      {
+                        tag: 'note',
+                        elements: [{ tag: 'plain_text', content: `人工审批 · ${nowBJ} | CN KIS V2.0` }],
+                      },
+                    ],
+                  };
+
+                } else if (state === 'changes_requested') {
+                  card = {
+                    header: {
+                      title: { content: `🔴 PR #${prNumber} 被要求修改`, tag: 'plain_text' },
+                      template: 'red',
+                    },
+                    elements: [
+                      {
+                        tag: 'div',
+                        text: {
+                          tag: 'lark_md',
+                          content: [
+                            `**${prTitle}**`,
+                            `PR 作者：${prAuthor}`,
+                            `审批人：**${reviewer}** 要求修改后重新提交`,
+                          ].join('\n'),
+                        },
+                      },
+                      reviewSummary ? {
+                        tag: 'div',
+                        text: {
+                          tag: 'lark_md',
+                          content: `**审查意见摘要：**\n> ${reviewSummary.split('\n').slice(0, 3).join('\n> ')}`,
+                        },
+                      } : null,
+                      { tag: 'hr' },
+                      {
+                        tag: 'div',
+                        text: {
+                          tag: 'lark_md',
+                          content: `💡 **处理方式**：在 Cursor 中说：「PR #${prNumber} 有审查意见，帮我逐条处理」\n修改后 push，审批人会收到重新审查通知`,
+                        },
+                      },
+                      {
+                        tag: 'action',
+                        actions: [
+                          { tag: 'button', text: { content: '查看修改要求', tag: 'plain_text' }, url: reviewUrl, type: 'danger' },
+                          { tag: 'button', text: { content: '查看 PR', tag: 'plain_text' }, url: prUrl, type: 'default' },
+                        ],
+                      },
+                      {
+                        tag: 'note',
+                        elements: [{ tag: 'plain_text', content: `人工审批 · ${nowBJ} | CN KIS V2.0` }],
+                      },
+                    ].filter(Boolean),
+                  };
+
+                } else if (state === 'commented') {
+                  card = {
+                    header: {
+                      title: { content: `💬 PR #${prNumber} 有新评审评论`, tag: 'plain_text' },
+                      template: 'blue',
+                    },
+                    elements: [
+                      {
+                        tag: 'div',
+                        text: {
+                          tag: 'lark_md',
+                          content: [
+                            `**${prTitle}**`,
+                            `PR 作者：${prAuthor}`,
+                            `评论人：**${reviewer}**`,
+                            reviewSummary ? `\n> ${reviewSummary.split('\n').slice(0, 3).join('\n> ')}` : '',
+                          ].filter(Boolean).join('\n'),
+                        },
+                      },
+                      {
+                        tag: 'action',
+                        actions: [
+                          { tag: 'button', text: { content: '查看评论', tag: 'plain_text' }, url: reviewUrl, type: 'default' },
+                        ],
+                      },
+                      {
+                        tag: 'note',
+                        elements: [{ tag: 'plain_text', content: `评审评论 · ${nowBJ} | CN KIS V2.0` }],
+                      },
+                    ],
+                  };
+                }
               }
             }
 
