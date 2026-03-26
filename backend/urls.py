@@ -303,7 +303,11 @@ def health_check(request, check: _Optional[str] = None):
 from django.urls import path
 from apps.agent_gateway.views_sse import chat_stream
 
+from apps.notification.api_feishu_card_action import feishu_card_action_webhook
+
 urlpatterns = [
     path('api/v1/', api.urls),
     path('api/v1/agents/chat/stream', chat_stream),
+    # 飞书卡片交互回调（免认证，供飞书服务器直接 POST）
+    path('api/v1/webhooks/feishu/card-action/', feishu_card_action_webhook),
 ]
