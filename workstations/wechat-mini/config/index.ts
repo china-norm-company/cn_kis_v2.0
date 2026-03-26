@@ -1,6 +1,13 @@
 import { defineConfig, type UserConfigExport } from '@tarojs/cli'
 import path from 'node:path'
 
+/** 相对本文件（config/）到仓库根下 packages/subject-core */
+const subjectCoreRoot = path.resolve(__dirname, '../../../packages/subject-core')
+const subjectCoreEntry = path.join(subjectCoreRoot, 'src/index.ts')
+const consentPlaceholdersRoot = path.resolve(__dirname, '../../../packages/consent-placeholders')
+const consentPlaceholdersEntry = path.join(consentPlaceholdersRoot, 'src/index.ts')
+const srcRoot = path.resolve(__dirname, '../src')
+
 export default defineConfig(async (merge) => {
   const baseConfig: UserConfigExport = {
     projectName: 'cn-kis-subject',
@@ -38,14 +45,18 @@ export default defineConfig(async (merge) => {
     mini: {
       compile: {
         // Taro 3.6 config schema does not accept RegExp here.
-        include: [path.resolve(__dirname, '../../packages/subject-core')],
+        include: [subjectCoreRoot, consentPlaceholdersRoot],
       },
       webpackChain(chain) {
+        chain.resolve.alias.set('@cn-kis/subject-core', subjectCoreEntry)
+        chain.resolve.alias.set('@cn-kis/consent-placeholders', consentPlaceholdersEntry)
+        chain.resolve.alias.set('@', srcRoot)
+
         // Suppress AssetsOverSizeLimitWarning: allow assets up to 1MB
         chain.performance
           .maxAssetSize(1024 * 1024)
           .maxEntrypointSize(1024 * 1024)
-        
+
         // Suppress NoAsyncChunksWarning: not applicable to WeChat Mini-Programs
         // as Taro handles page-level code splitting automatically
         chain.plugins.delete('NoAsyncChunksWarning')
@@ -73,17 +84,21 @@ export default defineConfig(async (merge) => {
     h5: {
       publicPath: '/',
       staticDirectory: 'static',
-      esnextModules: ['@cn-kis/subject-core'],
+      esnextModules: ['@cn-kis/subject-core', '@cn-kis/consent-placeholders'],
       devServer: {
         client: {
           overlay: false,
         },
       },
       webpackChain(chain) {
+        chain.resolve.alias.set('@cn-kis/subject-core', subjectCoreEntry)
+        chain.resolve.alias.set('@cn-kis/consent-placeholders', consentPlaceholdersEntry)
+        chain.resolve.alias.set('@', srcRoot)
         chain.module
           .rule('script')
           .include
-          .add(path.resolve(__dirname, '../../packages/subject-core/src'))
+          .add(path.join(subjectCoreRoot, 'src'))
+          .add(path.join(consentPlaceholdersRoot, 'src'))
           .end()
         chain.devServer.merge({
           client: {

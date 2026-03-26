@@ -1370,6 +1370,9 @@ importers:
 
   workstations/wechat-mini:
     dependencies:
+      '@cn-kis/consent-placeholders':
+        specifier: workspace:*
+        version: link:../../packages/consent-placeholders
       '@cn-kis/subject-core':
         specifier: workspace:*
         version: link:../../packages/subject-core
