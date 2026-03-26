@@ -1,9 +1,9 @@
 import { useEffect } from 'react'
 import { View, Text } from '@tarojs/components'
 import { useNotifications, type NotificationItem } from '@cn-kis/subject-core'
-import { taroApiClient } from '../../adapters/subject-core'
-import { MiniEmpty } from '../../components/ui'
-import { PAGE_COPY } from '../../constants/copy'
+import { taroApiClient } from '@/adapters/subject-core'
+import { MiniEmpty } from '@/components/ui'
+import { PAGE_COPY } from '@/constants/copy'
 
 export default function NotificationsPage() {
   const { items, unread, loading, reload, markRead } = useNotifications(taroApiClient)

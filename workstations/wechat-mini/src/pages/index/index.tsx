@@ -12,7 +12,6 @@ import {
   getLocalRouteTarget,
   needsPhoneBind,
   refreshRolesFromProfile,
-  refreshUserInfo,
 } from '../../utils/auth'
 import './index.scss'
 

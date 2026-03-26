@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { View, Text } from '@tarojs/components'
-import { taroApiClient } from '../../adapters/subject-core'
-import { MiniPage, MiniEmpty } from '../../components/ui'
-import { PAGE_COPY } from '../../constants/copy'
+import { taroApiClient } from '@/adapters/subject-core'
+import { MiniPage, MiniEmpty } from '@/components/ui'
+import { PAGE_COPY } from '@/constants/copy'
 import './index.scss'
 
 const SEVERITY_LABELS: Record<string, string> = {

@@ -3,11 +3,97 @@
   font-size: 24rpx;
 }
 
-.product-detail__title {
+.product-detail__module-title {
   display: block;
-  font-size: 30rpx;
+  font-size: 28rpx;
   color: #17263d;
   font-weight: 700;
+  margin-bottom: 16rpx;
+}
+
+.product-detail__info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 8rpx 24rpx;
+  align-items: baseline;
+}
+
+.product-detail__info-label {
+  font-size: 24rpx;
+  color: #60748f;
+}
+
+.product-detail__info-value {
+  font-size: 24rpx;
+  color: #1f314b;
+}
+
+.product-detail__status--done {
+  color: #2b6cb0;
+  font-weight: 600;
+}
+
+.product-detail__status--pending {
+  color: #e53e3e;
+}
+
+.product-detail__status-done {
+  display: block;
+  font-size: 26rpx;
+  color: #2b6cb0;
+  font-weight: 600;
+  margin-bottom: 12rpx;
+}
+
+.product-detail__actions {
+  margin-top: 20rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.product-detail__timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.product-detail__timeline-node {
+  display: flex;
+  align-items: center;
+  padding: 12rpx 0;
+  border-left: 4rpx solid #e2e8f0;
+  margin-left: 12rpx;
+  padding-left: 20rpx;
+  position: relative;
+}
+
+.product-detail__timeline-node--done {
+  border-left-color: #2b6cb0;
+}
+
+.product-detail__timeline-dot {
+  position: absolute;
+  left: -16rpx;
+  width: 20rpx;
+  height: 20rpx;
+  border-radius: 50%;
+  background: #e2e8f0;
+}
+
+.product-detail__timeline-node--done .product-detail__timeline-dot {
+  background: #2b6cb0;
+}
+
+.product-detail__timeline-text {
+  font-size: 24rpx;
+  color: #4a5568;
+  margin-right: 12rpx;
+}
+
+.product-detail__timeline-time {
+  font-size: 22rpx;
+  color: #8da0b8;
 }
 
 .product-detail__section-title {

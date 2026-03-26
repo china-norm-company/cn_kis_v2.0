@@ -129,14 +129,17 @@ export default function ReceptionDashboardPage() {
 
   const projectCodeForApi = projectFilter.trim() || undefined
 
-  const { data: statsRes } = useQuery({
-    queryKey: ['reception', 'today-stats', queryDate, 'board', projectCodeForApi ?? ''],
-    queryFn: () => receptionApi.todayStats(queryDate, projectCodeForApi, 'board'),
-  })
-  // 项目下拉选项使用“未筛选”的统计结果，避免选中后下拉只剩当前项目
+  /** 项目下拉：始终未筛选，与工单执行页一致；勿用当前页 queue 推导，避免选项不全 */
   const { data: statsOptionsRes } = useQuery({
     queryKey: ['reception', 'today-stats', queryDate, 'board', 'all-project-options'],
     queryFn: () => receptionApi.todayStats(queryDate, undefined, 'board'),
+    staleTime: 12 * 1000,
+  })
+  /** 统计卡片：后端 _get_today_stats_board 内 get_today_queue(page_size=99999)，按项目筛选亦为全日全量，与列表分页无关 */
+  const { data: statsRes } = useQuery({
+    queryKey: ['reception', 'today-stats', queryDate, 'board', projectCodeForApi ?? ''],
+    queryFn: () => receptionApi.todayStats(queryDate, projectCodeForApi, 'board'),
+    staleTime: 12 * 1000,
   })
   const { data: queueRes, isFetching: queueListFetching } = useQuery({
     queryKey: ['reception', 'today-queue', 'board', queryDate, queuePage, queuePageSize, projectCodeForApi ?? ''],
@@ -310,23 +313,14 @@ export default function ReceptionDashboardPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['reception', 'support-tickets'] }),
   })
 
-  const stats = statsRes?.data
   const queueRaw = queueRes?.data?.items ?? []
   const queueTotal = queueRes?.data?.total ?? 0
   const searchQueueRaw = searchQueueRes?.data?.items ?? []
   const projectOptions = useMemo(() => {
     const raw = statsOptionsRes?.data?.project_options
-    if (Array.isArray(raw) && raw.length > 0) {
-      return [...raw].sort((a, b) => (a.name || a.code).localeCompare(b.name || b.code, 'zh-CN'))
-    }
-    const byCode = new Map<string, string>()
-    queueRaw.forEach((item) => {
-      const code = (item.project_code || '').trim()
-      const name = (item.project_name || code || '').trim()
-      if (code) byCode.set(code, name || code)
-    })
-    return Array.from(byCode.entries()).map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
-  }, [statsOptionsRes, queueRaw])
+    if (!Array.isArray(raw) || raw.length === 0) return []
+    return [...raw].sort((a, b) => (a.name || a.code).localeCompare(b.name || b.code, 'zh-CN'))
+  }, [statsOptionsRes])
 
   useEffect(() => {
     if (!projectFilter.trim()) return
@@ -338,8 +332,8 @@ export default function ReceptionDashboardPage() {
     }
   }, [projectOptions, projectFilter, queryDate])
 
-  /** 与工单执行页一致：统计来自 today-stats（board 源），随日期与项目筛选联动 */
-  const displayStats = stats
+  /** 卡片数字仅来自 today-stats（board），勿用 queue 当前页推算 */
+  const displayStats = statsRes?.data
   const queueSorted = useMemo(() => {
     const base = queueSearch.trim() ? searchQueueRaw : queueRaw
     const filtered = queueSearch.trim() ? base.filter((i) => matchQueueSearch(i, queueSearch)) : base

@@ -6,6 +6,14 @@ import { api } from '../client'
 
 type KisBody<T> = { success?: boolean; data?: T; message?: string }
 
+/** 工单执行记录分页接口 data 载荷 */
+export type WorkOrderExecutionsPage = {
+  list: unknown[]
+  total: number
+  page: number
+  pageSize: number
+}
+
 async function unwrap<T>(promise: Promise<KisBody<T>>): Promise<T> {
   const res = await promise as KisBody<T>
   if (res && res.success !== false && res.data !== undefined) return res.data
@@ -23,8 +31,24 @@ export const productDistributionApi = {
     pageSize?: number
   }) => unwrap(api.get<KisBody<any>>('/product/workorders', { params })),
 
-  getWorkOrder: (id: number) =>
-    unwrap(api.get<KisBody<any>>(`/product/workorders/${id}`)),
+  getWorkOrder: (id: number, params?: { include_executions?: boolean }) =>
+    unwrap(
+      api.get<KisBody<any>>(`/product/workorders/${id}`, {
+        params:
+          params?.include_executions === false ? { include_executions: false } : undefined,
+      }),
+    ),
+
+  /** 工单下执行记录分页（摘要列表） */
+  getWorkOrderExecutions: (id: number, params?: { page?: number; pageSize?: number }): Promise<WorkOrderExecutionsPage> =>
+    unwrap<WorkOrderExecutionsPage>(
+      api.get(`/product/workorders/${id}/executions`, {
+        params: {
+          page: params?.page ?? 1,
+          pageSize: params?.pageSize ?? 10,
+        },
+      }) as Promise<KisBody<WorkOrderExecutionsPage>>,
+    ),
 
   createWorkOrder: (data: {
     project_no: string

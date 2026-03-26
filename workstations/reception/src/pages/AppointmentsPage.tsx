@@ -801,9 +801,17 @@ export default function AppointmentsPage() {
     queryFn: () => receptionApi.appointmentCalendar(visibleMonth),
     staleTime: 60 * 1000,
   })
+  /** 项目下拉选项：始终用未筛选的今日统计，避免选中某项目后选项只剩一项 */
+  const { data: statsOptionsRes } = useQuery({
+    queryKey: ['reception', 'today-stats', queueDate, 'execution', 'all-projects'],
+    queryFn: () => receptionApi.todayStats(queueDate, undefined, 'execution'),
+    staleTime: 12 * 1000,
+  })
+  /** 统计卡片：与后端 get_today_stats(source=execution, project_code) 一致，按项目筛选时为全量而非当前页 */
+  const projectCodeForStats = projectFilter.trim() || undefined
   const { data: statsRes } = useQuery({
-    queryKey: ['reception', 'today-stats', queueDate],
-    queryFn: () => receptionApi.todayStats(queueDate),
+    queryKey: ['reception', 'today-stats', queueDate, 'execution', projectCodeForStats ?? ''],
+    queryFn: () => receptionApi.todayStats(queueDate, projectCodeForStats, 'execution'),
     staleTime: 12 * 1000,
   })
   const { data: queueQueueRes, isLoading: queueQueueLoading, refetch: refetchQueueQueue } = useQuery({
@@ -1068,12 +1076,12 @@ export default function AppointmentsPage() {
   const queuePageTotal = Math.max(1, Math.ceil(queueTotal / queuePageSize))
   /** 项目筛选：由 today-stats 内已加载的全日队列推导，避免额外请求 page_size=500 的 today-queue（服务端也不必再构建一遍队列） */
   const projectOptions = useMemo(() => {
-    const raw = statsRes?.data?.project_options
+    const raw = statsOptionsRes?.data?.project_options
     if (Array.isArray(raw) && raw.length > 0) {
       return [...raw].sort((a, b) => (a.name || a.code).localeCompare(b.name || b.code, 'zh-CN'))
     }
     return []
-  }, [statsRes])
+  }, [statsOptionsRes])
 
   useEffect(() => {
     if (!projectFilter.trim()) return
@@ -1083,29 +1091,7 @@ export default function AppointmentsPage() {
       setQueuePage(1)
     }
   }, [projectOptions, projectFilter, queueDate])
-  const stats = statsRes?.data
-  const ENROLLMENT_STATUS_KEYS = ['初筛合格', '正式入组', '不合格', '复筛不合格', '退出', '缺席'] as const
-  const displayStats = useMemo(() => {
-    if (!projectFilter) return stats
-    const signedIn = queueRaw.filter((i: QueueItem) => i.checkin_id).length
-    const inProgress = queueRaw.filter((i: QueueItem) => i.status === 'in_progress' || i.status === 'checked_in').length
-    const counts: Record<string, number> = {}
-    ENROLLMENT_STATUS_KEYS.forEach((k) => { counts[k] = 0 })
-    queueRaw.forEach((i: QueueItem) => {
-      const s = (i.enrollment_status || '').trim()
-      if (s && counts[s] !== undefined) counts[s] += 1
-    })
-    return {
-      total_appointments: queueTotal,
-      checked_in: queueRaw.filter((i: QueueItem) => i.status === 'checked_in').length,
-      in_progress: inProgress,
-      checked_out: queueRaw.filter((i: QueueItem) => i.status === 'checked_out').length,
-      no_show: queueRaw.filter((i: QueueItem) => i.status === 'no_show').length,
-      total_signed_in: signedIn,
-      signed_in_count: signedIn,
-      enrollment_status_counts: counts,
-    }
-  }, [projectFilter, queueRaw, queueTotal, stats])
+  const displayStats = statsRes?.data
   const matchQueueSearch = (item: QueueItem, q: string): boolean => {
     if (!q || !q.trim()) return true
     const s = q.trim().toLowerCase()

@@ -4,6 +4,7 @@
 路由前缀：/api/v1/material/
 覆盖约 20 个端点：仪表盘、产品台账、耗材、样品、流水、效期预警、库存
 """
+import re
 from ninja import Router, Schema, Query
 from typing import Optional
 from datetime import date
@@ -29,6 +30,15 @@ class ProductCreateIn(Schema):
     product_type: Optional[str] = 'test_sample'
     sponsor: Optional[str] = ''
     description: Optional[str] = ''
+    protocol_id: Optional[int] = None
+    protocol_name: Optional[str] = None
+    study_project_type: Optional[str] = None
+
+
+class LinkProductSubjectIn(Schema):
+    """项目样品关联页：按手机号绑定受试者并生成分发单。"""
+    phone: str
+    name: Optional[str] = ''
 
 
 class ConsumableCreateIn(Schema):
@@ -74,6 +84,9 @@ class ProductQueryParams(Schema):
     product_type: Optional[str] = ''
     storage_condition: Optional[str] = ''
     expiry_status: Optional[str] = ''
+    protocol_bound: Optional[str] = ''
+    stock_kind: Optional[str] = ''
+    study_project_type: Optional[str] = ''
     page: int = 1
     page_size: int = 20
 
@@ -123,12 +136,15 @@ class TraceQueryParams(Schema):
 def _product_to_dict(p) -> dict:
     return {
         'id': p.id, 'name': p.name, 'code': p.code,
+        'protocol_id': p.protocol_id,
         'batch_number': p.batch_number, 'specification': p.specification,
         'storage_condition': p.storage_condition,
         'expiry_date': str(p.expiry_date) if p.expiry_date else None,
         'product_type': p.product_type,
         'product_type_display': p.product_type_display,
         'sponsor': p.sponsor, 'protocol_name': p.protocol_name,
+        'study_project_type': p.study_project_type,
+        'study_project_type_display': p.study_project_type_display,
         'sample_count': p.instances.count() if hasattr(p, 'instances') else 0,
         'in_stock_count': p.instances.filter(status=SampleStatus.IN_STOCK).count() if hasattr(p, 'instances') else 0,
         'distributed_count': p.instances.filter(status=SampleStatus.DISTRIBUTED).count() if hasattr(p, 'instances') else 0,
@@ -215,6 +231,9 @@ def list_products(request, params: ProductQueryParams = Query(...)):
         keyword=params.keyword or '', product_type=params.product_type or '',
         storage_condition=params.storage_condition or '',
         expiry_status=params.expiry_status or '',
+        protocol_bound=params.protocol_bound or '',
+        stock_kind=params.stock_kind or '',
+        study_project_type=params.study_project_type or '',
         page=params.page, page_size=params.page_size,
     )
     return {
@@ -224,6 +243,102 @@ def list_products(request, params: ProductQueryParams = Query(...)):
             'total': result['total'],
             'page': params.page,
             'page_size': params.page_size,
+        },
+    }
+
+
+# 必须在 /products/{product_id} 之前注册，否则「create」会被当成 product_id，POST 会得到 405
+@router.post('/products/create', summary='创建产品')
+@require_permission('resource.material.write')
+def create_product(request, data: ProductCreateIn):
+    from .services import create_product as _create
+    p = _create(
+        name=data.name, code=data.code,
+        batch_number=data.batch_number or '',
+        specification=data.specification or '',
+        storage_condition=data.storage_condition or '',
+        expiry_date=data.expiry_date,
+        description=data.description or '',
+    )
+    if data.product_type:
+        p.product_type = data.product_type
+    if data.sponsor:
+        p.sponsor = data.sponsor
+    if data.protocol_id is not None:
+        p.protocol_id = data.protocol_id
+    if data.protocol_name is not None:
+        p.protocol_name = (data.protocol_name or '').strip()
+    if data.study_project_type is not None and str(data.study_project_type).strip():
+        p.study_project_type = str(data.study_project_type).strip()
+    p.save()
+    return {'code': 0, 'msg': '产品创建成功', 'data': {'id': p.id, 'code': p.code, 'name': p.name}}
+
+
+@router.post('/products/{product_id}/link-subject', summary='关联受试者手机号并发放（小程序可签收）')
+@require_permission('resource.material.write')
+def link_product_subject(request, product_id: int, data: LinkProductSubjectIn):
+    from django.utils import timezone as tz
+    from apps.subject.models import Subject
+    from apps.subject.services.subject_service import create_subject as svc_create_subject
+    from apps.sample.services.product_management_service import create_dispensing, execute_dispensing
+
+    account = _get_account_from_request(request)
+    if not account:
+        return 400, {'code': 400, 'msg': '请先登录'}
+
+    phone = (data.phone or '').strip()
+    if not re.fullmatch(r'1\d{10}', phone):
+        return 400, {'code': 400, 'msg': '请输入11位中国大陆手机号'}
+
+    sub = Subject.objects.filter(phone=phone, is_deleted=False).first()
+    if not sub:
+        display_name = (data.name or '').strip() or f'用户{phone[-4:]}'
+        sub = svc_create_subject(name=display_name, phone=phone, account=account)
+
+    suffix = tz.now().strftime('%H%M%S%f')[:12]
+
+    def _create(visit_code: str):
+        return create_dispensing(
+            subject_id=sub.id,
+            subject_code=sub.subject_no or str(sub.id),
+            visit_code=visit_code,
+            visit_date=tz.now().date(),
+            kit_id=None,
+            product_id=product_id,
+            batch_id=None,
+            quantity=1,
+            work_order_id=None,
+        )
+
+    visit_code = f'PSL-{product_id}-{sub.id}-{suffix}'
+    try:
+        dispensing = _create(visit_code)
+    except ValueError as e:
+        err = str(e)
+        if 'not found' in err.lower():
+            return 400, {'code': 400, 'msg': err}
+        visit_code2 = f'PSL-{product_id}-{sub.id}-retry-{tz.now().strftime("%H%M%S%f")}'
+        try:
+            dispensing = _create(visit_code2)
+        except ValueError as e2:
+            return 400, {'code': 400, 'msg': str(e2)}
+
+    exec_name = (data.name or '').strip() or (
+        getattr(account, 'display_name', None) or getattr(account, 'username', None) or 'material'
+    )
+    execute_dispensing(dispensing.id, account.id, exec_name)
+    dispensing.refresh_from_db()
+
+    return {
+        'code': 0,
+        'msg': 'ok',
+        'data': {
+            'subject_id': sub.id,
+            'subject_no': sub.subject_no,
+            'phone': sub.phone,
+            'dispensing_id': dispensing.id,
+            'dispensing_no': dispensing.dispensing_no,
+            'status': dispensing.status,
         },
     }
 
@@ -247,26 +362,6 @@ def get_product(request, product_id: int):
     data['sample_summary'] = detail['sample_summary']
     data['retention_info'] = detail['retention_info']
     return {'code': 0, 'msg': 'ok', 'data': data}
-
-
-@router.post('/products/create', summary='创建产品')
-@require_permission('resource.material.write')
-def create_product(request, data: ProductCreateIn):
-    from .services import create_product as _create
-    p = _create(
-        name=data.name, code=data.code,
-        batch_number=data.batch_number or '',
-        specification=data.specification or '',
-        storage_condition=data.storage_condition or '',
-        expiry_date=data.expiry_date,
-        description=data.description or '',
-    )
-    if data.product_type:
-        p.product_type = data.product_type
-    if data.sponsor:
-        p.sponsor = data.sponsor
-    p.save()
-    return {'code': 0, 'msg': '产品创建成功', 'data': {'id': p.id, 'code': p.code, 'name': p.name}}
 
 
 # ============================================================================
