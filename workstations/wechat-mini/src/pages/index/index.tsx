@@ -836,7 +836,7 @@ export default function IndexPage() {
       {/* 快捷操作 */}
       <View className='quick-actions'>
         <Text className='section-title'>快捷操作</Text>
-        <Text className='section-subtitle'>高频服务入口，支持签到、随访、依从、不良反应上报与消息管理</Text>
+        <Text className='section-subtitle'>高频服务入口，支持签到、知情同意、日记、产品与项目服务</Text>
         <View className='action-grid'>
           <View
             className='action-item'
@@ -847,6 +847,7 @@ export default function IndexPage() {
             </View>
             <Text className='action-label'>签署知情同意书</Text>
           </View>
+          {/* 暂时隐藏：填写问卷入口（保留代码，后续可恢复）
           <View
             className='action-item'
             onClick={() => navigateTo('/pages/questionnaire/index')}
@@ -856,6 +857,8 @@ export default function IndexPage() {
             </View>
             <Text className='action-label'>填写问卷</Text>
           </View>
+          */}
+          {/* 暂时隐藏：不良反应上报入口（保留代码，后续可恢复）
           <View
             className='action-item'
             onClick={() => navigateTo('/pages/report/index')}
@@ -865,6 +868,7 @@ export default function IndexPage() {
             </View>
             <Text className='action-label'>不良反应上报</Text>
           </View>
+          */}
           <View
             className='action-item'
             onClick={() => navigateTo('/pages/checkin/index')}
@@ -892,6 +896,7 @@ export default function IndexPage() {
             </View>
             <Text className='action-label'>推荐朋友</Text>
           </View>
+          {/* 暂时隐藏：筛选进度入口（保留代码，后续可恢复）
           <View
             className='action-item'
             onClick={() => navigateTo('/pages/screening-status/index')}
@@ -901,6 +906,8 @@ export default function IndexPage() {
             </View>
             <Text className='action-label'>筛选进度</Text>
           </View>
+          */}
+          {/* 暂时隐藏：消息通知入口（保留代码，后续可恢复）
           <View
             className='action-item'
             onClick={() => navigateTo('/pages/notifications/index')}
@@ -910,6 +917,7 @@ export default function IndexPage() {
             </View>
             <Text className='action-label'>消息通知</Text>
           </View>
+          */}
           <View
             className='action-item'
             onClick={() => navigateTo('/pages/diary/index')}
