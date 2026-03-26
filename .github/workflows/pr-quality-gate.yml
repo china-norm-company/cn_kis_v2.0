@@ -6,7 +6,8 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
+  pull-requests: write
+  issues: write
 
 jobs:
   validate-pr-template:
@@ -30,6 +31,92 @@ jobs:
             });
             const changedFiles = filesResp.data.map(f => f.filename);
 
+            // ── 风险等级分类（Tier-0 / Tier-1 / Tier-2）────────────────────────────
+            const isTier0 = changedFiles.some((f) =>
+              f.startsWith('backend/apps/identity/') ||
+              f.startsWith('backend/libs/') ||
+              f === 'backend/urls.py' ||
+              f === 'backend/config/settings.py' ||
+              f === 'backend/apps/knowledge/ingestion_pipeline.py' ||
+              f.startsWith('.github/workflows/') ||
+              f.startsWith('ops/')
+            );
+
+            const isTier1 = !isTier0 && changedFiles.some((f) =>
+              f === 'backend/configs/workstations.yaml' ||
+              f.startsWith('backend/apps/notification/') ||
+              f.startsWith('backend/apps/feishu_sync/') ||
+              f.startsWith('backend/apps/agent_gateway/') ||
+              f.startsWith('backend/apps/claw/') ||
+              f === 'docs/V2_MIGRATION_CHARTER.md'
+            );
+
+            // Tier-2：仅触及单一工作台（多个工作台 = Tier-1 或手动判断）
+            const WORKSTATION_PREFIXES = [
+              'backend/apps/secretary/', 'backend/apps/finance/', 'backend/apps/research/',
+              'backend/apps/execution/', 'backend/apps/quality/', 'backend/apps/hr/',
+              'backend/apps/crm/', 'backend/apps/resource/', 'backend/apps/scheduling/',
+              'backend/apps/safety/', 'backend/apps/document/', 'backend/apps/ethics/',
+              'backend/apps/sample/', 'backend/apps/lab_personnel/', 'backend/apps/feasibility/',
+              'backend/apps/closeout/', 'backend/apps/ekuaibao_integration/',
+              'backend/apps/lims_integration/', 'backend/apps/data_intake/',
+              'workstations/secretary/', 'workstations/finance/', 'workstations/research/',
+              'workstations/execution/', 'workstations/quality/', 'workstations/hr/',
+              'workstations/crm/', 'workstations/recruitment/', 'workstations/equipment/',
+              'workstations/material/', 'workstations/facility/', 'workstations/evaluator/',
+              'workstations/lab-personnel/', 'workstations/ethics/', 'workstations/reception/',
+              'workstations/control-plane/', 'workstations/admin/',
+              'workstations/digital-workforce/', 'workstations/data-platform/',
+            ];
+            const touchedWorkstations = WORKSTATION_PREFIXES.filter(pfx =>
+              changedFiles.some(f => f.startsWith(pfx))
+            );
+            const isTier2 = !isTier0 && !isTier1 && touchedWorkstations.length === 1;
+            const isTier3 = !isTier0 && !isTier1 && !isTier2;
+
+            // 确定最终等级标签
+            const tierLabel = isTier0 ? 'tier-0' : (isTier1 ? 'tier-1' : (isTier2 ? 'tier-2' : 'tier-3'));
+            const tierEmoji = isTier0 ? '🔴' : (isTier1 ? '🟠' : (isTier2 ? '🟡' : '🟢'));
+            const tierDesc = isTier0
+              ? '红线域（identity/libs/workflows）— 需要 CODEOWNERS 指定审批人批准'
+              : (isTier1 ? '跨系统域' : (isTier2 ? `单工作台域（${touchedWorkstations[0]?.split('/')[2] || '?'}）` : '低风险'));
+
+            core.info(`${tierEmoji} 风险等级：${tierLabel} — ${tierDesc}`);
+
+            // 自动打 label（忽略失败，不阻断流程）
+            try {
+              // 确保 label 存在
+              const labelConfigs = {
+                'tier-0': { color: 'B60205', description: '红线域变更，需指定技术负责人审批' },
+                'tier-1': { color: 'E4E669', description: '跨系统域变更' },
+                'tier-2': { color: '0075CA', description: '单工作台域变更' },
+                'tier-3': { color: '0E8A16', description: '低风险变更' },
+              };
+              for (const [name, cfg] of Object.entries(labelConfigs)) {
+                try {
+                  await github.rest.issues.createLabel({
+                    owner: context.repo.owner, repo: context.repo.repo,
+                    name, color: cfg.color, description: cfg.description,
+                  });
+                } catch (_) { /* label 已存在时忽略 */ }
+              }
+              // 移除旧的 tier label，添加新的
+              const currentLabels = pr.labels.map(l => l.name);
+              for (const old of currentLabels.filter(l => l.startsWith('tier-'))) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  issue_number: pr.number, name: old,
+                }).catch(() => {});
+              }
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: pr.number, labels: [tierLabel],
+              });
+              core.info(`已为 PR 打标签：${tierLabel}`);
+            } catch (e) {
+              core.warning(`打标签失败（不阻断）：${e.message}`);
+            }
+
             // 检查是否触及工作台注册表（需要额外确认）
             const touchesWorkstationRegistry = changedFiles.some((f) =>
               f === 'backend/configs/workstations.yaml' ||
@@ -40,8 +127,8 @@ jobs:
             // 检查是否触及 Wave 1 红线文件（认证权限域）
             const touchesAuthScope = changedFiles.some((f) =>
               f.startsWith('backend/apps/identity/') ||
-              f.startsWith('backend/apps/secretary/models.py') ||
-              f.startsWith('backend/apps/secretary/feishu_fetcher.py')
+              f === 'backend/apps/secretary/models.py' ||
+              f === 'backend/apps/secretary/feishu_fetcher.py'
             );
 
             // 检查是否触及知识资产域
@@ -153,13 +240,24 @@ jobs:
               }
             }
 
+            // 9. Tier-0 红线域额外门禁
+            if (isTier0) {
+              if (!/- \[x\]\s*本 PR 已由指定技术负责人.*人工审核/i.test(body)) {
+                failures.push(
+                  "🔴 **Tier-0 红线域变更**：请在 PR 描述中勾选：\n" +
+                  "`- [x] 本 PR 已由指定技术负责人（蒋艳雯/马蓓丽/孙华/宋小沫）人工审核`\n" +
+                  "并确保 CODEOWNERS 列表中至少一人在 GitHub 上 Approve。"
+                );
+              }
+            }
+
             if (failures.length > 0) {
               core.setFailed(
-                "PR 质量门禁未通过：\n" +
+                `${tierEmoji} [${tierLabel.toUpperCase()}] PR 质量门禁未通过：\n` +
                   failures.map((f, i) => `${i + 1}. ${f}`).join("\n")
               );
             } else {
-              core.info("PR quality gate passed ✅");
+              core.info(`${tierEmoji} [${tierLabel.toUpperCase()}] PR quality gate passed ✅`);
               if (warnings.length > 0) {
                 core.info("附加提示：\n" + warnings.map((w, i) => `${i + 1}. ${w}`).join("\n"));
               }
