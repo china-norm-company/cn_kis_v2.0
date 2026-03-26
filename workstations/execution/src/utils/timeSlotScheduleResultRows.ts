@@ -1,10 +1,23 @@
 /**
  * 时间槽详情「排程结果」三维度行数据：项目 / 人员 / 日期（与 personnel + visit_blocks 对齐）
- * 执行日期优先取执行订单首行「执行日期1～4」（与 visit_blocks 下标对齐），无则回退各流程 exec_dates。
+ * 执行日期与项目详情「排期计划」一致：优先「执行排期」解析（parseExecutionScheduleText）按访视点匹配；
+ * 其次执行订单「执行日期1～4」与 visit_blocks 下标对齐；最后回退各流程 exec_dates。
+ * 多个日期在「按项目/按人员」中用换行分开显示（与顿号一行展示区分）。
+ * 「访视次数」列：优先执行订单访视计划字段「访视次数/访视数」（与 ScheduleCore 项目信息一致），无则回退为当前行解析出的执行日期个数。
  */
+import { parseExecutionScheduleText, type ParsedScheduleRow } from './executionOrderPlanConfig'
 import { classifyPersonnelProcessTab, getPersonnelCellsForProcess, type PersonnelPayload } from './personnelProcessTab'
 
 const EXEC_DATE_COL_KEYS = ['执行日期1', '执行日期2', '执行日期3', '执行日期4'] as const
+
+/** 访视点比对：去空白，统一 Excel 中单引号与双引号（如 T0'' vs T0"） */
+function normalizeVisitPointKey(s: string): string {
+  return (s || '')
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/''/g, '"')
+    .replace(/'/g, '"')
+}
 
 /** 「YYYY年M月D日」→ YYYY-MM-DD */
 function chineseDateToIso(s: string): string {
@@ -16,6 +29,41 @@ function chineseDateToIso(s: string): string {
   return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 }
 
+function findScheduleRowForVisitPoint(parsed: ParsedScheduleRow[], visitPoint: string): ParsedScheduleRow | null {
+  const n = normalizeVisitPointKey(visitPoint)
+  if (!n) return null
+  for (const r of parsed) {
+    if (normalizeVisitPointKey(r.visitPoint) === n) return r
+  }
+  for (const r of parsed) {
+    const p = normalizeVisitPointKey(r.visitPoint)
+    if (p.includes(n) || n.includes(p)) return r
+  }
+  return null
+}
+
+/** 名称匹配失败时：按行数与访视块对齐，或唯一一行复用（与详情页排期表一致） */
+function resolveScheduleRowForBlock(
+  parsed: ParsedScheduleRow[],
+  visitPoint: string,
+  blockIndex: number,
+  blockCount: number
+): ParsedScheduleRow | null {
+  if (parsed.length === 0) return null
+  const byName = findScheduleRowForVisitPoint(parsed, visitPoint)
+  if (byName) return byName
+  if (parsed.length === blockCount && blockIndex < parsed.length) {
+    return parsed[blockIndex]
+  }
+  if (parsed.length === 1) {
+    return parsed[0]
+  }
+  if (blockIndex < parsed.length) {
+    return parsed[blockIndex]
+  }
+  return null
+}
+
 /** 与后端 workorder_sync._parse_date_to_iso 常见情况对齐（ISO、Excel 序列号） */
 function excelSerialToIso(n: number): string | null {
   if (n < 1 || n > 2958465) return null
@@ -25,6 +73,27 @@ function excelSerialToIso(n: number): string | null {
   const mo = d.getMonth() + 1
   const day = d.getDate()
   return `${y}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+/**
+ * 访视计划中的访视次数（执行订单首行：访视次数 / 访视数 等），与 ScheduleCorePage 取值口径接近。
+ */
+function parseVisitCountFromVisitPlan(firstRow: Record<string, unknown> | undefined): number | null {
+  if (!firstRow) return null
+  const direct = firstRow['访视次数'] ?? firstRow['访视数']
+  if (direct != null && direct !== '') {
+    const n = parseInt(String(direct).trim(), 10)
+    if (Number.isFinite(n) && n >= 0) return n
+  }
+  for (const [k, v] of Object.entries(firstRow)) {
+    if (v == null || v === '') continue
+    const nk = String(k).trim()
+    if (/^访视次数$|^访视数$|访视点次数|visit\s*count/i.test(nk)) {
+      const n = parseInt(String(v).trim(), 10)
+      if (Number.isFinite(n) && n >= 0) return n
+    }
+  }
+  return null
 }
 
 function parseOrderRowDateCell(v: unknown): { iso: string; display: string } | null {
@@ -125,11 +194,32 @@ export function buildScheduleResultDimensionRows(
   const date: DateDimRow[] = []
 
   const firstRow = options?.orderFirstRow
+  const rawSchedule = firstRow
+    ? String(firstRow['执行排期'] ?? firstRow['测试具体排期'] ?? '').trim()
+    : ''
+  const parsedFromSchedulePlan = rawSchedule ? parseExecutionScheduleText(rawSchedule) : []
+  const visitCountFromPlan = parseVisitCountFromVisitPlan(firstRow)
 
   for (let bi = 0; bi < visitBlocks.length; bi++) {
+    const vp = (visitBlocks[bi].visit_point || '').trim()
+
+    const scheduleRow =
+      parsedFromSchedulePlan.length > 0
+        ? resolveScheduleRowForBlock(parsedFromSchedulePlan, vp, bi, visitBlocks.length)
+        : null
+    const scheduleDatesChinese =
+      scheduleRow && scheduleRow.dates.length > 0 ? scheduleRow.dates : null
+    const scheduleIsoDates =
+      scheduleDatesChinese && scheduleDatesChinese.length > 0
+        ? scheduleDatesChinese.map(chineseDateToIso).filter(Boolean)
+        : []
+
     const colKey = EXEC_DATE_COL_KEYS[bi] ?? null
     const cell = colKey && firstRow ? firstRow[colKey] : undefined
-    const fromOrder = cell !== undefined && cell !== null && String(cell).trim() !== '' ? parseOrderRowDateCell(cell) : null
+    const fromFlatCol =
+      !scheduleIsoDates.length && cell !== undefined && cell !== null && String(cell).trim() !== ''
+        ? parseOrderRowDateCell(cell)
+        : null
 
     const procs = visitBlocks[bi].processes ?? []
     for (let pi = 0; pi < procs.length; pi++) {
@@ -138,18 +228,24 @@ export function buildScheduleResultDimensionRows(
       const fallbackDates = (proc.exec_dates || []).filter(Boolean).map((d) => String(d).trim().slice(0, 10))
 
       let execDateStr: string
-      let visitCount: number
+      let datesCount: number
       let datesForDateDim: string[]
 
-      if (fromOrder && fromOrder.iso) {
-        execDateStr = fromOrder.display
-        visitCount = 1
-        datesForDateDim = [fromOrder.iso]
+      if (scheduleDatesChinese && scheduleIsoDates.length > 0) {
+        execDateStr = scheduleDatesChinese.join('\n')
+        datesCount = scheduleDatesChinese.length
+        datesForDateDim = scheduleIsoDates
+      } else if (fromFlatCol && fromFlatCol.iso) {
+        execDateStr = fromFlatCol.display
+        datesCount = 1
+        datesForDateDim = [fromFlatCol.iso]
       } else {
         datesForDateDim = fallbackDates
-        execDateStr = fallbackDates.length ? fallbackDates.join('、') : '-'
-        visitCount = fallbackDates.length
+        execDateStr = fallbackDates.length ? fallbackDates.join('\n') : '-'
+        datesCount = fallbackDates.length
       }
+
+      const visitCountDisplay = visitCountFromPlan !== null ? visitCountFromPlan : datesCount
 
       const cells = getPersonnelCellsForProcess(visitBlocks, personnel, bi, pi)
       const procSample = proc.sample_size != null ? String(proc.sample_size) : ''
@@ -162,7 +258,7 @@ export function buildScheduleResultDimensionRows(
       project.push({
         ...ctx,
         execDate: execDateStr,
-        visitCount,
+        visitCount: visitCountDisplay,
         process: pname,
         tester,
         backup,

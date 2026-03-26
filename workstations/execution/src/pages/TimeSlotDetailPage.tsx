@@ -16,7 +16,7 @@ import { computeAllFourDimensions, type StatusVariant } from '../utils/timeSlotD
 import type { PersonnelPayload } from '../utils/personnelProcessTab'
 import { buildScheduleResultDimensionRows } from '../utils/timeSlotScheduleResultRows'
 import { downloadXlsxMultiSheet } from '../utils/exportTableXlsx'
-import { getFirstRowAsDict } from '../utils/executionOrderFirstRow'
+import { getRowAsDictMatchingProject } from '../utils/executionOrderFirstRow'
 
 type ViewTabKey = 'byProject' | 'byPerson' | 'byDate'
 
@@ -106,7 +106,9 @@ export default function TimeSlotDetailPage() {
 
   const headers = order?.headers || []
   const rows = order?.rows || []
-  const firstRow = order ? getFirstRowAsDict(headers, rows) : {}
+  /** 多项目订单时必须按快照「项目编号」取行，否则「执行排期」会错用首行（与排期计划不一致） */
+  const projectCodeFromSnapshot = String(snapshot['项目编号'] ?? '').trim()
+  const firstRow = order ? getRowAsDictMatchingProject(headers, rows, projectCodeFromSnapshot) : {}
 
   const four = useMemo(
     () => computeAllFourDimensions(visitBlocks, schedule, personnelMerged),
@@ -125,7 +127,7 @@ export default function TimeSlotDetailPage() {
     [snapshot, firstRow, schedule]
   )
 
-  /** 与项目详情排期计划一致：执行日期1～4 与 visit_blocks 下标对齐 */
+  /** 排程结果执行日期：与项目详情「排期计划」一致（首行「执行排期」解析 → 执行日期1～4 → visit_blocks.exec_dates） */
   const { project: projectRows, person: personRows, date: dateRows } = useMemo(
     () =>
       buildScheduleResultDimensionRows(visitBlocks, personnelMerged, projectCtx, {
@@ -511,7 +513,7 @@ export default function TimeSlotDetailPage() {
                         <td className="px-3 py-2">{r.group || '-'}</td>
                         <td className="px-3 py-2">{r.supervisor || '-'}</td>
                         <td className="px-3 py-2">{r.visitTimepoint || '-'}</td>
-                        <td className="px-3 py-2 text-xs whitespace-pre-wrap max-w-[220px]">{r.execDate}</td>
+                        <td className="px-3 py-2 text-xs whitespace-pre-wrap max-w-[220px] align-top leading-relaxed">{r.execDate}</td>
                         <td className="px-3 py-2">{r.visitCount}</td>
                         <td className="px-3 py-2">{r.process || '-'}</td>
                         <td className="px-3 py-2">{r.tester}</td>
@@ -582,7 +584,7 @@ export default function TimeSlotDetailPage() {
                         <td className="px-3 py-2">{r.projectName}</td>
                         <td className="px-3 py-2">{r.sample}</td>
                         <td className="px-3 py-2">{r.visitTimepoint}</td>
-                        <td className="px-3 py-2 text-xs whitespace-pre-wrap">{r.execDate}</td>
+                        <td className="px-3 py-2 text-xs whitespace-pre-wrap align-top leading-relaxed">{r.execDate}</td>
                       </tr>
                     ))
                   )}

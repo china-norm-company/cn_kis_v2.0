@@ -358,13 +358,14 @@ def visit_execution_list(
                 uniq.append(p)
         return '，'.join(uniq)
 
-    def _collect_execution_period(payload: dict, first: dict) -> str:
+    def _collect_execution_period(first: dict) -> str:
         """
-        执行日期：与项目详情排期计划区一致——优先「执行开始日期」「执行结束日期」；
-        二者缺失时可用「执行日期1～4」推整体区间；再回退 visit_blocks.exec_dates。
+        执行日期：与项目详情「排期计划」表头一致。
+        优先订单行「执行开始日期」「执行结束日期」（独立列或导入结果）；
+        若无或不全，则用「执行排期」全文解析整体起止（与前端 getSchedulePlanOverallStartEnd / workorder_sync 一致）。
+        不再使用执行日期1～4、visit_blocks.exec_dates，避免与排期计划展示不一致。
         """
-        from datetime import date as dt_date
-        from apps.scheduling.workorder_sync import _parse_date_to_iso
+        from apps.scheduling.workorder_sync import _parse_date_to_iso, _parse_schedule_overall_start_end
 
         start = _parse_date_to_iso(first.get('执行开始日期'))
         end = _parse_date_to_iso(first.get('执行结束日期'))
@@ -375,78 +376,76 @@ def visit_execution_list(
         if end:
             return end
 
-        col_dates: list[str] = []
-        for k in ('执行日期1', '执行日期2', '执行日期3', '执行日期4'):
-            iso = _parse_date_to_iso(first.get(k))
-            if iso:
-                col_dates.append(iso)
-        if col_dates:
-            col_dates.sort()
-            return f'{col_dates[0]} ~ {col_dates[-1]}'
+        raw = (first.get('执行排期') or first.get('测试具体排期') or '').strip()
+        if raw:
+            os, oe = _parse_schedule_overall_start_end(raw)
+            if os and oe:
+                return f'{os} ~ {oe}'
+            if os:
+                return os
+            if oe:
+                return oe
 
-        all_dates = []
-        for block in (payload.get('visit_blocks') or []):
-            for proc in (block.get('processes') or []):
-                for raw_d in (proc.get('exec_dates') or []):
-                    if raw_d and isinstance(raw_d, str) and len(raw_d) >= 10:
-                        try:
-                            all_dates.append(dt_date.fromisoformat(raw_d[:10]))
-                        except ValueError:
-                            pass
-        if not all_dates:
-            return ''
-        return f'{min(all_dates).isoformat()} ~ {max(all_dates).isoformat()}'
+        return ''
+
+    def _fmt_visit_phase_label(visit_point: str, cell_date: date) -> str:
+        """排期计划矩阵单元格：访视时间点 + 该格具体日期（与表格中执行日期列展示一致，如 2026年4月25日）。"""
+        vp = (visit_point or '').strip()
+        ds = f'{cell_date.year}年{cell_date.month}月{cell_date.day}日'
+        if vp:
+            return f'{vp}（{ds}）'
+        return ds
 
     def _phase_current_next(payload: dict, first: dict) -> tuple[str, str]:
         """
-        本次/下次访视阶段：日期取自订单行「执行日期1～4」，与 visit_blocks 同下标访视点配对；
-        无有效列时回退 visit_blocks.exec_dates。
+        本次/下次访视阶段：按排期计划表格计算——
+        行=访视时间点，列=执行日期1～4（与详情页 parseExecutionScheduleText 一致）；
+        将每个单元格 (访视点, 执行日期N) 展开为带日期的时点，按日期排序后：
+        本次 = 最后一个日期 <= 今天的单元格；下次 = 第一个日期 > 今天的单元格。
+        无「执行排期」文本时，回退订单首行独立列「执行日期1」～「执行日期4」（单行四格场景）。
         """
-        from apps.scheduling.workorder_sync import _parse_date_to_iso
+        from apps.scheduling.workorder_sync import _parse_date_to_iso, _parse_schedule_visit_point_dates
 
         today = date.today()
-        phase_points: list[tuple[str, date]] = []
-        blocks = payload.get('visit_blocks') or []
-        for i, col in enumerate(('执行日期1', '执行日期2', '执行日期3', '执行日期4')):
-            iso = _parse_date_to_iso(first.get(col))
-            if not iso:
-                continue
-            try:
-                d = date.fromisoformat(iso)
-            except ValueError:
-                continue
-            vp = ''
-            if i < len(blocks):
-                vp = (blocks[i].get('visit_point') or '').strip()
-            if not vp:
-                continue
-            phase_points.append((vp, d))
+        # (日期, 访视时间点, 列号1..4 表示执行日期N)
+        events: list[tuple[date, str, int]] = []
 
-        if not phase_points:
-            for block in blocks:
-                visit_point = (block.get('visit_point') or '').strip()
-                if not visit_point:
-                    continue
-                block_dates = []
-                for proc in (block.get('processes') or []):
-                    for raw_d in (proc.get('exec_dates') or []):
-                        if raw_d and isinstance(raw_d, str) and len(raw_d) >= 10:
-                            try:
-                                block_dates.append(date.fromisoformat(raw_d[:10]))
-                            except ValueError:
-                                pass
-                if not block_dates:
-                    continue
-                phase_points.append((visit_point, min(block_dates)))
+        raw = (first.get('执行排期') or first.get('测试具体排期') or '').strip()
+        parsed_rows = _parse_schedule_visit_point_dates(raw) if raw else []
+        for vp, dlist in parsed_rows:
+            vp = (vp or '').strip()
+            for col_idx, d in enumerate(dlist):
+                events.append((d, vp, col_idx + 1))
 
-        if not phase_points:
+        if not events:
+            blocks = payload.get('visit_blocks') or []
+            vp0 = (blocks[0].get('visit_point') or '').strip() if blocks else ''
+            for i, col in enumerate(('执行日期1', '执行日期2', '执行日期3', '执行日期4')):
+                iso = _parse_date_to_iso(first.get(col))
+                if not iso:
+                    continue
+                try:
+                    d = date.fromisoformat(iso)
+                except ValueError:
+                    continue
+                events.append((d, vp0, i + 1))
+
+        if not events:
             return '-', '-'
 
-        phase_points.sort(key=lambda x: x[1])
-        past_or_today = [x for x in phase_points if x[1] <= today]
-        future = [x for x in phase_points if x[1] > today]
-        current_phase = past_or_today[-1][0] if past_or_today else '-'
-        next_phase = future[0][0] if future else '-'
+        events.sort(key=lambda x: (x[0], x[1], x[2]))
+        past_or_today = [x for x in events if x[0] <= today]
+        future = [x for x in events if x[0] > today]
+        if past_or_today:
+            d_cur, vp, _col = past_or_today[-1]
+            current_phase = _fmt_visit_phase_label(vp, d_cur)
+        else:
+            current_phase = '-'
+        if future:
+            d_nxt, vp, _col = future[0]
+            next_phase = _fmt_visit_phase_label(vp, d_nxt)
+        else:
+            next_phase = '-'
         return current_phase, next_phase
 
     def _to_int(v) -> int:
@@ -586,11 +585,11 @@ def visit_execution_list(
             'sample_size': _sample_total(first),
             'visit_count': int(payload.get('visit_count') or len(payload.get('visit_blocks') or []) or 0),
             'visit_timepoints': _collect_visit_points(payload),
-            'execution_date': _collect_execution_period(payload, first),
+            'execution_date': _collect_execution_period(first),
             'slot_status': 'completed',
             'current_visit_phase': current_phase,
             'next_visit_phase': next_phase,
-            'slot_date': _collect_execution_period(payload, first),
+            'slot_date': _collect_execution_period(first),
             'workorder_total': completion['total'],
             'workorder_completed': completion['completed'],
             'completion_rate': round(completion['completed'] / completion['total'] * 100, 1) if completion['total'] > 0 else 0,

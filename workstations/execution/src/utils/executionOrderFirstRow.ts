@@ -5,6 +5,11 @@
  */
 export function getFirstRowAsDict(headers: string[], rows: unknown[]): Record<string, string> {
   const row = rows?.[0]
+  return rowToDict(headers, row)
+}
+
+/** 将单行与表头对齐为 dict，逻辑与 getFirstRowAsDict 中单行处理一致 */
+function rowToDict(headers: string[], row: unknown): Record<string, string> {
   if (row == null) return {}
   const out: Record<string, string> = {}
   if (Array.isArray(row)) {
@@ -19,4 +24,26 @@ export function getFirstRowAsDict(headers: string[], rows: unknown[]): Record<st
     }
   }
   return out
+}
+
+/**
+ * 多项目执行订单：按「项目编号」取与当前时间槽/快照一致的那一行（排期计划「执行排期」、执行日期列均在该行）。
+ * projectCode 为空或无法匹配时回退首行（与旧行为一致）。
+ */
+export function getRowAsDictMatchingProject(
+  headers: string[],
+  rows: unknown[],
+  projectCode: string
+): Record<string, string> {
+  const code = (projectCode || '').trim()
+  if (!code || !rows?.length) {
+    return getFirstRowAsDict(headers, rows)
+  }
+  for (let i = 0; i < rows.length; i++) {
+    const d = rowToDict(headers, rows[i])
+    if ((d['项目编号'] || '').trim() === code) {
+      return d
+    }
+  }
+  return getFirstRowAsDict(headers, rows)
 }
