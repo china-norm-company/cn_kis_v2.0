@@ -633,3 +633,26 @@ def main():
 
 if __name__ == '__main__':
     main()
+    # ── 学习型集成（B2 Track）─────────────────────────────────────────────
+    try:
+        import sys as _sys, os as _os
+        _backend_dir = _os.path.join(_os.path.dirname(__file__), '..', '..', 'backend')
+        if _os.path.isdir(_backend_dir):
+            _sys.path.insert(0, _os.path.abspath(_backend_dir))
+        from apps.data_intake.learning_runner import LearningReport, GapReporter
+        _rpt = LearningReport(source_name='channel_registration')
+        _rpt.add_pattern(
+            'distribution', '渠道注册来源分析',
+            '渠道注册受试者批量导入完成。'
+            '渠道来源多样性反映了公司受试者招募能力和渠道分布。',
+        )
+        _rpt.add_agent_opportunity(
+            scenario='渠道质量评分与优化',
+            current_pain='不同渠道注册的受试者质量（完成率/配合度）差异显著，但无量化指标',
+            agent_value='基于"渠道来源 × 受试者最终表现"的历史数据，'
+                       '自动生成各渠道质量评分，指导未来招募渠道选择',
+            implementation_hint='在 t_subject 中增加 channel_quality_score 或在 KnowledgeEntry 中记录渠道分析',
+        )
+        GapReporter(dry_run=False).report(_rpt)
+    except Exception:
+        pass

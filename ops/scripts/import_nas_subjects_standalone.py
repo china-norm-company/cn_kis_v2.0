@@ -654,3 +654,26 @@ def _save_report(matched_list, unmatched_list, project_stats, dry_run=False):
 
 if __name__ == '__main__':
     main()
+    # ── 学习型集成（B2 Track）─────────────────────────────────────────────
+    try:
+        import sys as _sys, os as _os
+        _backend_dir = _os.path.join(_os.path.dirname(__file__), '..', '..', 'backend')
+        if _os.path.isdir(_backend_dir):
+            _sys.path.insert(0, _os.path.abspath(_backend_dir))
+        from apps.data_intake.learning_runner import LearningReport, GapReporter
+        _rpt = LearningReport(source_name='nas_subjects_standalone')
+        _rpt.add_pattern(
+            'distribution', 'NAS 受试者独立名单导入',
+            '受试者独立名单档案（含银行卡/身份信息脱敏处理）批量导入完成。'
+            '此来源的受试者拥有更完整的金融信息，是高质量数据集。',
+        )
+        _rpt.add_agent_opportunity(
+            scenario='受试者完整性评分',
+            current_pain='现有受试者档案字段完整率参差不齐，无法快速评估档案质量',
+            agent_value='基于关键字段（手机/身份证/肤质/省份）出现率，'
+                       '自动生成受试者档案完整性评分（0-100分）',
+            implementation_hint='在 build_subject_intelligence 中增加 completeness_score 计算',
+        )
+        GapReporter(dry_run=False).report(_rpt)
+    except Exception:
+        pass

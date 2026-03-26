@@ -33,6 +33,16 @@ WATCHED_PATTERNS = [
     'sweep_feishu_all',
 ]
 
+# 各进程类型的独立超时阈值（小时）：
+# - incremental：通常 30 分钟内完成，2h 是合理的上限
+# - full_history：单用户 IM 可达 600s，197 人全量可能跑 12h+，给 24h 宽裕
+# - 若 cmdline 匹配多个 key，取最大值
+PATTERN_MAX_HOURS: dict = {
+    'sweep_feishu_incremental': 2.0,
+    'sweep_feishu_full_history': 24.0,
+    'sweep_feishu_all': 24.0,
+}
+
 # Redis 互斥锁 key（与 feishu_sweep_lock.py 保持一致）
 LOCK_KEYS = [
     'feishu:sweep_incremental:lock',
@@ -157,12 +167,18 @@ class Command(BaseCommand):
 
         for proc in procs:
             age_h = proc['age_seconds'] / 3600
-            status = '正常' if age_h < max_hours else '⚠️ 僵死'
-            line = f'  PID={proc["pid"]:>7}  age={age_h:.1f}h  {status}  {proc["cmd"][:80]}'
+            # 按进程类型取各自的超时上限；--max-hours 只覆盖 incremental 的默认值
+            effective_max = max(
+                PATTERN_MAX_HOURS.get(p, max_hours)
+                for p in PATTERN_MAX_HOURS
+                if p in proc['cmd']
+            ) if any(p in proc['cmd'] for p in PATTERN_MAX_HOURS) else max_hours
+            status = '正常' if age_h < effective_max else '⚠️ 僵死'
+            line = f'  PID={proc["pid"]:>7}  age={age_h:.1f}h  limit={effective_max:.0f}h  {status}  {proc["cmd"][:80]}'
             self.stdout.write(line)
             log_lines.append(line)
 
-            if age_h >= max_hours:
+            if age_h >= effective_max:
                 if dry_run:
                     self.stdout.write(self.style.WARNING(f'    [DRY-RUN] 应 kill PID {proc["pid"]}'))
                 else:

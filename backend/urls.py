@@ -189,6 +189,9 @@ if not is_registration_done():
     _safe_add_router(api, '/closeout/', closeout_router, tags=['结项管理'])
     _safe_add_router(api, '/knowledge/', knowledge_router, tags=['知识库'])
 
+    from apps.knowledge.api_system_pulse import router as system_pulse_router
+    _safe_add_router(api, '/internal/', system_pulse_router, tags=['系统脉搏'])
+
     from apps.secretary.api import router as secretary_router, mail_router as secretary_mail_router
     _safe_add_router(api, '/dashboard/', secretary_router, tags=['秘书工作台'])
     _safe_add_router(api, '/', secretary_mail_router, tags=['邮件信号'])

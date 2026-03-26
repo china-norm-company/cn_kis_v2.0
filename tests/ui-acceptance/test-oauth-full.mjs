@@ -191,10 +191,14 @@ async function main() {
       report.error = pageErr
       console.log(`\n  ❌ 失败：${pageErr}`)
       report.steps.push({ step: 'error', desc: pageErr, url: finalUrl, shot: se })
-    } else if (finalUrl.includes('/login')) {
-      // 还在 /login → 可能 code 已消费但重定向未发生
+    } else if (finalUrl.includes('/login#/')) {
+      // secretary 工作台住在 /login，登录后 hash 变为 #/portal 等路由 → 认证成功
+      report.passed = true
+      console.log(`  ✅ 成功进入秘书台工作台（HashRouter）：${finalUrl}`)
+    } else if (finalUrl.includes('/login') && !finalUrl.includes('?code=')) {
+      // URL 含 /login 但无 ?code= 且无错误 → code 已消费，等待 SPA 跳转
       report.passed = false
-      report.error = '停留在 /login 页面，未成功跳转到工作台'
+      report.error = '停留在 /login 页面（无 hash 路由），未成功跳转到工作台'
       console.log(`  ⚠️  ${report.error}`)
     } else {
       report.passed = true
@@ -215,7 +219,13 @@ async function main() {
     console.log(`  截图目录：${SCREENSHOT_DIR}/`)
     console.log('='.repeat(65))
 
-    await browser.close()
+    if (report.passed) {
+      console.log('\n  🔍 浏览器保持打开，请查看工作台。按 Ctrl+C 退出。')
+      // 保持进程存活，让浏览器窗口留着供查看
+      await new Promise(() => {})
+    } else {
+      await browser.close()
+    }
   }
 }
 

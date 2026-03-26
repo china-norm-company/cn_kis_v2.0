@@ -122,6 +122,11 @@ beat_schedule = {
         'task': 'apps.secretary.tasks.feishu_token_expiry_morning_alert',
         'schedule': crontab(hour=8, minute=30),
     },
+    # 每 6 小时：自动扫描 pending checkpoint 并触发补采（覆盖 token 刚恢复 / 新用户）
+    'feishu-auto-backfill-sweep': {
+        'task': 'apps.secretary.tasks.feishu_auto_backfill_sweep',
+        'schedule': crontab(hour='1,7,13,19', minute=0),
+    },
 }
 
 # V2 安全开关：测试环境禁用生产采集类任务

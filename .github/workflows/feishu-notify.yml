@@ -47,6 +47,7 @@ jobs:
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SYSTEM_PULSE_TOKEN: ${{ secrets.SYSTEM_PULSE_TOKEN }}
         with:
           script: |
             // ── 工具函数：发送飞书消息 ─────────────────────────────────────
@@ -99,6 +100,68 @@ jobs:
             const repo = context.repo;
             const since24h = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
             const since48h = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+
+            // ── 采集系统脉搏数据（学习循环 KPI）──────────────────────────
+            let pulseData = null;
+            const pulseToken = process.env.SYSTEM_PULSE_TOKEN;
+            const serverBase = 'http://118.196.64.48:8080';
+            if (pulseToken) {
+              try {
+                const pulseResp = await fetch(`${serverBase}/api/v1/internal/system-pulse/`, {
+                  headers: { 'Authorization': `Bearer ${pulseToken}` },
+                  signal: AbortSignal.timeout(8000),
+                });
+                if (pulseResp.ok) {
+                  pulseData = await pulseResp.json();
+                  core.info('系统脉搏数据获取成功');
+                } else {
+                  core.warning(`系统脉搏 API 返回 ${pulseResp.status}`);
+                }
+              } catch(e) {
+                core.warning('系统脉搏数据获取失败（服务器不可达）: ' + e.message);
+              }
+            } else {
+              core.info('SYSTEM_PULSE_TOKEN 未配置，跳过知识库健康度');
+            }
+
+            // 格式化系统脉搏摘要文本
+            function formatPulseSummary(pulse) {
+              if (!pulse) return null;
+              const kh = pulse.knowledge_health || {};
+              const kpis = pulse.learning_loop_kpis || {};
+              const lines = [];
+
+              lines.push(`**📚 知识库** 总条目 **${(kh.entry_total||0).toLocaleString()}** · 已发布 **${(kh.entry_published||0).toLocaleString()}** · 向量化 ${kh.vector_rate||0}%`);
+              lines.push(`**🕸 图谱** ${(kh.relation_total||0).toLocaleString()} 条关系 · 协作关系 **${(kh.collaborates_with||0).toLocaleString()}** / 目标 10,000`);
+
+              const a2 = kpis.a2_mail_signal_unknown_pct;
+              if (a2) {
+                const v = a2.value || 0;
+                const icon = v < 30 ? '✅' : v < 50 ? '⚠️' : '🔴';
+                lines.push(`**📧 邮件信号** UNKNOWN ${icon} ${v}%（目标 <15%）`);
+              }
+
+              const actions = pulse.recommended_actions || [];
+              if (actions.length > 0) {
+                lines.push(`\n**🎯 今日推荐行动**`);
+                actions.slice(0, 2).forEach((a, i) => {
+                  lines.push(`${i+1}. ${a.action}`);
+                });
+              }
+
+              const pending = pulse.pending_insights || [];
+              if (pending.length > 0) {
+                lines.push(`\n**💡 待处理数据洞察** ${pending.length} 条（ProactiveInsight draft）`);
+                pending.slice(0, 2).forEach(p => {
+                  const badge = p.days_pending >= 3 ? ' ⚠️ 超3天' : '';
+                  lines.push(`• ${p.title.slice(0, 40)}${badge}`);
+                });
+              }
+
+              return lines.join('\n');
+            }
+
+            const pulseSummary = formatPulseSummary(pulseData);
 
             // 开放 PR
             const { data: openPRs } = await github.rest.pulls.list({
@@ -208,6 +271,15 @@ jobs:
                     },
                   },
                   { tag: 'hr' },
+                  // 系统脉搏（学习循环 KPI）
+                  pulseSummary ? {
+                    tag: 'div',
+                    text: {
+                      tag: 'lark_md',
+                      content: `**📊 系统脉搏（学习循环）**\n${pulseSummary}`,
+                    },
+                  } : null,
+                  pulseSummary ? { tag: 'hr' } : null,
                   // Bug Issue
                   metrics.topIssues.length > 0 ? {
                     tag: 'div',
@@ -228,7 +300,7 @@ jobs:
                   },
                   {
                     tag: 'note',
-                    elements: [{ tag: 'plain_text', content: `子衿智能运营官 · ${dateStr} 09:00  |  下一步：LLM 摘要升级中` }],
+                    elements: [{ tag: 'plain_text', content: `子衿智能运营官 · ${dateStr} 09:00  |  数据维度: ${pulseSummary ? '✅ 已获取' : '⏸ 服务器离线'}` }],
                   },
                 ].filter(Boolean),
               };
@@ -260,6 +332,15 @@ jobs:
                     },
                   },
                   { tag: 'hr' },
+                  // 系统脉搏
+                  pulseSummary ? {
+                    tag: 'div',
+                    text: {
+                      tag: 'lark_md',
+                      content: `**📊 系统脉搏（学习循环）**\n${pulseSummary}`,
+                    },
+                  } : null,
+                  pulseSummary ? { tag: 'hr' } : null,
                   {
                     tag: 'div',
                     text: {
@@ -280,7 +361,7 @@ jobs:
                   },
                   {
                     tag: 'note',
-                    elements: [{ tag: 'plain_text', content: `子衿智能运营官 · ${dateStr} 18:00  |  LLM 工作台推广分析升级中` }],
+                    elements: [{ tag: 'plain_text', content: `子衿智能运营官 · ${dateStr} 18:00  |  数据维度: ${pulseSummary ? '✅ 已获取' : '⏸ 服务器离线'}` }],
                   },
                 ].filter(Boolean),
               };

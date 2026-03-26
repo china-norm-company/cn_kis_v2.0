@@ -49,6 +49,20 @@ AUTO_PUBLISH_SOURCES = {
     'quality_ops_seed',
     'competitor_monitor',
     'market_intelligence_agent',
+    # 飞书全量采集来源（2026-03-25 启用自动发布，阈值降至 40 分）
+    # 背景：全量数据已完成入库，质量分均 ≥ 40，人工审核无法覆盖 40 万+条目
+    'feishu_mail',
+    'feishu_im',
+    'feishu_task',
+    'feishu_calendar',
+    'feishu_doc',
+    'feishu_wiki',
+    'feishu_meeting',
+    # 受试者智能层（运营数据生成，分数 ≥ 40 即为有效业务知识）
+    'subject_intelligence',
+    # 运营图谱（从邮件提取的业务实体关系）
+    'project_profile',
+    'operations_graph',
 }
 
 # 来源权威性等级（用于新增权威性维度）
@@ -83,6 +97,16 @@ SOURCE_AUTHORITY_LEVEL: Dict[str, str] = {
     'feishu_meeting': 'medium',
     'competitor_monitor': 'medium',
     'market_intelligence_agent': 'medium',
+    # 运营数据（飞书全量采集 + 受试者智能层）
+    'feishu_mail': 'medium',
+    'feishu_im': 'medium',
+    'feishu_task': 'medium',
+    'feishu_calendar': 'medium',
+    'feishu_doc': 'medium',
+    'feishu_wiki': 'medium',
+    'subject_intelligence': 'medium',
+    'project_profile': 'medium',
+    'operations_graph': 'medium',
     # 低可信
     'feishu_chat': 'low',
     'agent_tool': 'low',
@@ -382,6 +406,14 @@ def _determine_routing(total: int, source_type: str, properties: Optional[Dict[s
         auto_publish_threshold = 50
     if source_type == 'market_intelligence_agent':
         auto_publish_threshold = 50
+    # 飞书运营数据和受试者智能：质量门槛 40 分即可自动发布
+    # 原因：来源可信（公司内部真实数据），单条体量小，人工审核无法覆盖 40 万+
+    if source_type in {
+        'feishu_mail', 'feishu_im', 'feishu_task', 'feishu_calendar',
+        'feishu_doc', 'feishu_wiki', 'feishu_meeting',
+        'subject_intelligence', 'project_profile', 'operations_graph',
+    }:
+        auto_publish_threshold = 40
 
     if source_type in AUTO_PUBLISH_SOURCES and total >= auto_publish_threshold:
         return 'published'

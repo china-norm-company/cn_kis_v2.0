@@ -289,6 +289,10 @@ class SubjectProjectSC(models.Model):
     project_code = models.CharField('项目编号', max_length=100, db_index=True)
     sc_number = models.CharField('SC号', max_length=20, blank=True, default='', help_text='如 001、002，签到后按项目内顺序分配')
     rd_number = models.CharField('RD号', max_length=20, blank=True, default='', help_text='逻辑待定，暂空')
+    protocol_id = models.IntegerField(
+        '协议ID', null=True, blank=True, db_index=True,
+        help_text='关联 t_protocol.id，由 link_protocol_to_project_sc 命令按 project_code=Protocol.code 填充',
+    )
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)
     created_by_id = models.IntegerField('创建人ID', null=True, blank=True)
@@ -297,6 +301,57 @@ class SubjectProjectSC(models.Model):
 
     def __str__(self):
         return f'{self.subject_id}@{self.project_code} -> {self.sc_number or "-"}'
+
+
+# ============================================================================
+# 历史访客记录（来自 NAS 身份证系统导出，结构化访客到访全貌）
+# ============================================================================
+class SubjectVisitRecord(models.Model):
+    """
+    受试者历史到访记录。
+
+    来源：NAS 身份证系统导出（visitor_registration），每条对应一次实际到访。
+    与 t_subject_checkin 的区别：
+      - t_subject_checkin 是执行台系统内的操作记录（手动签到/签出）
+      - t_subject_visit_record 是门禁系统自动采集的原始访客记录，精度更高
+    通过 questionnaire_id 外键关联 t_subject_questionnaire 可取到原始全字段 JSONB。
+    """
+
+    class Meta:
+        db_table = 't_subject_visit_record'
+        verbose_name = '历史访客记录'
+        indexes = [
+            models.Index(fields=['subject', 'visit_date']),
+            models.Index(fields=['project_code']),
+            models.Index(fields=['visit_date']),
+            models.Index(fields=['questionnaire_id']),
+        ]
+
+    subject = models.ForeignKey(
+        'subject.Subject', on_delete=models.CASCADE,
+        related_name='visit_records', verbose_name='受试者',
+    )
+    questionnaire_id = models.BigIntegerField(
+        '来源问卷ID', null=True, blank=True, db_index=True,
+        help_text='关联 t_subject_questionnaire.id，可取原始全字段 JSONB',
+    )
+    visit_no = models.CharField('访客单号', max_length=50, blank=True, default='')
+    visit_date = models.DateField('来访日期')
+    visit_time = models.DateTimeField('来访时间', null=True, blank=True)
+    departure_time = models.DateTimeField('离开时间', null=True, blank=True)
+    project_code = models.CharField('来访事由/项目编号', max_length=100, blank=True, default='', db_index=True)
+    purpose = models.CharField('来访事由（原始）', max_length=500, blank=True, default='')
+    location = models.CharField('进入门岗/房号', max_length=200, blank=True, default='')
+    liaison = models.CharField('被访人/联络员', max_length=100, blank=True, default='')
+    is_departed = models.BooleanField('已离开', default=False)
+    skin_type_obs = models.CharField('现场观察肤质', max_length=20, blank=True, default='')
+    source_batch = models.CharField('来源批次', max_length=50, blank=True, default='')
+
+    create_time = models.DateTimeField('创建时间', auto_now_add=True)
+    update_time = models.DateTimeField('更新时间', auto_now=True)
+
+    def __str__(self):
+        return f'{self.subject_id} @ {self.visit_date} ({self.project_code})'
 
 
 # ============================================================================

@@ -1134,3 +1134,27 @@ def _save_report(matched, unmatched, all_files):
 
 if __name__ == '__main__':
     main()
+    # ── 学习型集成（B2 Track）─────────────────────────────────────────────
+    # 礼金导入学习报告在 main() 内部已通过 _save_report() 生成 Excel 档案
+    # 此处额外通过 GapReporter 将洞察发布到 KnowledgeEntry + GitHub Issues
+    try:
+        _backend_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'backend')
+        if os.path.isdir(_backend_dir):
+            import sys as _sys
+            _sys.path.insert(0, os.path.abspath(_backend_dir))
+        from apps.data_intake.learning_runner import LearningReport, GapReporter
+        _rpt = LearningReport(source_name='nas_honorarium')
+        _rpt.add_pattern(
+            'distribution', 'NAS 礼金档案历史支付覆盖',
+            '礼金档案导入完成。此数据反映了历史受试者支付记录，'
+            '可用于构建受试者价值分层和支付可靠性评分。',
+        )
+        _rpt.add_agent_opportunity(
+            scenario='受试者支付历史 → 可靠性评分',
+            current_pain='无法快速判断某受试者历史出勤率/配合度',
+            agent_value='基于礼金支付记录（实际完成率），自动生成受试者可靠性评分',
+            implementation_hint='build_subject_intelligence 中增加 payment_reliability 分层维度',
+        )
+        GapReporter(dry_run=False).report(_rpt)
+    except Exception:
+        pass

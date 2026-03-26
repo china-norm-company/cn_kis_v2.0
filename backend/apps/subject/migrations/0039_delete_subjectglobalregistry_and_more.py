@@ -10,6 +10,12 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # 先删除由 inject_system_full.py 用 raw SQL 创建的旧版 t_subject_visit_record
+        # Migration 0040 会以正规 Django schema 重建该表，然后重新注入数据
+        migrations.RunSQL(
+            'DROP TABLE IF EXISTS t_subject_visit_record',
+            reverse_sql=migrations.RunSQL.noop,
+        ),
         migrations.DeleteModel(
             name='SubjectGlobalRegistry',
         ),
