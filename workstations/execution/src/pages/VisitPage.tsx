@@ -32,17 +32,19 @@ interface VisitExecutionItem {
   plan_id: number
   protocol_id: number | null
   protocol_title: string
-  name: string
-  code: string
-  baseline_day: number
-  window_before: number
-  window_after: number
-  order: number
+  protocol_code: string
+  sample_size: number
+  visit_count: number
+  visit_timepoints: string
+  execution_date: string
   slot_status: string
+  current_visit_phase: string
+  next_visit_phase: string
   slot_date: string | null
   workorder_total: number
   workorder_completed: number
   completion_rate: number
+  delivery_progress: string
 }
 
 interface WindowAlert {
@@ -98,35 +100,101 @@ export default function VisitPage() {
   const completedCount = execItems.filter(i => i.slot_status === 'completed').length
 
   const columns = [
-    { key: 'name', header: '访视节点', render: (r: VisitExecutionItem) => (
-      <div>
-        <span className="font-medium text-slate-800">{r.name}</span>
-        {r.code && <span className="text-xs text-slate-400 ml-1">({r.code})</span>}
-      </div>
-    )},
-    { key: 'protocol_title', header: '项目', render: (r: VisitExecutionItem) => (
-      <span className="text-sm text-slate-600 truncate max-w-[180px] block">{r.protocol_title || '-'}</span>
-    )},
-    { key: 'baseline_day', header: '基准天', render: (r: VisitExecutionItem) => `Day ${r.baseline_day}` },
-    { key: 'window', header: '窗口期', render: (r: VisitExecutionItem) => (
-      <span className="text-xs text-slate-500">-{r.window_before} / +{r.window_after} 天</span>
-    )},
-    { key: 'slot_date', header: '排程日期', render: (r: VisitExecutionItem) => r.slot_date || '-' },
-    { key: 'slot_status', header: '排程状态', render: (r: VisitExecutionItem) => {
-      const info = SLOT_STATUS_LABELS[r.slot_status] || { label: r.slot_status, color: 'default' as const }
-      return <Badge variant={info.color}>{info.label}</Badge>
-    }},
-    { key: 'completion', header: '工单完成', render: (r: VisitExecutionItem) => (
-      <div className="flex items-center gap-2">
-        <div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full ${r.completion_rate >= 100 ? 'bg-green-400' : r.completion_rate > 0 ? 'bg-blue-400' : 'bg-slate-200'}`}
-            style={{ width: `${Math.min(100, r.completion_rate)}%` }}
-          />
+    {
+      key: 'protocol_code',
+      header: '项目编号',
+      align: 'center' as const,
+      render: (r: VisitExecutionItem) => (
+        <span className="font-medium text-slate-800">{r.protocol_code || '-'}</span>
+      ),
+    },
+    {
+      key: 'protocol_title',
+      header: '项目名称',
+      align: 'center' as const,
+      render: (r: VisitExecutionItem) => (
+        <span className="text-sm text-slate-600 truncate max-w-[180px] inline-block text-center">{r.protocol_title || '-'}</span>
+      ),
+    },
+    {
+      key: 'sample_size',
+      header: '样本量',
+      align: 'center' as const,
+      render: (r: VisitExecutionItem) => r.sample_size || '-',
+    },
+    {
+      key: 'visit_count',
+      header: '访视次数',
+      align: 'center' as const,
+      render: (r: VisitExecutionItem) => r.visit_count || '-',
+    },
+    {
+      key: 'visit_timepoints',
+      header: '访视时间点',
+      align: 'center' as const,
+      render: (r: VisitExecutionItem) => (
+        <Badge variant="field" size="sm">
+          {r.visit_timepoints || '-'}
+        </Badge>
+      ),
+    },
+    {
+      key: 'execution_date',
+      header: '执行日期',
+      align: 'center' as const,
+      render: (r: VisitExecutionItem) => r.execution_date || '-',
+    },
+    {
+      key: 'slot_status',
+      header: '排程状态',
+      align: 'center' as const,
+      render: (r: VisitExecutionItem) => {
+        const info = SLOT_STATUS_LABELS[r.slot_status] || { label: r.slot_status, color: 'default' as const }
+        return <Badge variant={info.color}>{info.label}</Badge>
+      },
+    },
+    {
+      key: 'current_visit_phase',
+      header: '本次访视阶段',
+      align: 'center' as const,
+      render: (r: VisitExecutionItem) => (
+        <Badge variant="field" size="sm">
+          {r.current_visit_phase || '-'}
+        </Badge>
+      ),
+    },
+    {
+      key: 'next_visit_phase',
+      header: '下次访视阶段',
+      align: 'center' as const,
+      render: (r: VisitExecutionItem) => (
+        <Badge variant="field" size="sm">
+          {r.next_visit_phase || '-'}
+        </Badge>
+      ),
+    },
+    {
+      key: 'completion',
+      header: '工单完成进度',
+      align: 'center' as const,
+      render: (r: VisitExecutionItem) => (
+        <div className="flex items-center justify-center gap-2">
+          <div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full ${r.completion_rate >= 100 ? 'bg-green-400' : r.completion_rate > 0 ? 'bg-blue-400' : 'bg-slate-200'}`}
+              style={{ width: `${Math.min(100, r.completion_rate)}%` }}
+            />
+          </div>
+          <span className="text-xs text-slate-500">{r.workorder_completed}/{r.workorder_total}</span>
         </div>
-        <span className="text-xs text-slate-500">{r.workorder_completed}/{r.workorder_total}</span>
-      </div>
-    )},
+      ),
+    },
+    {
+      key: 'delivery_progress',
+      header: '交付进度',
+      align: 'center' as const,
+      render: (r: VisitExecutionItem) => r.delivery_progress || '-',
+    },
   ]
 
   return (

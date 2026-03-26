@@ -108,10 +108,22 @@ export function DataTable<T extends object>({
                       index
                     ))
                   : String(getValue(record, String(col.key)) ?? '-')
+                const valueAlign =
+                  col.align === 'center'
+                    ? 'text-center'
+                    : col.align === 'right'
+                      ? 'text-right'
+                      : 'text-right'
                 return (
-                  <div key={String(col.key)} className="flex items-start justify-between gap-3">
+                  <div
+                    key={String(col.key)}
+                    className={clsx(
+                      'gap-3',
+                      col.align === 'center' ? 'flex flex-col items-center text-center' : 'flex items-start justify-between'
+                    )}
+                  >
                     <span className="shrink-0 text-xs font-medium text-slate-500 dark:text-slate-400">{title}</span>
-                    <div className="min-w-0 text-right text-sm text-slate-700 dark:text-slate-200">{rendered}</div>
+                    <div className={clsx('min-w-0 text-sm text-slate-700 dark:text-slate-200', valueAlign)}>{rendered}</div>
                   </div>
                 )
               })}

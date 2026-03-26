@@ -418,11 +418,6 @@ export default function SchedulePersonnelPage() {
         ))}
       </div>
 
-      <p className="text-xs text-slate-500 dark:text-slate-400">
-        流程按名称归类：含「评估」为评估模块；含前台/知情/产品/问卷/清洁为行政模块；其余为技术模块。每模块仅显示本类流程，请填写执行人员、备份人员、房间。底部仅显示当前 Tab
-        的保存按钮；每次保存会将当前数据写入时间槽详情（含人员排程）。须分别在三个 Tab 各成功保存一次，且三模块人员均填写完整后，系统才会自动发布。
-      </p>
-
       <div className="space-y-6">
         {currentBlocks.map((block, blockIdx) => {
           const tabIndices = getProcessIndicesForTab(visitBlocks, activeTab)[blockIdx]

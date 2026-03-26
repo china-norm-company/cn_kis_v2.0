@@ -125,9 +125,13 @@ export default function TimeSlotDetailPage() {
     [snapshot, firstRow, schedule]
   )
 
+  /** 与项目详情排期计划一致：执行日期1～4 与 visit_blocks 下标对齐 */
   const { project: projectRows, person: personRows, date: dateRows } = useMemo(
-    () => buildScheduleResultDimensionRows(visitBlocks, personnelMerged, projectCtx),
-    [visitBlocks, personnelMerged, projectCtx]
+    () =>
+      buildScheduleResultDimensionRows(visitBlocks, personnelMerged, projectCtx, {
+        orderFirstRow: firstRow as Record<string, unknown>,
+      }),
+    [visitBlocks, personnelMerged, projectCtx, firstRow]
   )
 
   const personProcessOptions = useMemo(() => {

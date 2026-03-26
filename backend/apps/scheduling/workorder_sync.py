@@ -42,36 +42,72 @@ SCHEDULE_PLAN_FIELD_LABELS = {
 }
 
 
+def _extract_dates_from_schedule_fragment(text: str) -> list[date]:
+    """从一段「执行排期」正文中提取所有合法日期（与 _parse_schedule_overall_start_end 规则一致）。"""
+    dates_found: list[date] = []
+    if not text or not str(text).strip():
+        return dates_found
+    s = str(text).strip()
+    for m in re.finditer(r'(\d{4})年(\d{1,2})月(\d{1,2})日', s):
+        try:
+            y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if 1 <= mo <= 12 and 1 <= d <= 31:
+                dates_found.append(date(y, mo, d))
+        except (ValueError, TypeError):
+            continue
+    for m in re.finditer(r'(\d{4})[/\-](\d{1,2})[/\-](\d{1,2})', s):
+        try:
+            y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if 1 <= mo <= 12 and 1 <= d <= 31:
+                dates_found.append(date(y, mo, d))
+        except (ValueError, TypeError):
+            continue
+    return dates_found
+
+
 def _parse_schedule_overall_start_end(raw_schedule: str) -> tuple[str | None, str | None]:
     """
     从「执行排期」文本解析整体开始/结束日期（与前端 getSchedulePlanOverallStartEnd 一致）。
     格式：多行 "访视点: 日期1、日期2、..."，日期支持 YYYY年M月D日、YYYY/M/D。
     返回 (start_iso, end_iso)，解析失败时返回 (None, None)。
     """
-    if not raw_schedule or not str(raw_schedule).strip():
-        return (None, None)
-    text = str(raw_schedule).strip()
-    dates_found = []
-    for m in re.finditer(r'(\d{4})年(\d{1,2})月(\d{1,2})日', text):
-        try:
-            y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
-            if 1 <= mo <= 12 and 1 <= d <= 31:
-                dates_found.append(date(y, mo, d))
-        except (ValueError, TypeError):
-            continue
-    for m in re.finditer(r'(\d{4})[/\-](\d{1,2})[/\-](\d{1,2})', text):
-        try:
-            y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
-            if 1 <= mo <= 12 and 1 <= d <= 31:
-                dates_found.append(date(y, mo, d))
-        except (ValueError, TypeError):
-            continue
+    dates_found = _extract_dates_from_schedule_fragment(raw_schedule or '')
     if not dates_found:
         return (None, None)
     return (
         min(dates_found).isoformat(),
         max(dates_found).isoformat(),
     )
+
+
+def _parse_schedule_visit_point_dates(raw_schedule: str) -> list[tuple[str, list[date]]]:
+    """
+    按行解析「执行排期」：每行「访视点: 日期…」，得到 (访视点, 该行列出的日期列表)。
+    与前端 parseExecutionScheduleText 的访视点分行语义一致；日期抽取规则与 _parse_schedule_overall_start_end 一致。
+    """
+    if not raw_schedule or not str(raw_schedule).strip():
+        return []
+    out: list[tuple[str, list[date]]] = []
+    for line in str(raw_schedule).replace('\r\n', '\n').replace('\r', '\n').split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        half = line.find(':')
+        full = line.find('：')
+        if half >= 0 and (full < 0 or half <= full):
+            colon_idx = half
+        elif full >= 0:
+            colon_idx = full
+        else:
+            continue
+        visit_point = line[:colon_idx].strip()
+        rest = line[colon_idx + 1 :].strip()
+        if not visit_point or not rest:
+            continue
+        dates = _extract_dates_from_schedule_fragment(rest)
+        if dates:
+            out.append((visit_point, dates))
+    return out
 
 
 def _parse_date_to_iso(val) -> str | None:

@@ -13,7 +13,7 @@
 """
 from ninja import Router, Schema, Query
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, date
 from . import services
 from .models import VisitPlan
 from apps.identity.decorators import require_permission, _get_account_from_request
@@ -322,53 +322,290 @@ def visit_execution_list(
     page_size: int = 20,
 ):
     """
-    执行视角的访视节点列表，关联排程状态和工单完成率。
+    执行视角的访视项目列表（项目级一条）：
+    仅展示排程核心已完成发布（TimelineSchedule.status=completed）的项目，
+    返回字段用于访视管理：项目编号、项目名称、访视时间点、执行日期、排程状态、工单完成率。
     """
-    from apps.visit.models import VisitNode, VisitPlan
-    from apps.scheduling.models import ScheduleSlot
+    from apps.scheduling.models import TimelineSchedule, TimelineScheduleStatus
     from apps.workorder.models import WorkOrder
-    from django.db.models import Count, Q
+    from apps.product_distribution.models import ProductDistributionWorkOrder, ProductDistributionExecution, ProductSampleRequest
+    from apps.subject.models_recruitment import RecruitmentPlan
 
-    qs = VisitNode.objects.select_related('plan', 'plan__protocol').order_by('plan__protocol__title', 'order')
-    if protocol_id:
-        qs = qs.filter(plan__protocol_id=protocol_id)
-    if status:
-        qs = qs.filter(plan__status=status)
+    def _first_row(order) -> dict:
+        if not order or not getattr(order, 'data', None):
+            return {}
+        d = order.data if isinstance(order.data, dict) else {}
+        headers = list(d.get('headers') or [])
+        rows = list(d.get('rows') or [])
+        if not rows:
+            return {}
+        first = rows[0]
+        if isinstance(first, list) and headers:
+            return dict(zip(headers, first))
+        if isinstance(first, dict):
+            return first
+        return {}
 
-    total = qs.count()
-    offset = (page - 1) * page_size
-    nodes = list(qs[offset:offset + page_size])
+    def _collect_visit_points(payload: dict) -> str:
+        points = []
+        for block in (payload.get('visit_blocks') or []):
+            vp = (block.get('visit_point') or '').strip()
+            if vp:
+                points.append(vp)
+        uniq = []
+        for p in points:
+            if p not in uniq:
+                uniq.append(p)
+        return '，'.join(uniq)
 
-    items = []
-    for node in nodes:
-        # Schedule slot status
-        slot = ScheduleSlot.objects.filter(visit_node=node).first()
-        slot_status = slot.status if slot else 'unscheduled'
-        slot_date = str(slot.scheduled_date) if slot else None
+    def _collect_execution_period(payload: dict, first: dict) -> str:
+        """
+        执行日期：与项目详情排期计划区一致——优先「执行开始日期」「执行结束日期」；
+        二者缺失时可用「执行日期1～4」推整体区间；再回退 visit_blocks.exec_dates。
+        """
+        from datetime import date as dt_date
+        from apps.scheduling.workorder_sync import _parse_date_to_iso
 
-        # Work order stats for this node
-        wo_total = WorkOrder.objects.filter(visit_node=node, is_deleted=False).count()
-        wo_completed = WorkOrder.objects.filter(
-            visit_node=node, is_deleted=False, status__in=['completed', 'approved']
+        start = _parse_date_to_iso(first.get('执行开始日期'))
+        end = _parse_date_to_iso(first.get('执行结束日期'))
+        if start and end:
+            return f'{start} ~ {end}'
+        if start:
+            return start
+        if end:
+            return end
+
+        col_dates: list[str] = []
+        for k in ('执行日期1', '执行日期2', '执行日期3', '执行日期4'):
+            iso = _parse_date_to_iso(first.get(k))
+            if iso:
+                col_dates.append(iso)
+        if col_dates:
+            col_dates.sort()
+            return f'{col_dates[0]} ~ {col_dates[-1]}'
+
+        all_dates = []
+        for block in (payload.get('visit_blocks') or []):
+            for proc in (block.get('processes') or []):
+                for raw_d in (proc.get('exec_dates') or []):
+                    if raw_d and isinstance(raw_d, str) and len(raw_d) >= 10:
+                        try:
+                            all_dates.append(dt_date.fromisoformat(raw_d[:10]))
+                        except ValueError:
+                            pass
+        if not all_dates:
+            return ''
+        return f'{min(all_dates).isoformat()} ~ {max(all_dates).isoformat()}'
+
+    def _phase_current_next(payload: dict, first: dict) -> tuple[str, str]:
+        """
+        本次/下次访视阶段：日期取自订单行「执行日期1～4」，与 visit_blocks 同下标访视点配对；
+        无有效列时回退 visit_blocks.exec_dates。
+        """
+        from apps.scheduling.workorder_sync import _parse_date_to_iso
+
+        today = date.today()
+        phase_points: list[tuple[str, date]] = []
+        blocks = payload.get('visit_blocks') or []
+        for i, col in enumerate(('执行日期1', '执行日期2', '执行日期3', '执行日期4')):
+            iso = _parse_date_to_iso(first.get(col))
+            if not iso:
+                continue
+            try:
+                d = date.fromisoformat(iso)
+            except ValueError:
+                continue
+            vp = ''
+            if i < len(blocks):
+                vp = (blocks[i].get('visit_point') or '').strip()
+            if not vp:
+                continue
+            phase_points.append((vp, d))
+
+        if not phase_points:
+            for block in blocks:
+                visit_point = (block.get('visit_point') or '').strip()
+                if not visit_point:
+                    continue
+                block_dates = []
+                for proc in (block.get('processes') or []):
+                    for raw_d in (proc.get('exec_dates') or []):
+                        if raw_d and isinstance(raw_d, str) and len(raw_d) >= 10:
+                            try:
+                                block_dates.append(date.fromisoformat(raw_d[:10]))
+                            except ValueError:
+                                pass
+                if not block_dates:
+                    continue
+                phase_points.append((visit_point, min(block_dates)))
+
+        if not phase_points:
+            return '-', '-'
+
+        phase_points.sort(key=lambda x: x[1])
+        past_or_today = [x for x in phase_points if x[1] <= today]
+        future = [x for x in phase_points if x[1] > today]
+        current_phase = past_or_today[-1][0] if past_or_today else '-'
+        next_phase = future[0][0] if future else '-'
+        return current_phase, next_phase
+
+    def _to_int(v) -> int:
+        try:
+            if v is None:
+                return 0
+            s = str(v).strip()
+            if not s:
+                return 0
+            return int(float(s))
+        except Exception:
+            return 0
+
+    def _sample_total(first: dict) -> int:
+        sample = _to_int(first.get('样本数量') or first.get('样本量') or first.get('最低样本量') or 0)
+        backup = _to_int(first.get('备份数量') or first.get('备份样本量') or 0)
+        return sample + backup
+
+    def _station_completion(project_code: str, protocol_id: int | None) -> dict:
+        """
+        四工作台完成率口径（固定分母=4）：
+        - 接待台：存在 project_work_order 且存在执行记录
+        - 物料台：存在 sample_request 记录
+        - 招募台：存在 recruitment_plan，且达到目标人数（或状态 completed）
+        - 评估台：存在 work_order，且已完成/已批准占比 100%
+        """
+        # 1) 接待台
+        reception_workorders = ProductDistributionWorkOrder.objects.filter(
+            project_no=project_code,
+            is_delete=0,
         ).count()
+        reception_executions = ProductDistributionExecution.objects.filter(
+            related_project_no=project_code,
+            is_delete=0,
+        ).count()
+        reception_done = reception_workorders > 0 and reception_executions > 0
 
-        items.append({
-            'id': node.id,
-            'plan_id': node.plan_id,
-            'protocol_id': node.plan.protocol_id if node.plan else None,
-            'protocol_title': node.plan.protocol.title if node.plan and hasattr(node.plan, 'protocol') and node.plan.protocol else '',
-            'name': node.name,
-            'code': getattr(node, 'code', ''),
-            'baseline_day': node.baseline_day,
-            'window_before': node.window_before,
-            'window_after': node.window_after,
-            'order': node.order,
-            'slot_status': slot_status,
-            'slot_date': slot_date,
-            'workorder_total': wo_total,
-            'workorder_completed': wo_completed,
-            'completion_rate': round(wo_completed / wo_total * 100, 1) if wo_total > 0 else 0,
+        # 2) 物料台
+        material_records = ProductSampleRequest.objects.filter(
+            related_project_no=project_code,
+            is_delete=0,
+        ).count()
+        material_done = material_records > 0
+
+        # 3) 招募台
+        recruitment_target = 0
+        recruitment_enrolled = 0
+        recruitment_done = False
+        if protocol_id:
+            rp = RecruitmentPlan.objects.filter(protocol_id=protocol_id).order_by('-create_time').first()
+            if rp:
+                recruitment_target = int(rp.target_count or 0)
+                recruitment_enrolled = int(rp.enrolled_count or 0)
+                recruitment_done = (
+                    (recruitment_target > 0 and recruitment_enrolled >= recruitment_target)
+                    or (rp.status == 'completed')
+                )
+
+        # 4) 评估台
+        evaluator_total = 0
+        evaluator_completed = 0
+        evaluator_done = False
+        if protocol_id:
+            qs = WorkOrder.objects.filter(
+                is_deleted=False,
+                visit_node__plan__protocol_id=protocol_id,
+            )
+            evaluator_total = qs.count()
+            evaluator_completed = qs.filter(status__in=['completed', 'approved']).count()
+            evaluator_done = evaluator_total > 0 and evaluator_completed >= evaluator_total
+
+        total = 4
+        completed = (
+            (1 if reception_done else 0)
+            + (1 if material_done else 0)
+            + (1 if recruitment_done else 0)
+            + (1 if evaluator_done else 0)
+        )
+        return {
+            'total': total,
+            'completed': completed,
+            'reception': {
+                'total': reception_workorders,
+                'completed': reception_executions,
+                'done': reception_done,
+            },
+            'material': {
+                'total': material_records,
+                'completed': material_records,
+                'done': material_done,
+            },
+            'recruitment': {
+                'total': recruitment_target,
+                'completed': recruitment_enrolled,
+                'done': recruitment_done,
+            },
+            'evaluator': {
+                'total': evaluator_total,
+                'completed': evaluator_completed,
+                'done': evaluator_done,
+            },
+        }
+
+    qs = TimelineSchedule.objects.select_related('execution_order_upload').filter(
+        status=TimelineScheduleStatus.COMPLETED,
+    ).order_by('-update_time')
+
+    items_all = []
+    for sch in qs:
+        order = sch.execution_order_upload
+        first = _first_row(order)
+        project_code = (first.get('项目编号') or '').strip()
+        project_name = (first.get('项目名称') or first.get('项目名') or '').strip() or project_code
+        payload = sch.payload if isinstance(sch.payload, dict) else {}
+
+        # protocol_id 仅用于招募/评估完成数据对齐
+        protocol_id_val = None
+        try:
+            from apps.protocol.models import Protocol
+            if project_code:
+                protocol = Protocol.objects.filter(code=project_code, is_deleted=False).first()
+                protocol_id_val = protocol.id if protocol else None
+        except Exception:
+            protocol_id_val = None
+
+        if protocol_id and protocol_id_val != protocol_id:
+            continue
+
+        completion = _station_completion(project_code, protocol_id_val)
+        current_phase, next_phase = _phase_current_next(payload, first)
+        items_all.append({
+            'id': sch.id,
+            'plan_id': None,
+            'protocol_id': protocol_id_val,
+            'protocol_code': project_code,
+            'protocol_title': project_name,
+            'sample_size': _sample_total(first),
+            'visit_count': int(payload.get('visit_count') or len(payload.get('visit_blocks') or []) or 0),
+            'visit_timepoints': _collect_visit_points(payload),
+            'execution_date': _collect_execution_period(payload, first),
+            'slot_status': 'completed',
+            'current_visit_phase': current_phase,
+            'next_visit_phase': next_phase,
+            'slot_date': _collect_execution_period(payload, first),
+            'workorder_total': completion['total'],
+            'workorder_completed': completion['completed'],
+            'completion_rate': round(completion['completed'] / completion['total'] * 100, 1) if completion['total'] > 0 else 0,
+            'delivery_progress': '-',  # 预留：后续由交付模块接口回填
+            'workstation_completion': {
+                'reception': completion['reception'],
+                'material': completion['material'],
+                'recruitment': completion['recruitment'],
+                'evaluator': completion['evaluator'],
+            },
         })
+
+    total = len(items_all)
+    offset = (page - 1) * page_size
+    items = items_all[offset:offset + page_size]
 
     return {'code': 200, 'msg': 'OK', 'data': {
         'items': items,

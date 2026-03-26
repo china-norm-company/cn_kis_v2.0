@@ -1943,6 +1943,146 @@ def list_execution_order_pending(request):
     return {'code': 200, 'msg': 'OK', 'data': {'items': items}}
 
 
+@router.get('/integration/schedule-tasks', summary='对接层：排程任务聚合列表（待排程/已排程）')
+@require_permission_or_anon_in_debug('scheduling.plan.read')
+def list_integration_schedule_tasks(request, tab: str = 'all'):
+    """
+    对接友好的排程任务聚合视图，不改变现有业务逻辑：
+    - pending: 执行订单待排程（复用 /execution-order-pending 口径）
+    - completed: 已排程任务（复用 /timeline-published 且仅保留 schedule_core_status=completed）
+    - all: 二者合并
+    """
+    from .models import ExecutionOrderUpload, TimelineSchedule, TimelineScheduleStatus, TimelinePublishedPlan
+
+    tab_norm = (tab or 'all').strip().lower()
+    if tab_norm not in ('pending', 'completed', 'all'):
+        return {'code': 400, 'msg': 'tab 仅支持 pending/completed/all', 'data': None}
+
+    pending_items = []
+    completed_items = []
+
+    if tab_norm in ('pending', 'all'):
+        recs = ExecutionOrderUpload.objects.order_by('-create_time').all()
+        completed_order_ids = set(
+            TimelineSchedule.objects.filter(status=TimelineScheduleStatus.COMPLETED)
+            .values_list('execution_order_upload_id', flat=True)
+        )
+        seen_project_codes = set()
+        for rec in recs:
+            if not rec or not rec.data or rec.id in completed_order_ids:
+                continue
+            out = _normalize_execution_order_data(rec)
+            if out is None:
+                continue
+            headers, rows = out
+            project_code = _project_code_from_payload(headers, rows)
+            if project_code and project_code in seen_project_codes:
+                continue
+            if project_code:
+                seen_project_codes.add(project_code)
+            item = _execution_order_to_plan_item(rec)
+            item['task_type'] = 'pending'
+            pending_items.append(item)
+
+    if tab_norm in ('completed', 'all'):
+        recs = TimelinePublishedPlan.objects.select_related('timeline_schedule').order_by('-create_time')[:500]
+        seen_project_codes = set()
+        for rec in recs:
+            item = _timeline_published_to_list_item(rec)
+            if (item.get('schedule_core_status') or '') != 'completed':
+                continue
+            project_code = (item.get('protocol_code') or '').strip()
+            if project_code and project_code in seen_project_codes:
+                continue
+            if project_code:
+                seen_project_codes.add(project_code)
+            item['task_type'] = 'completed'
+            completed_items.append(item)
+
+    if tab_norm == 'pending':
+        items = pending_items
+    elif tab_norm == 'completed':
+        items = completed_items
+    else:
+        items = pending_items + completed_items
+
+    return {'code': 200, 'msg': 'OK', 'data': {
+        'tab': tab_norm,
+        'items': items,
+        'counts': {
+            'pending': len(pending_items),
+            'completed': len(completed_items),
+            'all': len(items),
+        },
+    }}
+
+
+@router.get('/integration/schedule-task/{task_id}', summary='对接层：排程任务详情与入口')
+@require_permission_or_anon_in_debug('scheduling.plan.read')
+def get_integration_schedule_task_detail(request, task_id: str):
+    """
+    task_id 支持：
+    - eo-{execution_order_id}: 待排程任务
+    - tp-{timeline_published_id}: 已排程任务
+    返回统一详情结构与推荐入口路由，不改变现有排程逻辑。
+    """
+    from .models import ExecutionOrderUpload, TimelinePublishedPlan
+
+    task = (task_id or '').strip()
+    if task.startswith('eo-'):
+        try:
+            order_id = int(task.split('-', 1)[1])
+        except Exception:
+            return {'code': 400, 'msg': '无效 task_id', 'data': None}
+        rec = ExecutionOrderUpload.objects.filter(id=order_id).first()
+        if not rec:
+            return {'code': 404, 'msg': '未找到该待排程任务', 'data': None}
+        summary = _execution_order_to_summary(rec)
+        return {'code': 200, 'msg': 'OK', 'data': {
+            'task_id': task,
+            'task_type': 'pending',
+            'execution_order_id': rec.id,
+            'timeline_published_id': None,
+            'project_code': summary.get('project_code') or '',
+            'project_name': summary.get('project_name') or '',
+            'status': 'pending',
+            'summary': summary,
+            'entry': {
+                'schedule_core': f'/execution/#/scheduling/schedule-core/{rec.id}',
+                'personnel': f'/execution/#/scheduling/schedule-core/{rec.id}/personnel',
+                'timeslot': '',
+            },
+        }}
+
+    if task.startswith('tp-'):
+        try:
+            plan_id = int(task.split('-', 1)[1])
+        except Exception:
+            return {'code': 400, 'msg': '无效 task_id', 'data': None}
+        rec = TimelinePublishedPlan.objects.select_related('timeline_schedule').filter(id=plan_id).first()
+        if not rec:
+            return {'code': 404, 'msg': '未找到该已排程任务', 'data': None}
+        item = _timeline_published_to_list_item(rec)
+        execution_order_id = item.get('execution_order_id')
+        return {'code': 200, 'msg': 'OK', 'data': {
+            'task_id': task,
+            'task_type': 'completed',
+            'execution_order_id': execution_order_id,
+            'timeline_published_id': rec.id,
+            'project_code': item.get('protocol_code') or '',
+            'project_name': item.get('protocol_title') or '',
+            'status': item.get('schedule_core_status') or 'completed',
+            'summary': item,
+            'entry': {
+                'schedule_core': f'/execution/#/scheduling/schedule-core/{execution_order_id}' if execution_order_id else '',
+                'personnel': f'/execution/#/scheduling/schedule-core/{execution_order_id}/personnel' if execution_order_id else '',
+                'timeslot': f'/execution/#/scheduling/timeslot/{rec.id}',
+            },
+        }}
+
+    return {'code': 400, 'msg': 'task_id 仅支持 eo-* 或 tp-*', 'data': None}
+
+
 # ============================================================================
 # 排程核心：时间线排程 + 行政/评估/技术排程（不修改项目管理模块）
 # ============================================================================
@@ -2180,12 +2320,19 @@ def _personnel_tabs_all_saved(pl: dict) -> bool:
 
 def _sync_timeline_published_snapshot(schedule) -> None:
     """时间线已发布且存在 TimelinePublishedPlan 时，将快照与排程核心对齐。"""
-    from .models import TimelinePublishedPlan
+    from .models import TimelinePublishedPlan, TimelineScheduleStatus
     plan = TimelinePublishedPlan.objects.filter(timeline_schedule=schedule).first()
     if not plan:
         return
     plan.snapshot = _build_timeslot_snapshot_from_schedule(schedule)
     plan.save(update_fields=['snapshot', 'update_time'])
+    # 旁路桥接：仅在排程完成后同步到访视管理，不改变原有排程业务判断
+    if schedule.status == TimelineScheduleStatus.COMPLETED:
+        try:
+            from apps.visit.services.timeline_sync_service import sync_visit_from_timeline_schedule
+            sync_visit_from_timeline_schedule(schedule)
+        except Exception as e:
+            logger.warning('排程完成后同步访视管理失败 schedule_id=%s: %s', getattr(schedule, 'id', None), e)
 
 
 def _build_timeslot_snapshot_from_schedule(schedule) -> dict:
