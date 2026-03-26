@@ -6,11 +6,19 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { productDistributionApi } from '@cn-kis/api-client'
 import { Card, Button, Modal, Badge } from '@cn-kis/ui-kit'
 import { Plus, Eye, Pencil, Clock, Play, CheckCircle2, Search, ChevronLeft, ChevronRight } from 'lucide-react'
-import type { WorkOrderListItem, WorkOrderDetail, WorkOrderCreate, ExecutionRecordDetail } from './types'
+import type {
+  WorkOrderListItem,
+  WorkOrderDetail,
+  WorkOrderCreate,
+  ExecutionRecordDetail,
+  ExecutionItemSummary,
+} from './types'
 import { SchedulePlanSection } from './SchedulePlanSection'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 const DEFAULT_PAGE_SIZE = 20
+/** 查看/编辑弹窗内「执行记录」分页，每页拉取详情请求数上限 */
+const EXECUTION_PAGE_SIZE = 10
 
 const emptyForm: Partial<WorkOrderCreate> = {
   project_start_date: new Date().toISOString().split('T')[0],
@@ -217,20 +225,58 @@ const EXCEPTION_LABELS: Record<string, string> = {
   other: '其他',
 }
 
-function WorkOrderViewContent({
-  detail,
+async function fetchExecutionDetailsMapForExecutions(
+  executions: ExecutionItemSummary[] | undefined
+): Promise<Record<string, ExecutionRecordDetail | null>> {
+  if (!executions?.length) return {}
+  const ids = executions.map((ex) => ex.id)
+  const results = await Promise.allSettled(
+    ids.map((id) => productDistributionApi.getExecutionOrder(Number(id)))
+  )
+  const map: Record<string, ExecutionRecordDetail | null> = {}
+  ids.forEach((id, i) => {
+    const r = results[i]
+    const key = String(id)
+    if (r.status === 'fulfilled') {
+      map[key] = (r.value as ExecutionRecordDetail) ?? null
+    } else {
+      map[key] = null
+    }
+  })
+  return map
+}
+
+function WorkOrderExecutionRecordsSection({
+  executions,
   executionDetailsMap,
+  detailsReady,
+  summariesLoading,
+  pagination,
 }: {
-  detail: WorkOrderDetail
+  executions: ExecutionItemSummary[]
   executionDetailsMap: Record<string, ExecutionRecordDetail | null>
+  /** 是否已完成执行详情拉取（用于区分加载中与单条失败） */
+  detailsReady: boolean
+  /** 摘要列表（分页接口）加载中 */
+  summariesLoading?: boolean
+  /** 分页：不传则按当前 executions 长度展示（兼容旧行为） */
+  pagination?: {
+    total: number
+    page: number
+    pageSize: number
+    onPageChange: (page: number) => void
+  }
 }) {
   const sortedExecutions = useMemo(
     () =>
-      [...(detail.executions || [])].sort((a, b) =>
+      [...(executions || [])].sort((a, b) =>
         (a.subject_rd || '').localeCompare(b.subject_rd || '', undefined, { numeric: true })
       ),
-    [detail.executions]
+    [executions]
   )
+  const globalTotal = pagination?.total ?? sortedExecutions.length
+  const page = pagination?.page ?? 1
+  const pageSize = pagination?.pageSize ?? (sortedExecutions.length || 1)
 
   const opLabel = (p: ExecutionRecordDetail['products'][0]) => {
     const opType = (p as { product_operation_type?: string | null }).product_operation_type
@@ -244,6 +290,159 @@ function WorkOrderViewContent({
     return '—'
   }
 
+  const totalPages = pagination ? Math.max(1, Math.ceil(globalTotal / pageSize)) : 1
+
+  return (
+    <Card variant="elevated" className="p-4">
+      <h3 className="text-base font-semibold text-slate-800 mb-3">执行记录</h3>
+      {summariesLoading ? (
+        <div className="py-8 text-center text-sm text-slate-500">加载执行记录列表…</div>
+      ) : sortedExecutions.length > 0 ? (
+        <div className="space-y-4">
+          {sortedExecutions.map((ex, index) => {
+            const fullRecord = executionDetailsMap[String(ex.id)] ?? null
+            const recordNum = pagination ? (page - 1) * pageSize + index + 1 : index + 1
+            const productCount = fullRecord?.products?.length ?? 0
+            const dateStr = ex.execution_date && ex.execution_date.length >= 10 ? ex.execution_date.slice(0, 10) : ex.execution_date
+            return (
+              <Card key={String(ex.id)} variant="elevated" className="p-4 border-l-4 border-l-blue-400">
+                <p className="text-sm font-medium text-slate-800">执行记录 #{recordNum}（共{globalTotal}条）</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  执行日期：{dateStr ?? '—'} · 受试者：{ex.subject_rd}（{ex.subject_initials}）· 筛选编号：{fullRecord?.screening_no?.trim() || '—'} · 操作人：{(ex as { operator_name?: string }).operator_name ?? '—'} · 产品数：{productCount}
+                </p>
+                <div className="mt-3 text-sm">
+                  {!detailsReady ? (
+                    <div className="py-4 text-center text-slate-500 text-xs">加载执行记录详情...</div>
+                  ) : fullRecord === null ? (
+                    <div className="py-2 text-slate-500 text-xs">该条详情暂不可用</div>
+                  ) : fullRecord.products && fullRecord.products.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-200 text-slate-500">
+                            <th className="text-left p-2">阶段</th>
+                            <th className="text-left p-2">周期</th>
+                            <th className="text-left p-2">产品编号/名称</th>
+                            <th className="text-left p-2">瓶序</th>
+                            <th className="text-left p-2">产品操作</th>
+                            <th className="text-left p-2">称重(g)</th>
+                            <th className="text-left p-2">日记</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {fullRecord.products.map((p, pIndex) => (
+                            <tr key={pIndex} className="border-b border-slate-100">
+                              <td className="p-2">{STAGE_LABELS[p.stage] ?? p.stage}</td>
+                              <td className="p-2">{p.execution_cycle ?? '-'}</td>
+                              <td className="p-2">{p.product_code} {p.product_name}</td>
+                              <td className="p-2">{p.bottle_sequence ?? '-'}</td>
+                              <td className="p-2">
+                                {opLabel(p) !== '—' ? <Badge variant="default" size="sm">{opLabel(p)}</Badge> : <span className="text-slate-400">—</span>}
+                              </td>
+                              <td className="p-2">
+                                <div className="space-y-0.5">
+                                  {(p.product_distribution === 1 || p.diary_distribution === 1) && (
+                                    <div>发放：{p.distribution_weight != null ? Number(p.distribution_weight).toFixed(2) : '-'}</div>
+                                  )}
+                                  {(p.product_inspection === 1 || p.diary_inspection === 1) && (
+                                    <div>检查：{p.inspection_weight != null ? Number(p.inspection_weight).toFixed(2) : '-'}</div>
+                                  )}
+                                  {(p.product_recovery === 1 || p.diary_recovery === 1) && (
+                                    <div>回收：{p.recovery_weight != null ? Number(p.recovery_weight).toFixed(2) : '-'}</div>
+                                  )}
+                                  {!p.product_distribution && !p.product_inspection && !p.product_recovery && !p.diary_distribution && !p.diary_inspection && !p.diary_recovery && <span className="text-slate-400">—</span>}
+                                </div>
+                              </td>
+                              <td className="p-2">
+                                <div className="flex flex-wrap gap-1">
+                                  {p.diary_distribution === 1 && <Badge variant="default" size="sm">发放</Badge>}
+                                  {p.diary_inspection === 1 && <Badge variant="default" size="sm">检查</Badge>}
+                                  {p.diary_recovery === 1 && <Badge variant="default" size="sm">回收</Badge>}
+                                  {!p.diary_distribution && !p.diary_inspection && !p.diary_recovery && <span className="text-slate-400 text-xs">—</span>}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="py-2 text-slate-500 text-xs">暂无产品操作</div>
+                  )}
+                  {fullRecord != null && (fullRecord.exception_type || fullRecord.exception_description) && (
+                    <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-2 text-xs">
+                      {fullRecord.exception_type && (
+                        <div>异常类型：{EXCEPTION_LABELS[fullRecord.exception_type] ?? fullRecord.exception_type}</div>
+                      )}
+                      {fullRecord.exception_description && <div>异常描述：{fullRecord.exception_description}</div>}
+                    </div>
+                  )}
+                  {(ex as { remark?: string }).remark && (
+                    <div className="mt-3">
+                      <span className="text-slate-500 text-xs">备注</span>
+                      <div className="mt-0.5 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs">{(ex as { remark?: string }).remark}</div>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )
+          })}
+          {pagination && globalTotal > pageSize && (
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 text-sm text-slate-600">
+              <span>
+                第 {page} / {totalPages} 页
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  disabled={page <= 1}
+                  onClick={() => pagination.onPageChange(page - 1)}
+                >
+                  上一页
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  disabled={page >= totalPages}
+                  onClick={() => pagination.onPageChange(page + 1)}
+                >
+                  下一页
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="py-8 text-center text-sm text-slate-500">暂无执行记录</div>
+      )}
+    </Card>
+  )
+}
+
+function WorkOrderViewContent({
+  detail,
+  executionSummaries,
+  executionTotal,
+  executionPage,
+  executionPageSize,
+  onExecutionPageChange,
+  executionDetailsMap,
+  executionDetailsReady,
+  summariesLoading,
+}: {
+  detail: WorkOrderDetail
+  executionSummaries: ExecutionItemSummary[]
+  executionTotal: number
+  executionPage: number
+  executionPageSize: number
+  onExecutionPageChange: (page: number) => void
+  executionDetailsMap: Record<string, ExecutionRecordDetail | null>
+  executionDetailsReady: boolean
+  summariesLoading?: boolean
+}) {
   return (
     <div className="space-y-4">
       <Card variant="elevated" className="p-4">
@@ -346,102 +545,18 @@ function WorkOrderViewContent({
           </div>
         </Card>
       )}
-      <Card variant="elevated" className="p-4">
-        <h3 className="text-base font-semibold text-slate-800 mb-3">执行记录</h3>
-        {sortedExecutions.length > 0 ? (
-          <div className="space-y-4">
-            {sortedExecutions.map((ex, index) => {
-              const fullRecord = executionDetailsMap[ex.id] ?? null
-              const total = sortedExecutions.length
-              const recordNum = index + 1
-              const productCount = fullRecord?.products?.length ?? 0
-              const dateStr = ex.execution_date && ex.execution_date.length >= 10 ? ex.execution_date.slice(0, 10) : ex.execution_date
-              return (
-                <Card key={ex.id} variant="elevated" className="p-4 border-l-4 border-l-blue-400">
-                  <p className="text-sm font-medium text-slate-800">执行记录 #{recordNum}（共{total}条）</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    执行日期：{dateStr ?? '—'} · 受试者：{ex.subject_rd}（{ex.subject_initials}）· 筛选编号：{fullRecord?.screening_no?.trim() || '—'} · 操作人：{(ex as { operator_name?: string }).operator_name ?? '—'} · 产品数：{productCount}
-                  </p>
-                  <div className="mt-3 text-sm">
-                    {fullRecord == null ? (
-                      <div className="py-4 text-center text-slate-500 text-xs">加载执行记录详情...</div>
-                    ) : fullRecord.products && fullRecord.products.length > 0 ? (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="border-b border-slate-200 text-slate-500">
-                              <th className="text-left p-2">阶段</th>
-                              <th className="text-left p-2">周期</th>
-                              <th className="text-left p-2">产品编号/名称</th>
-                              <th className="text-left p-2">瓶序</th>
-                              <th className="text-left p-2">产品操作</th>
-                              <th className="text-left p-2">称重(g)</th>
-                              <th className="text-left p-2">日记</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {fullRecord.products.map((p, pIndex) => (
-                              <tr key={pIndex} className="border-b border-slate-100">
-                                <td className="p-2">{STAGE_LABELS[p.stage] ?? p.stage}</td>
-                                <td className="p-2">{p.execution_cycle ?? '-'}</td>
-                                <td className="p-2">{p.product_code} {p.product_name}</td>
-                                <td className="p-2">{p.bottle_sequence ?? '-'}</td>
-                                <td className="p-2">
-                                  {opLabel(p) !== '—' ? <Badge variant="default" size="sm">{opLabel(p)}</Badge> : <span className="text-slate-400">—</span>}
-                                </td>
-                                <td className="p-2">
-                                  <div className="space-y-0.5">
-                                    {(p.product_distribution === 1 || p.diary_distribution === 1) && (
-                                      <div>发放：{p.distribution_weight != null ? Number(p.distribution_weight).toFixed(2) : '-'}</div>
-                                    )}
-                                    {(p.product_inspection === 1 || p.diary_inspection === 1) && (
-                                      <div>检查：{p.inspection_weight != null ? Number(p.inspection_weight).toFixed(2) : '-'}</div>
-                                    )}
-                                    {(p.product_recovery === 1 || p.diary_recovery === 1) && (
-                                      <div>回收：{p.recovery_weight != null ? Number(p.recovery_weight).toFixed(2) : '-'}</div>
-                                    )}
-                                    {!p.product_distribution && !p.product_inspection && !p.product_recovery && !p.diary_distribution && !p.diary_inspection && !p.diary_recovery && <span className="text-slate-400">—</span>}
-                                  </div>
-                                </td>
-                                <td className="p-2">
-                                  <div className="flex flex-wrap gap-1">
-                                    {p.diary_distribution === 1 && <Badge variant="default" size="sm">发放</Badge>}
-                                    {p.diary_inspection === 1 && <Badge variant="default" size="sm">检查</Badge>}
-                                    {p.diary_recovery === 1 && <Badge variant="default" size="sm">回收</Badge>}
-                                    {!p.diary_distribution && !p.diary_inspection && !p.diary_recovery && <span className="text-slate-400 text-xs">—</span>}
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <div className="py-2 text-slate-500 text-xs">暂无产品操作</div>
-                    )}
-                    {fullRecord != null && (fullRecord.exception_type || fullRecord.exception_description) && (
-                      <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-2 text-xs">
-                        {fullRecord.exception_type && (
-                          <div>异常类型：{EXCEPTION_LABELS[fullRecord.exception_type] ?? fullRecord.exception_type}</div>
-                        )}
-                        {fullRecord.exception_description && <div>异常描述：{fullRecord.exception_description}</div>}
-                      </div>
-                    )}
-                    {(ex as { remark?: string }).remark && (
-                      <div className="mt-3">
-                        <span className="text-slate-500 text-xs">备注</span>
-                        <div className="mt-0.5 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs">{(ex as { remark?: string }).remark}</div>
-                      </div>
-                    )}
-                  </div>
-                </Card>
-              )
-            })}
-          </div>
-        ) : (
-          <div className="py-8 text-center text-sm text-slate-500">暂无执行记录</div>
-        )}
-      </Card>
+      <WorkOrderExecutionRecordsSection
+        executions={executionSummaries}
+        executionDetailsMap={executionDetailsMap}
+        detailsReady={executionDetailsReady}
+        summariesLoading={summariesLoading}
+        pagination={{
+          total: executionTotal,
+          page: executionPage,
+          pageSize: executionPageSize,
+          onPageChange: onExecutionPageChange,
+        }}
+      />
     </div>
   )
 }
@@ -458,6 +573,9 @@ export function WorkOrderTab() {
   const [editingRow, setEditingRow] = useState<WorkOrderListItem | null>(null)
   const [editDetail, setEditDetail] = useState<WorkOrderDetail | null>(null)
   const [executionDetailsMap, setExecutionDetailsMap] = useState<Record<string, ExecutionRecordDetail | null>>({})
+  const [executionDetailsReady, setExecutionDetailsReady] = useState(true)
+  const [editExecutionDetailsMap, setEditExecutionDetailsMap] = useState<Record<string, ExecutionRecordDetail | null>>({})
+  const [editExecutionDetailsReady, setEditExecutionDetailsReady] = useState(true)
   const [viewLoading, setViewLoading] = useState(false)
   const [editFormLoading, setEditFormLoading] = useState(false)
   const [formData, setFormData] = useState<Partial<WorkOrderCreate>>({ ...emptyForm })
@@ -466,6 +584,8 @@ export function WorkOrderTab() {
   const [hasTriedSubmit, setHasTriedSubmit] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [editError, setEditError] = useState<string | null>(null)
+  const [viewExecutionPage, setViewExecutionPage] = useState(1)
+  const [editExecutionPage, setEditExecutionPage] = useState(1)
 
   const { data, isLoading, error } = useQuery<{
     list?: WorkOrderListItem[]
@@ -491,6 +611,31 @@ export function WorkOrderTab() {
     queryClient.invalidateQueries({ queryKey: ['product-distribution', 'workorders'] })
     queryClient.invalidateQueries({ queryKey: ['product-distribution', 'workorders-all'] })
   }, [queryClient])
+
+  const { data: viewExecPage, isFetching: viewExecFetching } = useQuery({
+    queryKey: ['reception', 'workorder-executions', selectedDetail?.id, viewExecutionPage],
+    queryFn: () =>
+      productDistributionApi.getWorkOrderExecutions(Number(selectedDetail!.id), {
+        page: viewExecutionPage,
+        pageSize: EXECUTION_PAGE_SIZE,
+      }),
+    enabled: !!selectedDetail?.id && showView,
+  })
+
+  const { data: editExecPage, isFetching: editExecFetching } = useQuery({
+    queryKey: ['reception', 'workorder-executions', editDetail?.id, editExecutionPage],
+    queryFn: () =>
+      productDistributionApi.getWorkOrderExecutions(Number(editDetail!.id), {
+        page: editExecutionPage,
+        pageSize: EXECUTION_PAGE_SIZE,
+      }),
+    enabled: !!editDetail?.id && showEdit,
+  })
+
+  const viewExecSummaries = (viewExecPage?.list as ExecutionItemSummary[]) ?? []
+  const viewExecTotal = viewExecPage?.total ?? selectedDetail?.executions_total ?? 0
+  const editExecSummaries = (editExecPage?.list as ExecutionItemSummary[]) ?? []
+  const editExecTotal = editExecPage?.total ?? editDetail?.executions_total ?? 0
 
   useEffect(() => {
     setPage(1)
@@ -530,8 +675,9 @@ export function WorkOrderTab() {
     setEditingRow(wo)
     setShowEdit(true)
     setEditFormLoading(true)
+    setEditExecutionPage(1)
     productDistributionApi
-      .getWorkOrder(Number(wo.id))
+      .getWorkOrder(Number(wo.id), { include_executions: false })
       .then((d: unknown) => {
         const row = d as WorkOrderDetail
         setEditDetail(row)
@@ -560,31 +706,58 @@ export function WorkOrderTab() {
   const openView = (id: string | number) => {
     setSelectedDetail(null)
     setExecutionDetailsMap({})
+    setExecutionDetailsReady(false)
+    setViewExecutionPage(1)
     setShowView(true)
     setViewLoading(true)
     productDistributionApi
-      .getWorkOrder(Number(id))
+      .getWorkOrder(Number(id), { include_executions: false })
       .then((d: unknown) => setSelectedDetail(d as WorkOrderDetail))
       .catch(() => setSelectedDetail(null))
       .finally(() => setViewLoading(false))
   }
 
   useEffect(() => {
-    if (!selectedDetail?.executions?.length) {
+    if (!showView || !selectedDetail?.id) return
+    const list = viewExecPage?.list as ExecutionItemSummary[] | undefined
+    if (!list?.length) {
       setExecutionDetailsMap({})
+      setExecutionDetailsReady(true)
       return
     }
-    const ids = selectedDetail.executions.map((ex) => ex.id)
-    Promise.all(ids.map((id) => productDistributionApi.getExecutionOrder(Number(id))))
-      .then((results) => {
-        const map: Record<string, ExecutionRecordDetail | null> = {}
-        ids.forEach((id, i) => {
-          map[id] = (results[i] as ExecutionRecordDetail) ?? null
-        })
+    setExecutionDetailsReady(false)
+    let cancelled = false
+    fetchExecutionDetailsMapForExecutions(list).then((map) => {
+      if (!cancelled) {
         setExecutionDetailsMap(map)
-      })
-      .catch(() => setExecutionDetailsMap({}))
-  }, [selectedDetail?.id, selectedDetail?.executions])
+        setExecutionDetailsReady(true)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [showView, selectedDetail?.id, viewExecPage?.list, viewExecPage?.page])
+
+  useEffect(() => {
+    if (!showEdit || !editDetail?.id) return
+    const list = editExecPage?.list as ExecutionItemSummary[] | undefined
+    if (!list?.length) {
+      setEditExecutionDetailsMap({})
+      setEditExecutionDetailsReady(true)
+      return
+    }
+    setEditExecutionDetailsReady(false)
+    let cancelled = false
+    fetchExecutionDetailsMapForExecutions(list).then((map) => {
+      if (!cancelled) {
+        setEditExecutionDetailsMap(map)
+        setEditExecutionDetailsReady(true)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [showEdit, editDetail?.id, editExecPage?.list, editExecPage?.page])
 
   const handleCreate = async () => {
     setHasTriedSubmit(true)
@@ -639,7 +812,11 @@ export function WorkOrderTab() {
       const updatedId = editingRow.id
       setEditingRow(null)
       if (showView && selectedDetail?.id === updatedId) {
-        productDistributionApi.getWorkOrder(Number(updatedId)).then((d: unknown) => setSelectedDetail(d as WorkOrderDetail)).catch(() => {})
+        queryClient.invalidateQueries({ queryKey: ['reception', 'workorder-executions', Number(updatedId)] })
+        productDistributionApi
+          .getWorkOrder(Number(updatedId), { include_executions: false })
+          .then((d: unknown) => setSelectedDetail(d as WorkOrderDetail))
+          .catch(() => {})
       }
     } catch (err) {
       setEditError(err instanceof Error ? err.message : '请稍后重试')
@@ -663,7 +840,7 @@ export function WorkOrderTab() {
         </div>
         <Button size="sm" onClick={openCreate} className="shrink-0">
           <span className="inline-flex items-center whitespace-nowrap gap-1.5">
-            <Plus className="h-3.5 w-3.5 shrink-0" />新建项目
+            <Plus className="h-3.5 w-3.5 shrink-0" />新建工单
           </span>
         </Button>
       </div>
@@ -673,7 +850,7 @@ export function WorkOrderTab() {
         {isLoading && <p className="px-2 py-1.5 text-slate-500 text-sm">加载中…</p>}
         {!isLoading && !error && list.length === 0 && (
           <p className="px-2 py-1.5 text-slate-500 text-sm">
-            {keyword.trim() ? '未找到匹配的项目' : '暂无项目，请点击「新建项目」创建'}
+            {keyword.trim() ? '未找到匹配的工单' : '暂无工单，请点击「新建工单」创建'}
           </p>
         )}
         {!isLoading && !error && list.length > 0 && (
@@ -760,7 +937,7 @@ export function WorkOrderTab() {
       <Modal
         open={showCreate}
         onClose={() => { setCreateError(null); setShowCreate(false) }}
-        title="新建项目"
+        title="新建工单"
         size="lg"
         footer={
           <div className="flex justify-end gap-2">
@@ -781,7 +958,15 @@ export function WorkOrderTab() {
 
       <Modal
         open={showEdit}
-        onClose={() => { setEditingRow(null); setEditDetail(null); setEditError(null); setShowEdit(false) }}
+        onClose={() => {
+          setEditingRow(null)
+          setEditDetail(null)
+          setEditError(null)
+          setEditExecutionPage(1)
+          setEditExecutionDetailsMap({})
+          setEditExecutionDetailsReady(true)
+          setShowEdit(false)
+        }}
         title="编辑工单"
         size="lg"
         footer={
@@ -849,6 +1034,22 @@ export function WorkOrderTab() {
                   ) : null}
                 </div>
               )}
+              {editDetail && (
+                <div className="pt-4 border-t border-slate-200">
+                  <WorkOrderExecutionRecordsSection
+                    executions={editExecSummaries}
+                    executionDetailsMap={editExecutionDetailsMap}
+                    detailsReady={editExecutionDetailsReady}
+                    summariesLoading={editExecFetching && editExecPage === undefined}
+                    pagination={{
+                      total: editExecTotal,
+                      page: editExecutionPage,
+                      pageSize: EXECUTION_PAGE_SIZE,
+                      onPageChange: setEditExecutionPage,
+                    }}
+                  />
+                </div>
+              )}
             </>
           )}
         </div>
@@ -870,7 +1071,19 @@ export function WorkOrderTab() {
             </p>
           )}
           {viewLoading && !selectedDetail && <div className="py-8 text-center text-sm text-slate-500">加载中...</div>}
-          {selectedDetail && <WorkOrderViewContent detail={selectedDetail} executionDetailsMap={executionDetailsMap} />}
+          {selectedDetail && (
+            <WorkOrderViewContent
+              detail={selectedDetail}
+              executionSummaries={viewExecSummaries}
+              executionTotal={viewExecTotal}
+              executionPage={viewExecutionPage}
+              executionPageSize={EXECUTION_PAGE_SIZE}
+              onExecutionPageChange={setViewExecutionPage}
+              executionDetailsMap={executionDetailsMap}
+              executionDetailsReady={executionDetailsReady}
+              summariesLoading={viewExecFetching && viewExecPage === undefined}
+            />
+          )}
           {!viewLoading && !selectedDetail && <div className="py-8 text-center text-sm text-slate-500">暂无数据</div>}
         </div>
       </Modal>

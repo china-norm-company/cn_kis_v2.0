@@ -56,9 +56,30 @@ def get_work_orders(
     return JsonResponse(_kis_response(data=data))
 
 
+@router.get("/workorders/{id}/executions")
+def get_work_order_executions(
+    request,
+    id: int,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(10, ge=1, le=100),
+):
+    """工单下执行记录分页（摘要），与接待台分页拉取详情配合。"""
+    data = services.work_order_executions_page(id, page=page, page_size=pageSize)
+    if data is None:
+        return JsonResponse({"success": False, "data": None, "message": "工单不存在"}, status=404)
+    return JsonResponse(_kis_response(data=data))
+
+
 @router.get("/workorders/{id}")
-def get_work_order(request, id: int):
-    data = services.work_order_detail(id)
+def get_work_order(
+    request,
+    id: int,
+    include_executions: bool = Query(
+        True,
+        description="为 false 时不返回 executions 摘要列表（仅 executions_total），请用 /workorders/{id}/executions 分页",
+    ),
+):
+    data = services.work_order_detail(id, include_executions=include_executions)
     if data is None:
         return JsonResponse({"success": False, "data": None, "message": "工单不存在"}, status=404)
     return JsonResponse(_kis_response(data=data))
@@ -116,6 +137,22 @@ def update_work_order(request, id: int, data: WorkOrderUpdateIn):
         return JsonResponse(_kis_response(data=result, message="更新成功"))
     except ValueError as e:
         return JsonResponse({"success": False, "data": None, "message": str(e)}, status=400)
+
+
+# ---------- 项目执行概览（接待台日历） ----------
+
+@router.get("/execution-overview")
+def get_execution_overview(request, date: str = Query(..., description="YYYY-MM-DD")):
+    """按日期返回项目执行概览。"""
+    items = services.execution_overview_by_date(date)
+    return JsonResponse(_kis_response(data={"items": items}))
+
+
+@router.get("/execution-overview/counts")
+def get_execution_overview_counts(request, month: str = Query(..., description="YYYY-MM")):
+    """按月份返回每日项目数量（月历角标）。"""
+    counts = services.execution_overview_counts_by_month(month)
+    return JsonResponse(_kis_response(data=counts))
 
 
 # ---------- 枚举 ----------
