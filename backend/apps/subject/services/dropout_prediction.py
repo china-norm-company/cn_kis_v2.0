@@ -171,7 +171,7 @@ def _eval_adverse_events(subject_id: int) -> dict:
         total = aes.count()
         if total == 0:
             return {'name': 'ae_severity', 'score': 0, 'detail': '无不良反应'}
-        severe = aes.filter(severity__in=['severe', 'life_threatening', 'death']).count()
+        severe = aes.filter(severity__in=['severe', 'very_severe', 'life_threatening', 'death']).count()
         moderate = aes.filter(severity='moderate').count()
         risk = min(100, severe * 40 + moderate * 15 + total * 5)
         return {'name': 'ae_severity', 'score': risk, 'detail': f'AE总数 {total}, 严重 {severe}'}

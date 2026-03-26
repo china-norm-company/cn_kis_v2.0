@@ -2,20 +2,24 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
+import { ThemeProvider } from '../contexts/ThemeContext'
 import SchedulingPage from '../pages/SchedulingPage'
 
-// Mock API modules
 vi.mock('@cn-kis/api-client', () => ({
   schedulingApi: {
-    listPlans: vi.fn().mockResolvedValue({
-      data: { items: [], total: 0, page: 1, page_size: 20 },
-    }),
-    listSlots: vi.fn().mockResolvedValue({
-      data: { items: [], total: 0, page: 1, page_size: 50 },
-    }),
-    listMilestones: vi.fn().mockResolvedValue({
-      data: { items: [] },
-    }),
+    listPlans: vi.fn().mockResolvedValue({ data: { items: [], total: 0, page: 1, page_size: 20 } }),
+    listSlots: vi.fn().mockResolvedValue({ data: { items: [], total: 0, page: 1, page_size: 50 } }),
+    listMilestones: vi.fn().mockResolvedValue({ data: { items: [] } }),
+    getTimelineUpload: vi.fn().mockResolvedValue({ data: {} }),
+    getTimelinePublished: vi.fn().mockResolvedValue({ data: { items: [] } }),
+    getExecutionOrderPending: vi.fn().mockResolvedValue({ data: { items: [] } }),
+    getLabScheduleList: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }),
+    saveTimelineUpload: vi.fn().mockResolvedValue({ data: {} }),
+    uploadLabSchedule: vi.fn().mockResolvedValue({ data: {} }),
+    clearLabSchedule: vi.fn().mockResolvedValue({ data: {} }),
+  },
+  visitApi: {
+    listResourceApprovalList: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }),
   },
 }))
 
@@ -25,9 +29,16 @@ function renderWithProviders(ui: React.ReactElement) {
   })
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>{ui}</MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter>{ui}</MemoryRouter>
+      </ThemeProvider>
     </QueryClientProvider>,
   )
+}
+
+/** 视图切换按钮仅在「时间槽」Tab 下展示 */
+function openSlotsTab() {
+  fireEvent.click(screen.getByRole('button', { name: '时间槽' }))
 }
 
 describe('SchedulingPage', () => {
@@ -36,12 +47,14 @@ describe('SchedulingPage', () => {
     expect(screen.getAllByText('排程管理').length).toBeGreaterThan(0)
   })
 
-  it('renders 4 view mode buttons', () => {
+  it('renders view mode buttons on 时间槽 tab', () => {
     renderWithProviders(<SchedulingPage />)
+    openSlotsTab()
     expect(screen.getByText('列表')).toBeInTheDocument()
     expect(screen.getByText('周视图')).toBeInTheDocument()
     expect(screen.getByText('月视图')).toBeInTheDocument()
     expect(screen.getByText('甘特图')).toBeInTheDocument()
+    expect(screen.getByText('资源日历')).toBeInTheDocument()
   })
 
   it('renders stat cards', () => {
@@ -54,6 +67,7 @@ describe('SchedulingPage', () => {
 
   it('switches views on click', () => {
     renderWithProviders(<SchedulingPage />)
+    openSlotsTab()
     const weekBtn = screen.getByText('周视图')
     fireEvent.click(weekBtn)
     expect(screen.getByText('周视图')).toBeInTheDocument()

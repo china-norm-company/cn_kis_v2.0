@@ -84,6 +84,7 @@ INSTALLED_APPS = [
     # Wave 3: 知识与数据平面
     'apps.secretary',
     'apps.knowledge',
+    'apps.data_intake',
     'apps.ekuaibao_integration',
     'apps.lims_integration',
     # Wave 4: 企业扩展域
@@ -110,8 +111,8 @@ INSTALLED_APPS = [
     'apps.project_full_link',
     'apps.weekly_report',
     'apps.product_distribution',
-    # 数据采集入库
-    'apps.data_intake',
+    # 图像分析工具（研究台：唇部脱屑等）
+    'apps.image_analysis',
 ]
 
 MIDDLEWARE = [
@@ -187,6 +188,12 @@ WORKORDER_FREEZE_LEGACY_WRITE = os.getenv('WORKORDER_FREEZE_LEGACY_WRITE', 'fals
 WORKORDER_FREEZE_OBSERVE_LOG_ENABLED = os.getenv('WORKORDER_FREEZE_OBSERVE_LOG_ENABLED', 'true').lower() == 'true'
 
 # ============================================================================
+# 时区（与 V1 对齐：预约/签到「今日」、飞书通知时间均按北京时间展示）
+# ============================================================================
+USE_TZ = os.getenv('DJANGO_USE_TZ', 'true').lower() in ('1', 'true', 'yes')
+TIME_ZONE = os.getenv('DJANGO_TIME_ZONE', 'Asia/Shanghai')
+
+# ============================================================================
 # Redis / 缓存
 # ============================================================================
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
@@ -220,9 +227,9 @@ if not CORS_ALLOWED_ORIGINS and not CORS_ALLOW_ALL_ORIGINS:
 # V2 架构：所有工作台 OAuth 统一走子衿主应用签发 token
 # 每个工作台不再需要独立 App（无 scope 分裂问题）
 # 工作台 App ID 仅用于归属校验，OAuth 换 token 统一走 FEISHU_PRIMARY_APP_ID
-
-FEISHU_APP_ID = os.getenv('FEISHU_APP_ID', '')
-FEISHU_APP_SECRET = os.getenv('FEISHU_APP_SECRET', '')
+# strip() 去掉 Windows CRLF 行尾 \r 与首尾空格，避免飞书 20002 invalid_client
+FEISHU_APP_ID = (os.getenv('FEISHU_APP_ID', '') or '').strip()
+FEISHU_APP_SECRET = (os.getenv('FEISHU_APP_SECRET', '') or '').strip()
 
 # 各工作台独立 App（可选，仅用于工作台归属校验）
 FEISHU_APP_ID_FINANCE = os.getenv('FEISHU_APP_ID_FINANCE', '')
@@ -255,8 +262,9 @@ FEISHU_APP_ID_RECEPTION = os.getenv('FEISHU_APP_ID_RECEPTION', '')
 FEISHU_APP_SECRET_RECEPTION = os.getenv('FEISHU_APP_SECRET_RECEPTION', '')
 FEISHU_APP_ID_CONTROL_PLANE = os.getenv('FEISHU_APP_ID_CONTROL_PLANE', '')
 FEISHU_APP_SECRET_CONTROL_PLANE = os.getenv('FEISHU_APP_SECRET_CONTROL_PLANE', '')
-FEISHU_APP_ID_DEV_ASSISTANT = os.getenv('FEISHU_APP_ID_DEV_ASSISTANT', 'cli_a98b0babd020500e')
-FEISHU_APP_SECRET_DEV_ASSISTANT = os.getenv('FEISHU_APP_SECRET_DEV_ASSISTANT', '')
+# 17. 智能开发助手 / 子衿主授权应用（构建凭证表用；最终 ID 见下方 FEISHU_PRIMARY 段再次解析）
+FEISHU_APP_ID_DEV_ASSISTANT = (os.getenv('FEISHU_APP_ID_DEV_ASSISTANT', 'cli_a98b0babd020500e') or '').strip()
+FEISHU_APP_SECRET_DEV_ASSISTANT = (os.getenv('FEISHU_APP_SECRET_DEV_ASSISTANT', '') or '').strip()
 
 # 凭证映射（OAuth 回调查找）
 def _build_feishu_credentials():
@@ -283,13 +291,17 @@ def _build_feishu_credentials():
     for app_id, app_secret in pairs:
         if app_id and app_secret:
             creds[app_id] = app_secret
+    # 子衿主授权兜底：未单独配 FEISHU_APP_ID 时，用 FEISHU_APP_SECRET 作为子衿凭证，避免 OAuth 20002
+    _primary_id = 'cli_a98b0babd020500e'
+    if _primary_id not in creds and FEISHU_APP_SECRET and (not FEISHU_APP_ID or FEISHU_APP_ID == _primary_id):
+        creds[_primary_id] = FEISHU_APP_SECRET
     return creds
 
 FEISHU_APP_CREDENTIALS = _build_feishu_credentials()
 
 # ★ 主授权配置（V2 迁移章程红线）
 _primary_from_env = os.getenv('FEISHU_PRIMARY_APP_ID', '')
-FEISHU_PRIMARY_APP_ID = _primary_from_env or FEISHU_APP_ID or 'cli_a98b0babd020500e'
+FEISHU_PRIMARY_APP_ID = _primary_from_env or FEISHU_APP_ID or 'cli_a907f21f0723dbce'
 if not _primary_from_env:
     import logging as _logging
     _logging.getLogger(__name__).warning(
@@ -361,7 +373,7 @@ ANYCROSS_WEBHOOK_URL = os.getenv('ANYCROSS_WEBHOOK_URL', '')
 ANYCROSS_WEBHOOK_SECRET = os.getenv('ANYCROSS_WEBHOOK_SECRET', '')
 
 # ============================================================================
-# AI 配置
+# AI 智能体配置（双通道：火山引擎 ARK + Kimi）
 # ============================================================================
 ARK_API_KEY = os.getenv('ARK_API_KEY', '')
 ARK_API_BASE = os.getenv('ARK_API_BASE', 'https://ark.cn-beijing.volces.com/api/v3')

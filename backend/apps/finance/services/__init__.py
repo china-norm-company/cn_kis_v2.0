@@ -220,13 +220,34 @@ def get_invoice_stats() -> dict:
 # ============================================================================
 # 回款管理
 # ============================================================================
-def list_payments(status: str = None, invoice_id: int = None, page: int = 1, page_size: int = 20, account=None) -> dict:
+def list_payments(
+    status: str = None,
+    invoice_id: int = None,
+    page: int = 1,
+    page_size: int = 20,
+    account=None,
+    start_date=None,
+    end_date=None,
+) -> dict:
+    from datetime import date as date_cls
     qs = Payment.objects.filter(is_deleted=False).select_related('invoice')
     qs = _apply_data_scope(qs, account)
     if status:
         qs = qs.filter(status=status)
     if invoice_id:
         qs = qs.filter(invoice_id=invoice_id)
+    if start_date:
+        try:
+            d0 = date_cls.fromisoformat(str(start_date)[:10])
+            qs = qs.filter(payment_date__gte=d0)
+        except ValueError:
+            pass
+    if end_date:
+        try:
+            d1 = date_cls.fromisoformat(str(end_date)[:10])
+            qs = qs.filter(payment_date__lte=d1)
+        except ValueError:
+            pass
     total = qs.count()
     offset = (page - 1) * page_size
     items = list(qs[offset:offset + page_size])
@@ -382,7 +403,7 @@ def _amount_inclusive(amount, amount_type: str, tax_rate) -> 'Decimal':
 
 def create_invoice_request(request_date, customer_name: str, items: list, po: str = '', request_by: str = '',
                            request_by_id: int = None, notes: str = '', created_by_id: int = None,
-                           invoice_type: str = 'vat_special', amount_type: str = 'inclusive_of_tax',
+                           invoice_type: str = 'full_elec_special', amount_type: str = 'inclusive_of_tax',
                            tax_rate=None) -> InvoiceRequest:
     from decimal import Decimal
     rate = Decimal(str(tax_rate)) if tax_rate is not None else Decimal('0.06')
@@ -393,7 +414,7 @@ def create_invoice_request(request_date, customer_name: str, items: list, po: st
     req = InvoiceRequest.objects.create(
         request_date=request_date,
         customer_name=customer_name,
-        invoice_type=invoice_type or 'vat_special',
+        invoice_type=invoice_type or 'full_elec_special',
         amount_type=amount_type or 'inclusive_of_tax',
         tax_rate=rate,
         po=po or '',

@@ -76,7 +76,7 @@ export default function WeeklyProjectListPage() {
         )}
         {isLoading && <div className="text-sm text-slate-500 py-8">加载中…</div>}
         {!isLoading && items.length === 0 && (
-          <Empty description="暂无项目">
+          <Empty description="暂无项目" action={
             <Link
               to="/weekly/projects/create"
               className="mt-3 inline-flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-800 hover:bg-emerald-100"
@@ -84,7 +84,7 @@ export default function WeeklyProjectListPage() {
               <Plus className="w-4 h-4" />
               创建项目
             </Link>
-          </Empty>
+          } />
         )}
         {!isLoading && items.length > 0 && (
           <div className="overflow-x-auto">

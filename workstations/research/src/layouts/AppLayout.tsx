@@ -17,15 +17,20 @@ import {
   TrendingUp,
   GitPullRequest,
   SendHorizonal,
-  Link2,
   CalendarDays,
-  Banknote,
-  CheckSquare,
+  ShieldCheck,
+  Layers,
+  Database,
+  BarChart2,
+  FileSpreadsheet,
+  ScrollText,
+  PenLine,
+  FlaskConical,
+  ScanSearch,
 } from 'lucide-react'
 import { FeishuAuthProvider, useFeishuContext, LoginFallback, createWorkstationFeishuConfig } from '@cn-kis/feishu-sdk'
-import { MobileWorkstationLayout, type MobileWorkstationNavItem } from '@cn-kis/ui-kit'
+import { MobileWorkstationLayout, type MobileWorkstationNavItem, type MobileWorkstationNavSection } from '@cn-kis/ui-kit'
 import { NotificationBell } from '../components/NotificationBell'
-import { canAccessPerformanceSettlement } from '../permissions/performanceSettlementAccess'
 
 const FEISHU_CONFIG = createWorkstationFeishuConfig('research')
 
@@ -71,18 +76,26 @@ const navSections: NavSection[] = [
     items: [
       { to: '/clients', icon: Building2, label: '我的客户', permissions: [] },
       { to: '/business', icon: TrendingUp, label: '商务管线', permissions: ['dashboard.overview.read'] },
+      { to: '/proposal-design', icon: PenLine, label: '方案设计准备', permissions: [] },
+      { to: '/protocols', icon: FileText, label: '我的协议', permissions: ['protocol.protocol.read'] },
     ],
   },
   {
     title: '项目生命周期',
     items: [
+      { to: '/trial-initiation', icon: FlaskConical, label: '项目全链路', permissions: ['feasibility.assessment.read'] },
       { to: '/feasibility', icon: ClipboardCheck, label: '可行性评估', permissions: ['feasibility.assessment.read'] },
-      { to: '/proposals', icon: FileSearch, label: '方案准备', permissions: ['proposal.proposal.read'] },
-      { to: '/protocol-qc', icon: CheckSquare, label: '方案质量检查', permissions: ['proposal.proposal.read'], indent: true },
-      { to: '/project-full-link', icon: Link2, label: '项目全链路', permissions: ['protocol.protocol.read'] },
-      { to: '/protocols', icon: FileText, label: '我的协议', permissions: ['protocol.protocol.read'] },
+      { to: '/proposals', icon: FileSearch, label: '试验方案准备', permissions: ['proposal.proposal.read'] },
+      { to: '/proposals/quality-check', icon: ShieldCheck, label: '方案质量检查', permissions: ['proposal.proposal.read'] },
+      { to: '/image-analysis/face', icon: ScanSearch, label: '脸部图像分析', permissions: ['protocol.protocol.read'] },
+      { to: '/image-analysis/lip', icon: ScanSearch, label: '唇部图像分析', permissions: ['protocol.protocol.read'] },
+      { to: '/image-analysis/lip/scaliness', icon: Layers, label: '唇部脱屑标记分析', permissions: [], indent: true },
+      { to: '/image-analysis/hand', icon: ScanSearch, label: '手部图像分析', permissions: ['protocol.protocol.read'] },
+      { to: '/image-analysis/other', icon: ScanSearch, label: '其他部位图像分析', permissions: ['protocol.protocol.read'] },
+      { to: '/data-statistics', icon: BarChart2, label: '数据统计分析', permissions: ['protocol.protocol.read'] },
+      { to: '/data-report-preparation', icon: FileSpreadsheet, label: '数据报告准备', permissions: ['protocol.protocol.read'] },
+      { to: '/trial-report-preparation', icon: ScrollText, label: '试验报告准备', permissions: ['protocol.protocol.read'] },
       { to: '/closeout', icon: FolderArchive, label: '结项管理', permissions: ['closeout.closeout.read'] },
-      { to: '/closeout/settlement', icon: Banknote, label: '绩效结算', permissions: ['closeout.closeout.read'], indent: true },
     ],
   },
   {
@@ -97,6 +110,7 @@ const navSections: NavSection[] = [
     items: [
       { to: '/visits', icon: CalendarCheck, label: '我的访视', permissions: ['visit.plan.read'] },
       { to: '/subjects', icon: Users, label: '我的受试者', permissions: ['subject.subject.read'] },
+      { to: '/data-collection-monitor', icon: Database, label: '数据采集监察', permissions: ['subject.subject.read'] },
     ],
   },
   {
@@ -112,30 +126,27 @@ const navSections: NavSection[] = [
 
 function useVisibleNavItems(): MobileWorkstationNavItem[] {
   const ctx = useFeishuContext()
-  const mode = ctx.getWorkstationMode('research')
-
-  if (mode === 'blank') return []
+  if (ctx.getWorkstationMode('research') === 'blank') return []
 
   return navSections.flatMap((section) =>
     section.items
-      .filter((item) => {
-        const isSettlement = item.to === '/closeout/settlement'
-        const canAccessSettlement = isSettlement ? canAccessPerformanceSettlement(ctx) : true
-        // 绩效结算：仅白名单/管理员可见
-        if (isSettlement && !canAccessSettlement) return false
-        if (mode === 'pilot') {
-          const pilotMenus = ctx.profile?.visible_menu_items?.['research'] ?? []
-          const menuKey = item.to.replace(/^\//, '')
-          // pilot 模式下：绩效结算只要访问判定通过就显示（不再依赖 menu 映射）
-          if (isSettlement && canAccessSettlement) {
-            return true
-          }
-          return pilotMenus.includes(menuKey)
-        }
-        return ctx.canSeeMenu('research', item.to.replace(/^\//, ''), item.permissions)
-      })
+      .filter((item) => ctx.canSeeMenu('research', item.to.replace(/^\//, ''), item.permissions))
       .map((item) => ({ to: item.to, label: item.label, icon: item.icon, indent: item.indent })),
   )
+}
+
+function useVisibleNavSections(): MobileWorkstationNavSection[] {
+  const ctx = useFeishuContext()
+  if (ctx.getWorkstationMode('research') === 'blank') return []
+
+  return navSections
+    .map((section) => ({
+      title: section.title,
+      items: section.items
+        .filter((item) => ctx.canSeeMenu('research', item.to.replace(/^\//, ''), item.permissions))
+        .map((item) => ({ to: item.to, label: item.label, icon: item.icon, indent: item.indent })),
+    }))
+    .filter((section) => section.items.length > 0)
 }
 
 function WorkstationPlaceholder() {
@@ -153,6 +164,7 @@ function WorkstationPlaceholder() {
 function LayoutContent() {
   const { user, logout } = useFeishuContext()
   const visibleItems = useVisibleNavItems()
+  const visibleSections = useVisibleNavSections()
   const mode = useFeishuContext().getWorkstationMode('research')
 
   if (mode === 'blank') {
@@ -165,6 +177,7 @@ function LayoutContent() {
       logoText="研"
       logoClassName="bg-emerald-600"
       navItems={visibleItems}
+      navSections={visibleSections}
       mobilePrimaryNavItems={visibleItems.slice(0, 5)}
       userName={user?.name}
       userAvatar={user?.avatar}

@@ -80,6 +80,17 @@ def _get_account_from_request(request: HttpRequest) -> Optional[Account]:
                 payload = verify_jwt_token(token)
                 if payload:
                     user_id = payload.get('user_id')
+                    # 支持 phone_auth 类型 token：通过手机号查找账号
+                    if not user_id and payload.get('type') == 'phone_auth':
+                        phone = payload.get('phone')
+                        if phone:
+                            from apps.subject.models import Subject
+                            subject = Subject.objects.filter(
+                                phone=phone,
+                                is_deleted=False
+                            ).select_related('account').first()
+                            if subject and subject.account:
+                                return subject.account
         if user_id:
             return Account.objects.filter(id=user_id, is_deleted=False).first()
     except Exception as e:
@@ -138,6 +149,13 @@ def require_permission(
     def decorator(view_func: Callable) -> Callable:
         @wraps(view_func)
         def wrapper(request: HttpRequest, *args, **kwargs):
+            # 特殊处理：phone_auth token 访问任意接口直接放行
+            # phone_auth 是通过手机号验证签发的临时 token，用于登录流程
+            from .phone_session import get_phone_from_request
+            phone = get_phone_from_request(request)
+            if phone:
+                return view_func(request, *args, **kwargs)
+
             account = _get_account_from_request(request)
             if not account:
                 return _forbidden('请先登录', {'error_code': 'AUTH_REQUIRED'})
@@ -406,5 +424,51 @@ def require_permission_or_anon_in_debug(
                 return view_func(request, *args, **kwargs)
             # 非 DEBUG：走正常权限检查
             return require_permission(permission_code, message)(view_func)(request, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def require_any_permission_or_anon_in_debug(
+    permission_codes: List[str],
+    message: str = None,
+    project_param: str = None,
+) -> Callable:
+    """
+    任一权限；DEBUG 模式下与 require_permission_or_anon_in_debug 一致（不校验权限，便于本地预览）。
+    生产环境需具备 permission_codes 中至少一项。
+    """
+    from django.conf import settings as _settings
+
+    def decorator(view_func: Callable) -> Callable:
+        @wraps(view_func)
+        def wrapper(request: HttpRequest, *args, **kwargs):
+            if getattr(_settings, 'DEBUG', False):
+                account = _get_account_from_request(request)
+                if account:
+                    request.account = account
+                return view_func(request, *args, **kwargs)
+            account = _get_account_from_request(request)
+            if not account:
+                return _forbidden('请先登录', {'error_code': 'AUTH_REQUIRED'})
+            try:
+                authz = get_authz_service()
+            except Exception as e:
+                logger.exception('require_any_permission_or_anon_in_debug get_authz_service failed: %s', e)
+                return _forbidden('权限服务暂不可用', {})
+            pid: Optional[int] = None
+            if project_param:
+                pid = _extract_project_id(kwargs, project_param)
+            try:
+                has_any = authz.has_any_permission(account, permission_codes, project_id=pid)
+            except Exception as e:
+                logger.exception('require_any_permission_or_anon_in_debug has_any_permission failed: %s', e)
+                return _forbidden('权限校验暂不可用', {})
+            if not has_any:
+                error_msg = message or f'缺少权限: 需具备以下之一 {", ".join(permission_codes)}'
+                return _forbidden(
+                    error_msg,
+                    {'required_permissions': permission_codes, 'project_id': pid},
+                )
+            return view_func(request, *args, **kwargs)
         return wrapper
     return decorator

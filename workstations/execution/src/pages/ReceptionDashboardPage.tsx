@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { receptionApi } from '@cn-kis/api-client'
@@ -6,7 +6,7 @@ import type { QueueItem } from '@cn-kis/api-client'
 import { StatCard, Empty } from '@cn-kis/ui-kit'
 import {
   CalendarCheck, UserCheck, PlayCircle, LogOut, UserX,
-  AlertTriangle, Clock, Maximize, Volume2, Filter,
+  AlertTriangle, Clock, Maximize, Volume2,
 } from 'lucide-react'
 import ReceptionSubjectRow from '../components/ReceptionSubjectRow'
 import ReceptionQuickActions from '../components/ReceptionQuickActions'
@@ -23,7 +23,6 @@ export default function ReceptionDashboardPage() {
   const navigate = useNavigate()
   const todayLabel = formatToday()
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [projectFilter, setProjectFilter] = useState<string>('')
 
   /* ---- Data queries ---- */
 
@@ -35,7 +34,7 @@ export default function ReceptionDashboardPage() {
 
   const { data: queueRes, isLoading: queueLoading } = useQuery({
     queryKey: ['reception', 'today-queue'],
-    queryFn: () => receptionApi.todayQueue({ page: 1, page_size: 500 }),
+    queryFn: () => receptionApi.todayQueue(),
     refetchInterval: 30_000,
   })
 
@@ -49,47 +48,15 @@ export default function ReceptionDashboardPage() {
   const queue: QueueItem[] = queueRes?.data?.items ?? []
   const alerts = alertsRes?.data?.items ?? []
 
-  const projectOptions = useMemo(() => {
-    const names = new Set<string>()
-    queue.forEach((item) => {
-      const p = item.project_name
-      if (p && String(p).trim()) names.add(String(p).trim())
-    })
-    return Array.from(names).sort()
-  }, [queue])
-
-  const filteredQueue = useMemo(() => {
-    if (!projectFilter) return queue
-    return queue.filter((item) => item.project_name === projectFilter)
-  }, [queue, projectFilter])
-
-  const displayStats = useMemo(() => {
-    if (!projectFilter || filteredQueue.length === 0) {
-      return stats
-    }
-    const items = filteredQueue
-    return {
-      total_appointments: items.length,
-      checked_in: items.filter((i) => i.status === 'checked_in').length,
-      in_progress: items.filter((i) => i.status === 'in_progress').length,
-      checked_out: items.filter((i) => i.status === 'checked_out').length,
-      no_show: items.filter((i) => i.status === 'no_show').length,
-      total_signed_in: items.filter((i) => i.checkin_id).length,
-    }
-  }, [projectFilter, filteredQueue, stats])
-
-  const sortedQueue = useMemo(
-    () =>
-      [...filteredQueue].sort(
-        (a, b) => new Date(a.appointment_time).getTime() - new Date(b.appointment_time).getTime(),
-      ),
-    [filteredQueue],
+  const sortedQueue = [...queue].sort(
+    (a, b) => new Date(a.appointment_time).getTime() - new Date(b.appointment_time).getTime(),
   )
 
   /* ---- Mutations ---- */
 
   const checkinMutation = useMutation({
-    mutationFn: (subjectId: number) => receptionApi.quickCheckin({ subject_id: subjectId }),
+    mutationFn: (params: { subject_id: number; project_code?: string }) =>
+      receptionApi.quickCheckin({ subject_id: params.subject_id, project_code: params.project_code }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['reception'] }),
   })
 
@@ -133,66 +100,43 @@ export default function ReceptionDashboardPage() {
         </div>
       </div>
 
-      {/* 按项目筛选 */}
-      {projectOptions.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap" data-section="project-filter">
-          <Filter className="w-4 h-4 text-slate-500" />
-          <span className="text-sm text-slate-600">项目：</span>
-          <select
-            value={projectFilter}
-            onChange={(e) => setProjectFilter(e.target.value)}
-            className="min-h-10 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
-          >
-            <option value="">全部</option>
-            {projectOptions.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
       {/* 统计条 */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5 md:gap-4" data-section="stats">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5 lg:gap-3" data-section="stats">
         <StatCard
           label="预约总数"
-          value={displayStats?.total_appointments ?? 0}
-          icon={<CalendarCheck className="w-5 h-5" />}
+          value={stats?.total_appointments ?? 0}
+          icon={<CalendarCheck className="h-4 w-4" />}
           color="blue"
         />
         <StatCard
           label="已签到"
-          value={displayStats?.checked_in ?? 0}
-          icon={<UserCheck className="w-5 h-5" />}
+          value={stats?.checked_in ?? 0}
+          icon={<UserCheck className="h-4 w-4" />}
           color="green"
         />
         <StatCard
           label="执行中"
-          value={displayStats?.in_progress ?? 0}
-          icon={<PlayCircle className="w-5 h-5" />}
+          value={stats?.in_progress ?? 0}
+          icon={<PlayCircle className="h-4 w-4" />}
           color="amber"
         />
         <StatCard
           label="已签出"
-          value={displayStats?.checked_out ?? 0}
-          icon={<LogOut className="w-5 h-5" />}
+          value={stats?.checked_out ?? 0}
+          icon={<LogOut className="h-4 w-4" />}
           color="teal"
         />
         <StatCard
           label="缺席"
-          value={displayStats?.no_show ?? 0}
-          icon={<UserX className="w-5 h-5" />}
+          value={stats?.no_show ?? 0}
+          icon={<UserX className="h-4 w-4" />}
           color="red"
         />
       </div>
 
       {/* 受试者队列 */}
       <div data-section="queue">
-        <h3 className="text-base font-semibold text-slate-700 mb-3">
-          今日受试者队列
-          {projectFilter && <span className="text-slate-500 font-normal text-sm ml-2">（{projectFilter}）</span>}
-        </h3>
+        <h3 className="text-base font-semibold text-slate-700 mb-3">今日受试者队列</h3>
         {queueLoading ? (
           <p className="text-sm text-slate-400 py-6 text-center">加载中...</p>
         ) : sortedQueue.length === 0 ? (
@@ -203,7 +147,7 @@ export default function ReceptionDashboardPage() {
               <ReceptionSubjectRow
                 key={`${item.subject_id}-${item.appointment_time}`}
                 item={item}
-                onCheckin={(sid) => checkinMutation.mutate(sid)}
+                onCheckin={(sid, projectCode) => checkinMutation.mutate({ subject_id: sid, project_code: projectCode })}
                 onCheckout={(cid) => checkoutMutation.mutate(cid)}
               />
             ))}

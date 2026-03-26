@@ -53,7 +53,7 @@ export default function ProposalListPage() {
 
   const groupedByStage = STAGES.map((stage) => ({
     ...stage,
-    items: proposals.filter((p) => (p.stage ?? p.status) === stage.key),
+    items: proposals.filter((p) => p.stage === stage.key),
   }))
 
   return (

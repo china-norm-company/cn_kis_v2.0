@@ -18,10 +18,20 @@ export const subjectApi = {
     status?: string
     keyword?: string
     search?: string
+    /** 后端按号码模糊匹配（icontains），可与 search 合用 */
+    phone?: string
     page?: number
     page_size?: number
   }) {
     return api.get<ApiListResponse<Subject>['data']>('/subject/list', { params })
+  },
+
+  /**
+   * 按规范化手机号解析唯一主档（多条时与合并规则一致），用于接待台新建预约防重复建档。
+   * 未找到或不可见时请求失败（业务上再新建）。
+   */
+  resolveByPhone(phone: string) {
+    return api.get<Subject>('/subject/resolve-by-phone', { params: { phone } })
   },
 
   /** 受试者详情 */

@@ -400,3 +400,51 @@ class SubjectSupportTicket(models.Model):
 
     def __str__(self):
         return f'{self.ticket_no} - {self.title}'
+
+
+class ReceptionBoardCheckin(models.Model):
+    """接待看板专用签到/签出记录，与工单执行的 SubjectCheckin 独立。"""
+
+    class Meta:
+        db_table = 't_reception_board_checkin'
+        verbose_name = '接待看板签到记录'
+        indexes = [
+            models.Index(fields=['subject_id', 'checkin_date']),
+        ]
+        unique_together = [['subject', 'checkin_date']]
+
+    subject = models.ForeignKey('subject.Subject', on_delete=models.CASCADE, related_name='reception_board_checkins')
+    checkin_date = models.DateField('签到日期')
+    checkin_time = models.DateTimeField('接待看板签到时间', null=True, blank=True)
+    checkout_time = models.DateTimeField('接待看板签出时间', null=True, blank=True)
+    appointment_id = models.IntegerField('关联预约ID', null=True, blank=True, db_index=True)
+
+    create_time = models.DateTimeField('创建时间', auto_now_add=True)
+    update_time = models.DateTimeField('更新时间', auto_now=True)
+
+    def __str__(self):
+        return f'Board {self.subject.name} - {self.checkin_date}'
+
+
+class ReceptionBoardProjectSc(models.Model):
+    """接待看板专用 SC 号/入组情况/RD 号，与工单执行 SubjectProjectSC 独立。"""
+
+    class Meta:
+        db_table = 't_reception_board_project_sc'
+        verbose_name = '接待看板项目SC'
+        unique_together = [['subject', 'project_code']]
+        indexes = [
+            models.Index(fields=['subject_id', 'project_code']),
+        ]
+
+    subject = models.ForeignKey('subject.Subject', on_delete=models.CASCADE, related_name='reception_board_project_sc')
+    project_code = models.CharField('项目编号', max_length=64, db_index=True)
+    sc_number = models.CharField('SC号', max_length=20, blank=True, default='')
+    enrollment_status = models.CharField('入组情况', max_length=32, blank=True, default='')
+    rd_number = models.CharField('RD号', max_length=20, blank=True, default='')
+
+    create_time = models.DateTimeField('创建时间', auto_now_add=True)
+    update_time = models.DateTimeField('更新时间', auto_now=True)
+
+    def __str__(self):
+        return f'Board {self.subject.name} {self.project_code}'

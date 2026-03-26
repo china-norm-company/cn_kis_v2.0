@@ -4,7 +4,7 @@
 包含：签到签出、预约管理、问卷管理。
 """
 import logging
-from typing import Optional
+from typing import Optional, List
 from django.utils import timezone
 from datetime import datetime, timedelta, time
 
@@ -33,6 +33,7 @@ def checkin(subject_id: int, enrollment_id: int = None, work_order_id: int = Non
         checkin_time=now,
         location=location,
         status=CheckinStatus.CHECKED_IN,
+        project_code='',
         created_by_id=account.id if account else None,
     )
 
@@ -119,6 +120,54 @@ def reschedule_appointment(
     appt.appointment_date = new_date
     appt.appointment_time = new_time
     appt.save(update_fields=['appointment_date', 'appointment_time', 'update_time'])
+    return appt
+
+
+def update_appointment(
+    appointment_id: int,
+    appointment_date=None,
+    appointment_time=None,
+    visit_point=None,
+    purpose=None,
+    project_code=None,
+    project_name=None,
+    name_pinyin_initials=None,
+    liaison=None,
+) -> Optional[SubjectAppointment]:
+    """单条预约部分字段更新（今日队列编辑用）。仅更新传入的非 None 字段；已取消的预约不更新。"""
+    appt = SubjectAppointment.objects.filter(id=appointment_id).first()
+    if not appt:
+        return None
+    if appt.status == AppointmentStatus.CANCELLED:
+        return None
+    update_fields = []
+    if appointment_date is not None:
+        appt.appointment_date = appointment_date
+        update_fields.append('appointment_date')
+    if appointment_time is not None:
+        appt.appointment_time = appointment_time
+        update_fields.append('appointment_time')
+    if visit_point is not None:
+        appt.visit_point = (visit_point or '').strip()
+        update_fields.append('visit_point')
+    if purpose is not None:
+        appt.purpose = (purpose or '').strip()
+        update_fields.append('purpose')
+    if project_code is not None:
+        appt.project_code = (project_code or '').strip()
+        update_fields.append('project_code')
+    if project_name is not None:
+        appt.project_name = (project_name or '').strip()
+        update_fields.append('project_name')
+    if name_pinyin_initials is not None:
+        appt.name_pinyin_initials = (name_pinyin_initials or '').strip()[:50]
+        update_fields.append('name_pinyin_initials')
+    if liaison is not None:
+        appt.liaison = (liaison or '').strip()[:100]
+        update_fields.append('liaison')
+    if update_fields:
+        update_fields.append('update_time')
+        appt.save(update_fields=update_fields)
     return appt
 
 
@@ -351,3 +400,101 @@ def calc_ticket_sla(ticket: SubjectSupportTicket) -> dict:
         'is_overdue': is_overdue,
         'first_response_minutes': first_response_minutes,
     }
+
+
+# ============================================================================
+# 回访预约辅助
+# ============================================================================
+def get_latest_appointment_time(subject_id: int, project_code: str = '') -> Optional[str]:
+    """返回该受试者在该项目下最近一次预约的 appointment_time 字符串（HH:MM），用于前端预填。"""
+    qs = SubjectAppointment.objects.filter(
+        subject_id=subject_id,
+    ).exclude(status__in=(AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW))
+    if project_code:
+        qs = qs.filter(project_code=project_code)
+    appt = qs.order_by('-appointment_date', '-appointment_time').first()
+    if appt and appt.appointment_time:
+        return appt.appointment_time.strftime('%H:%M')
+    return None
+
+
+def get_daily_appointment_summary(target_date, project_code: str = '') -> list:
+    """返回指定日期+项目的各时段预约人数汇总，供「查看预约情况」使用。"""
+    from collections import defaultdict
+    from datetime import date as date_type
+    if isinstance(target_date, str):
+        try:
+            parts = target_date.strip().split('-')
+            if len(parts) == 3:
+                target_date = date_type(int(parts[0]), int(parts[1]), int(parts[2]))
+        except (ValueError, TypeError, IndexError):
+            pass
+    qs = SubjectAppointment.objects.filter(
+        appointment_date=target_date,
+    ).exclude(status__in=(AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW))
+    pc = (project_code or '').strip()
+    if pc:
+        qs = qs.filter(project_code__iexact=pc)
+    counts: dict = defaultdict(int)
+    for appt in qs:
+        if appt.appointment_time is not None:
+            slot = appt.appointment_time.strftime('%H:%M')
+            counts[slot] += 1
+        else:
+            counts['未设置'] = counts.get('未设置', 0) + 1
+    return [{'time': t, 'count': c} for t, c in sorted(counts.items(), key=lambda x: (x[0] == '未设置', x[0]))]
+
+
+def batch_create_appointments(
+    subject_id: int,
+    items: list,
+    project_code: str = '',
+    project_name: str = '',
+    name_pinyin_initials: str = '',
+    liaison: str = '',
+    gender: str = '',
+    age: Optional[int] = None,
+    enrollment_id: Optional[int] = None,
+) -> List[int]:
+    """
+    批量为同一受试者创建多条回访预约（每个日期一条）。
+    items: [{ appointment_date, appointment_time?, visit_point? }, ...]
+    """
+    from datetime import time as dt_time, date as dt_date
+    created_ids: List[int] = []
+    for item in items:
+        raw_date = item.get('appointment_date')
+        if not raw_date:
+            continue
+        if isinstance(raw_date, str):
+            try:
+                parts = raw_date.split('-')
+                raw_date = dt_date(int(parts[0]), int(parts[1]), int(parts[2]))
+            except Exception:
+                continue
+
+        appt_time = None
+        raw_time = item.get('appointment_time') or ''
+        if raw_time:
+            parts = str(raw_time).strip().split(':')
+            if len(parts) >= 2:
+                try:
+                    appt_time = dt_time(int(parts[0]), int(parts[1]))
+                except (ValueError, IndexError):
+                    pass
+
+        appt = SubjectAppointment.objects.create(
+            subject_id=subject_id,
+            enrollment_id=enrollment_id,
+            appointment_date=raw_date,
+            appointment_time=appt_time,
+            visit_point=(item.get('visit_point') or '').strip(),
+            project_code=(project_code or '').strip(),
+            project_name=(project_name or '').strip(),
+            name_pinyin_initials=(name_pinyin_initials or '').strip()[:50],
+            liaison=(liaison or '').strip()[:100],
+            purpose='',
+            status=AppointmentStatus.PENDING,
+        )
+        created_ids.append(appt.id)
+    return created_ids

@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "es2017",
+    "module": "commonjs",
+    "removeComments": false,
+    "preserveConstEnums": true,
+    "moduleResolution": "node",
+    "experimentalDecorators": true,
+    "noImplicitAny": false,
+    "allowSyntheticDefaultImports": true,
+    "outDir": "lib",
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true,
+    "strictNullChecks": true,
+    "sourceMap": true,
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "types": ["@tarojs/taro", "node"],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@cn-kis/subject-core": ["../../packages/subject-core/src/index.ts"]
+    },
+    "baseUrl": "."
+  },
+  "include": ["./src", "./types", "./config", "./global.d.ts"],
+  "compileOnSave": false
+}

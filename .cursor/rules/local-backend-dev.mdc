@@ -1,0 +1,87 @@
+---
+description: 本地联火山云 PostgreSQL 启动后端 + 前端 — 由 Agent 代操作，非业务同事勿手改密钥
+alwaysApply: false
+---
+
+# 本地开发启动（PostgreSQL + SSH 隧道）
+
+当用户希望「在本地跑起来 cn_kis_v2.0」或「启动后端/前端」时，**由 Agent 在终端代为执行**，避免让非业务同事自行复制粘贴敏感信息到聊天或仓库。
+
+## 安全红线
+
+- **禁止**在对话、规则、PR、Markdown 中写入或复述真实 **SSH 密码、数据库密码、FEISHU_APP_SECRET、WECHAT_SECRET** 等；`backend/.env` **不得提交 Git**。
+- SSH 优先使用 `deploy/secrets.env` 中的 `VOLCENGINE_SSH_KEY`；仅在用户本机交互式输入密码，**不要**把密码写进脚本或 `.env`。
+- 飞书 / 微信 / ARK / Kimi 等密钥由用户从团队保管方式（如密钥管理）填入本地 `backend/.env`，Agent 只指导**键名**与**是否与 `backend/.env.example` 对齐**。
+
+## 第一步：SSH 隧道（单独终端常驻）
+
+在**仓库根目录**执行：
+
+```bash
+./scripts/ssh_tunnel_postgres.sh
+```
+
+- 隧道含义：**本机 `DB_PORT`（默认 5432）→ 远端服务器 `localhost:5432`（PostgreSQL）**。
+- 若本机 **5432 已被占用**，使用本机 **5433**：
+
+```bash
+SSH_TUNNEL_LOCAL_PORT=5433 ./scripts/ssh_tunnel_postgres.sh
+```
+
+并在第二步将 `backend/.env` 中 `DB_PORT=5433`（且 `DB_HOST=127.0.0.1` 或 `localhost`）。
+
+- 依赖：`deploy/secrets.env` 已配置 `VOLCENGINE_SSH_HOST`、`VOLCENGINE_SSH_USER`；可选 `VOLCENGINE_SSH_KEY`。详见脚本注释。
+- **保持该终端不关**；另开终端做 migrate / runserver。
+
+## 第二步：`backend/.env`（仅 PostgreSQL，不用 SQLite）
+
+1. 若不存在：从 `backend/.env.example` **复制**为 `backend/.env`。
+2. **必须**满足：
+   - `USE_SQLITE=false`（或不设为 `true`），使用 PostgreSQL。
+   - 隧道场景：`DB_HOST=127.0.0.1`，`DB_PORT` 与隧道本机端口一致（默认 `5432`，若用 5433 则填 `5433`）。
+   - `DB_NAME`、`DB_USER`、`DB_PASSWORD` 与团队提供的**火山云/测试库**凭证一致（由用户在本地填写，Agent 不代填真实值）。
+3. **本地未装 Redis** 时，为避免 OAuth/权限缓存问题导致反复回登录页，可设：
+
+   `USE_LOCAL_CACHE=true`
+
+   （与 `settings.py` 中逻辑一致；勿将密钥写入仓库。）
+4. 飞书主授权、微信、AI 等变量名以 `backend/.env.example` 为准；`FEISHU_APP_ID`、`FEISHU_PRIMARY_APP_ID` 须与各台 `VITE_FEISHU_APP_ID` 口径一致（见章程与 `WORKSTATION_INDEPENDENCE`）。
+
+Agent **不要**把整段含真实 Secret 的模板贴进聊天；应提示用户「在本地编辑 `.env` 填入由管理员下发的值」。
+
+## 第三步：启动后端（新终端）
+
+```bash
+cd backend
+python manage.py runserver 8001
+```
+
+（若项目约定 `0.0.0.0:8001`，可用 `python manage.py runserver 0.0.0.0:8001`。）
+
+需要时先：`python manage.py migrate`（在已激活 venv、数据库可达的前提下）。
+
+## 第四步：启动前端（再开终端，仓库根目录）
+
+- **默认联调全部工作台**（机器较好时）：
+
+  `pnpm run dev:all`
+
+- **机器较慢或只开发某一工作台**：根据用户目标工作台，只跑对应脚本，例如 `pnpm run dev:finance`、`pnpm run dev:research`（名称与根目录 `package.json` 的 `dev:*` 一致）。
+
+Agent 应根据用户说的工作台 **选一个或少量** `dev:*`，避免无谓启动 18 个前端进程。
+
+## 表结构变更
+
+若开发过程需要 **改表或新增表**：
+
+- 优先 Django：`makemigrations` / `migrate`；
+- 若团队要求 SQL 交付物：在 **`scripts/`** 下新增可审阅的 `.sql`（命名清晰），并在回复中说明路径与执行顺序。
+
+## 小结（给 Agent 的检查清单）
+
+| 顺序 | 动作 |
+|------|------|
+| 1 | 根目录：SSH 隧道脚本常开 |
+| 2 | `backend/.env`：PG、非 SQLite、`USE_LOCAL_CACHE` 按需、无密钥泄露 |
+| 3 | `backend`：`runserver 8001` |
+| 4 | 根目录：`pnpm run dev:all` 或单个 `pnpm run dev:<台>` |

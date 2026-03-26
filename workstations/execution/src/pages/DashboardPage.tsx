@@ -7,18 +7,16 @@
  * - 排程专员 → 资源调度中心
  * - 其他角色 → 默认执行仪表盘
  */
-import { useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { useFeishuContext, getWorkstationUrl } from '@cn-kis/feishu-sdk'
-import { workorderApi, protocolApi, notificationApi, resourceApi, clawRegistryApi, digitalWorkforcePortalApi } from '@cn-kis/api-client'
-import type { WorkOrder, AlertDashboard, ResourceStatusOverview, SuggestionItem } from '@cn-kis/api-client'
-import { StatCard, Badge, Empty, ClawQuickPanel, useClawQuickActions, DigitalWorkerSuggestionBar } from '@cn-kis/ui-kit'
-import type { QuickAction, SuggestionAction } from '@cn-kis/ui-kit'
+import { useFeishuContext } from '@cn-kis/feishu-sdk'
+import { workorderApi, protocolApi, notificationApi, resourceApi } from '@cn-kis/api-client'
+import type { WorkOrder, AlertDashboard, ResourceStatusOverview } from '@cn-kis/api-client'
+import { StatCard, Badge, Empty } from '@cn-kis/ui-kit'
 import {
   ClipboardList, FlaskConical, AlertTriangle, CheckCircle,
   Users, Wrench, Package, FileText, Thermometer,
-  Bell, ShieldAlert, Bot, ExternalLink,
+  Bell, ShieldAlert,
 } from 'lucide-react'
 import CRCSupervisorDashboard from './dashboards/CRCSupervisorDashboard'
 import CRCDashboard from './dashboards/CRCDashboard'
@@ -57,39 +55,11 @@ function isOverdue(wo: WorkOrder): boolean {
   return new Date(wo.due_date) < new Date()
 }
 
-const clawFetcher = (key: string) => clawRegistryApi.getByWorkstation(key)
-
-/** 执行台·数字员工摘要卡：工单与排程建议，跳转中书回放 */
-function ExecutionDigitalWorkforceCard() {
-  const { data: runsRes } = useQuery({
-    queryKey: ['digital-workforce', 'replay-runs', 'execution'],
-    queryFn: () => digitalWorkforcePortalApi.getReplayRuns({ workstation_key: 'execution', limit: 1 }),
-  })
-  const run = runsRes?.data?.data?.items?.[0]
-  if (!run) return null
-  const replayHref = getWorkstationUrl('digital-workforce', `#/replay/${run.task_id}`)
-  const snippet = run.query_snippet ?? (run.query?.slice(0, 80) + (run.query?.length > 80 ? '…' : ''))
-  return (
-    <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4" data-testid="execution-digital-workforce-card">
-      <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-        <ClipboardList className="h-4 w-4 text-emerald-600" />
-        工单与排程建议（数字员工）
-      </h3>
-      <p className="mt-2 text-xs text-slate-600">{snippet || '最近一次执行'}</p>
-      <a href={replayHref} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-emerald-700 hover:underline">
-        进入回放 <ExternalLink className="h-3.5 w-3.5" />
-      </a>
-    </div>
-  )
-}
-
 export default function DashboardPage() {
   const navigate = useNavigate()
   const { hasRole } = useFeishuContext()
 
-  // 不再自动把 receptionist 重定向到接待台：用户从秘书台门户点击「执行台」时应留在执行台；
-  // 若希望接待员默认进接待台，可在秘书台门户侧按角色推荐入口，而非在执行台内跳转。
-
+  // 不再对 receptionist 做自动跳转：用户点击维周执行台时应留在执行台，接待台由和序·接待台入口进入
   if (hasRole('crc_supervisor')) return <CRCSupervisorDashboard />
   if (hasRole('crc')) return <CRCDashboard />
   if (hasRole('scheduler')) return <SchedulerDashboard />
@@ -102,29 +72,6 @@ export default function DashboardPage() {
  */
 function DefaultDashboard() {
   const navigate = useNavigate()
-  const claw = useClawQuickActions('execution', clawFetcher)
-  const handleClawAction = useCallback((a: QuickAction) => {
-    const params = new URLSearchParams({
-      skill: a.skill,
-      ...(a.script && { script: a.script }),
-      action: a.id,
-    })
-    window.open(getWorkstationUrl('digital-workforce', `#/chat?${params.toString()}`), '_blank')
-  }, [])
-
-  const { data: suggestionsRes, isLoading: suggestionsLoading } = useQuery({
-    queryKey: ['digital-workforce', 'suggestions', 'execution'],
-    queryFn: () => digitalWorkforcePortalApi.getSuggestions('execution'),
-    staleTime: 60_000,
-  })
-  const suggestions = suggestionsRes?.data?.data?.items ?? []
-  const handleSuggestionAction = useCallback((item: SuggestionItem, action: SuggestionAction) => {
-    if (action.action_id === 'view') {
-      window.open(action.endpoint, '_blank')
-    } else {
-      window.location.href = action.endpoint
-    }
-  }, [])
 
   const { data: myTodayRes, isLoading: todayLoading } = useQuery({
     queryKey: ['workorder', 'my-today'],
@@ -171,37 +118,6 @@ function DefaultDashboard() {
       <div>
         <h2 className="text-lg font-semibold text-slate-800 md:text-xl">执行仪表盘</h2>
         <p className="text-sm text-slate-500 mt-1">全局项目执行状态概览</p>
-      </div>
-
-      <DigitalWorkerSuggestionBar
-        items={suggestions}
-        loading={suggestionsLoading}
-        onAction={handleSuggestionAction}
-      />
-
-      <ClawQuickPanel workstationKey="execution" actions={claw.actions} loading={claw.loading} error={claw.error} onAction={handleClawAction} compact />
-
-      <ExecutionDigitalWorkforceCard />
-
-      <div className="flex flex-wrap gap-2">
-        <a
-          href={getWorkstationUrl('digital-workforce', '#/portal')}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100"
-        >
-          <Bot className="h-4 w-4" />
-          进入中书·数字员工中心
-        </a>
-        <a
-          href={getWorkstationUrl('digital-workforce', '#/replay')}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          <ClipboardList className="h-4 w-4" />
-          工单与排程（执行回放）
-        </a>
       </div>
 
       {/* KPI 卡片 */}

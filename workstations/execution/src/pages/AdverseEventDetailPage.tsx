@@ -3,7 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { safetyApi, type AdverseEvent, type AEFollowUpCreateIn } from '@cn-kis/api-client'
 import { Button, Card, Modal } from '@cn-kis/ui-kit'
 
-const SEVERITY_LABELS: Record<string, string> = { mild: '轻度', moderate: '中度', severe: '重度' }
+const SEVERITY_LABELS: Record<string, string> = {
+  mild: '轻微',
+  moderate: '中度',
+  severe: '严重',
+  very_severe: '非常严重',
+}
 const STATUS_LABELS: Record<string, string> = {
   reported: '已上报', under_review: '审核中', approved: '已确认', following: '随访中', closed: '已关闭',
 }
@@ -65,7 +70,7 @@ export default function AdverseEventDetailPage() {
         <Card title="事件信息">
           <dl className="space-y-3 text-sm">
             <div className="flex"><dt className="w-24 text-gray-500">事件描述</dt><dd>{ae.description}</dd></div>
-            <div className="flex"><dt className="w-24 text-gray-500">严重程度</dt><dd className={ae.severity === 'severe' ? 'text-red-600 font-semibold' : ''}>{SEVERITY_LABELS[ae.severity]}</dd></div>
+            <div className="flex"><dt className="w-24 text-gray-500">严重程度</dt><dd className={ae.severity === 'severe' || ae.severity === 'very_severe' ? 'text-red-600 font-semibold' : ''}>{SEVERITY_LABELS[ae.severity] ?? ae.severity}</dd></div>
             <div className="flex"><dt className="w-24 text-gray-500">因果关系</dt><dd>{RELATION_LABELS[ae.relation]}</dd></div>
             <div className="flex"><dt className="w-24 text-gray-500">转归</dt><dd>{OUTCOME_LABELS[ae.outcome] || ae.outcome}</dd></div>
             <div className="flex"><dt className="w-24 text-gray-500">处理措施</dt><dd>{ae.action_taken || '暂无'}</dd></div>

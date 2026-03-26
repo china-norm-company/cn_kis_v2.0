@@ -1,0 +1,14 @@
+[
+  {
+    "issue_key": "005|quick.pdf|0",
+    "type": "accuracy",
+    "is_accurate": false,
+    "accurate_content": "快速测试"
+  },
+  {
+    "issue_key": "005|smoke_test.pdf|0",
+    "type": "accuracy",
+    "is_accurate": false,
+    "accurate_content": "冒烟测试反馈"
+  }
+]

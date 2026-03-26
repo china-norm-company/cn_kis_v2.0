@@ -152,3 +152,178 @@ class ScheduleMilestone(models.Model):
 
     def __str__(self):
         return f'{self.name} ({self.target_date})'
+
+
+# ============================================================================
+# 时间线上传 / 发布、执行订单、排程核心、实验室排期（执行台「创建排程」等，与 v1 对齐）
+# ============================================================================
+class TimelineUpload(models.Model):
+    """存储上传的时间线表格解析结果（JSON），用于列表/甘特图持久化展示。"""
+
+    class Meta:
+        db_table = 't_timeline_upload'
+        verbose_name = '时间线上传'
+        ordering = ['-create_time']
+
+    data = models.JSONField('时间线行数据', default=list, help_text='TimelineRow[] 序列化')
+    created_by_id = models.IntegerField('上传人ID', null=True, blank=True)
+    create_time = models.DateTimeField('创建时间', auto_now_add=True)
+    update_time = models.DateTimeField('更新时间', auto_now=True)
+
+    def __str__(self):
+        return f'时间线上传 #{self.id} ({len(self.data or [])} 行)'
+
+
+class TimelinePublishedPlan(models.Model):
+    """从时间线详情页「发布」后生成的记录，在排程计划列表中与 SchedulePlan 一并展示。"""
+
+    class Meta:
+        db_table = 't_timeline_published_plan'
+        verbose_name = '时间线发布记录'
+        ordering = ['-create_time']
+
+    timeline_schedule = models.OneToOneField(
+        'TimelineSchedule',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='published_plan',
+        verbose_name='排程核心',
+    )
+    source_type = models.CharField(
+        '数据来源',
+        max_length=16,
+        choices=[('online', '线上'), ('offline', '线下')],
+        default='online',
+        db_index=True,
+    )
+    snapshot = models.JSONField('时间线行快照', default=dict)
+    created_by_id = models.IntegerField('发布人ID', null=True, blank=True)
+    create_time = models.DateTimeField('创建时间', auto_now_add=True)
+    update_time = models.DateTimeField('更新时间', auto_now=True)
+
+    def __str__(self):
+        s = self.snapshot or {}
+        return f"时间线发布 #{self.id} ({s.get('项目编号') or s.get('询期编号') or '—'})"
+
+
+class ExecutionOrderUpload(models.Model):
+    """测试执行订单文件解析结果；资源需求 Tab 与待排程任务。"""
+
+    class Meta:
+        db_table = 't_execution_order_upload'
+        verbose_name = '执行订单上传'
+        ordering = ['-create_time']
+
+    data = models.JSONField('解析行数据', default=list, help_text='表头+行列表或行对象列表')
+    created_by_id = models.IntegerField('上传人ID', null=True, blank=True)
+    create_time = models.DateTimeField('创建时间', auto_now_add=True)
+    update_time = models.DateTimeField('更新时间', auto_now=True)
+
+    def __str__(self):
+        rows = self.data if isinstance(self.data, list) else []
+        return f'执行订单上传 #{self.id} ({len(rows)} 行)'
+
+
+class TimelineScheduleStatus(models.TextChoices):
+    DRAFT = 'draft', '草稿'
+    TIMELINE_PUBLISHED = 'timeline_published', '时间线已发布'
+    COMPLETED = 'completed', '排程完成'
+
+
+class TimelineSchedule(models.Model):
+    """排程核心：一条执行订单对应一条；行政/评估/技术排程在 payload 中。"""
+
+    class Meta:
+        db_table = 't_timeline_schedule'
+        verbose_name = '排程核心'
+        ordering = ['-create_time']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['execution_order_upload'],
+                name='unique_timeline_schedule_per_order_v2',
+            ),
+        ]
+
+    execution_order_upload = models.OneToOneField(
+        ExecutionOrderUpload,
+        on_delete=models.CASCADE,
+        related_name='timeline_schedule',
+        verbose_name='执行订单',
+    )
+    supervisor = models.CharField('督导', max_length=100, blank=True, default='')
+    research_group = models.CharField('研究组', max_length=100, blank=True, default='')
+    t0_date = models.DateField('T0 基准日期', null=True, blank=True)
+    split_days = models.PositiveSmallIntegerField('拆分天数', default=1)
+
+    status = models.CharField(
+        '状态',
+        max_length=32,
+        choices=TimelineScheduleStatus.choices,
+        default=TimelineScheduleStatus.DRAFT,
+        db_index=True,
+    )
+    admin_published = models.BooleanField('行政排程已发布', default=False)
+    eval_published = models.BooleanField('评估排程已发布', default=False)
+    tech_published = models.BooleanField('技术排程已发布', default=False)
+
+    payload = models.JSONField('排程数据', default=dict, blank=True)
+
+    created_by_id = models.IntegerField('创建人ID', null=True, blank=True)
+    create_time = models.DateTimeField('创建时间', auto_now_add=True)
+    update_time = models.DateTimeField('更新时间', auto_now=True)
+
+    def __str__(self):
+        return f'排程核心 #{self.id} (订单#{self.execution_order_upload_id} {self.get_status_display()})'
+
+
+class LabScheduleUpload(models.Model):
+    """实验室项目运营安排上传结果。"""
+
+    class Meta:
+        db_table = 't_lab_schedule_upload'
+        verbose_name = '实验室排期上传'
+        ordering = ['-create_time']
+
+    source_file_name = models.CharField('来源文件名', max_length=255, blank=True, default='')
+    data = models.JSONField('解析行数据', default=list, help_text='已弃用，数据存 LabScheduleRow 表')
+    created_by_id = models.IntegerField('上传人ID', null=True, blank=True)
+    create_time = models.DateTimeField('创建时间', auto_now_add=True)
+    update_time = models.DateTimeField('更新时间', auto_now=True)
+
+    def __str__(self):
+        return f'实验室排期 #{self.id}'
+
+
+class LabScheduleRow(models.Model):
+    """实验室排期明细行。"""
+
+    class Meta:
+        db_table = 't_lab_schedule_row'
+        verbose_name = '实验室排期行'
+        ordering = ['upload', 'id']
+        indexes = [
+            models.Index(fields=['upload']),
+            models.Index(fields=['person_role']),
+            models.Index(fields=['equipment']),
+            models.Index(fields=['date']),
+        ]
+
+    upload = models.ForeignKey(
+        LabScheduleUpload,
+        on_delete=models.CASCADE,
+        related_name='rows',
+        verbose_name='所属上传',
+    )
+    group = models.CharField('组别', max_length=100, blank=True, default='')
+    equipment_code = models.CharField('设备编号', max_length=100, blank=True, default='')
+    equipment = models.CharField('设备', max_length=200, blank=True, default='')
+    date = models.CharField('日期', max_length=20, blank=True, default='')
+    protocol_code = models.CharField('项目编号', max_length=100, blank=True, default='')
+    sample_size = models.CharField('样本量', max_length=50, blank=True, default='')
+    person_role = models.CharField('人员/岗位', max_length=200, blank=True, default='')
+    room = models.CharField('房间', max_length=100, blank=True, default='')
+    day_group = models.CharField('组别', max_length=100, blank=True, default='')
+
+    def __str__(self):
+        return f'{self.protocol_code} @ {self.date}'

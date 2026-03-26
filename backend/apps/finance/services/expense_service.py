@@ -83,9 +83,7 @@ def reimburse_expense(request_id: int) -> Optional[ExpenseRequest]:
 
 
 def list_expenses(applicant_id: int = None, protocol_id: int = None,
-                  status: str = None, import_source: str = None,
-                  keyword: str = None,
-                  page: int = 1, page_size: int = 20) -> dict:
+                  status: str = None, page: int = 1, page_size: int = 20) -> dict:
     qs = ExpenseRequest.objects.all()
     if applicant_id:
         qs = qs.filter(applicant_id=applicant_id)
@@ -93,16 +91,6 @@ def list_expenses(applicant_id: int = None, protocol_id: int = None,
         qs = qs.filter(protocol_id=protocol_id)
     if status:
         qs = qs.filter(approval_status=status)
-    if import_source:
-        qs = qs.filter(import_source=import_source)
-    if keyword:
-        from django.db.models import Q
-        qs = qs.filter(
-            Q(request_no__icontains=keyword)
-            | Q(applicant_name__icontains=keyword)
-            | Q(description__icontains=keyword)
-            | Q(ekuaibao_no__icontains=keyword)
-        )
     total = qs.count()
     offset = (page - 1) * page_size
     return {'items': list(qs[offset:offset + page_size]), 'total': total}

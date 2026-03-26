@@ -127,4 +127,24 @@ export const visitApi = {
       total: number
     }>('/visit/window-alerts')
   },
+
+  /** 资源需求详情（按 demand id，与执行台 ResourceApprovalDetail 一致） */
+  getResourceDemandById(demandId: number) {
+    return api.get(`/visit/demands/${demandId}`)
+  },
+
+  /** 待审核资源需求列表（执行台排程页） */
+  listResourceApprovalList(params?: { page?: number; page_size?: number }) {
+    return api.get<{ items: unknown[]; total: number }>('/visit/demands/list', { params })
+  },
+
+  /** 审批通过资源需求 */
+  approveResourceDemand(demandId: number) {
+    return api.post(`/visit/demands/${demandId}/approve`)
+  },
+
+  /** 拒绝资源需求 */
+  rejectResourceDemand(demandId: number, data: { reject_reason: string }) {
+    return api.post(`/visit/demands/${demandId}/reject`, data)
+  },
 }

@@ -1,0 +1,49 @@
+{
+  "name": "@cn-kis/wechat-mini",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CN KIS 受试者端微信小程序",
+  "templateInfo": {
+    "name": "default",
+    "typescript": true,
+    "css": "sass"
+  },
+  "scripts": {
+    "lint": "tsc --noEmit",
+    "build": "taro build --type weapp",
+    "dev:weapp": "taro build --type weapp --watch",
+    "build:weapp": "taro build --type weapp",
+    "preview:qr": "./scripts/gen-preview-qr.sh",
+    "upload:weapp": "node ./scripts/upload.js",
+    "dev:h5": "taro build --type h5 --watch",
+    "build:h5": "taro build --type h5",
+    "e2e": "playwright test -c playwright.config.ts",
+    "e2e:headed": "HEADED=1 playwright test -c playwright.config.ts",
+    "gate:wechat-headed": "pnpm exec playwright test e2e/headed/product-lifecycle.spec.ts --project=wechat-mini-h5-mobile-headed && pnpm exec playwright test e2e/headed/product-lifecycle-exception.spec.ts --project=wechat-mini-h5-mobile-headed && pnpm exec playwright test e2e/headed/ui-quality-comprehensive.spec.ts --project=wechat-mini-h5-mobile-headed"
+  },
+  "dependencies": {
+    "@cn-kis/subject-core": "workspace:*",
+    "@tarojs/components": "^3.6.0",
+    "@tarojs/helper": "^3.6.0",
+    "@tarojs/plugin-platform-weapp": "^3.6.0",
+    "@tarojs/react": "3.6.38",
+    "@tarojs/runtime": "^3.6.0",
+    "@tarojs/shared": "^3.6.0",
+    "@tarojs/taro": "^3.6.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@babel/runtime": "^7.21.0",
+    "@pmmmwh/react-refresh-webpack-plugin": "^0.6.2",
+    "@tarojs/cli": "^3.6.0",
+    "@tarojs/plugin-framework-react": "^3.6.38",
+    "@tarojs/plugin-platform-h5": "^3.6.38",
+    "@tarojs/webpack5-runner": "^3.6.0",
+    "@types/react": "^18.2.0",
+    "babel-preset-taro": "3.6.38",
+    "miniprogram-ci": "^2.1.11",
+    "typescript": "^5.3.0",
+    "universalify": "^2.0.1"
+  }
+}

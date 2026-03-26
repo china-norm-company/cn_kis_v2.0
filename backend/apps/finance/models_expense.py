@@ -51,50 +51,6 @@ class ExpenseRequest(models.Model):
     notes = models.TextField('备注', blank=True, default='')
     created_by_id = models.IntegerField('创建人ID', null=True, blank=True, db_index=True)
 
-    # 易快报溯源字段（来自 ekuaibao_integration）
-    ekuaibao_id = models.CharField(
-        '易快报内部ID', max_length=200, blank=True, default='', db_index=True,
-        help_text='易快报 flowId，唯一标识来源单据',
-    )
-    ekuaibao_no = models.CharField(
-        '易快报单号', max_length=100, blank=True, default='', db_index=True,
-        help_text='如 B26000474，展示用',
-    )
-    import_batch_id = models.CharField(
-        '导入批次号', max_length=50, blank=True, default='', db_index=True,
-        help_text='对应 EkbImportBatch.batch_no，用于按批次回滚',
-    )
-    import_source = models.CharField(
-        '数据来源', max_length=20, default='manual',
-        help_text='manual（手动录入）| ekuaibao（易快报导入）',
-    )
-
-    # 业务关联字段（易快报导入时从 userProps 提取）
-    linked_budget_no = models.CharField(
-        '关联预算申请单号', max_length=100, blank=True, default='', db_index=True,
-        help_text='对应 ProjectBudget.budget_no，如 S26000040；通过 expenseLink 关联',
-    )
-    cost_department = models.CharField(
-        '费用承担部门', max_length=100, blank=True, default='',
-        help_text='expenseDepartment.name，区别于申请人所属部门',
-    )
-    expense_template = models.CharField(
-        '单据模板', max_length=100, blank=True, default='',
-        help_text='specificationId.name，如"功效测试项目报销单"/"日常管理报销单"',
-    )
-    client_name = models.CharField(
-        '客户名称', max_length=200, blank=True, default='',
-        help_text='u_客户名称，如欧莱雅、联合利华；冗余字段便于直接展示',
-    )
-    approval_chain = models.JSONField(
-        '审批轨迹', default=list, blank=True,
-        help_text='从易快报 logs 提取的审批链，格式：[{action, node_name, operator_name, time}]',
-    )
-    ekuaibao_submitter_id = models.CharField(
-        '易快报提交人ID', max_length=200, blank=True, default='',
-        help_text='submitterId.id，用于关联到 Account.ekuaibao_staff_id',
-    )
-
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)
 

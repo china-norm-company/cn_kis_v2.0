@@ -497,10 +497,10 @@
       "name": "飞书应用: 子衿(秘书)",
       "category": "身份与协同服务",
       "type": "feishu_app",
-      "location": "cli_a98b0babd020500e",
+      "location": "cli_a907f21f0723dbce",
       "status": "registered",
       "details": {
-        "app_id": "cli_a98b0babd020500e"
+        "app_id": "cli_a907f21f0723dbce"
       },
       "collected_at": "2026-03-11 15:58:46"
     },

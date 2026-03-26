@@ -50,6 +50,9 @@ interface InvoiceRequestResponse {
   processed_at?: string;
   created_at: string;
   updated_at: string;
+  linked_invoice_id?: number | null;
+  electronic_invoice_file?: string | null;
+  electronic_invoice_file_name?: string | null;
 }
 
 interface InvoiceRequestListResponse {
@@ -68,6 +71,32 @@ const unwrapPayload = <T>(payload: T | WrappedResponse<T> | undefined): T | unde
   }
   return payload as T;
 };
+
+function mapInvoiceRequestFromResponse(item: InvoiceRequestResponse): InvoiceRequest {
+  return {
+    id: item.id,
+    request_date: item.request_date,
+    customer_name: item.customer_name,
+    invoice_type: (item.invoice_type as InvoiceRequest["invoice_type"]) || "full_elec_special",
+    amount_type: (item.amount_type as InvoiceRequest["amount_type"]) || "inclusive_of_tax",
+    tax_rate: item.tax_rate ?? 0.06,
+    items: item.items,
+    po: item.po,
+    total_amount: item.total_amount,
+    request_by: item.request_by,
+    request_by_id: item.request_by_id,
+    status: item.status as InvoiceRequestStatus,
+    invoice_ids: item.invoice_ids,
+    notes: item.notes,
+    processed_by: item.processed_by,
+    processed_at: item.processed_at,
+    created_at: item.created_at,
+    updated_at: item.updated_at,
+    linked_invoice_id: item.linked_invoice_id ?? undefined,
+    electronic_invoice_file: item.electronic_invoice_file ?? undefined,
+    electronic_invoice_file_name: item.electronic_invoice_file_name ?? undefined,
+  };
+}
 
 // ============= Mock 数据 =============
 
@@ -143,7 +172,7 @@ const mockInvoiceRequestsApi = {
       id: 0, // 会在addInvoiceRequestToStore中自动生成
       request_date: data.request_date,
       customer_name: data.customer_name,
-      invoice_type: data.invoice_type ?? 'vat_special',
+      invoice_type: data.invoice_type ?? 'full_elec_special',
       amount_type: amountType,
       tax_rate: taxRate,
       items: itemsWithInclusive,
@@ -207,26 +236,7 @@ export const invoiceRequestsApi = {
           throw new Error("开票申请列表接口返回格式异常，使用本地数据");
         }
         
-        const requests: InvoiceRequest[] = payload.requests.map((item) => ({
-          id: item.id,
-          request_date: item.request_date,
-          customer_name: item.customer_name,
-          invoice_type: (item.invoice_type as InvoiceRequest['invoice_type']) || 'vat_special',
-          amount_type: (item.amount_type as InvoiceRequest['amount_type']) || 'inclusive_of_tax',
-          tax_rate: item.tax_rate ?? 0.06,
-          items: item.items,
-          po: item.po,
-          total_amount: item.total_amount,
-          request_by: item.request_by,
-          request_by_id: item.request_by_id,
-          status: item.status as InvoiceRequestStatus,
-          invoice_ids: item.invoice_ids,
-          notes: item.notes,
-          processed_by: item.processed_by,
-          processed_at: item.processed_at,
-          created_at: item.created_at,
-          updated_at: item.updated_at,
-        }));
+        const requests: InvoiceRequest[] = payload.requests.map(mapInvoiceRequestFromResponse);
         
         return {
           requests,
@@ -248,26 +258,7 @@ export const invoiceRequestsApi = {
         const response = await apiClient.get<WrappedResponse<InvoiceRequestResponse> | InvoiceRequestResponse>(`/finance/invoice-requests/${id}`);
         const d = unwrapPayload<InvoiceRequestResponse>(response?.data);
         if (!d) throw new Error("开票申请详情接口返回格式异常");
-        return {
-          id: d.id,
-          request_date: d.request_date,
-          customer_name: d.customer_name,
-          invoice_type: (d.invoice_type as InvoiceRequest['invoice_type']) || 'vat_special',
-          amount_type: (d.amount_type as InvoiceRequest['amount_type']) || 'inclusive_of_tax',
-          tax_rate: d.tax_rate ?? 0.06,
-          items: d.items,
-          po: d.po,
-          total_amount: d.total_amount,
-          request_by: d.request_by,
-          request_by_id: d.request_by_id,
-          status: d.status as InvoiceRequestStatus,
-          invoice_ids: d.invoice_ids,
-          notes: d.notes,
-          processed_by: d.processed_by,
-          processed_at: d.processed_at,
-          created_at: d.created_at,
-          updated_at: d.updated_at,
-        } as InvoiceRequest;
+        return mapInvoiceRequestFromResponse(d);
       },
       () => mockInvoiceRequestsApi.getInvoiceRequestById(id)
     ),
@@ -282,26 +273,7 @@ export const invoiceRequestsApi = {
         const response = await apiClient.post<WrappedResponse<InvoiceRequestResponse> | InvoiceRequestResponse>("/finance/invoice-requests", data);
         const d = unwrapPayload<InvoiceRequestResponse>(response?.data);
         if (!d) throw new Error("创建开票申请返回格式异常");
-        return {
-          id: d.id,
-          request_date: d.request_date,
-          customer_name: d.customer_name,
-          invoice_type: (d.invoice_type as InvoiceRequest['invoice_type']) || 'vat_special',
-          amount_type: (d.amount_type as InvoiceRequest['amount_type']) || 'inclusive_of_tax',
-          tax_rate: d.tax_rate ?? 0.06,
-          items: d.items,
-          po: d.po,
-          total_amount: d.total_amount,
-          request_by: d.request_by,
-          request_by_id: d.request_by_id,
-          status: d.status as InvoiceRequestStatus,
-          invoice_ids: d.invoice_ids,
-          notes: d.notes,
-          processed_by: d.processed_by,
-          processed_at: d.processed_at,
-          created_at: d.created_at,
-          updated_at: d.updated_at,
-        } as InvoiceRequest;
+        return mapInvoiceRequestFromResponse(d);
       },
       () => mockInvoiceRequestsApi.createInvoiceRequest(data)
     ),
@@ -320,26 +292,7 @@ export const invoiceRequestsApi = {
         );
         const d = unwrapPayload<InvoiceRequestResponse>(response?.data);
         if (!d) throw new Error("更新开票申请返回格式异常");
-        return {
-          id: d.id,
-          request_date: d.request_date,
-          customer_name: d.customer_name,
-          invoice_type: (d.invoice_type as InvoiceRequest['invoice_type']) || 'vat_special',
-          amount_type: (d.amount_type as InvoiceRequest['amount_type']) || 'inclusive_of_tax',
-          tax_rate: d.tax_rate ?? 0.06,
-          items: d.items,
-          po: d.po,
-          total_amount: d.total_amount,
-          request_by: d.request_by,
-          request_by_id: d.request_by_id,
-          status: d.status as InvoiceRequestStatus,
-          invoice_ids: d.invoice_ids,
-          notes: d.notes,
-          processed_by: d.processed_by,
-          processed_at: d.processed_at,
-          created_at: d.created_at,
-          updated_at: d.updated_at,
-        } as InvoiceRequest;
+        return mapInvoiceRequestFromResponse(d);
       },
       () => mockInvoiceRequestsApi.updateInvoiceRequest(data)
     ),

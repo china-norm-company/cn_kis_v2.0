@@ -1,9 +1,13 @@
 /**
- * AI 解析服务（ProtocolExtractV2）
- * 通过后端代理调用解析服务，避免静态部署时直连导致 401；Token 与地址由后端配置。
- * 使用原生 fetch 以绕过 api-client 的 axios 响应拦截器（拦截器会把 code≠0/200 的 body reject，
- * 与 AI 代理返回的 502/504 状态码冲突）。
+ * AI 解析服务（ProtocolExtractV2），与 KIS 一致
+ * 按 subagent 调用解析接口并返回结构化结果
  */
+
+const getBaseUrl = (): string =>
+  (import.meta.env.VITE_PROTOCOL_EXTRACT_BASE_URL as string) || '/aiapi'
+
+const getToken = (): string | undefined =>
+  (import.meta.env.VITE_PROTOCOL_EXTRACT_TOKEN as string) || undefined
 
 export interface ProtocolExtractResponse {
   data: unknown
@@ -11,24 +15,20 @@ export interface ProtocolExtractResponse {
   rawText: string
 }
 
-function toRawText(data: unknown): string {
-  if (data == null) return ''
-  if (typeof data === 'string') return data
+function buildExtractUrl(subagent: string): string {
+  const base = getBaseUrl().replace(/\/$/, '')
+  const q = new URLSearchParams({ subagent }).toString()
+  return `${base}/ProtocolExtractV2/api/v1/protocol-extract-v2/extract?${q}`
+}
+
+async function parseResponseBody(response: Response): Promise<{ data: unknown; rawText: string }> {
+  const rawText = await response.text()
+  if (!rawText) return { data: null, rawText: '' }
   try {
-    return JSON.stringify(data)
+    return { data: JSON.parse(rawText), rawText }
   } catch {
-    return String(data)
+    return { data: rawText, rawText }
   }
-}
-
-function getBaseURL(): string {
-  const stored = localStorage.getItem('api_base_url')
-  if (stored) return stored
-  return '/api/v1'
-}
-
-function getToken(): string | null {
-  return localStorage.getItem('auth_token')
 }
 
 export const protocolExtractV2Api = {
@@ -37,74 +37,50 @@ export const protocolExtractV2Api = {
     subagent: string,
     signal?: AbortSignal
   ): Promise<ProtocolExtractResponse> => {
+    const token = getToken()
+    if (!token) {
+      throw new Error('未配置 VITE_PROTOCOL_EXTRACT_TOKEN，无法调用 AI 解析服务')
+    }
     const formData = new FormData()
     formData.append('file', file)
-    const baseURL = getBaseURL()
-    const url = `${baseURL}/projects/protocol-extract?${new URLSearchParams({ subagent }).toString()}`
-    const headers: Record<string, string> = {}
-    const token = getToken()
-    if (token) headers['Authorization'] = `Bearer ${token}`
-
+    const url = buildExtractUrl(subagent)
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 200_000)
-    const mergedSignal = signal
-      ? (AbortSignal as unknown as { any?: (signals: AbortSignal[]) => AbortSignal }).any?.([signal, controller.signal]) ?? controller.signal
-      : controller.signal
-
-    let res: Response
-    try {
-      res = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: formData,
-        signal: mergedSignal,
-      })
-    } catch (e) {
-      clearTimeout(timeoutId)
-      if ((e as Error).name === 'AbortError') {
-        const err = new Error(`AI 解析超时（${subagent}），请稍后重试`) as Error & { status?: number }
-        err.status = 0
-        throw err
-      }
-      throw new Error(`AI 解析网络错误（${subagent}）：${(e as Error).message}`)
-    }
+    const timeoutId = setTimeout(() => controller.abort(), 600_000)
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+      signal: signal ?? controller.signal,
+    })
     clearTimeout(timeoutId)
-
-    let data: unknown
-    const rawText = await res.text()
-    try {
-      data = JSON.parse(rawText)
-    } catch {
-      data = rawText
-    }
-
-    if (res.status >= 200 && res.status < 300) {
-      return { data, status: res.status, rawText }
-    }
-    const hints: string[] = []
-    if (res.status === 401) hints.push('未授权，请重新登录后再试')
-    if (res.status === 502) hints.push('解析服务暂时不可用，请检查后端 PROTOCOL_EXTRACT_V2_* 配置')
-    if (res.status === 504) hints.push('解析服务响应超时，请稍后重试或检查服务状态')
-    if (res.status === 400) hints.push('请求被拒绝(400)，可能原因：文件格式不支持、subagent 不被服务识别。')
-    const detail =
-      typeof data === 'object' && data !== null && (data as Record<string, unknown>).msg
-        ? String((data as Record<string, unknown>).msg)
-        : typeof data === 'object' && data !== null && (data as Record<string, unknown>).message
+    const { data, rawText } = await parseResponseBody(response)
+    if (!response.ok) {
+      const hints: string[] = []
+      if (response.status === 401) {
+        hints.push('解析服务返回 401 未授权，请检查 .env 中 VITE_PROTOCOL_EXTRACT_TOKEN 是否与解析服务一致（可向 KIS 或服务方获取有效 Token）')
+      }
+      if (response.status === 400) {
+        hints.push('请求被拒绝(400)，可能原因：文件格式不支持、subagent 不被服务识别、或请求体不符合要求。')
+      }
+      const detail =
+        typeof data === 'object' && data !== null && (data as Record<string, unknown>).message
           ? String((data as Record<string, unknown>).message)
           : rawText && rawText.length < 500
             ? rawText
             : ''
-    const msg = [
-      `AI 解析失败（${subagent}），HTTP ${res.status}`,
-      ...hints,
-      detail ? `服务返回: ${detail}` : '',
-    ]
-      .filter(Boolean)
-      .join(' ')
-    const err = new Error(msg) as Error & { status?: number; data?: unknown; rawText?: string }
-    err.status = res.status
-    err.data = data
-    err.rawText = rawText
-    throw err
+      const msg = [
+        `AI 解析失败（${subagent}），HTTP ${response.status}`,
+        ...hints,
+        detail ? `服务返回: ${detail}` : '',
+      ]
+        .filter(Boolean)
+        .join(' ')
+      const err = new Error(msg) as Error & { status?: number; data?: unknown; rawText?: string }
+      err.status = response.status
+      err.data = data
+      err.rawText = rawText
+      throw err
+    }
+    return { data, status: response.status, rawText }
   },
 }

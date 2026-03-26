@@ -1,26 +1,83 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { receptionApi, workorderApi, qualityApi, safetyApi, qrcodeApi, executionApi, clawRegistryApi, digitalWorkforcePortalApi, type QueueItem, type FlowcardProgress, type SuggestionItem } from '@cn-kis/api-client'
-import { Download, ChevronLeft, ChevronRight } from 'lucide-react'
+import { receptionApi, workorderApi, qualityApi, safetyApi, qrcodeApi, executionApi, clawRegistryApi, digitalWorkforcePortalApi, type QueueItem, type SuggestionItem } from '@cn-kis/api-client'
+import {
+  Download,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  CalendarCheck,
+  UserCheck,
+  PlayCircle,
+  LogOut,
+  UserX,
+} from 'lucide-react'
 import { StatCard, Empty, Button, Badge, Card, Modal, Input, Select, ClawQuickPanel, useClawQuickActions, DigitalWorkerSuggestionBar, DigitalWorkerActionCard } from '@cn-kis/ui-kit'
 import { useFeishuContext, PermissionGuard, getWorkstationUrl } from '@cn-kis/feishu-sdk'
 import type { QuickAction } from '@cn-kis/ui-kit'
 
-const TASK_LABEL_MAP: Record<QueueItem['task_type'], string> = {
-  pre_screening: '粗筛',
-  screening: '筛选',
-  visit: '访视',
-  extra_visit: '加访',
-  walk_in: '临时到访',
+/** 入组情况下拉（接待看板专用表，写入 board-project-sc，与工单执行独立） */
+const ENROLLMENT_STATUS_OPTIONS = ['初筛合格', '正式入组', '不合格', '复筛不合格', '退出', '缺席'] as const
+/** 未签到时仍可选的入组情况（与工单执行页交互一致；看板数据写入独立接口） */
+const ENROLLMENT_ALLOWED_WITHOUT_CHECKIN = new Set<string>(['缺席', '退出'])
+
+function pad2(value: number) {
+  return String(value).padStart(2, '0')
 }
 
-const TASK_BADGE_MAP: Record<QueueItem['task_type'], 'warning' | 'info' | 'success' | 'default'> = {
-  pre_screening: 'warning',
-  screening: 'info',
-  visit: 'success',
-  extra_visit: 'default',
-  walk_in: 'default',
+/** 浏览器本地日历日 YYYY-MM-DD（与工单执行页一致） */
+function localTodayYmd() {
+  const d = new Date()
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
+
+function normalizeQueueSc(raw: unknown): string {
+  const s = String(raw ?? '').trim()
+  if (!s || s === '-' || s === '—' || s === '－') return ''
+  return s
+}
+
+/** 今日队列排序：与工单执行页 compareQueueByProjectAndSc 一致 */
+function compareQueueByProjectAndSc(a: QueueItem, b: QueueItem): number {
+  const pcA = (a.project_code || '').trim()
+  const pcB = (b.project_code || '').trim()
+  const pcCmp = pcA.localeCompare(pcB, 'zh-CN')
+  if (pcCmp !== 0) return pcCmp
+  const scA = normalizeQueueSc(a.sc_number)
+  const scB = normalizeQueueSc(b.sc_number)
+  const emptyA = !scA
+  const emptyB = !scB
+  if (emptyA !== emptyB) return emptyA ? 1 : -1
+  const scCmp = scA.localeCompare(scB, 'zh-CN', { numeric: true })
+  if (scCmp !== 0) return scCmp
+  const apptA = String(a.appointment_time || '').trim()
+  const apptB = String(b.appointment_time || '').trim()
+  return apptA.localeCompare(apptB, 'zh-CN')
+}
+
+function formatGenderCell(value: unknown): string {
+  if (value === undefined || value === null) return '—'
+  const s = String(value).trim()
+  if (!s) return '—'
+  const lower = s.toLowerCase()
+  if (lower === 'male' || lower === 'm') return '男'
+  if (lower === 'female' || lower === 'f') return '女'
+  if (lower === 'other') return '其他'
+  return s
+}
+
+function matchQueueSearch(item: QueueItem, q: string): boolean {
+  const s = q.trim().toLowerCase()
+  if (!s) return true
+  const sc = (item.sc_number ?? '').toLowerCase()
+  const rd = (item.rd_number ?? '').toLowerCase()
+  const name = (item.subject_name ?? '').toLowerCase()
+  const pc = (item.project_code ?? '').toLowerCase()
+  const pname = (item.project_name ?? '').toLowerCase()
+  const phone = (item.phone ?? '').replace(/\s/g, '')
+  const phoneS = s.replace(/\s/g, '')
+  return sc.includes(s) || rd.includes(s) || name.includes(s) || pc.includes(s) || pname.includes(s) || phone.includes(phoneS)
 }
 
 const clawFetcher = (key: string) => clawRegistryApi.getByWorkstation(key)
@@ -47,15 +104,15 @@ export default function ReceptionDashboardPage() {
   const [eventSeverity, setEventSeverity] = useState('medium')
   const [eventDescription, setEventDescription] = useState('')
   const [showQRCodeCenter, setShowQRCodeCenter] = useState(false)
-  const [showFlowcardProgress, setShowFlowcardProgress] = useState(false)
   const [qrcodeSubjectId, setQrcodeSubjectId] = useState('')
-  const [flowcardProgress, setFlowcardProgress] = useState<FlowcardProgress | null>(null)
   const [assigneeId, setAssigneeId] = useState('')
   const [projectFilter, setProjectFilter] = useState('')
-  const [projectCodeFilter, setProjectCodeFilter] = useState('')
+  const [queueSearch, setQueueSearch] = useState('')
+  /** 今日队列 RD 号输入未提交的本地值，key: subject_id-project_code */
+  const [pendingQueueRd, setPendingQueueRd] = useState<Record<string, string>>({})
 
-  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), [])
-  const [queryDate, setQueryDate] = useState(() => todayStr)
+  const todayStr = useMemo(() => localTodayYmd(), [])
+  const [queryDate, setQueryDate] = useState(localTodayYmd)
   const [queuePage, setQueuePage] = useState(1)
   const queuePageSize = 10
   const canViewSupportTickets = hasPermission('subject.recruitment.read')
@@ -67,27 +124,47 @@ export default function ReceptionDashboardPage() {
   const [walkInPhone, setWalkInPhone] = useState('')
   const [walkInPurpose, setWalkInPurpose] = useState('临时到访')
   const [walkInAutoCheckin, setWalkInAutoCheckin] = useState(true)
+  /** 签到前核对受试者信息（接待看板） */
+  const [checkinConfirmTarget, setCheckinConfirmTarget] = useState<QueueItem | null>(null)
+
+  const projectCodeForApi = projectFilter.trim() || undefined
 
   const { data: statsRes } = useQuery({
-    queryKey: ['reception', 'today-stats', queryDate],
-    queryFn: () => receptionApi.todayStats(queryDate),
-    refetchInterval: 30000,
+    queryKey: ['reception', 'today-stats', queryDate, 'board', projectCodeForApi ?? ''],
+    queryFn: () => receptionApi.todayStats(queryDate, projectCodeForApi, 'board'),
   })
-  const { data: queueRes, isLoading } = useQuery({
-    queryKey: ['reception', 'today-queue', queryDate, queuePage, projectFilter, projectCodeFilter],
+  // 项目下拉选项使用“未筛选”的统计结果，避免选中后下拉只剩当前项目
+  const { data: statsOptionsRes } = useQuery({
+    queryKey: ['reception', 'today-stats', queryDate, 'board', 'all-project-options'],
+    queryFn: () => receptionApi.todayStats(queryDate, undefined, 'board'),
+  })
+  const { data: queueRes, isFetching: queueListFetching } = useQuery({
+    queryKey: ['reception', 'today-queue', 'board', queryDate, queuePage, queuePageSize, projectCodeForApi ?? ''],
     queryFn: () =>
       receptionApi.todayQueue({
         target_date: queryDate,
         page: queuePage,
         page_size: queuePageSize,
-        project_code: projectCodeFilter.trim() || undefined,
+        project_code: projectCodeForApi,
+        source: 'board',
       }),
-    refetchInterval: 30000,
+    enabled: queueSearch.trim().length === 0,
+  })
+  const { data: searchQueueRes, isFetching: searchQueueFetching } = useQuery({
+    queryKey: ['reception', 'today-queue', 'board', 'search', queryDate, projectCodeForApi ?? '', queueSearch.trim()],
+    queryFn: () =>
+      receptionApi.todayQueue({
+        target_date: queryDate,
+        page: 1,
+        page_size: 500,
+        project_code: projectCodeForApi,
+        source: 'board',
+      }),
+    enabled: queueSearch.trim().length > 0,
   })
   const { data: alertRes } = useQuery({
     queryKey: ['reception', 'pending-alerts', queryDate],
     queryFn: () => receptionApi.pendingAlerts(queryDate),
-    refetchInterval: 30000,
   })
   const { data: qrListRes, refetch: refetchQrList } = useQuery({
     queryKey: ['reception', 'qrcode-list'],
@@ -97,7 +174,6 @@ export default function ReceptionDashboardPage() {
   const { data: ticketRes } = useQuery({
     queryKey: ['reception', 'support-tickets'],
     queryFn: () => executionApi.listSupportTickets(),
-    refetchInterval: 30000,
     enabled: canViewSupportTickets,
   })
 
@@ -106,20 +182,39 @@ export default function ReceptionDashboardPage() {
     queryFn: () => digitalWorkforcePortalApi.getSuggestions('reception'),
   })
   const suggestions = suggestionsRes?.data?.data?.items ?? []
+  const refreshBoardQueueAndStats = useCallback(() => {
+    void qc.invalidateQueries({ queryKey: ['reception', 'today-queue'] })
+    void qc.invalidateQueries({ queryKey: ['reception', 'today-stats'] })
+    void qc.invalidateQueries({ queryKey: ['reception', 'pending-alerts'] })
+  }, [qc])
 
+  /** 接待看板签到（独立于工单执行，SC/RD/签到时间独立）。支持 project_code 实现同天多项目各自 SC。 */
   const checkinMutation = useMutation({
-    mutationFn: (subjectId: number) => receptionApi.quickCheckin({ subject_id: subjectId }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['reception'] }),
+    mutationFn: (params: { subject_id: number; project_code?: string }) =>
+      receptionApi.boardCheckin({ subject_id: params.subject_id, target_date: queryDate, project_code: params.project_code }),
+    onSuccess: refreshBoardQueueAndStats,
   })
+  const handleConfirmCheckin = () => {
+    if (!checkinConfirmTarget) return
+    checkinMutation.mutate(
+      { subject_id: checkinConfirmTarget.subject_id, project_code: checkinConfirmTarget.project_code },
+      {
+        onSuccess: () => setCheckinConfirmTarget(null),
+        onError: (e) => window.alert('签到失败：' + (e as Error).message),
+      },
+    )
+  }
+  /** 接待看板签出（独立于工单执行） */
   const checkoutMutation = useMutation({
-    mutationFn: (checkinId: number) => receptionApi.quickCheckout(checkinId),
-    onSuccess: (res) => {
-      const warnings = res.data?.warnings || []
-      if (warnings.length > 0) {
-        window.alert(`签出提醒：\n${warnings.join('\n')}`)
-      }
-      qc.invalidateQueries({ queryKey: ['reception'] })
-    },
+    mutationFn: (payload: { subject_id: number; target_date: string }) =>
+      receptionApi.boardCheckout(payload),
+    onSuccess: refreshBoardQueueAndStats,
+  })
+  const updateBoardProjectScMutation = useMutation({
+    mutationFn: (params: { subject_id: number; project_code: string; enrollment_status?: string; rd_number?: string }) =>
+      receptionApi.updateBoardProjectSc(params),
+    onSuccess: refreshBoardQueueAndStats,
+    onError: (err: Error) => window.alert('保存失败：' + err.message),
   })
   const createTicketMutation = useMutation({
     mutationFn: async (payload: { enrollmentId: number; title: string; description: string }) =>
@@ -152,7 +247,7 @@ export default function ReceptionDashboardPage() {
       setShowWalkIn(false)
       setWalkInName('')
       setWalkInPhone('')
-      qc.invalidateQueries({ queryKey: ['reception'] })
+      refreshBoardQueueAndStats()
     },
     onError: (err: Error) => {
       window.alert(`补登失败：${err.message}`)
@@ -216,36 +311,46 @@ export default function ReceptionDashboardPage() {
   })
 
   const stats = statsRes?.data
-  const queueRaw = queueRes?.data?.items || []
+  const queueRaw = queueRes?.data?.items ?? []
   const queueTotal = queueRes?.data?.total ?? 0
-  const queuePageTotal = Math.max(1, Math.ceil(queueTotal / queuePageSize))
+  const searchQueueRaw = searchQueueRes?.data?.items ?? []
   const projectOptions = useMemo(() => {
+    const raw = statsOptionsRes?.data?.project_options
+    if (Array.isArray(raw) && raw.length > 0) {
+      return [...raw].sort((a, b) => (a.name || a.code).localeCompare(b.name || b.code, 'zh-CN'))
+    }
     const byCode = new Map<string, string>()
     queueRaw.forEach((item) => {
       const code = (item.project_code || '').trim()
       const name = (item.project_name || code || '').trim()
       if (code) byCode.set(code, name || code)
     })
-    return Array.from(byCode.entries()).map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name))
-  }, [queueRaw])
-  const displayStats = useMemo(() => {
-    if (!projectFilter && !projectCodeFilter.trim()) return stats
-    const signedIn = queueRaw.filter((i) => i.checkin_id).length
-    const inProgress = queueRaw.filter((i) => i.status === 'in_progress' || i.status === 'checked_in').length
-    return {
-      total_appointments: queueTotal,
-      checked_in: queueRaw.filter((i) => i.status === 'checked_in').length,
-      in_progress: inProgress,
-      checked_out: queueRaw.filter((i) => i.status === 'checked_out').length,
-      no_show: queueRaw.filter((i) => i.status === 'no_show').length,
-      total_signed_in: signedIn,
-      signed_in_count: signedIn,
+    return Array.from(byCode.entries()).map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+  }, [statsOptionsRes, queueRaw])
+
+  useEffect(() => {
+    if (!projectFilter.trim()) return
+    if (projectOptions.length === 0) return
+    const codes = new Set(projectOptions.map((o) => o.code))
+    if (!codes.has(projectFilter.trim())) {
+      setProjectFilter('')
+      setQueuePage(1)
     }
-  }, [projectFilter, projectCodeFilter, queueRaw, queueTotal, stats])
-  const queue = useMemo(
-    () => [...queueRaw].sort((a, b) => (a.appointment_time || '').localeCompare(b.appointment_time || '')),
-    [queueRaw],
-  )
+  }, [projectOptions, projectFilter, queryDate])
+
+  /** 与工单执行页一致：统计来自 today-stats（board 源），随日期与项目筛选联动 */
+  const displayStats = stats
+  const queueSorted = useMemo(() => {
+    const base = queueSearch.trim() ? searchQueueRaw : queueRaw
+    const filtered = queueSearch.trim() ? base.filter((i) => matchQueueSearch(i, queueSearch)) : base
+    return [...filtered].sort(compareQueueByProjectAndSc)
+  }, [queueSearch, queueRaw, searchQueueRaw])
+  const isSearchMode = queueSearch.trim().length > 0
+  const displayQueueTotal = isSearchMode ? queueSorted.length : queueTotal
+  const displayQueuePageTotal = Math.max(1, Math.ceil(displayQueueTotal / queuePageSize))
+  const displayQueue = isSearchMode
+    ? queueSorted.slice((queuePage - 1) * queuePageSize, queuePage * queuePageSize)
+    : queueSorted
   const alerts = alertRes?.data?.items || []
   const tickets = ticketRes?.data?.items || []
 
@@ -259,23 +364,10 @@ export default function ReceptionDashboardPage() {
       }).format(new Date(queryDate)),
     [queryDate],
   )
-  const hasProjectFilter = !!(projectFilter || projectCodeFilter.trim())
-  const clearProjectFilter = () => {
-    setProjectFilter('')
-    setProjectCodeFilter('')
-    setQueuePage(1)
-  }
-
-  const handleFlowcard = async (checkinId: number) => {
-    const res = await receptionApi.printFlowcard(checkinId)
-    const progress = await receptionApi.flowcardProgress(checkinId)
-    setFlowcardProgress(progress.data || null)
-    setShowFlowcardProgress(true)
-    window.alert(res.data?.message || '流程卡已生成')
-  }
+  const hasProjectFilter = !!projectFilter.trim()
 
   const withEnrollment = (action: (enrollmentId: number) => void) => {
-    const target = queue.find((item) => item.enrollment_id)
+    const target = queueSorted.find((item) => item.enrollment_id)
     if (!target?.enrollment_id) {
       window.alert('当前队列暂无可关联入组记录，请先选择已入组受试者')
       return
@@ -312,24 +404,26 @@ export default function ReceptionDashboardPage() {
     window.alert(res.data?.message || '当前无可叫号受试者')
   }
 
-  const handleScanCheckin = () => navigate('/scan')
-
   const handleExportQueue = async () => {
     try {
       const res = await receptionApi.todayQueueExport({
         target_date: queryDate,
-        project_code: projectCodeFilter.trim() || projectFilter || undefined,
+        project_code: projectCodeForApi,
+        source: 'board',
       })
       const items = res.data?.items ?? []
-      const headers = ['项目名称', '项目编号', 'SC号', '受试者姓名', '拼音首字母', '性别', '年龄', '预约时间', '签到时间', '签出时间', '状态']
+      const headers = ['项目名称', '项目编号', 'SC号', '入组情况', 'RD号', '受试者姓名', '拼音首字母', '性别', '年龄', '手机号', '预约时间', '签到时间', '签出时间', '状态']
       const rows = items.map((i) => [
         i.project_name ?? '',
         i.project_code ?? '',
         i.sc_number ?? '',
+        i.enrollment_status ?? '',
+        i.rd_number ?? '',
         i.subject_name ?? '',
         i.name_pinyin_initials ?? '',
-        i.gender ?? '',
+        formatGenderCell(i.gender),
         i.age ?? '',
+        i.phone ?? '',
         i.appointment_time ?? '',
         i.checkin_time ?? '',
         i.checkout_time ?? '',
@@ -346,18 +440,6 @@ export default function ReceptionDashboardPage() {
     } catch (e) {
       window.alert('导出失败：' + (e as Error).message)
     }
-  }
-
-  const handleBatchPrint = async () => {
-    const printable = queue.filter((item) => item.checkin_id).slice(0, 3)
-    if (printable.length === 0) {
-      window.alert('当前无可打印流程卡记录')
-      return
-    }
-    for (const item of printable) {
-      await receptionApi.printFlowcard(item.checkin_id!)
-    }
-    window.alert(`已提交 ${printable.length} 条流程卡打印任务`)
   }
 
   const handleGenerateSubjectQR = async () => {
@@ -406,11 +488,9 @@ export default function ReceptionDashboardPage() {
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-medium text-slate-700">项目筛选</span>
             <select
-              value={projectCodeFilter || projectFilter}
+              value={projectFilter}
               onChange={(e) => {
-                const v = e.target.value
-                setProjectCodeFilter(v)
-                setProjectFilter('')
+                setProjectFilter(e.target.value)
                 setQueuePage(1)
               }}
               title="项目筛选"
@@ -418,62 +498,299 @@ export default function ReceptionDashboardPage() {
               className="min-h-10 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white w-40"
             >
               <option value="">全部项目</option>
-              {projectOptions.map(({ code, name }) => (
-                <option key={code} value={code}>{name}</option>
+              {projectOptions.map(({ code }) => (
+                <option key={code} value={code}>{code}</option>
               ))}
             </select>
-            <span className="text-slate-400 text-sm">或</span>
-            <input
-              type="text"
-              value={projectCodeFilter}
-              onChange={(e) => {
-                setProjectCodeFilter(e.target.value)
-                if (e.target.value.trim()) setProjectFilter('')
-                setQueuePage(1)
-              }}
-              placeholder="项目编号（如 M25076081）"
-              className="min-h-10 w-40 px-3 py-2 border border-slate-200 rounded-lg text-sm"
-            />
-            {hasProjectFilter && (
-              <button
-                type="button"
-                onClick={clearProjectFilter}
-                className="text-sm text-slate-600 hover:text-slate-800 underline"
-              >
-                清除项目筛选
-              </button>
-            )}
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={queueSearch}
+                onChange={(e) => {
+                  setQueueSearch(e.target.value)
+                  setQueuePage(1)
+                }}
+                placeholder="搜索 项目编号/SC号/RD号/姓名/手机号"
+                title="与项目筛选为且关系：先按项目筛选，再在结果中搜索（含项目名称）"
+                className="min-h-10 w-72 min-w-[200px] pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm"
+              />
+            </div>
           </div>
         </div>
         <p className="text-xs text-slate-500">
           {hasProjectFilter
-            ? `当前筛选：${projectFilter || projectCodeFilter}，统计与队列已联动`
+            ? `当前筛选：${projectFilter}，统计与队列已联动`
             : `默认展示 ${displayDateText} 当日全部预约数据`}
+          {queueSearch.trim() && '；项目筛选与搜索为且关系'}
         </p>
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 md:gap-4">
-        <StatCard label="预约总数" value={displayStats?.total_appointments ?? 0} color="blue" />
-        <StatCard label="已签到" value={displayStats?.signed_in_count ?? displayStats?.total_signed_in ?? displayStats?.checked_in ?? 0} color="green" />
-        <StatCard label="执行中" value={displayStats?.in_progress ?? 0} color="amber" />
-        <StatCard label="已签出" value={displayStats?.checked_out ?? 0} color="teal" />
-        <StatCard label="缺席" value={displayStats?.no_show ?? 0} color="red" />
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5 lg:gap-3">
+          <StatCard
+            label="预约总数"
+            value={displayStats?.total_appointments ?? 0}
+            icon={<CalendarCheck className="h-4 w-4" />}
+            color="blue"
+          />
+          <StatCard
+            label="已签到"
+            value={displayStats?.signed_in_count ?? displayStats?.total_signed_in ?? displayStats?.checked_in ?? 0}
+            icon={<UserCheck className="h-4 w-4" />}
+            color="green"
+          />
+          <StatCard
+            label="执行中"
+            value={displayStats?.in_progress ?? 0}
+            icon={<PlayCircle className="h-4 w-4" />}
+            color="amber"
+          />
+          <StatCard
+            label="已签出"
+            value={displayStats?.checked_out ?? 0}
+            icon={<LogOut className="h-4 w-4" />}
+            color="teal"
+          />
+          <StatCard
+            label="缺席"
+            value={displayStats?.enrollment_status_counts?.['缺席'] ?? displayStats?.no_show ?? 0}
+            icon={<UserX className="h-4 w-4" />}
+            color="red"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5 lg:gap-3">
+          {(['初筛合格', '正式入组', '不合格', '复筛不合格', '退出'] as const).map((status) => (
+            <StatCard
+              key={status}
+              label={status}
+              value={displayStats?.enrollment_status_counts?.[status] ?? 0}
+              color={
+                status === '正式入组'
+                  ? 'green'
+                  : status === '不合格' || status === '复筛不合格'
+                    ? 'red'
+                    : status === '退出'
+                      ? 'indigo'
+                      : 'blue'
+              }
+            />
+          ))}
+        </div>
       </div>
 
-      <Card variant="bordered" title="快捷操作" data-section="quick-actions">
-        <div className="flex flex-wrap items-center gap-2 md:gap-3">
-          <Button className="min-h-11" size="sm" onClick={() => setShowCreateTicket(true)}>创建答疑工单</Button>
-          <PermissionGuard permission="reception.incident.create">
-            <Button className="min-h-11" size="sm" variant="outline" onClick={() => setShowEventReport(true)}>事件上报</Button>
-          </PermissionGuard>
-          <Button className="min-h-11" size="sm" variant="outline" onClick={handleScanCheckin}>扫码签到</Button>
-          <Button className="min-h-11" size="sm" variant="outline" onClick={handleCallNext}>叫号</Button>
-          <Button className="min-h-11" size="sm" variant="outline" onClick={handleBatchPrint}>批量打印流程卡</Button>
-          <Button className="min-h-11" size="sm" variant="outline" onClick={() => setShowQRCodeCenter(true)}>二维码管理</Button>
-          <Button className="min-h-11" size="sm" variant="outline" onClick={() => window.open(getWorkstationUrl('reception', '#/display'), '_blank')}>大屏查看</Button>
-          <Button className="min-h-11" size="sm" variant="primary" onClick={() => setShowWalkIn(true)} data-testid="walkin-btn">
-            临时到访补登
+      <Card
+        variant="bordered"
+        title={queryDate === todayStr ? '今日队列' : `${displayDateText} 预约队列`}
+        extra={
+          <Button className="min-h-9" size="sm" variant="outline" onClick={handleExportQueue} disabled={displayQueueTotal === 0}>
+            <Download className="w-4 h-4 mr-1" /> 导出
           </Button>
-        </div>
+        }
+      >
+        {(queueListFetching || (isSearchMode && searchQueueFetching)) ? (
+          <p className="text-sm text-slate-400">加载中...</p>
+        ) : displayQueue.length === 0 ? (
+          <Empty title={isSearchMode ? '未找到匹配的 SC号/RD号/姓名或手机号' : (queryDate === todayStr ? '今日暂无预约' : '当日暂无预约')} />
+        ) : (
+          <div className="space-y-3">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200">
+                    <th className="text-left py-2 font-medium text-slate-600">项目编号</th>
+                    <th className="text-left py-2 font-medium text-slate-600">SC号</th>
+                    <th className="text-left py-2 font-medium text-slate-600">受试者姓名</th>
+                    <th className="text-left py-2 font-medium text-slate-600">拼音首字母</th>
+                    <th className="text-left py-2 font-medium text-slate-600">性别</th>
+                    <th className="text-left py-2 font-medium text-slate-600">年龄</th>
+                    <th className="text-left py-2 font-medium text-slate-600">手机号</th>
+                    <th className="text-left py-2 font-medium text-slate-600 hidden">受试者编号</th>
+                    <th className="text-left py-2 font-medium text-slate-600">访视点</th>
+                    <th className="text-left py-2 font-medium text-slate-600">预约时间</th>
+                    <th className="text-left py-2 font-medium text-slate-600">签到/签出</th>
+                    <th className="text-left py-2 font-medium text-slate-600">状态</th>
+                    <th className="text-left py-2 font-medium text-slate-600 w-20 hidden">过号</th>
+                    <th className="text-left py-2 font-medium text-slate-600">入组情况</th>
+                    <th className="text-left py-2 font-medium text-slate-600">RD号</th>
+                    <th className="text-left py-2 font-medium text-slate-600 min-w-[160px]">操作</th>
+                    <th className="text-left py-2 font-medium text-slate-600">编辑</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayQueue.map((item) => {
+                    const queueRowKey = `${item.subject_id}-${(item.project_code || '').trim()}`
+                    const isEnrolled = (item.enrollment_status || '').trim() === '正式入组'
+                    const rdDisplay = pendingQueueRd[queueRowKey] ?? item.rd_number ?? (isEnrolled ? 'RD' : '')
+                    const hasBoardCheckin = !!item.checkin_id
+                    return (
+                      <tr
+                        key={`${item.subject_id}-${item.appointment_time}-${item.appointment_id}`}
+                        className={`border-b border-slate-100 ${item.status === 'in_progress' ? 'bg-amber-50/80' : ''}`}
+                        data-stat="queue-item"
+                        data-status={item.status}
+                      >
+                        <td className="py-2 text-slate-700">{item.project_code || '-'}</td>
+                        <td className="py-2 text-slate-700">{item.sc_number ?? '-'}</td>
+                        <td className="py-2 text-slate-700">{item.subject_name || '-'}</td>
+                        <td className="py-2 text-slate-600">{item.name_pinyin_initials ?? '-'}</td>
+                        <td className="py-2 text-slate-600">{formatGenderCell(item.gender)}</td>
+                        <td className="py-2 text-slate-600">{item.age ?? '-'}</td>
+                        <td className="py-2 text-slate-600">{item.phone ?? '-'}</td>
+                        <td className="py-2 text-slate-700 hidden">{item.subject_no || '-'}</td>
+                        <td className="py-2 text-slate-600">{item.visit_point || '-'}</td>
+                        <td className="py-2 text-slate-600">{item.appointment_time || '-'}</td>
+                        <td className="py-2 text-slate-600">
+                          {item.checkin_time ? new Date(item.checkin_time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '-'}
+                          {' / '}
+                          {item.checkout_time ? new Date(item.checkout_time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '-'}
+                        </td>
+                        <td className="py-2">
+                          {item.status === 'checked_in' ? '已签到' : item.status === 'checked_out' ? '已签出' : item.status === 'no_show' ? '缺席' : item.status === 'in_progress' ? '执行中' : '待签到'}
+                        </td>
+                        <td className="py-2 hidden">
+                          <span className="text-slate-400 text-xs">—</span>
+                        </td>
+                        <td className="py-2">
+                          <select
+                            className="w-full min-w-[100px] px-2 py-1 text-sm border border-slate-200 rounded"
+                            value={(item.enrollment_status || '').trim() || ''}
+                            onChange={(e) => {
+                              const v = e.target.value
+                              updateBoardProjectScMutation.mutate({
+                                subject_id: item.subject_id,
+                                project_code: (item.project_code || '').trim(),
+                                enrollment_status: v || undefined,
+                                rd_number: v === '正式入组' && !(item.rd_number || '').trim() ? 'RD' : (item.rd_number || '').trim() || undefined,
+                              })
+                            }}
+                          >
+                            <option value="">请选择</option>
+                            {ENROLLMENT_STATUS_OPTIONS.map((opt) => (
+                              <option
+                                key={opt}
+                                value={opt}
+                                disabled={!hasBoardCheckin && !ENROLLMENT_ALLOWED_WITHOUT_CHECKIN.has(opt)}
+                              >
+                                {opt}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="py-2">
+                          {isEnrolled ? (
+                            <input
+                              type="text"
+                              className="w-24 px-2 py-1 text-sm border border-slate-200 rounded"
+                              value={rdDisplay}
+                              onChange={(e) => setPendingQueueRd((prev) => ({ ...prev, [queueRowKey]: e.target.value }))}
+                              onBlur={() => {
+                                const val = (pendingQueueRd[queueRowKey] ?? item.rd_number ?? 'RD').trim()
+                                updateBoardProjectScMutation.mutate({
+                                  subject_id: item.subject_id,
+                                  project_code: (item.project_code || '').trim(),
+                                  rd_number: val || 'RD',
+                                })
+                                setPendingQueueRd((prev) => {
+                                  const next = { ...prev }
+                                  delete next[queueRowKey]
+                                  return next
+                                })
+                              }}
+                              placeholder="RD 后填数字"
+                            />
+                          ) : (
+                            <span className="text-slate-400">{item.rd_number || '—'}</span>
+                          )}
+                        </td>
+                        <td className="py-2">
+                          {item.status === 'waiting' && (
+                            <PermissionGuard permission="reception.checkin.create">
+                              <Button
+                                className="min-h-8"
+                                size="sm"
+                                data-action="checkin"
+                                onClick={() => setCheckinConfirmTarget(item)}
+                              >
+                                签到
+                              </Button>
+                            </PermissionGuard>
+                          )}
+                          {(item.status === 'checked_in' || item.status === 'in_progress') && item.checkin_id && (
+                            <>
+                              {item.task_type === 'pre_screening' && (
+                                <Button
+                                  className="min-h-8 mr-1"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => window.open(getWorkstationUrl('recruitment', `#/prescreening?subject_id=${item.subject_id}`), '_blank')}
+                                >
+                                  发起粗筛
+                                </Button>
+                              )}
+                              <Button
+                                className="min-h-8"
+                                size="sm"
+                                variant="outline"
+                                data-action="checkout"
+                                onClick={() => checkoutMutation.mutate({ subject_id: item.subject_id, target_date: queryDate })}
+                              >
+                                签出
+                              </Button>
+                            </>
+                          )}
+                        </td>
+                        <td className="py-2">
+                          <PermissionGuard permission="subject.subject.update">
+                            <Button
+                              className="min-h-8"
+                              size="sm"
+                              variant="outline"
+                              title="预约与工单执行共用；跳转至工单执行页编辑"
+                              onClick={() => navigate('/appointments')}
+                            >
+                              编辑
+                            </Button>
+                          </PermissionGuard>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-slate-500 pt-1">
+              接待看板签到/签出、SC 号、入组情况与 RD 与工单执行相互独立；未在看板签到时仅可选「缺席」「退出」。编辑预约请至工单执行页。
+            </p>
+            {displayQueuePageTotal > 1 && (
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-xs text-slate-500">
+                  共 {displayQueueTotal} 条，每页 {queuePageSize} 条{isSearchMode ? '（搜索模式）' : ''}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="min-h-8"
+                    disabled={queuePage <= 1}
+                    onClick={() => setQueuePage((p) => Math.max(1, p - 1))}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <span className="px-2 text-sm text-slate-600">{queuePage} / {displayQueuePageTotal}</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="min-h-8"
+                    disabled={queuePage >= displayQueuePageTotal}
+                    onClick={() => setQueuePage((p) => Math.min(displayQueuePageTotal, p + 1))}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </Card>
       <Card variant="bordered" title="待处理提醒">
         {alerts.length === 0 ? (
@@ -506,120 +823,6 @@ export default function ReceptionDashboardPage() {
           triggerLabel="开始叫号处理"
         />
       )}
-
-      <Card
-        variant="bordered"
-        title={queryDate === todayStr ? '今日队列' : `${displayDateText} 预约队列`}
-        extra={
-          <Button className="min-h-9" size="sm" variant="outline" onClick={handleExportQueue} disabled={queueTotal === 0}>
-            <Download className="w-4 h-4 mr-1" /> 导出
-          </Button>
-        }
-      >
-        {isLoading ? (
-          <p className="text-sm text-slate-400">加载中...</p>
-        ) : queue.length === 0 ? (
-          <Empty title={queryDate === todayStr ? '今日暂无预约' : '当日暂无预约'} />
-        ) : (
-          <div className="space-y-3">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-200">
-                    <th className="text-left py-2 font-medium text-slate-600">项目编号</th>
-                    <th className="text-left py-2 font-medium text-slate-600">SC号</th>
-                    <th className="text-left py-2 font-medium text-slate-600">受试者姓名</th>
-                    <th className="text-left py-2 font-medium text-slate-600">拼音首字母</th>
-                    <th className="text-left py-2 font-medium text-slate-600">性别</th>
-                    <th className="text-left py-2 font-medium text-slate-600">年龄</th>
-                    <th className="text-left py-2 font-medium text-slate-600">受试者编号</th>
-                    <th className="text-left py-2 font-medium text-slate-600">访视点</th>
-                    <th className="text-left py-2 font-medium text-slate-600">预约时间</th>
-                    <th className="text-left py-2 font-medium text-slate-600">签到/签出</th>
-                    <th className="text-left py-2 font-medium text-slate-600">状态</th>
-                    <th className="text-left py-2 font-medium text-slate-600">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {queue.map((item) => (
-                    <tr key={`${item.subject_id}-${item.appointment_time}-${item.appointment_id}`} className="border-b border-slate-100" data-stat="queue-item">
-                      <td className="py-2 text-slate-700">{item.project_code || '-'}</td>
-                      <td className="py-2 text-slate-700">{item.sc_number ?? '-'}</td>
-                      <td className="py-2 text-slate-700">{item.subject_name || '-'}</td>
-                      <td className="py-2 text-slate-600">{item.name_pinyin_initials ?? '-'}</td>
-                      <td className="py-2 text-slate-600">{item.gender ?? '-'}</td>
-                      <td className="py-2 text-slate-600">{item.age ?? '-'}</td>
-                      <td className="py-2 text-slate-700">{item.subject_no || '-'}</td>
-                      <td className="py-2 text-slate-600">{item.visit_point || '-'}</td>
-                      <td className="py-2 text-slate-600">{item.appointment_time || '-'}</td>
-                      <td className="py-2 text-slate-600">
-                        {item.checkin_time ? new Date(item.checkin_time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '-'}
-                        {' / '}
-                        {item.checkout_time ? new Date(item.checkout_time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '-'}
-                      </td>
-                      <td className="py-2">
-                        <Badge variant={TASK_BADGE_MAP[item.task_type]}>{TASK_LABEL_MAP[item.task_type]}</Badge>
-                        <span className="ml-1">{item.status === 'checked_in' ? '已签到' : item.status === 'checked_out' ? '已签出' : item.status === 'no_show' ? '缺席' : item.status === 'in_progress' ? '执行中' : '待签到'}</span>
-                      </td>
-                      <td className="py-2">
-                        {item.status === 'waiting' && (
-                          <PermissionGuard permission="reception.checkin.create">
-                            <Button className="min-h-8" size="sm" data-action="checkin" onClick={() => checkinMutation.mutate(item.subject_id)}>签到</Button>
-                          </PermissionGuard>
-                        )}
-                        {(item.status === 'checked_in' || item.status === 'in_progress') && item.checkin_id && (
-                          <>
-                            {item.task_type === 'pre_screening' && (
-                              <Button
-                                className="min-h-8 mr-1"
-                                size="sm"
-                                variant="outline"
-                                onClick={() => window.open(getWorkstationUrl('recruitment', `#/prescreening?subject_id=${item.subject_id}`), '_blank')}
-                              >
-                                发起粗筛
-                              </Button>
-                            )}
-                            {(item.task_type === 'visit' || item.task_type === 'screening' || item.task_type === 'extra_visit') && (
-                              <Button className="min-h-8 mr-1" size="sm" variant="outline" onClick={() => handleFlowcard(item.checkin_id!)}>打印流程卡</Button>
-                            )}
-                            <Button className="min-h-8" size="sm" variant="outline" data-action="checkout" onClick={() => checkoutMutation.mutate(item.checkin_id)}>签出</Button>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {queuePageTotal > 1 && (
-              <div className="flex items-center justify-between pt-2">
-                <span className="text-xs text-slate-500">共 {queueTotal} 条，每页 {queuePageSize} 条</span>
-                <div className="flex items-center gap-1">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="min-h-8"
-                    disabled={queuePage <= 1}
-                    onClick={() => setQueuePage((p) => Math.max(1, p - 1))}
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </Button>
-                  <span className="px-2 text-sm text-slate-600">{queuePage} / {queuePageTotal}</span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="min-h-8"
-                    disabled={queuePage >= queuePageTotal}
-                    onClick={() => setQueuePage((p) => Math.min(queuePageTotal, p + 1))}
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </Card>
       {canViewSupportTickets && (
         <Card variant="bordered" title="答疑工单SLA">
         {tickets.length === 0 ? (
@@ -678,6 +881,40 @@ export default function ReceptionDashboardPage() {
         )}
         </Card>
       )}
+      <Modal
+        open={!!checkinConfirmTarget}
+        onClose={() => !checkinMutation.isPending && setCheckinConfirmTarget(null)}
+        title="确认签到"
+        size="md"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" disabled={checkinMutation.isPending} onClick={() => setCheckinConfirmTarget(null)}>
+              取消
+            </Button>
+            <Button size="sm" disabled={checkinMutation.isPending} onClick={handleConfirmCheckin}>
+              {checkinMutation.isPending ? '提交中…' : '确认签到'}
+            </Button>
+          </div>
+        }
+      >
+        {checkinConfirmTarget ? (
+          <div className="space-y-4 text-sm text-slate-700">
+            <p className="text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              请核对以下信息与现场受试者是否一致。若<strong className="font-semibold">有误</strong>请点击「取消」，核实后再操作；若<strong className="font-semibold">无误</strong>请点击「确认签到」。
+            </p>
+            <dl className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-2">
+              <dt className="text-slate-500">姓名</dt>
+              <dd className="font-medium text-slate-900">{checkinConfirmTarget.subject_name || '—'}</dd>
+              <dt className="text-slate-500">手机号</dt>
+              <dd className="font-medium text-slate-900">{checkinConfirmTarget.phone?.trim() || '—'}</dd>
+              <dt className="text-slate-500">项目编号</dt>
+              <dd className="font-medium text-slate-900">{(checkinConfirmTarget.project_code || '').trim() || '—'}</dd>
+              <dt className="text-slate-500">访视点</dt>
+              <dd className="font-medium text-slate-900">{(checkinConfirmTarget.visit_point || '').trim() || '—'}</dd>
+            </dl>
+          </div>
+        ) : null}
+      </Modal>
       <Modal
         open={showCreateTicket}
         title="创建答疑工单"
@@ -803,30 +1040,6 @@ export default function ReceptionDashboardPage() {
             ))}
           </div>
         </div>
-      </Modal>
-      <Modal
-        open={showFlowcardProgress}
-        title="流程卡进度"
-        onClose={() => setShowFlowcardProgress(false)}
-        footer={<Button className="min-h-11" size="sm" variant="outline" onClick={() => setShowFlowcardProgress(false)}>关闭</Button>}
-      >
-        {!flowcardProgress ? (
-          <p className="text-sm text-slate-500">暂无进度数据</p>
-        ) : (
-          <div className="space-y-3">
-            <div className="text-sm text-slate-700">
-              总步骤 {flowcardProgress.total_steps}，已完成 {flowcardProgress.done_steps}，进度 {flowcardProgress.progress_percent}%
-            </div>
-            <div className="space-y-2 max-h-[320px] overflow-auto">
-              {flowcardProgress.steps.map((step) => (
-                <div key={step.sequence} className="border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                  <div className="font-medium text-slate-800">{step.sequence}. {step.title}</div>
-                  <div className="text-xs text-slate-500">{step.workorder_no} · {step.scheduled_date || '未排期'}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </Modal>
       {/* 临时到访补登 Modal */}
       <Modal

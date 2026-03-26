@@ -1,5 +1,4 @@
 import type { QueueItem } from '@cn-kis/api-client'
-import { getWorkstationUrl } from '@cn-kis/feishu-sdk'
 import { Badge, Button } from '@cn-kis/ui-kit'
 import { LogIn, LogOut, ClipboardCheck } from 'lucide-react'
 
@@ -21,7 +20,7 @@ const STATUS_CONFIG: Record<QueueItem['status'], { label: string; variant: 'defa
 
 interface ReceptionSubjectRowProps {
   item: QueueItem
-  onCheckin: (subjectId: number) => void
+  onCheckin: (subjectId: number, projectCode?: string) => void
   onCheckout: (checkinId: number) => void
 }
 
@@ -49,16 +48,9 @@ export default function ReceptionSubjectRow({ item, onCheckin, onCheckout }: Rec
           <span className="text-sm font-semibold text-slate-800 truncate">{item.subject_no}</span>
           <span className="text-sm text-slate-600 truncate">{item.subject_name}</span>
         </div>
-        <div className="text-xs text-slate-400 mt-0.5 space-y-0.5">
-          {(item.project_name || item.visit_point) && (
-            <p className="truncate" title={[item.project_name, item.visit_point].filter(Boolean).join(' · ')}>
-              {[item.project_name, item.visit_point].filter(Boolean).join(' · ')}
-            </p>
-          )}
-          {item.purpose && (
-            <p className="truncate">{item.purpose}</p>
-          )}
-        </div>
+        {item.purpose && (
+          <p className="text-xs text-slate-400 mt-0.5 truncate">{item.purpose}</p>
+        )}
       </div>
 
       {/* 任务类型 */}
@@ -74,7 +66,7 @@ export default function ReceptionSubjectRow({ item, onCheckin, onCheckout }: Rec
             variant="success"
             size="sm"
             icon={<LogIn />}
-            onClick={() => onCheckin(item.subject_id)}
+            onClick={() => onCheckin(item.subject_id, item.project_code)}
             data-action="checkin"
           >
             签到
@@ -88,7 +80,7 @@ export default function ReceptionSubjectRow({ item, onCheckin, onCheckout }: Rec
                 variant="secondary"
                 size="sm"
                 icon={<ClipboardCheck />}
-                onClick={() => window.open(getWorkstationUrl('recruitment', '#/prescreening'), '_blank')}
+                onClick={() => window.location.assign('#/recruitment/pre-screening')}
                 data-action="pre-screening"
                 className="!border-orange-500 !text-orange-600 hover:!bg-orange-50"
               >

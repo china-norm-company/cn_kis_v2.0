@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Card, DataTable, Badge, Button, Modal, Input, Select, type Column } from '@cn-kis/ui-kit'
 import { api } from '@cn-kis/api-client'
 import { PermissionGuard } from '@cn-kis/feishu-sdk'
-import { Plus, Search } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useState } from 'react'
 
 interface Expense {
@@ -13,22 +13,6 @@ interface Expense {
   amount: string | number
   approval_status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'reimbursed'
   description?: string
-  import_source?: 'manual' | 'ekuaibao'
-  ekuaibao_no?: string
-  import_batch_id?: string
-  // 业务关联字段
-  protocol_id?: number
-  project_name?: string
-  client_name?: string
-  cost_department?: string
-  expense_template?: string
-  linked_budget_no?: string
-  approval_chain?: Array<{
-    action: string
-    node_name: string
-    operator_name: string
-    time: string
-  }>
   [key: string]: unknown
 }
 
@@ -65,8 +49,6 @@ export function ExpenseListPage() {
   const [page, setPage] = useState(1)
   const pageSize = 20
   const [status, setStatus] = useState<string>('')
-  const [importSource, setImportSource] = useState<string>('')
-  const [keyword, setKeyword] = useState<string>('')
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState({
     request_no: '',
@@ -78,15 +60,10 @@ export function ExpenseListPage() {
   })
 
   const { data, isLoading } = useQuery({
-    queryKey: ['expenses', page, pageSize, status, importSource, keyword],
+    queryKey: ['expenses', page, pageSize, status],
     queryFn: () =>
       api.get<{ items: Expense[]; total: number }>('/finance/expenses/list', {
-        params: {
-          page, page_size: pageSize,
-          ...(status ? { status } : {}),
-          ...(importSource ? { import_source: importSource } : {}),
-          ...(keyword ? { keyword } : {}),
-        },
+        params: { page, page_size: pageSize, ...(status ? { status } : {}) },
       }),
   })
 
@@ -129,21 +106,11 @@ export function ExpenseListPage() {
 
   const columns: Column<Expense>[] = [
     { key: 'request_no', title: '申请单号', width: 140 },
-    {
-      key: 'import_source',
-      title: '来源',
-      width: 80,
-      render: (val) => (
-        val === 'ekuaibao'
-          ? <Badge variant="primary">易快报</Badge>
-          : <Badge variant="default">手动</Badge>
-      ),
-    },
-    { key: 'applicant_name', title: '申请人', width: 100 },
+    { key: 'applicant_name', title: '申请人', width: 120 },
     {
       key: 'expense_type',
       title: '费用类型',
-      width: 90,
+      width: 100,
       render: (val) => expenseTypeMap[val as string] ?? String(val),
     },
     {
@@ -156,96 +123,61 @@ export function ExpenseListPage() {
     {
       key: 'approval_status',
       title: '审批状态',
-      width: 90,
+      width: 100,
       render: (val) => {
         const info = statusMap[val as string]
         return info ? <Badge variant={info.variant}>{info.label}</Badge> : '-'
       },
     },
-    {
-      key: 'description',
-      title: '业务说明',
-      render: (val, row) => {
-        const parts: string[] = []
-        if (row?.client_name) parts.push(row.client_name as string)
-        if (row?.project_name) parts.push(row.project_name as string)
-        if (row?.cost_department) parts.push(row.cost_department as string)
-        const ekbNo = row?.ekuaibao_no
-        return (
-          <div className="text-xs">
-            {parts.length > 0 && (
-              <div className="text-slate-600 font-medium">{parts.join(' / ')}</div>
-            )}
-            <div className="text-slate-400 truncate max-w-[200px]">
-              {val ? String(val).replace(/ \| (项目|客户|部门|模板):.*/g, '') : '-'}
-              {ekbNo && row?.import_source === 'ekuaibao' && (
-                <span className="ml-1 text-blue-400">({ekbNo})</span>
-              )}
-            </div>
-            {row?.expense_template && (
-              <div className="text-slate-300 text-[10px]">{row.expense_template as string}</div>
-            )}
-          </div>
-        )
-      },
-    },
+    { key: 'description', title: '说明', render: (val) => (val ? String(val) : '-') },
     {
       key: 'actions',
       title: '操作',
       width: 180,
-      render: (_, row) => {
-        const isEkb = row.import_source === 'ekuaibao'
-        return (
-          <div className="flex gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
-            {isEkb ? (
-              <span className="text-xs text-slate-400">只读（易快报导入）</span>
-            ) : (
-              <>
-                {row.approval_status === 'draft' && (
-                  <Button
-                    variant="secondary"
-                    size="xs"
-                    onClick={() => submitMutation.mutate(row.id)}
-                    disabled={submitMutation.isPending}
-                  >
-                    提交
-                  </Button>
-                )}
-                {row.approval_status === 'submitted' && (
-                  <>
-                    <Button
-                      variant="primary"
-                      size="xs"
-                      onClick={() => approveMutation.mutate(row.id)}
-                      disabled={approveMutation.isPending}
-                    >
-                      审批
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="xs"
-                      onClick={() => rejectMutation.mutate(row.id)}
-                      disabled={rejectMutation.isPending}
-                    >
-                      拒绝
-                    </Button>
-                  </>
-                )}
-                {row.approval_status === 'approved' && (
-                  <Button
-                    variant="success"
-                    size="xs"
-                    onClick={() => reimburseMutation.mutate(row.id)}
-                    disabled={reimburseMutation.isPending}
-                  >
-                    报销
-                  </Button>
-                )}
-              </>
-            )}
-          </div>
-        )
-      },
+      render: (_, row) => (
+        <div className="flex gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
+          {row.approval_status === 'draft' && (
+            <Button
+              variant="secondary"
+              size="xs"
+              onClick={() => submitMutation.mutate(row.id)}
+              disabled={submitMutation.isPending}
+            >
+              提交
+            </Button>
+          )}
+          {row.approval_status === 'submitted' && (
+            <>
+              <Button
+                variant="primary"
+                size="xs"
+                onClick={() => approveMutation.mutate(row.id)}
+                disabled={approveMutation.isPending}
+              >
+                审批
+              </Button>
+              <Button
+                variant="danger"
+                size="xs"
+                onClick={() => rejectMutation.mutate(row.id)}
+                disabled={rejectMutation.isPending}
+              >
+                拒绝
+              </Button>
+            </>
+          )}
+          {row.approval_status === 'approved' && (
+            <Button
+              variant="success"
+              size="xs"
+              onClick={() => reimburseMutation.mutate(row.id)}
+              disabled={reimburseMutation.isPending}
+            >
+              报销
+            </Button>
+          )}
+        </div>
+      ),
     },
   ]
 
@@ -260,40 +192,21 @@ export function ExpenseListPage() {
         </PermissionGuard>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1 flex-wrap">
+      <div className="flex gap-2 overflow-x-auto pb-1">
         <Select
           options={[
             { value: '', label: '全部状态' },
             ...Object.entries(statusMap).map(([k, v]) => ({ value: k, label: v.label })),
           ]}
           value={status}
-          onChange={(e) => { setStatus(e.target.value); setPage(1) }}
+          onChange={(e) => setStatus(e.target.value)}
           className="w-36 min-h-11 shrink-0"
         />
-        <Select
-          options={[
-            { value: '', label: '全部来源' },
-            { value: 'manual', label: '手动录入' },
-            { value: 'ekuaibao', label: '易快报导入' },
-          ]}
-          value={importSource}
-          onChange={(e) => { setImportSource(e.target.value); setPage(1) }}
-          className="w-36 min-h-11 shrink-0"
-        />
-        <div className="relative shrink-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            className="h-11 pl-9 pr-3 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-52"
-            placeholder="搜索单号/申请人/说明"
-            value={keyword}
-            onChange={(e) => { setKeyword(e.target.value); setPage(1) }}
-          />
-        </div>
       </div>
 
       <Card>
         <div className="overflow-x-auto p-1">
-          <div className="min-w-[1100px]">
+          <div className="min-w-[920px]">
           <DataTable<Expense>
             columns={columns}
             data={items}

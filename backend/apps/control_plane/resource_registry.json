@@ -519,7 +519,7 @@
       "type": "identity_service",
       "subtype": "feishu_oauth_app",
       "zone": "身份与协同域",
-      "location": "cli_a98b0babd020500e",
+      "location": "cli_a907f21f0723dbce",
       "owner": "平台组",
       "status": "active",
       "risk_level": "medium",

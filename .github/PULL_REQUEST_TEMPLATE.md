@@ -14,6 +14,22 @@ Closes #
 - 涉及接口：
 - 涉及数据库迁移：[ ] 是  [ ] 否
 
+### 工作台上线波次
+
+> 本 PR 所属工作台当前处于哪个上线波次？（参考 `docs/WORKSTATION_LAUNCH_WAVES.md`）
+
+[ ] **Wave A — 可推广**（secretary / research / recruitment / admin）
+[ ] **Wave B — 试点陪跑**（execution / quality / finance / digital-workforce）
+[ ] **Wave C — 继续建设**（其余工作台）
+[ ] **中枢台联动**（同时涉及 secretary + admin + digital-workforce + control-plane 中的 ≥2 个）
+[ ] **基础设施/公共**（CI/CD、配置、文档，不直接归属某个工作台）
+
+### 角色价值验证（Wave A/B 必填，Wave C 可选）
+
+- 本 PR 服务的第一角色：（如：项目经理、招募专员）
+- 该角色的受益场景：（如：30 秒内看到今日待跟进受试者清单）
+- 验证方式：（如：截图 / curl 输出 / Django shell 验证）
+
 ### V2 迁移波次
 
 [ ] Wave 0 — 治理底座  

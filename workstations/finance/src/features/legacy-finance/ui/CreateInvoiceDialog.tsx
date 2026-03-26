@@ -46,7 +46,7 @@ const createInvoiceSchema = z.object({
   invoice_currency: z.string().optional(),
   invoice_amount_tax_included: z.number().optional(),
   revenue_amount: z.number().min(0.01, "收入金额必须大于0"),
-  invoice_type: z.enum(["专票", "普票", "全电专票", "全电普票"]),
+  invoice_type: z.enum(["全电专票", "全电普票", "形式发票"]),
   company_name: z.string().min(1, "我司名称不能为空"),
   project_code: z.string().min(1, "项目编号不能为空"),
   project_id: z.number().optional(),
@@ -87,8 +87,8 @@ export function CreateInvoiceDialog({ open, onOpenChange, onSuccess, invoiceRequ
       invoice_currency: "CNY",
       invoice_amount_tax_included: undefined,
       revenue_amount: 0,
-      invoice_type: "专票",
-      company_name: "复硕咨询",
+      invoice_type: "全电专票",
+      company_name: "复硕正态",
       project_code: "",
       project_id: undefined,
       po: "",
@@ -561,10 +561,9 @@ export function CreateInvoiceDialog({ open, onOpenChange, onSuccess, invoiceRequ
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="专票">专票</SelectItem>
-                        <SelectItem value="普票">普票</SelectItem>
                         <SelectItem value="全电专票">全电专票</SelectItem>
                         <SelectItem value="全电普票">全电普票</SelectItem>
+                        <SelectItem value="形式发票">形式发票</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -579,7 +578,7 @@ export function CreateInvoiceDialog({ open, onOpenChange, onSuccess, invoiceRequ
                   <FormItem>
                     <FormLabel>我司名称 *</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="如：复硕咨询" />
+                      <Input {...field} placeholder="如：复硕正态" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

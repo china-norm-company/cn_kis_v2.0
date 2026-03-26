@@ -53,17 +53,6 @@ export default function ReceptionDisplayPage() {
             <div className="text-slate-300 mt-2">已完成</div>
           </div>
         </div>
-        {board.checkin_qrcode?.content && (
-          <div className="flex flex-col items-center justify-center rounded-2xl bg-white/5 backdrop-blur p-6 border border-white/10 mb-8">
-            <div className="text-lg font-semibold text-slate-200 mb-3">扫码签到/签出</div>
-            <img
-              src={`/api/v1/qrcode/image?data=${encodeURIComponent(board.checkin_qrcode.content)}`}
-              alt="签到二维码"
-              className="w-44 h-44 md:w-52 md:h-52 rounded-lg bg-white p-2"
-            />
-            <div className="text-sm text-slate-400 mt-3">本码当日有效，请到场后扫码</div>
-          </div>
-        )}
 
         <div className="grid grid-cols-2 gap-8">
           {/* 正在服务 */}

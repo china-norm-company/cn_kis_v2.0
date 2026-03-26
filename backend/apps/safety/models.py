@@ -12,9 +12,11 @@ from django.db import models
 
 
 class AESeverity(models.TextChoices):
-    MILD = 'mild', '轻度'
+    """与线下《不良事件报告表》及小程序选项对齐：轻微 / 中度 / 严重 / 非常严重。"""
+    MILD = 'mild', '轻微'
     MODERATE = 'moderate', '中度'
-    SEVERE = 'severe', '重度'
+    SEVERE = 'severe', '严重'
+    VERY_SEVERE = 'very_severe', '非常严重'
 
 
 class AERelation(models.TextChoices):

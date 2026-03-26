@@ -160,69 +160,61 @@ const realNotificationService = {
   sendInvoiceCreatedNotification: async (
     invoice: Invoice,
     options?: NotificationOptions
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     try {
       const recipient = options?.recipient || invoice.sales_manager || '商务人员';
       const channels = options?.channels || ['feishu', 'system'];
       const content = generateInvoiceNotificationContent(invoice);
 
-      // 优先尝试直接调用飞书API（如果配置了）
+      // real 模式下飞书通知优先走后端（智能开发助手发消息），避免前端凭证与白名单问题
+      let feishuSent = false;
       if (channels.includes('feishu')) {
         try {
-          const success = await sendFeishuMessage(recipient, content, {
-            recipientType: 'name',
-          });
-          if (success) {
-            console.log('[通知服务] 飞书消息已发送:', { invoice_id: invoice.id, recipient });
-          } else {
-            console.warn('[通知服务] 飞书消息发送失败，尝试后端API');
-            // 如果飞书发送失败，尝试后端API
-            throw new Error('Feishu message failed, fallback to backend API');
-          }
-        } catch (error) {
-          // 如果直接调用飞书失败，尝试后端API
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          console.warn('[通知服务] 直接调用飞书API失败，使用后端API:', errorMessage);
-          
-          // 检查是否是IP白名单错误
-          if (errorMessage.includes('denied by app setting') || errorMessage.includes('ip')) {
-            console.warn('[通知服务] ⚠️ 检测到IP白名单限制，尝试通过后端API发送（后端服务器IP应在白名单中）');
-          }
-          
-          try {
-            await apiClient.post('/finance/notifications/invoice-created', {
+          const res = await apiClient.post<{ code: number; msg?: string; data?: { sent: boolean; error_code?: string; error_detail?: string } }>(
+            '/finance/notifications/invoice-created',
+            {
               invoice_id: invoice.id,
               recipient,
               channels,
               content,
               electronic_invoice_file: invoice.electronic_invoice_file,
               electronic_invoice_file_name: invoice.electronic_invoice_file_name,
-            });
-          } catch (backendError) {
-            console.error('[通知服务] ❌ 后端API也失败:', backendError);
-            console.error('[通知服务] 提示：如果后端服务器未运行，请：');
-            console.error('  1. 启动后端服务器，或');
-            console.error('  2. 在飞书开放平台添加当前IP到白名单，或');
-            console.error('  3. 使用Mock模式测试（VITE_API_MODE=mock）');
-            // 不抛出错误，避免影响发票创建流程
+            }
+          );
+          // 后端返回格式: { data: { code, msg, data: { sent, error_code? } } } 或直接 body
+          const body = (res as any)?.data ?? res;
+          const sent = body?.data?.sent === true;
+          if (sent) {
+            feishuSent = true;
+            console.log('[通知服务] 飞书消息已发送（后端·智能开发助手）:', { invoice_id: invoice.id, recipient });
+          } else {
+            const errCode = body?.data?.error_code || body?.error_code;
+            const errDetail = body?.data?.error_detail || body?.error_detail;
+            console.warn('[通知服务] 后端未发送成功', errCode ? `(原因: ${errCode})` : '', errDetail ? ` 飞书返回: ${errDetail}` : '', '，尝试前端飞书API');
+            const fallbackOk = await sendFeishuMessage(recipient, content, { recipientType: 'name' });
+            if (fallbackOk) feishuSent = true;
+          }
+        } catch (backendError) {
+          const errMsg = backendError instanceof Error ? backendError.message : String(backendError);
+          console.warn('[通知服务] 后端通知接口失败，尝试前端飞书API:', errMsg);
+          try {
+            const success = await sendFeishuMessage(recipient, content, { recipientType: 'name' });
+            if (success) feishuSent = true;
+          } catch (_) {
+            console.error('[通知服务] 飞书通知发送失败，请确认后端已配置 FEISHU_APP_ID_DEV_ASSISTANT 并已启动');
           }
         }
-      } else {
-        // 如果没有飞书渠道，直接调用后端API
-        await apiClient.post('/finance/notifications/invoice-created', {
-          invoice_id: invoice.id,
-          recipient,
-          channels,
-          content,
-          electronic_invoice_file: invoice.electronic_invoice_file,
-          electronic_invoice_file_name: invoice.electronic_invoice_file_name,
-        });
       }
 
-      console.log('[通知服务] 开票通知已发送:', { invoice_id: invoice.id, recipient, channels });
+      if (feishuSent) {
+        console.log('[通知服务] 开票通知已发送:', { invoice_id: invoice.id, recipient, channels });
+      } else if (channels.includes('feishu')) {
+        console.warn('[通知服务] 开票通知未成功发送到飞书，请检查后端日志或接收人「' + recipient + '」是否可解析为飞书用户');
+      }
+      return feishuSent;
     } catch (error) {
       console.error('[通知服务] 发送开票通知失败:', error);
-      // 不抛出错误，避免影响发票创建流程
+      return false;
     }
   },
 
@@ -306,23 +298,24 @@ const realNotificationService = {
 
 /**
  * 发送开票通知
+ * @returns 是否成功发送到飞书（real 模式下为后端/前端飞书发送结果，mock 为 true）
  */
 export async function sendInvoiceCreatedNotification(
   invoice: Invoice,
   options?: NotificationOptions
-): Promise<void> {
+): Promise<boolean> {
   try {
     const apiMode = getApiMode();
     console.log('[通知服务] 开始发送开票通知，API模式:', apiMode);
     
     if (apiMode === 'real') {
-      await realNotificationService.sendInvoiceCreatedNotification(invoice, options);
-    } else {
-      await mockNotificationService.sendInvoiceCreatedNotification(invoice, options);
+      return await realNotificationService.sendInvoiceCreatedNotification(invoice, options);
     }
+    await mockNotificationService.sendInvoiceCreatedNotification(invoice, options);
+    return true;
   } catch (error) {
     console.error('[通知服务] 发送开票通知时发生异常:', error);
-    // 不抛出错误，避免影响业务流程
+    return false;
   }
 }
 

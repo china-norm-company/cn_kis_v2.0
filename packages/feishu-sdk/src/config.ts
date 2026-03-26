@@ -3,8 +3,8 @@ import type { FeishuAuthConfig } from './auth'
 /** 火山云重定向源（固定域名），不随本机/本地环境变化，避免 20029 */
 const VOLCENGINE_REDIRECT_BASE = 'http://118.196.64.48'
 
-/** 子衿（秘书台）统一 App ID，开发环境下未配置 VITE_FEISHU_APP_ID 时回退使用，与 docs/CONFIG_MANAGEMENT.md 一致 */
-const PRIMARY_APP_ID_FALLBACK = 'cli_a907f21f0723dbce'
+/** 开发环境未配置 VITE_FEISHU_APP_ID 时回退（子衿）；须与 backend/.env 的 FEISHU_APP_ID 一致，否则换 token 会 20024 invalid_grant */
+const PRIMARY_APP_ID_FALLBACK = 'cli_a98b0babd020500e'
 
 export function createWorkstationFeishuConfig(workstation: string): FeishuAuthConfig {
   const devBypass = (import.meta as any).env?.VITE_DEV_AUTH_BYPASS === '1'
@@ -37,9 +37,8 @@ export function createWorkstationFeishuConfig(workstation: string): FeishuAuthCo
   } else if (redirectOverride && redirectOverride.startsWith('/')) {
     // 路径形式：与 base 拼接，便于本地开发配置（如 base=localhost:3001, uri=/secretary/）
     redirectUri = `${baseNorm}${redirectOverride.startsWith('/') ? '' : '/'}${redirectOverride}`
-  } else if (normalized === 'secretary') {
-    redirectUri = `${baseNorm}/login`
   } else {
+    // 须与 Vite `base`（如 /secretary/）及飞书开放平台「重定向 URL」完全一致，否则授权页报 20029
     redirectUri = `${baseNorm}/${normalized}/`
   }
 

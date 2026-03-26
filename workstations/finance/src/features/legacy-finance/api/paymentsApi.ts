@@ -51,6 +51,83 @@ interface PaymentListResponse {
   current_page: number;
 }
 
+/** Django 后端 finance._payment_to_dict（合同回款 t_payment） */
+interface BackendPaymentRow {
+  id: number;
+  code?: string;
+  invoice_id?: number;
+  invoice_code?: string;
+  client?: string;
+  expected_amount?: string;
+  actual_amount?: string;
+  payment_date?: string;
+  method?: string;
+  status?: string;
+  days_overdue?: number;
+  create_time?: string;
+}
+
+interface BackendPaymentListPayload {
+  items: BackendPaymentRow[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+function normalizeFinanceListPayload(res: { data: unknown }): BackendPaymentListPayload {
+  const d = res.data as unknown;
+  if (d && typeof d === "object" && "items" in (d as object)) {
+    return d as BackendPaymentListPayload;
+  }
+  const wrapped = d as { data?: BackendPaymentListPayload };
+  if (wrapped?.data) {
+    return wrapped.data;
+  }
+  return { items: [], total: 0, page: 1, page_size: 20 };
+}
+
+function mapBackendPaymentRow(item: BackendPaymentRow): Payment {
+  const expected = parseFloat(String(item.expected_amount ?? 0)) || 0;
+  const rawActual = item.actual_amount;
+  const actualNum =
+    rawActual === "" || rawActual === null || rawActual === undefined
+      ? 0
+      : parseFloat(String(rawActual)) || 0;
+  const statusRaw = item.status || "expected";
+  const matchStatus: PaymentStatus =
+    statusRaw === "full"
+      ? "completed"
+      : statusRaw === "partial"
+        ? "partial"
+        : "pending";
+  return {
+    id: item.id,
+    payment_date: item.payment_date || "",
+    payment_amount: actualNum,
+    payment_method: item.method,
+    invoice_id: item.invoice_id,
+    invoice_no: item.invoice_code,
+    match_status: matchStatus,
+    matched_amount: actualNum,
+    remaining_amount: Math.max(0, expected - actualNum),
+    customer_name: item.client,
+    created_at: item.create_time || "",
+    updated_at: item.create_time || "",
+  };
+}
+
+function normalizeFinanceDetailPayload(res: { data: unknown }): BackendPaymentRow | null {
+  const d = res.data as unknown;
+  if (d && typeof d === "object" && "id" in (d as object)) {
+    const o = d as BackendPaymentRow;
+    if ("expected_amount" in o || "invoice_id" in o) {
+      return o;
+    }
+  }
+  const wrapped = d as { data?: BackendPaymentRow };
+  return wrapped?.data ?? null;
+}
+
 export interface CreatePaymentRequest {
   payment_date: string;
   payment_amount: number;
@@ -875,35 +952,18 @@ export const paymentsApi = {
     callWithMock(
       "finance.payments.list",
       async () => {
-        const response = await apiClient.get<PaymentListResponse>("/finance/payments", {
+        const response = await apiClient.get<BackendPaymentListPayload>("/finance/payments/list", {
           params: params as Record<string, unknown>,
         });
-        
-        const payments: Payment[] = response.data.payments.map((item) => ({
-          id: item.id,
-          payment_date: item.payment_date,
-          payment_amount: item.payment_amount,
-          payment_method: item.payment_method,
-          bank_account: item.bank_account,
-          payment_reference: item.payment_reference,
-          remark: item.remark,
-          invoice_id: item.invoice_id,
-          invoice_no: item.invoice_no,
-          project_code: item.project_code,
-          match_status: item.match_status as PaymentStatus,
-          matched_amount: item.matched_amount,
-          remaining_amount: item.remaining_amount,
-          customer_name: item.customer_name,
-          sales_manager: item.sales_manager,
-          created_at: item.created_at,
-          updated_at: item.updated_at,
-        }));
-        
+        const inner = normalizeFinanceListPayload(response);
+        const pageSize = inner.page_size || 20;
+        const totalPages = Math.max(1, Math.ceil((inner.total || 0) / pageSize));
+        const payments: Payment[] = (inner.items || []).map(mapBackendPaymentRow);
         return {
           payments,
-          total_records: response.data.total_records,
-          total_pages: response.data.total_pages,
-          current_page: response.data.current_page,
+          total_records: inner.total,
+          total_pages: totalPages,
+          current_page: inner.page,
         };
       },
       () => mockPaymentsApi.getPayments(params)
@@ -913,9 +973,12 @@ export const paymentsApi = {
     callWithMock(
       "finance.payments.getById",
       async () => {
-        const response = await apiClient.get<PaymentResponse>(`/finance/payments/${id}`);
-        // 映射逻辑同 getPayments
-        return response.data as unknown as Payment;
+        const response = await apiClient.get<BackendPaymentRow>(`/finance/payments/${id}`);
+        const row = normalizeFinanceDetailPayload(response);
+        if (!row) {
+          throw new Error("回款不存在");
+        }
+        return mapBackendPaymentRow(row);
       },
       () => mockPaymentsApi.getPaymentById(id)
     ),
@@ -924,8 +987,12 @@ export const paymentsApi = {
     callWithMock(
       "finance.payments.create",
       async () => {
-        const response = await apiClient.post<PaymentResponse>("/finance/payments", data);
-        return response.data as unknown as Payment;
+        const response = await apiClient.post<BackendPaymentRow>("/finance/payments/create", data);
+        const row = normalizeFinanceDetailPayload(response);
+        if (!row) {
+          throw new Error("创建回款失败");
+        }
+        return mapBackendPaymentRow(row);
       },
       () => mockPaymentsApi.createPayment(data)
     ),
@@ -935,8 +1002,12 @@ export const paymentsApi = {
       "finance.payments.update",
       async () => {
         const { id, ...updateData } = data;
-        const response = await apiClient.put<PaymentResponse>(`/finance/payments/${id}`, updateData);
-        return response.data as unknown as Payment;
+        const response = await apiClient.put<BackendPaymentRow>(`/finance/payments/${id}`, updateData);
+        const row = normalizeFinanceDetailPayload(response);
+        if (!row) {
+          throw new Error("更新回款失败");
+        }
+        return mapBackendPaymentRow(row);
       },
       () => mockPaymentsApi.updatePayment(data)
     ),

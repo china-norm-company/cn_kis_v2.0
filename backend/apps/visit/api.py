@@ -465,6 +465,45 @@ def _demand_to_dict(d) -> dict:
     }
 
 
+class ResourceDemandRejectIn(Schema):
+    reject_reason: Optional[str] = None
+
+
+@router.get('/demands/list', summary='资源需求列表（执行台审核）')
+@require_permission('visit.demand.read')
+def list_resource_demands_for_approval(request, page: int = 1, page_size: int = 20):
+    """分页返回待审核等资源需求行，字段与执行台 ResourceApprovalRow 对齐。"""
+    from django.core.paginator import Paginator
+    from apps.visit.models import ResourceDemand, ResourceDemandStatus
+
+    qs = ResourceDemand.objects.filter(
+        status=ResourceDemandStatus.SUBMITTED,
+    ).select_related('visit_plan', 'visit_plan__protocol').order_by('-create_time')
+    paginator = Paginator(qs, page_size)
+    page_obj = paginator.get_page(page)
+    items = []
+    for d in page_obj.object_list:
+        plan = d.visit_plan
+        proto = plan.protocol if plan else None
+        node_count = plan.nodes.count() if plan else 0
+        items.append({
+            'demand_id': d.id,
+            'visit_plan_id': plan.id if plan else 0,
+            'visit_plan_name': plan.name if plan else '',
+            'status': d.status,
+            'protocol_id': proto.id if proto else 0,
+            'protocol_code': (proto.code if proto else '') or '',
+            'protocol_title': proto.title if proto else '',
+            'client': '',
+            'sample_size': proto.sample_size if proto and proto.sample_size is not None else 0,
+            'visit_node_count': node_count,
+            'window_summary': '',
+            'execution_period': '',
+            'schedule_progress': '',
+        })
+    return {'code': 200, 'msg': 'OK', 'data': {'items': items, 'total': paginator.count}}
+
+
 @router.post('/demands/generate', summary='生成资源需求计划')
 @require_permission('visit.demand.create')
 def generate_resource_demand(request, plan_id: int):
@@ -515,6 +554,18 @@ def approve_resource_demand(request, demand_id: int):
     except ValueError as e:
         return 400, {'code': 400, 'msg': str(e), 'data': None}
     return {'code': 200, 'msg': '资源需求审批通过', 'data': _demand_to_dict(demand)}
+
+
+@router.post('/demands/{demand_id}/reject', summary='拒绝资源需求')
+@require_permission('visit.demand.approve')
+def reject_resource_demand(request, demand_id: int, data: ResourceDemandRejectIn):
+    from apps.visit.services.resource_demand_service import ResourceDemandService
+    try:
+        demand = ResourceDemandService.reject_demand(demand_id)
+    except ValueError as e:
+        return 400, {'code': 400, 'msg': str(e), 'data': None}
+    _ = (data.reject_reason or '')
+    return {'code': 200, 'msg': '资源需求已拒绝', 'data': _demand_to_dict(demand)}
 
 
 # ============================================================================

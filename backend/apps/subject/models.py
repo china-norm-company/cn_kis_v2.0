@@ -81,6 +81,14 @@ class Subject(models.Model):
             models.Index(fields=['phone']),
             models.Index(fields=['subject_no']),
         ]
+        constraints = [
+            # PostgreSQL：部分唯一索引。未删除且手机号非空时，phone 唯一（空手机号可同时多条，如历史占位）。
+            models.UniqueConstraint(
+                fields=['phone'],
+                condition=models.Q(is_deleted=False) & ~models.Q(phone=''),
+                name='subject_phone_active_uniq',
+            ),
+        ]
 
     # P0: 受试者编号（全局唯一，格式 SUB-YYYYMM-NNNN）
     subject_no = models.CharField(

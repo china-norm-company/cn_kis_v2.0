@@ -1,0 +1,352 @@
+$primary: #2B6CB0;
+
+.report-page {
+  padding: 24px 32px;
+  min-height: 100vh;
+  background: #f7fafc;
+  box-sizing: border-box;
+}
+
+.report-enroll-hint {
+  display: block;
+  font-size: 28px;
+  color: #4a5568;
+  line-height: 1.5;
+  margin-top: 8px;
+}
+
+.report-enroll-warning {
+  margin-top: 12px;
+  padding: 16px 20px;
+  background: #fff5f5;
+  border-radius: 12px;
+  border: 1px solid #feb2b2;
+}
+
+.report-enroll-warning__text {
+  font-size: 26px;
+  color: #c53030;
+  line-height: 1.55;
+}
+
+/* 成功状态 */
+.success-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 120px 40px;
+}
+
+.success-icon {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: #c6f6d5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 32px;
+}
+
+.success-icon-text {
+  font-size: 64px;
+  color: #276749;
+  font-weight: 700;
+}
+
+.success-title {
+  display: block;
+  font-size: 36px;
+  font-weight: 700;
+  color: #1a202c;
+  margin-bottom: 16px;
+}
+
+.success-desc {
+  display: block;
+  font-size: 28px;
+  color: #718096;
+  text-align: center;
+  line-height: 1.8;
+  margin-bottom: 48px;
+}
+
+/* 表单头部 */
+.form-header {
+  padding: 16px 0 24px;
+}
+
+.form-title {
+  display: block;
+  font-size: 36px;
+  font-weight: 700;
+  color: #1a202c;
+}
+
+.form-desc {
+  display: block;
+  font-size: 26px;
+  color: #718096;
+  margin-top: 8px;
+}
+
+/* 表单卡片 */
+.form-card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 32px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.field-label {
+  display: block;
+  font-size: 28px;
+  font-weight: 600;
+  color: #1a202c;
+  margin-bottom: 20px;
+}
+
+.required-mark {
+  color: #e53e3e;
+}
+
+/* 症状输入 */
+.symptom-textarea {
+  width: 100%;
+  min-height: 200px;
+  padding: 20px 24px;
+  background: #f7fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  font-size: 28px;
+  color: #1a202c;
+  box-sizing: border-box;
+  line-height: 1.6;
+}
+
+.char-count {
+  display: block;
+  text-align: right;
+  font-size: 22px;
+  color: #a0aec0;
+  margin-top: 8px;
+}
+
+/* 严重程度 */
+.severity-options {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.severity-item {
+  display: flex;
+  align-items: center;
+  padding: 24px;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fafafa;
+}
+
+.severity-active {
+  border-color: $primary;
+  background: #ebf4ff;
+}
+
+.severity-content {
+  margin-left: 12px;
+}
+
+.severity-label {
+  display: block;
+  font-size: 28px;
+  font-weight: 500;
+  color: #1a202c;
+}
+
+.severity-desc {
+  display: block;
+  font-size: 22px;
+  color: #718096;
+  margin-top: 4px;
+}
+
+/* 日期选择 */
+.date-picker {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fafafa;
+}
+
+.date-text {
+  font-size: 28px;
+  color: #1a202c;
+}
+
+.date-placeholder {
+  color: #a0aec0;
+}
+
+.date-arrow {
+  font-size: 36px;
+  color: #cbd5e0;
+}
+
+/* 提示卡片 */
+.notice-card {
+  display: flex;
+  align-items: flex-start;
+  padding: 24px;
+  background: #ebf4ff;
+  border-radius: 12px;
+  margin-bottom: 32px;
+}
+
+.notice-icon {
+  font-size: 32px;
+  margin-right: 12px;
+  color: $primary;
+  flex-shrink: 0;
+}
+
+.notice-text {
+  font-size: 24px;
+  color: #2a4365;
+  line-height: 1.6;
+}
+
+/* 底部按钮 */
+.form-footer {
+  padding: 16px 0 32px;
+}
+
+.btn-primary {
+  background: $primary;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  padding: 24px 0;
+  font-size: 32px;
+  font-weight: 500;
+  text-align: center;
+  width: 100%;
+
+  &::after {
+    border: none;
+  }
+
+  &[disabled] {
+    opacity: 0.5;
+  }
+}
+
+.report-history-loading {
+  padding: 40px;
+  text-align: center;
+}
+
+.report-history-loading__text {
+  color: #999;
+}
+
+.report-history-empty {
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.report-history-empty__text {
+  color: #999;
+  font-size: 14px;
+}
+
+.report-history-card {
+  margin-bottom: 12px;
+}
+
+.report-history-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.report-history-main {
+  flex: 1;
+}
+
+.report-history-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.report-history-sae {
+  background: #e53e3e;
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.report-history-status {
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  background: #999;
+}
+
+.report-history-status--reported { background: #ecc94b; }
+.report-history-status--under_review { background: #4299e1; }
+.report-history-status--approved { background: #48bb78; }
+.report-history-status--following { background: #ed8936; }
+.report-history-status--closed { background: #a0aec0; }
+
+.report-history-date {
+  font-size: 12px;
+  color: #999;
+}
+
+.report-history-desc {
+  font-size: 14px;
+  color: #333;
+  line-height: 20px;
+}
+
+.report-history-extra {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.report-history-extra-text {
+  font-size: 12px;
+  color: #666;
+}
+
+.report-history-tip {
+  color: #ccc;
+  font-size: 12px;
+  margin-left: 8px;
+}
+
+.report-history-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.report-history-entry__label {
+  margin-bottom: 0;
+}
+
+.report-history-entry__arrow {
+  color: #999;
+  font-size: 14px;
+}

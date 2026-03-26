@@ -414,6 +414,22 @@ class FeishuClient:
             receive_id_type='chat_id',
         )
 
+    def list_bot_chats(
+        self,
+        page_size: int = 50,
+        page_token: str = None,
+    ) -> Dict[str, Any]:
+        """
+        获取当前应用机器人所在的群聊列表（分页）。
+
+        使用 tenant_access_token。用于解析群名称对应的 chat_id（如配置 FEISHU_NOTIFICATION_CHAT_ID）。
+        参见：GET /open-apis/im/v1/chats
+        """
+        params: Dict[str, Any] = {'page_size': min(page_size, 50)}
+        if page_token:
+            params['page_token'] = page_token
+        return self._request('GET', 'im/v1/chats', params=params)
+
     # ========================================================================
     # 审批 API（approval/v4）
     # ========================================================================

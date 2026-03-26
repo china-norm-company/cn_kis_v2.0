@@ -61,12 +61,12 @@ export function useCreateInvoice() {
         recipient: invoice.sales_manager,
         channels: ['feishu', 'system'],
       })
-        .then(() => {
-          console.log('[创建发票] ✅ 开票通知发送成功');
+        .then(sent => {
+          if (sent) console.log('[创建发票] ✅ 开票通知发送成功');
+          else console.warn('[创建发票] 开票通知未成功发送到飞书，请查看控制台或后端日志');
         })
         .catch(error => {
           console.error('[创建发票] ❌ 开票通知发送失败:', error);
-          // 不影响发票创建，只记录错误
         });
       
       return invoice;
@@ -102,6 +102,7 @@ export function useUpdateInvoice() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["invoice", variables.id] });
+      queryClient.invalidateQueries({ queryKey: ["invoice-requests"] });
       toast({
         title: "更新成功",
         description: "发票已更新",

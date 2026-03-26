@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { materialApi } from '@cn-kis/api-client'
 import type { ProductKitItem, ProductDispensingItem, ProductItem, ProductBatchItem } from '@cn-kis/api-client'
-import { Package, Plus, Search, ChevronLeft, ChevronRight, X, ClipboardList } from 'lucide-react'
 import { PermissionGuard } from '@cn-kis/feishu-sdk'
+import { Package, Plus, Search, ChevronLeft, ChevronRight, X, ClipboardList, Send } from 'lucide-react'
+import { SubjectReturnTab } from './sample-distribution/SubjectReturnTab'
 
 const KIT_STATUS_STYLES: Record<string, string> = {
   available: 'bg-green-50 text-green-700 border-green-200',
@@ -41,7 +42,7 @@ const DISPENSING_STATUS_LABELS: Record<string, string> = {
 
 export function KitDispensingPage() {
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = useState<'kits' | 'dispensings'>('kits')
+  const [activeTab, setActiveTab] = useState<'kits' | 'dispensings' | 'subject-return'>('kits')
   const [productFilter, setProductFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [subjectKeyword, setSubjectKeyword] = useState('')
@@ -57,6 +58,7 @@ export function KitDispensingPage() {
   const tabs = [
     { key: 'kits' as const, label: '套件管理', icon: Package },
     { key: 'dispensings' as const, label: '分发记录', icon: ClipboardList },
+    { key: 'subject-return' as const, label: '受试者回寄', icon: Send },
   ]
 
   return (
@@ -65,7 +67,7 @@ export function KitDispensingPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-slate-800 md:text-xl">套件与分发</h2>
-          <p className="text-sm text-slate-500 mt-1">产品套件（随机化）管理与分发记录</p>
+          <p className="text-sm text-slate-500 mt-1">产品套件（随机化）管理、分发记录与受试者回寄（小程序数据）</p>
         </div>
       </div>
 
@@ -119,6 +121,8 @@ export function KitDispensingPage() {
           queryClient={queryClient}
         />
       )}
+
+      {activeTab === 'subject-return' && <SubjectReturnTab />}
 
       {/* Create Kit Modal */}
       {showCreateKit && (

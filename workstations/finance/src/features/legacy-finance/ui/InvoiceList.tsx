@@ -35,6 +35,8 @@ import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { TimeRangeSelect } from "@/shared/ui/time-range-select";
 import { getStartEndForPeriod, type DateRangePeriod } from "@/shared/lib/dateRange";
+import { useFeishuContext } from "@cn-kis/feishu-sdk";
+import { FINANCE_PERMS } from "@/shared/lib/financePermissions";
 
 const STATUS_LABEL: Record<InvoiceStatus, string> = {
   draft: "草稿",
@@ -59,6 +61,10 @@ interface InvoiceListProps {
 }
 
 export function InvoiceList({ onInvoiceSelect }: InvoiceListProps) {
+  const { hasPermission } = useFeishuContext();
+  const canManageInvoice = hasPermission(FINANCE_PERMS.invoiceCreate);
+  const canRecordPayment = hasPermission(FINANCE_PERMS.paymentCreate);
+
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [searchTerm, setSearchTerm] = useState("");
@@ -353,6 +359,12 @@ export function InvoiceList({ onInvoiceSelect }: InvoiceListProps) {
         </div>
       </div>
 
+      {!canManageInvoice && (
+        <p className="text-xs text-muted-foreground rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+          当前为只读查看：可检索与导出；新增、编辑、删除及收款登记由财务人员操作。
+        </p>
+      )}
+
       {/* 搜索和筛选栏 */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-1 gap-2">
@@ -411,10 +423,12 @@ export function InvoiceList({ onInvoiceSelect }: InvoiceListProps) {
           </Select>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
-            <Upload className="mr-2 h-4 w-4" />
-            批量导入
-          </Button>
+          {canManageInvoice && (
+            <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" />
+              批量导入
+            </Button>
+          )}
           <Select
             value={exportDimension}
             onValueChange={(v) => setExportDimension(v as "by_invoice" | "by_project")}
@@ -431,10 +445,12 @@ export function InvoiceList({ onInvoiceSelect }: InvoiceListProps) {
             <Download className="mr-2 h-4 w-4" />
             {exporting ? "导出中…" : "导出Excel"}
           </Button>
-          <Button onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            新增发票
-          </Button>
+          {canManageInvoice && (
+            <Button onClick={() => setCreateDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              新增发票
+            </Button>
+          )}
         </div>
       </div>
 
@@ -452,14 +468,13 @@ export function InvoiceList({ onInvoiceSelect }: InvoiceListProps) {
               <TableHead>到账金额</TableHead>
               <TableHead>客户经理</TableHead>
               <TableHead>状态</TableHead>
-              <TableHead>电子发票</TableHead>
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={11} className="text-center py-8">
+                <TableCell colSpan={10} className="text-center py-8">
                   <div className="flex items-center justify-center">
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
                     <span className="ml-2">加载中...</span>
@@ -468,7 +483,7 @@ export function InvoiceList({ onInvoiceSelect }: InvoiceListProps) {
               </TableRow>
             ) : invoices.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                   暂无数据
                 </TableCell>
               </TableRow>
@@ -526,58 +541,6 @@ export function InvoiceList({ onInvoiceSelect }: InvoiceListProps) {
                       {STATUS_LABEL[invoice.status]}
                     </Badge>
                   </TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    {invoice.electronic_invoice_file_name ? (
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="link"
-                          size="sm"
-                          className="h-auto p-0 text-xs text-primary hover:underline shrink-0"
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            try {
-                              await refetch();
-                            } catch (error) {
-                              console.warn("刷新发票列表失败:", error);
-                            }
-                            let currentInvoice = invoice;
-                            try {
-                              const { invoicesApi } = await import("../api/invoicesApi");
-                              const latestInvoice = await invoicesApi.getInvoiceById(invoice.id);
-                              if (latestInvoice) currentInvoice = latestInvoice;
-                            } catch (error) {
-                              console.warn("获取最新发票数据失败:", error);
-                            }
-                            if (!currentInvoice.electronic_invoice_file) {
-                              alert("电子发票文件不存在，可能文件未正确保存。\n\n请尝试：\n1. 刷新页面后重试\n2. 如果仍然失败，请重新上传电子发票");
-                              return;
-                            }
-                            try {
-                              await downloadInvoiceFile(
-                                currentInvoice.electronic_invoice_file,
-                                currentInvoice.electronic_invoice_file_name!
-                              );
-                            } catch (error) {
-                              console.error("下载电子发票失败:", error);
-                              const errorMessage = error instanceof Error ? error.message : "请稍后重试";
-                              alert("下载失败：" + errorMessage + "\n\n如果文件是Blob URL，说明文件已失效，请重新上传电子发票。");
-                            }
-                          }}
-                          title={invoice.electronic_invoice_file_name}
-                        >
-                          下载
-                        </Button>
-                        {invoice.electronic_invoice_file?.startsWith("blob:") && (
-                          <span className="text-xs text-orange-600 shrink-0" title="这是临时URL，可能已失效">⚠️</span>
-                        )}
-                        {!invoice.electronic_invoice_file && (
-                          <span className="text-xs text-muted-foreground shrink-0">(文件未保存)</span>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">未上传</span>
-                    )}
-                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
                       <Button
@@ -589,7 +552,8 @@ export function InvoiceList({ onInvoiceSelect }: InvoiceListProps) {
                         <Eye className="h-4 w-4" />
                       </Button>
                       {/* 收款按钮：当发票未完全收款时显示 */}
-                      {(invoice.status === 'issued' || invoice.status === 'partial') && 
+                      {canRecordPayment &&
+                       (invoice.status === 'issued' || invoice.status === 'partial') &&
                        (invoice.revenue_amount - (invoice.payment_amount || 0) > 0) && (
                         <Button
                           variant="ghost"
@@ -601,22 +565,26 @@ export function InvoiceList({ onInvoiceSelect }: InvoiceListProps) {
                           <DollarSign className="h-4 w-4" />
                         </Button>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(invoice)}
-                        title="编辑"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(invoice.id)}
-                        title="删除"
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      {canManageInvoice && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEdit(invoice)}
+                          title="编辑"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {canManageInvoice && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(invoice.id)}
+                          title="删除"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

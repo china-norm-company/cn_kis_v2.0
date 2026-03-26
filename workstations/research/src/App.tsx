@@ -13,9 +13,8 @@ const FeasibilityPage = lazy(() => import('./pages/FeasibilityPage'))
 const ProposalListPage = lazy(() => import('./pages/ProposalListPage'))
 const ProposalDetailPage = lazy(() => import('./pages/ProposalDetailPage'))
 const ProposalCreatePage = lazy(() => import('./pages/ProposalCreatePage'))
-const ProtocolQualityCheckPage = lazy(() => import('./pages/ProtocolQualityCheckPage'))
+const QualityCheckPage = lazy(() => import('./pages/QualityCheckPage'))
 const CloseoutPage = lazy(() => import('./pages/CloseoutPage'))
-const PerformanceSettlementPage = lazy(() => import('./pages/PerformanceSettlementPage'))
 const TeamPage = lazy(() => import('./pages/TeamPage'))
 const KnowledgeBasePage = lazy(() => import('./pages/KnowledgeBasePage'))
 const ProjectDashboardPage = lazy(() => import('./pages/ProjectDashboardPage'))
@@ -38,6 +37,18 @@ const WeeklyProjectCreatePage = lazy(() => import('./pages/WeeklyProjectCreatePa
 const WeeklyProjectDetailPage = lazy(() => import('./pages/WeeklyProjectDetailPage'))
 const WeeklyProjectEditPage = lazy(() => import('./pages/WeeklyProjectEditPage'))
 const WeeklyDashboardPage = lazy(() => import('./pages/WeeklyDashboardPage'))
+const LipScalinessPage = lazy(() => import('./pages/LipScalinessPage'))
+const DataCollectionMonitorPage = lazy(() => import('./pages/DataCollectionMonitorPage'))
+const DataStatisticsPage = lazy(() => import('./pages/DataStatisticsPage'))
+const DataReportPreparationPage = lazy(() => import('./pages/DataReportPreparationPage'))
+const TrialReportPreparationPage = lazy(() => import('./pages/TrialReportPreparationPage'))
+const ProposalDesignPage = lazy(() => import('./pages/ProposalDesignPage'))
+const TrialInitiationPage = lazy(() => import('./pages/TrialInitiationPage'))
+const ImageAnalysisPage = lazy(() => import('./pages/ImageAnalysisPage'))
+const FaceImageAnalysisPage = lazy(() => import('./pages/FaceImageAnalysisPage'))
+const LipImageAnalysisPage = lazy(() => import('./pages/LipImageAnalysisPage'))
+const HandImageAnalysisPage = lazy(() => import('./pages/HandImageAnalysisPage'))
+const OtherImageAnalysisPage = lazy(() => import('./pages/OtherImageAnalysisPage'))
 
 /* 非新建页面保持直接 import（体积较小或共享频繁） */
 import { ProtocolListPage } from './pages/ProtocolListPage'
@@ -120,8 +131,9 @@ export default function App() {
               <Route path="/feasibility" element={<FeasibilityPage />} />
               <Route path="/proposals" element={<ProposalListPage />} />
               <Route path="/proposals/create" element={<ProposalCreatePage />} />
+              <Route path="/proposals/quality-check" element={<QualityCheckPage />} />
               <Route path="/proposals/:id" element={<ProposalDetailPage />} />
-              <Route path="/protocol-qc" element={<ProtocolQualityCheckPage />} />
+              {/* 管理员 */}
               <Route path="/protocols" element={<ProtocolListPage />} />
               <Route path="/protocols/:id" element={<ProtocolDetailPage />} />
               <Route path="/project-full-link" element={<ProjectFullLinkListPage />} />
@@ -129,7 +141,6 @@ export default function App() {
               <Route path="/project-full-link/:id/edit" element={<ProjectFullLinkEditPage />} />
               <Route path="/projects/:id/dashboard" element={<ProjectDashboardPage />} />
               <Route path="/closeout" element={<CloseoutPage />} />
-              <Route path="/closeout/settlement" element={<PerformanceSettlementPage />} />
               {/* 执行管理 */}
               <Route path="/visits" element={<VisitListPage />} />
               <Route path="/subjects" element={<SubjectListPage />} />
@@ -145,6 +156,21 @@ export default function App() {
               <Route path="/knowledge" element={<KnowledgeBasePage />} />
               <Route path="/ai-assistant" element={<AIAssistantPage />} />
               <Route path="/overview" element={<OverviewPage />} />
+              {/* 执行管理扩展 */}
+              <Route path="/data-collection-monitor" element={<DataCollectionMonitorPage />} />
+              {/* 项目生命周期扩展 */}
+              <Route path="/trial-initiation" element={<TrialInitiationPage />} />
+              <Route path="/image-analysis" element={<ImageAnalysisPage />} />
+              <Route path="/image-analysis/face" element={<FaceImageAnalysisPage />} />
+              <Route path="/image-analysis/lip" element={<LipImageAnalysisPage />} />
+              <Route path="/image-analysis/lip/scaliness" element={<LipScalinessPage />} />
+              <Route path="/image-analysis/hand" element={<HandImageAnalysisPage />} />
+              <Route path="/image-analysis/other" element={<OtherImageAnalysisPage />} />
+              <Route path="/data-statistics" element={<DataStatisticsPage />} />
+              <Route path="/data-report-preparation" element={<DataReportPreparationPage />} />
+              <Route path="/trial-report-preparation" element={<TrialReportPreparationPage />} />
+              {/* 客户与商务扩展 */}
+              <Route path="/proposal-design" element={<ProposalDesignPage />} />
             </Route>
           </Routes>
         </Suspense>
