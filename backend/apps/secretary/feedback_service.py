@@ -191,6 +191,14 @@ def process_feedback_message(
     feedback.processed_at = tz.now()
     feedback.save()
 
+    launch_gap_id = None
+    if feedback.github_issue_url:
+        from apps.identity.launch_governance_feedback_bridge import ensure_launch_gap_from_user_feedback
+
+        launch_gap_id = ensure_launch_gap_from_user_feedback(feedback)
+        if launch_gap_id is not None:
+            result = {**result, 'launch_gap_id': launch_gap_id}
+
     logger.info(
         '用户反馈处理完成 [%s] category=%s ws=%s action=%s',
         message_id, classification['category'], classification['workstation'], result['action'],
