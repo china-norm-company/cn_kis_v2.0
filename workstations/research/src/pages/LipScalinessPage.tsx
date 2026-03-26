@@ -236,12 +236,26 @@ function ImageEditor({ state, onClose, onSave }: EditorProps) {
       ctx.fillStyle = 'rgba(0,0,0,1)'
       ctx.fill()
     } else {
-      // 画笔模式：颜色与后端 _BLUE_COLOR_BGR=(255,80,0) 完全一致 → RGB(0,80,255)
+      // 散点画笔：模拟算法检测的有机散点纹理，与后端标记视觉一致
+      // 在笔刷圆形区域内随机绘制多个小不规则斑块（2-6px），覆盖率约50%
       ctx.globalCompositeOperation = 'source-over'
-      ctx.beginPath()
-      ctx.arc(cx, cy, size, 0, Math.PI * 2)
       ctx.fillStyle = 'rgba(0, 80, 255, 1)'
-      ctx.fill()
+      // 斑块数量：与笔刷面积成正比，密度系数 1/18
+      const numBlobs = Math.max(4, Math.floor((size * size) / 18))
+      for (let i = 0; i < numBlobs; i++) {
+        // 在圆形区域内均匀随机分布（sqrt 使分布不集中于中心）
+        const angle = Math.random() * Math.PI * 2
+        const r = Math.sqrt(Math.random()) * size * 0.9
+        const bx = cx + Math.cos(angle) * r
+        const by = cy + Math.sin(angle) * r
+        // 随机小椭圆（宽 2-7px，高宽比 0.4-1.2，随机旋转）
+        const bw = 1.5 + Math.random() * 5
+        const bh = bw * (0.4 + Math.random() * 0.8)
+        const rot = Math.random() * Math.PI
+        ctx.beginPath()
+        ctx.ellipse(bx, by, bw, bh, rot, 0, Math.PI * 2)
+        ctx.fill()
+      }
     }
     ctx.restore()
   }
