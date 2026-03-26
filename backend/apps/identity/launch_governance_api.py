@@ -18,7 +18,7 @@ from ninja import Router, Schema
 from apps.core.workstation_registry import load_workstations_registry, registry_total_count
 
 from .decorators import require_permission
-from .models import Account, AccountWorkstationConfig
+from .models import AccountWorkstationConfig
 from .models_launch_governance import (
     LaunchGapStatus,
     LaunchGoalScope,
