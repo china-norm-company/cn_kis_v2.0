@@ -1,11 +1,29 @@
 # 鹿鸣·治理台 唯一化重构 — 验收测试说明
 
-## 背景
+> **⚠️ 历史归档文档（2026-03-22）**
+>
+> 本文档描述的是 CN KIS V2.0 **第一阶段**迁移测试（`admin+iam → governance`，2026-03 早期）。  
+> 该迁移随后被**第二阶段**重命名覆盖：`governance → admin`，当前系统工作台 key 已恢复为 `admin`。  
+>
+> **本文档内的以下断言针对已废弃的中间状态，不适用于当前系统：**  
+> - 期望 `/governance/` 路径可达（当前路径为 `/admin/`）  
+> - 期望 `visible_workbenches` 含 `governance`（当前为 `admin`）  
+> - 期望 `callback workstation=governance` 成功（当前为 `admin`）  
+>
+> **当前有效的验收文档**：[`docs/LAUNCH_GOVERNANCE_90D_ACCEPTANCE_AND_TEST_SYSTEM.md`](LAUNCH_GOVERNANCE_90D_ACCEPTANCE_AND_TEST_SYSTEM.md)  
+> **工作台事实源**：[`backend/configs/workstations.yaml`](../backend/configs/workstations.yaml)（19 个，`admin` 为鹿鸣·治理台 key）
 
-CN KIS V2.0 将原有的 `鹿鸣·行政台`（key: `admin`）和 `枢衡·权控台`（key: `iam`）
-合并为统一的 `鹿鸣·治理台`（key: `governance`，路径 `/governance`）。
+---
 
-本目录下的测试套件用于验收此次重构，确保：
+## 背景（历史）
+
+CN KIS V2.0 第一阶段将原有的 `鹿鸣·行政台`（key: `admin`）和 `枢衡·权控台`（key: `iam`）
+合并为统一的 `鹿鸣·治理台`（临时 key: `governance`，路径 `/governance`）。
+
+随后在第二阶段，该工作台 key 从 `governance` 重命名为 `admin`，路径从 `/governance` 恢复为 `/admin`。
+目前 `governance` 和 `iam` 均为 **LEGACY（废弃）** 标识，仅在 `workstation_keys.py` 中保留用于历史数据兼容。
+
+本目录下的测试套件记录第一阶段迁移验收，已不代表当前系统状态：
 - 旧路径彻底消亡，不再可访问
 - 新治理台完整可用（13 个页面、OAuth、RBAC、API）
 - 全工作台（19 个）未受破坏
@@ -115,9 +133,12 @@ pnpm exec playwright test e2e/governance-workstation-features.spec.ts --grep "Su
 
 ---
 
-## 验收出口标准
+## 验收出口标准（历史快照，已废弃）
 
-所有以下断言通过，视为重构验收完成：
+> **以下条件描述第一阶段迁移的出口标准，不适用于当前系统。**  
+> 当前有效出口标准见 [`docs/LAUNCH_GOVERNANCE_90D_ACCEPTANCE_AND_TEST_SYSTEM.md`](LAUNCH_GOVERNANCE_90D_ACCEPTANCE_AND_TEST_SYSTEM.md)。
+
+所有以下断言通过，视为重构验收完成（第一阶段，已过时）：
 
 - [ ] `/admin/` 和 `/iam/` 返回 404 或 30x（不服务旧工作台 HTML）
 - [ ] `/governance/` 返回 200，HTML 含 "鹿鸣" 或 "治理台"
@@ -166,5 +187,6 @@ tests/ui-acceptance/screenshots-governance/
 
 ---
 
-_生成时间：2026-03-22_  
-_适用版本：CN KIS V2.0（governance 唯一化重构后）_
+_生成时间：2026-03-22_（第一阶段迁移记录）  
+_废弃时间：2026-03-26_（governance → admin 重命名后）  
+_当前适用版本文档：`docs/LAUNCH_GOVERNANCE_90D_ACCEPTANCE_AND_TEST_SYSTEM.md`_

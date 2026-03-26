@@ -43,6 +43,7 @@ api = get_api()
 # ============================================================================
 if not is_registration_done():
     from apps.identity.api import router as identity_router
+    from apps.identity.launch_governance_api import launch_governance_router
     from apps.audit.api import router as audit_router
     from apps.subject.api import router as subject_router
     from apps.protocol.api import router as protocol_router
@@ -53,6 +54,7 @@ if not is_registration_done():
     from apps.signature.api import router as signature_router
 
     _safe_add_router(api, '/auth/', identity_router, tags=['认证授权'])
+    _safe_add_router(api, '/auth/', launch_governance_router, tags=['上线治理'])
     _safe_add_router(api, '/audit/', audit_router, tags=['审计日志'])
     _safe_add_router(api, '/subject/', subject_router, tags=['受试者管理'])
     from apps.subject.api_recruitment import router as recruitment_router

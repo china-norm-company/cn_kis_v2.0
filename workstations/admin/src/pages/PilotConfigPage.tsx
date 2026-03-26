@@ -7,28 +7,10 @@
  * - 批量授权/禁用特定工作台
  * - 用于灰度上线新工作台或限制特定用户访问范围
  */
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@cn-kis/api-client'
+import { api, launchGovernanceApi, type WorkstationRegistryItem } from '@cn-kis/api-client'
 import { Search, Shield, CheckCircle, XCircle, Save, RefreshCw } from 'lucide-react'
-
-const ALL_WORKSTATIONS = [
-  { key: 'secretary', name: '子衿·秘书台' },
-  { key: 'finance', name: '管仲·财务台' },
-  { key: 'research', name: '采苓·研究台' },
-  { key: 'execution', name: '维周·执行台' },
-  { key: 'quality', name: '怀瑾·质量台' },
-  { key: 'hr', name: '时雨·人事台' },
-  { key: 'crm', name: '进思·客户台' },
-  { key: 'recruitment', name: '招招·招募台' },
-  { key: 'equipment', name: '器衡·设备台' },
-  { key: 'material', name: '度支·物料台' },
-  { key: 'facility', name: '坤元·设施台' },
-  { key: 'evaluator', name: '衡技·评估台' },
-  { key: 'lab-personnel', name: '共济·人员台' },
-  { key: 'ethics', name: '御史·伦理台' },
-  { key: 'reception', name: '和序·接待台' },
-]
 
 interface AccountItem {
   id: number
@@ -50,6 +32,17 @@ export function PilotConfigPage() {
   const [selectedAccount, setSelectedAccount] = useState<AccountItem | null>(null)
   const [pendingConfig, setPendingConfig] = useState<Record<string, boolean>>({})
   const [saveMsg, setSaveMsg] = useState('')
+
+  const { data: regData, isLoading: regLoading, isError: regError } = useQuery({
+    queryKey: ['admin', 'workstations-registry-pilot'],
+    queryFn: () => launchGovernanceApi.getRegistry(),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const allWorkstations = useMemo(
+    () => (regData?.items ?? []).map((i: WorkstationRegistryItem) => ({ key: i.key, name: i.name })),
+    [regData],
+  )
 
   const { data: accountsRes, isLoading: accountsLoading } = useQuery({
     queryKey: ['admin', 'accounts-search', search],
@@ -102,8 +95,8 @@ export function PilotConfigPage() {
   }
 
   const handleSave = () => {
-    if (!selectedAccount) return
-    const workstations = ALL_WORKSTATIONS.map((ws) => ({
+    if (!selectedAccount || allWorkstations.length === 0) return
+    const workstations = allWorkstations.map((ws) => ({
       key: ws.key,
       is_enabled: getEffectiveState(ws.key),
       override_type: (ws.key in pendingConfig ? (pendingConfig[ws.key] ? 'allow' : 'deny') : 'inherit') as 'allow' | 'deny' | 'inherit',
@@ -113,13 +106,13 @@ export function PilotConfigPage() {
 
   const handleEnableAll = () => {
     const all: Record<string, boolean> = {}
-    ALL_WORKSTATIONS.forEach((ws) => { all[ws.key] = true })
+    allWorkstations.forEach((ws) => { all[ws.key] = true })
     setPendingConfig(all)
   }
 
   const handleDisableAll = () => {
     const all: Record<string, boolean> = {}
-    ALL_WORKSTATIONS.forEach((ws) => { all[ws.key] = false })
+    allWorkstations.forEach((ws) => { all[ws.key] = false })
     setPendingConfig(all)
   }
 
@@ -132,7 +125,7 @@ export function PilotConfigPage() {
       <div>
         <h2 className="text-xl font-bold text-slate-800">试点用户工作台配置</h2>
         <p className="text-sm text-slate-400 mt-1">
-          按用户精细控制可访问的工作台，用于灰度上线和权限范围限制
+          按用户精细控制可访问的工作台（与 workstations.yaml 注册表一致，共 19 台），用于灰度上线和权限范围限制
         </p>
       </div>
 
@@ -224,11 +217,17 @@ export function PilotConfigPage() {
                 </div>
               </div>
 
-              {configLoading ? (
+              {regLoading ? (
+                <div className="text-center text-xs text-slate-400 py-6">加载工作台注册表…</div>
+              ) : regError ? (
+                <div className="text-center text-xs text-red-500 py-6">无法加载注册表，请刷新或检查权限</div>
+              ) : allWorkstations.length === 0 ? (
+                <div className="text-center text-xs text-amber-700 py-6">注册表为空，请检查后端 workstations.yaml</div>
+              ) : configLoading ? (
                 <div className="text-center text-xs text-slate-400 py-6">加载配置中...</div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {ALL_WORKSTATIONS.map((ws) => {
+                  {allWorkstations.map((ws) => {
                     const enabled = getEffectiveState(ws.key)
                     const isDirty = ws.key in pendingConfig
                     return (

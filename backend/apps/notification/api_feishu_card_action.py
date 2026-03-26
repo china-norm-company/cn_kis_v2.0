@@ -12,6 +12,8 @@
   GitHub Actions Secret：GITHUB_PAT_STATUS（repo scope，用于设置 commit status 和触发 workflow）
   本地 .env：GITHUB_TOKEN（已有，直接复用）
 """
+from __future__ import annotations
+
 import json
 import logging
 import os
