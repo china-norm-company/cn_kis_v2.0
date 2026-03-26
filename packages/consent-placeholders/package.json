@@ -1,0 +1,19 @@
+{
+  "name": "@cn-kis/consent-placeholders",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ICF 文书占位符约定与替换（执行台 / 小程序 / 后端 PDF 共用）",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "type-check": "tsc -p tsconfig.build.json --noEmit"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  }
+}
