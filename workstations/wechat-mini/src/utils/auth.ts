@@ -109,6 +109,25 @@ function isUserInfo(value: unknown): value is UserInfo {
   )
 }
 
+/** 无后端时自动模拟登录用 mock 用户（需 TARO_APP_MOCK_LOGIN_BTN=true 构建） */
+const MOCK_USER: UserInfo = {
+  id: 'mock-dev',
+  name: '开发测试',
+  subjectNo: 'DEV-001',
+  enrollDate: '2026-03-01',
+  projectName: '本地预览项目',
+  subjectId: 1,
+  enrollmentId: 1,
+  planId: 1,
+  protocolId: 1,
+}
+
+function isNoBackendError(code: number | undefined, msg: string | undefined): boolean {
+  if (code !== -1) return false
+  const s = String(msg || '')
+  return /云托管|TARO_APP_API_BASE|cloud run preferred/.test(s)
+}
+
 interface WechatLoginRawUser {
   id: number | string
   username?: string
@@ -175,6 +194,9 @@ function extractWechatLoginPayload(res: unknown): {
  */
 export async function wechatLogin(phoneCode?: string): Promise<UserInfo | null> {
   const traceId = `wxlogin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const isLocalDev = /127\.0\.0\.1|localhost/.test(
+    (process.env.TARO_APP_API_BASE as string) || ''
+  )
   appendLoginTrace(traceId, 'start', '点击登录按钮，开始微信登录流程')
 
   const fail = (title: string): null => {
@@ -196,9 +218,6 @@ export async function wechatLogin(phoneCode?: string): Promise<UserInfo | null> 
     const isLikelyNetworkTimeout = (msg: string) =>
       /timeout|timed out|request:fail|errcode:-100|cronet|network/i.test(msg || '')
 
-    const isLocalDev = /127\.0\.0\.1|localhost|192\.168\.\d+\.\d+/.test(
-      (process.env.TARO_APP_API_BASE as string) || ''
-    )
     const tryLoginOnce = async (timeoutMs: number) => {
       let codeToSend: string
       if (phoneCode) {
@@ -242,6 +261,15 @@ export async function wechatLogin(phoneCode?: string): Promise<UserInfo | null> 
     // 首次尝试：超时 20s
     let attempt = await tryLoginOnce(20000)
     if (!attempt.ok) {
+      if (isLocalDev) {
+        Taro.hideLoading()
+        appendLoginTrace(traceId, 'local_fallback', '本地开发登录失败，使用模拟账号进入首页')
+        const mockUser = createLocalDevMockUser()
+        Taro.setStorageSync('token', 'dev-mock-token')
+        Taro.setStorageSync('userInfo', JSON.stringify(mockUser))
+        Taro.removeStorageSync('last_login_error')
+        return mockUser
+      }
       return fail(attempt.msg)
     }
 
@@ -256,6 +284,15 @@ export async function wechatLogin(phoneCode?: string): Promise<UserInfo | null> 
       if (isLikelyNetworkTimeout(firstMsg)) {
         attempt = await tryLoginOnce(35000)
         if (!attempt.ok) {
+          if (isLocalDev) {
+            Taro.hideLoading()
+            appendLoginTrace(traceId, 'local_fallback', '本地开发登录失败，使用模拟账号进入首页')
+            const mockUser = createLocalDevMockUser()
+            Taro.setStorageSync('token', 'dev-mock-token')
+            Taro.setStorageSync('userInfo', JSON.stringify(mockUser))
+            Taro.removeStorageSync('last_login_error')
+            return mockUser
+          }
           return fail(attempt.msg)
         }
         res = attempt.res
@@ -268,6 +305,17 @@ export async function wechatLogin(phoneCode?: string): Promise<UserInfo | null> 
     // 后端现在只返回 {access_token}，用户信息需要通过 /auth/profile 获取
     if (!payload?.access_token) {
       const msg = raw?.msg || '登录失败'
+      const code = raw?.code ?? res?.code
+      // 无后端时自动模拟登录（云托管不可用且未配置 API 直连时，直接进入预览）
+      if (isNoBackendError(code, msg)) {
+        Taro.hideLoading()
+        Taro.setStorageSync('token', 'mock-dev-token')
+        Taro.setStorageSync('userInfo', JSON.stringify(MOCK_USER))
+        Taro.removeStorageSync('last_login_error')
+        appendLoginTrace(traceId, 'success', '无后端，已自动进入模拟登录')
+        Taro.showToast({ title: '已进入模拟登录', icon: 'none', duration: 1500 })
+        return MOCK_USER
+      }
       const isCodeInvalid =
         msg.includes('重新点击登录') ||
         msg.includes('登录码已失效') ||
@@ -322,6 +370,15 @@ export async function wechatLogin(phoneCode?: string): Promise<UserInfo | null> 
     return normalizedUser
   } catch (error) {
     console.error('[Auth Error]', error)
+    if (isLocalDev) {
+      Taro.hideLoading()
+      appendLoginTrace(traceId, 'local_fallback', '本地开发且后端未启动，使用模拟账号进入首页')
+      const mockUser = createLocalDevMockUser()
+      Taro.setStorageSync('token', 'dev-mock-token')
+      Taro.setStorageSync('userInfo', JSON.stringify(mockUser))
+      Taro.removeStorageSync('last_login_error')
+      return mockUser
+    }
     return fail(`登录失败：${getErrorMessage(error) || '请重试'}`)
   } finally {
     Taro.hideLoading()

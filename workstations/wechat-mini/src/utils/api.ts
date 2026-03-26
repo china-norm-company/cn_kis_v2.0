@@ -86,6 +86,8 @@ async function cloudContainerRequest(
  * - 使用云托管时通过 wx.cloud.callContainer 走 path，无需完整 URL。
  * - 云托管不可用或未开通时，通过 TARO_APP_API_BASE 构建时传入完整基址（如 https://your-domain.com/api/v1 或 http://局域网IP:8001/api/v1）。
  */
+/** H5 等非小程序端相对 API 前缀（小程序内 wx 环境用空串走云托管 path） */
+const WEB_RELAY_BASE = '/api/v1'
 /** 微信小程序 wx.request 必须使用完整 URL；备份兜底地址仅允许 https */
 const isHttpsUrl = (s: string) => /^https:\/\//i.test((s || '').trim())
 /** 直连 wx.request 的绝对基址（http 或 https） */
@@ -110,20 +112,103 @@ function normalizeRelayBase(raw?: string): string | undefined {
   if (/^https?:\/\/[a-zA-Z0-9.-]+(?::\d+)?(\/.*)?$/i.test(value)) {
     return value.replace(/\/+$/, '')
   }
+  // 3) 局域网 HTTP 开发（如 http://10.x.x.x:8001/api/v1；开发者工具需勾选「不校验合法域名」）
+  if (/^http:\/\/(10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?(\/.*)?$/i.test(value)) {
+    return value.replace(/\/+$/, '')
+  }
   return undefined
 }
 
-// 后端请求地址：优先读取 TARO_APP_API_BASE 环境变量，不存在则使用 localhost
-const LOCALHOST_BASE = 'http://localhost:8001/api/v1'
-const envBase = normalizeRelayBase(process.env.TARO_APP_API_BASE)
-const API_BASE = (envBase || LOCALHOST_BASE).replace(/\/+$/, '')
+// 由 config defineConstants 注入，构建时 TARO_APP_API_BASE=http://127.0.0.1:8001/api/v1
+const rawEnvBase: string | undefined = process.env.TARO_APP_API_BASE as string | undefined
+const compileEnvBaseUrl = rawEnvBase ? normalizeRelayBase(rawEnvBase) : undefined
 
-export const API_BASE_URL = API_BASE
-let currentApiBaseUrl = API_BASE
-
+const runtimeDefaultBase = (typeof wx !== 'undefined' && !!wx) ? '' : WEB_RELAY_BASE
+export const API_BASE_URL = (compileEnvBaseUrl || runtimeDefaultBase).replace(/\/+$/, '')
 const CLOUD_RELAY_BACKUP_BASE = (CLOUD_RELAY_BACKUP_BASE_RAW || '').trim().replace(/\/+$/, '')
 const REQUEST_TIMEOUT_MS = 8000
 const RETRY_TIMEOUT_MS = 12000
+let currentApiBaseUrl = API_BASE_URL
+
+const INITIAL_COMPILED_API_BASE = API_BASE_URL
+
+/** 本机 / 局域网私网可直连（含 localhost、127.0.0.1、RFC1918），用于真机联调与联调地址覆盖判断 */
+export function isPrivateLanApiBase(base: string): boolean {
+  const s = (base || '').trim()
+  if (!s) return false
+  try {
+    const u = new URL(s.startsWith('http') ? s : `http://${s}`)
+    const h = u.hostname
+    if (h === 'localhost' || h === '127.0.0.1') return true
+    return /^(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})$/.test(
+      h,
+    )
+  } catch {
+    return false
+  }
+}
+
+export const DEV_API_BASE_STORAGE_KEY = 'cn_kis_dev_api_base_url'
+
+export function allowsDevApiBaseStorageOverride(): boolean {
+  const b = (API_BASE_URL || '').trim()
+  const compiledIsLocalhost = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/.*)?$/i.test(b)
+  return compiledIsLocalhost || isPrivateLanApiBase(API_BASE_URL)
+}
+
+export function applyDevApiBaseOverrideFromStorage(): void {
+  if (!allowsDevApiBaseStorageOverride()) return
+  try {
+    const raw = Taro.getStorageSync(DEV_API_BASE_STORAGE_KEY)
+    if (raw == null || raw === '') return
+    const s = typeof raw === 'string' ? raw.trim() : String(raw).trim()
+    if (!s) return
+    const normalized = normalizeRelayBase(s)
+    if (normalized) currentApiBaseUrl = normalized
+  } catch {
+    // ignore
+  }
+}
+
+export function getDevApiBaseOverrideRaw(): string {
+  if (!allowsDevApiBaseStorageOverride()) return ''
+  try {
+    const raw = Taro.getStorageSync(DEV_API_BASE_STORAGE_KEY)
+    return typeof raw === 'string' ? raw : ''
+  } catch {
+    return ''
+  }
+}
+
+export function setDevApiBaseOverride(
+  url: string | null | undefined,
+): { ok: boolean; msg?: string } {
+  if (!allowsDevApiBaseStorageOverride()) {
+    return { ok: false, msg: '当前构建为正式 API 地址，不支持本地覆盖' }
+  }
+  const empty = !url || !String(url).trim()
+  if (empty) {
+    try {
+      Taro.removeStorageSync(DEV_API_BASE_STORAGE_KEY)
+    } catch {
+      // ignore
+    }
+    currentApiBaseUrl = INITIAL_COMPILED_API_BASE
+    return { ok: true }
+  }
+  const trimmed = String(url).trim()
+  const normalized = normalizeRelayBase(trimmed)
+  if (!normalized) {
+    return { ok: false, msg: '请输入有效的 http(s):// 地址，局域网需为 http://192.168.x.x:端口/api/v1 形式' }
+  }
+  try {
+    Taro.setStorageSync(DEV_API_BASE_STORAGE_KEY, trimmed)
+    currentApiBaseUrl = normalized
+    return { ok: true }
+  } catch {
+    return { ok: false, msg: '保存失败' }
+  }
+}
 
 function isWebRuntime(): boolean {
   // 小程序运行时 Taro 会注入浏览器兼容对象，不能仅靠 window/document 判断。
@@ -156,6 +241,36 @@ export function getCurrentApiBaseUrl(): string {
 
 export function getCurrentChannel(): string {
   return cloudRunAvailable === true ? 'cloudrun' : 'https'
+}
+
+/**
+ * 是否应对 /auth/wechat/login 使用 dev-bypass-wechat（不调微信、免 IP 白名单）。
+ */
+export function shouldUseWechatLoginBypass(): boolean {
+  if (/127\.0\.0\.1|localhost/.test((process.env.TARO_APP_API_BASE as string) || '')) {
+    return true
+  }
+  const base = (getCurrentApiBaseUrl() || '').trim()
+  if (isLocalhostBase(base)) return true
+  const lower = base.toLowerCase()
+  if (lower.includes('localhost') || lower.includes('127.0.0.1')) return true
+  // H5 开发：相对路径 /api/v1 通常由 devServer 代理到本机 Django
+  if (
+    isRelativeApiBase(base) &&
+    typeof process !== 'undefined' &&
+    process.env &&
+    process.env.NODE_ENV !== 'production'
+  ) {
+    return true
+  }
+  return false
+}
+
+/** 本地开发：实名页「开始认证」走服务端 dev-skip；含局域网 IP */
+export function shouldUseIdentityVerifyDevBypass(): boolean {
+  if (shouldUseWechatLoginBypass()) return true
+  if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'production') return false
+  return isPrivateLanApiBase(getCurrentApiBaseUrl())
 }
 
 /** 统一响应格式 */

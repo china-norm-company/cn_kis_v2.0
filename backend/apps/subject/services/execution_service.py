@@ -33,6 +33,7 @@ def checkin(subject_id: int, enrollment_id: int = None, work_order_id: int = Non
         checkin_time=now,
         location=location,
         status=CheckinStatus.CHECKED_IN,
+        project_code='',
         created_by_id=account.id if account else None,
     )
 

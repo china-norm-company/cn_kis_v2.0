@@ -271,13 +271,24 @@ def _build_import_subject_name(item: AppointmentImportItem) -> str:
 def _resolve_or_create_subject_for_import(item: AppointmentImportItem, account=None):
     """按手机号/编号匹配或新建受试者。匹配到已有受试者时，用导入的姓名/性别/年龄更新。"""
     from .models import Subject
-    from .services.subject_service import create_subject as svc_create_subject
+    from .services.subject_service import (
+        create_subject as svc_create_subject,
+        find_subjects_by_mobile_normalized,
+        normalize_subject_phone,
+        resolve_subject_for_mobile_session,
+    )
 
     subject = None
     if item.subject_id:
         subject = Subject.objects.filter(id=item.subject_id, is_deleted=False).first()
     if not subject and item.subject_phone:
-        subject = Subject.objects.filter(phone=item.subject_phone.strip(), is_deleted=False).first()
+        raw_p = item.subject_phone.strip()
+        mob = normalize_subject_phone(raw_p)
+        appt_d = _parse_import_date(item.appointment_date)
+        if mob and find_subjects_by_mobile_normalized(mob).exists():
+            subject = resolve_subject_for_mobile_session(raw_p, appt_d)
+        if not subject:
+            subject = Subject.objects.filter(phone=raw_p, is_deleted=False).first()
     if not subject and item.subject_no:
         subject = Subject.objects.filter(subject_no=item.subject_no.strip(), is_deleted=False).first()
     if subject:
@@ -345,6 +356,15 @@ def import_appointments(request, data: AppointmentImportIn):
 
     try:
         for idx, item in enumerate(data.items):
+            phone = (item.subject_phone or '').strip()
+            project_code = (item.project_code or '').strip()
+            if not phone:
+                errors.append({'row': idx + 1, 'msg': '手机号不能为空'})
+                continue
+            if not project_code:
+                errors.append({'row': idx + 1, 'msg': '项目编号不能为空'})
+                continue
+
             subject = _resolve_or_create_subject_for_import(item, account=account)
             if not subject:
                 errors.append({'row': idx + 1, 'msg': '请至少填写手机号或受试者编号'})
@@ -372,12 +392,12 @@ def import_appointments(request, data: AppointmentImportIn):
                     purpose=item.purpose or '',
                     enrollment_id=None,
                     visit_point=item.visit_point or '',
-                    project_code=item.project_code or '',
+                    project_code=project_code,
                     project_name=item.project_name or '',
                     name_pinyin_initials=(item.name_pinyin_initials or '').strip() or '',
                     liaison=(item.liaison or '').strip() or '',
                 )
-                pc = (item.project_code or '').strip()
+                pc = project_code
                 sc_val = (item.sc_number or '').strip()
                 rd_val = (item.rd_number or '').strip()
                 if pc and (sc_val or rd_val):
@@ -398,7 +418,7 @@ def import_appointments(request, data: AppointmentImportIn):
         logger.exception('预约导入失败: %s', e)
         err_msg = str(e).strip() if e else ''
         if not err_msg:
-            err_msg = '导入失败，请检查数据格式（预约日期为 YYYY-MM-DD / YYYY/M/D，且至少提供手机号或受试者编号）'
+            err_msg = '导入失败，请检查数据格式（预约日期为 YYYY-MM-DD / YYYY/M/D，且项目编号、手机号不能为空）'
         return 500, {
             'code': 500,
             'msg': err_msg,

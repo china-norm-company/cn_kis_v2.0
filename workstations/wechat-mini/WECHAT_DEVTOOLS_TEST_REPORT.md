@@ -2,7 +2,7 @@
 
 **测试日期**: 2026-02-25（最近一次 2026-02-26）  
 **测试环境**: macOS + 微信开发者工具 CLI  
-**项目路径**: `apps/wechat-mini`  
+**项目路径**: `workstations/wechat-mini`  
 **小程序 AppID**: `wx2019d5560fe47b1d`  
 **API 基址**: 云托管 `wx.cloud.callContainer`（公网直连时通过 `TARO_APP_API_BASE` 显式指定）
 
@@ -89,8 +89,8 @@ pnpm build:weapp
 
 ## 产物文件
 
-- 预览二维码：`apps/wechat-mini/test-results/wechat-preview-qr.png`
-- 预览信息：`apps/wechat-mini/test-results/wechat-preview-info.json`
+- 预览二维码：`workstations/wechat-mini/test-results/wechat-preview-qr.png`
+- 预览信息：`workstations/wechat-mini/test-results/wechat-preview-info.json`
 
 ---
 
@@ -103,7 +103,7 @@ pnpm build:weapp
 **处理**：
 
 1. 每次生成前**删除**目标文件：`rm -f test-results/wechat-preview-qr.png`
-2. 使用**绝对路径**：`-o /完整路径/apps/wechat-mini/test-results/wechat-preview-qr.png`
+2. 使用**绝对路径**：`-o /完整路径/workstations/wechat-mini/test-results/wechat-preview-qr.png`
 3. 或使用项目脚本（已封装上述逻辑）：  
    `./scripts/gen-preview-qr.sh`  
    生成后会打开新二维码，请尽快扫码（开发版二维码有效期较短）。
@@ -142,7 +142,7 @@ pnpm build:weapp
 # 仓库根目录执行（推荐）
 pnpm gate:wechat-headed
 
-# 或在 apps/wechat-mini 目录执行
+# 或在 workstations/wechat-mini 目录执行
 pnpm run gate:wechat-headed
 ```
 

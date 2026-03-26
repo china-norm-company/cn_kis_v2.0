@@ -1,4 +1,3 @@
 packages:
   - 'packages/*'
   - 'workstations/*'
-  - 'apps/wechat-mini'

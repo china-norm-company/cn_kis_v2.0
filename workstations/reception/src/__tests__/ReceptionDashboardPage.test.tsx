@@ -24,6 +24,7 @@ vi.mock('@cn-kis/api-client', () => ({
     todayStats: vi.fn().mockResolvedValue({ data: {} }),
     boardCheckin: vi.fn(),
     boardCheckout: vi.fn(),
+    updateBoardProjectSc: vi.fn(),
     pendingAlerts: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }),
   },
   workorderApi: { create: vi.fn() },

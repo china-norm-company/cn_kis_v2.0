@@ -189,11 +189,12 @@ export const receptionApi = {
     })
   },
 
-  /** 今日统计 */
-  todayStats(date?: string, projectCode?: string) {
+  /** 今日统计；source=board 时与接待看板队列同源，与工单执行统计独立 */
+  todayStats(date?: string, projectCode?: string, source?: 'execution' | 'board') {
     const params: Record<string, string> = {}
     if (date) params.target_date = date
     if (projectCode) params.project_code = projectCode
+    if (source === 'board' || source === 'execution') params.source = source
     return api.get<TodayStats>('/reception/today-stats', { params: Object.keys(params).length ? params : undefined })
   },
 
@@ -292,6 +293,23 @@ export const receptionApi = {
     rd_number?: string
   }) {
     return api.patch<{ enrollment_status?: string; rd_number?: string }>('/reception/project-sc', data)
+  },
+
+  /** 更新接待看板入组情况 / RD / SC（与工单执行 project-sc 独立） */
+  updateBoardProjectSc(data: {
+    subject_id: number
+    project_code: string
+    enrollment_status?: string
+    rd_number?: string
+    sc_number?: string
+  }) {
+    return api.patch<{
+      subject_id: number
+      project_code: string
+      enrollment_status?: string
+      rd_number?: string
+      sc_number?: string
+    }>('/reception/board-project-sc', data)
   },
 
   /** 跨工作台状态回写 */
