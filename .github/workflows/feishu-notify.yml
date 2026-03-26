@@ -388,14 +388,16 @@ jobs:
         env:
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_BOT_WEBHOOK_URL }}
           FEISHU_CHAT_ID: ${{ secrets.FEISHU_DEV_GROUP_CHAT_ID }}
+          FEISHU_APPROVAL_CHAT_ID: ${{ secrets.FEISHU_APPROVAL_CHAT_ID }}
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
         with:
           script: |
-            const webhook = process.env.FEISHU_WEBHOOK;
-            const chatId  = process.env.FEISHU_CHAT_ID;
-            const appId   = process.env.FEISHU_APP_ID;
-            const appSecret = process.env.FEISHU_APP_SECRET;
+            const webhook        = process.env.FEISHU_WEBHOOK;
+            const chatId         = process.env.FEISHU_CHAT_ID;
+            const approvalChatId = process.env.FEISHU_APPROVAL_CHAT_ID;
+            const appId          = process.env.FEISHU_APP_ID;
+            const appSecret      = process.env.FEISHU_APP_SECRET;
 
             if (!webhook && !chatId) {
               core.warning('未配置 FEISHU_BOT_WEBHOOK_URL 或 FEISHU_DEV_GROUP_CHAT_ID，跳过通知');
@@ -718,23 +720,15 @@ jobs:
 
             const payload = { msg_type: 'interactive', card: JSON.stringify(card) };
 
-            // ── 发送方式 1：自定义机器人 Webhook（推荐，最简单）────────────────
-            if (webhook) {
-              const resp = await fetch(webhook, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-              });
-              const result = await resp.json();
-              if (result.code === 0 || result.StatusCode === 0) {
-                core.info('飞书通知发送成功（Webhook 模式）');
-              } else {
-                core.warning(`飞书通知失败：${JSON.stringify(result)}`);
-              }
-            }
-            // ── 发送方式 2：App Bot（需要 FEISHU_APP_ID + FEISHU_APP_SECRET + FEISHU_DEV_GROUP_CHAT_ID）
-            else if (chatId && appId && appSecret) {
-              // 先获取 tenant_access_token
+            // PR 开启 / 审批结果 → 同时发审批群；其余事件只发开发群
+            const ev2 = context.eventName;
+            const prAction = context.payload.action;
+            const isApprovalEvent =
+              (ev2 === 'pull_request' && (prAction === 'opened' || prAction === 'ready_for_review' || prAction === 'review_requested')) ||
+              (ev2 === 'pull_request_review');
+
+            // ── 发送到飞书群（App Bot 模式）────────────────────────────────
+            if (appId && appSecret) {
               const tokenResp = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -747,15 +741,34 @@ jobs:
               }
               const accessToken = tokenData.tenant_access_token;
 
-              const msgResp = await fetch('https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ receive_id: chatId, ...payload }),
-              });
-              const msgData = await msgResp.json();
-              if (msgData.code === 0) {
-                core.info('飞书通知发送成功（App Bot 模式）');
-              } else {
-                core.warning(`飞书通知失败：${JSON.stringify(msgData)}`);
+              async function sendToChat(targetChatId, label) {
+                const resp = await fetch('https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id', {
+                  method: 'POST',
+                  headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ receive_id: targetChatId, ...payload }),
+                });
+                const data = await resp.json();
+                if (data.code === 0) core.info(`飞书通知已发送：${label}`);
+                else core.warning(`飞书通知失败（${label}）：${JSON.stringify(data)}`);
               }
+
+              // 审批群：PR 开启 + 审批结果
+              if (isApprovalEvent && approvalChatId) {
+                await sendToChat(approvalChatId, '审批群');
+              }
+              // 开发群：所有事件
+              if (chatId) {
+                await sendToChat(chatId, '开发群');
+              }
+            }
+            // ── 降级：自定义 Webhook（只发一个目标）────────────────────────
+            else if (webhook) {
+              const resp = await fetch(webhook, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+              });
+              const result = await resp.json();
+              if (result.code === 0 || result.StatusCode === 0) core.info('飞书通知发送成功（Webhook 模式）');
+              else core.warning(`飞书通知失败：${JSON.stringify(result)}`);
             }
