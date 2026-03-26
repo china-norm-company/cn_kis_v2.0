@@ -14,7 +14,7 @@ from django.conf import settings
 from pathlib import Path
 import re
 from datetime import date, datetime, time as dt_time
-from typing import Dict, Iterable, Optional, List, Tuple, Union
+from typing import Dict, Iterable, Optional, List, Tuple
 import zipfile
 from io import BytesIO
 
@@ -1762,7 +1762,6 @@ def _build_full_consent_receipt_pdf(consent: SubjectConsent) -> None:
     知情签署回执 PDF：合并知情原文 PDF（若节点已上传且可解析）+ 签署摘要页
     （项目/节点信息、受试者填报、勾选结果、手写签名等）。适用于小程序正式签署与核验测试 H5。
     """
-    import base64
     import os
     import re
     from io import BytesIO

@@ -10,7 +10,6 @@ from typing import Optional
 from datetime import date, datetime as dt_datetime, timedelta
 import logging
 
-from django.db import transaction
 from django.utils import timezone
 from django.db.models import Q
 
@@ -2394,7 +2393,6 @@ def get_recommended_projects(request):
         return 404, {'code': 404, 'msg': '未找到受试者信息'}
 
     from apps.protocol.models import Protocol
-    from django.db.models import Q
     import datetime
 
     # 获取受试者已参与的项目（排除推荐重复）

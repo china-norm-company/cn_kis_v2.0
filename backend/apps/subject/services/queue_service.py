@@ -110,7 +110,6 @@ def call_next(station_id: str = 'default', project_code: Optional[str] = None) -
     叫号：按项目内叫号序取下一名 checked_in，更新为 in_progress。
     若传 project_code 则仅在该项目内取；否则全局按叫号序（项目+SC+过号顺延）。
     """
-    from ..models_execution import SubjectCheckin
 
     today = timezone.now().date()
     ordered = _build_call_order_list(today, project_code_filter=project_code)
@@ -247,7 +246,6 @@ def get_queue_position(subject_id: int) -> dict:
 def get_display_board(target_date=None) -> dict:
     """大屏展示数据（含当日签到二维码）"""
     from ..models_execution import SubjectCheckin
-    from .checkin_qrcode_service import generate_daily_checkin_qrcode
 
     if not target_date:
         target_date = timezone.now().date()

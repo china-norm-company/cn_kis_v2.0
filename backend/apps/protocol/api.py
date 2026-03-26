@@ -1064,7 +1064,6 @@ def _compute_consent_config_status(
 def get_consent_config_status_for_protocol(protocol: Protocol) -> str:
     """与 consent-overview 列表一致的「知情配置状态」（供核验测试扫码、落地页校验复用）。"""
     from apps.subject.services.consent_service import (
-        get_effective_mini_sign_rules,
         get_icf_versions,
         get_screening_batch_consent_stats,
     )

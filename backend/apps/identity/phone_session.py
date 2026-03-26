@@ -55,11 +55,11 @@ def verify_phone_token(token: str) -> Optional[str]:
         phone = payload.get('phone')
         if not phone:
             return None
-        
+
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         if cache.get(_blacklist_key(token_hash, phone)):
             return None
-        
+
         return phone
     except jwt.ExpiredSignatureError:
         return None

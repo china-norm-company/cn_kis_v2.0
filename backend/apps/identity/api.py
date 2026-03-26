@@ -1186,8 +1186,6 @@ def sms_verify(request, data: SmsVerifyIn):
 @router.post('/wechat/bind-phone', summary='绑定受试者手机号')
 def wechat_bind_phone(request, data: WechatBindPhoneIn):
     """微信小程序首次登录后，按手机号绑定 Subject"""
-    from .services import verify_jwt_token
-    from .models import Account
     from apps.subject.models import Subject
 
     account = _get_account_from_request(request)

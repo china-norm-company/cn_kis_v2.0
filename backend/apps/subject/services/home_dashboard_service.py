@@ -5,10 +5,9 @@
 """
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, time
 from typing import Any, Dict, List, Optional, Tuple
 
-from django.utils import timezone
 
 from ..models import Enrollment, EnrollmentStatus, Subject
 from ..models_execution import (
