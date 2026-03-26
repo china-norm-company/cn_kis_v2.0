@@ -480,20 +480,25 @@ export const equipmentApi = {
   /** 新增设备 */
   createEquipment(data: {
     name: string; code: string; category_id: number;
+    name_classification?: string;
     status?: string; location?: string; manufacturer?: string;
     model_number?: string; serial_number?: string;
     purchase_date?: string; warranty_expiry?: string;
-    calibration_cycle_days?: number; manager_id?: number
+    next_calibration_date?: string; next_verification_date?: string; next_maintenance_date?: string;
+    calibration_cycle_days?: number; verification_cycle_days?: number; maintenance_cycle_days?: number;
+    manager_id?: number
   }) {
     return api.post('/equipment/ledger/create', data)
   },
 
   /** 更新设备 */
   updateEquipment(id: number, data: {
-    name?: string; location?: string; manufacturer?: string;
+    name?: string; name_classification?: string; location?: string; manufacturer?: string;
     model_number?: string; serial_number?: string;
     purchase_date?: string; warranty_expiry?: string;
-    calibration_cycle_days?: number; manager_id?: number
+    next_calibration_date?: string; next_verification_date?: string; next_maintenance_date?: string;
+    calibration_cycle_days?: number; verification_cycle_days?: number; maintenance_cycle_days?: number;
+    manager_id?: number
   }) {
     return api.put(`/equipment/ledger/${id}`, data)
   },
