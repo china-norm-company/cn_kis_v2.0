@@ -406,13 +406,6 @@ class ProjectBudget(models.Model):
     notes = models.TextField('备注', blank=True, default='')
     created_by_id = models.IntegerField('创建人ID', null=True, blank=True, db_index=True)
 
-    # 易快报溯源字段
-    ekuaibao_budget_id = models.CharField(
-        '易快报预算ID', max_length=200, blank=True, default='', db_index=True,
-    )
-    import_batch_id = models.CharField('导入批次号', max_length=50, blank=True, default='')
-    import_source = models.CharField('数据来源', max_length=20, default='manual')
-
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)
 
@@ -946,7 +939,8 @@ class InvoiceRequestStatus(models.TextChoices):
 
 class InvoiceRequestInvoiceType(models.TextChoices):
     """发票类型"""
-    VAT_SPECIAL = 'vat_special', '增值税专用发票'
+    FULL_ELEC_SPECIAL = 'full_elec_special', '全电专票'
+    FULL_ELEC_NORMAL = 'full_elec_normal', '全电普票'
     PROFORMA = 'proforma', '形式发票'
 
 
@@ -972,9 +966,9 @@ class InvoiceRequest(models.Model):
     request_date = models.DateField('申请日期')
     customer_name = models.CharField('客户名称', max_length=200)
     invoice_type = models.CharField(
-        '发票类型', max_length=20,
+        '发票类型', max_length=24,
         choices=InvoiceRequestInvoiceType.choices,
-        default=InvoiceRequestInvoiceType.VAT_SPECIAL,
+        default=InvoiceRequestInvoiceType.FULL_ELEC_SPECIAL,
     )
     amount_type = models.CharField(
         '金额类型', max_length=20,

@@ -15,6 +15,8 @@ import { QueryListPage } from './pages/QueryListPage'
 import { ChangeControlPage } from './pages/ChangeControlPage'
 import { ProjectQualityReportPage } from './pages/ProjectQualityReportPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
+import { AdverseEventListPage } from './pages/AdverseEventListPage'
+import { AdverseEventDetailPage } from './pages/AdverseEventDetailPage'
 import { useApiInit } from './hooks/useApiInit'
 
 function App() {
@@ -42,6 +44,8 @@ function App() {
             <Route path="changes" element={<ChangeControlPage />} />
             <Route path="report" element={<ProjectQualityReportPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
+            <Route path="adverse-events" element={<AdverseEventListPage />} />
+            <Route path="adverse-events/:id" element={<AdverseEventDetailPage />} />
           </Route>
         </Routes>
       </HashRouter>

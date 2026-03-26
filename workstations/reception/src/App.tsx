@@ -12,6 +12,7 @@ import CheckinPage from './pages/CheckinPage'
 import QRScanCheckinPage from './pages/QRScanCheckinPage'
 import StationQRPage from './pages/StationQRPage'
 import AlertPage from './pages/AlertPage'
+import WorkOrderPage from './pages/WorkOrderPage'
 import SchedulePage from './pages/SchedulePage'
 
 function LoginPage() {
@@ -46,6 +47,7 @@ export default function App() {
             <Route path="journey" element={<ReceptionJourneyPage />} />
             <Route path="analytics" element={<ReceptionAnalyticsPage />} />
             <Route path="appointments" element={<AppointmentsPage />} />
+            <Route path="workorders" element={<WorkOrderPage />} />
             <Route path="checkin" element={<CheckinPage />} />
             <Route path="scan" element={<QRScanCheckinPage />} />
             <Route path="station-qr" element={<StationQRPage />} />

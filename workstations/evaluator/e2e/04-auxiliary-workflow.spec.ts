@@ -82,60 +82,44 @@ test.describe('场景4-B: 排程日历管理', () => {
     await setupApiMocks(page)
   })
 
-  test('4B.1 【设计目标】排程页面应展示周日历视图', async ({ page }) => {
+  test('4B.1 【设计目标】排程页面应展示实验室月历（与接待台一致）', async ({ page }) => {
     await page.goto('/evaluator/schedule')
     await page.waitForLoadState('networkidle')
 
-    // 验证页面标题（heading）
     await expect(page.getByRole('heading', { name: '我的排程' })).toBeVisible()
-    await expect(page.getByText('查看本周和未来的工作安排')).toBeVisible()
+    await expect(page.getByText('筛选人员/岗位')).toBeVisible()
+    await expect(page.getByText(/数据来源：执行台排程管理/)).toBeVisible()
 
-    // 验证周导航
-    await expect(page.getByRole('button', { name: '本周' })).toBeVisible()
-
-    // 验证星期标题
     for (const day of ['周一', '周二', '周三', '周四', '周五', '周六', '周日']) {
       await expect(page.getByText(day).first()).toBeVisible()
     }
   })
 
-  test('4B.2 【设计目标】排程统计应显示本周和下周工单数', async ({ page }) => {
+  test('4B.2 【设计目标】月历中应有模拟实验室排程条目', async ({ page }) => {
     await page.goto('/evaluator/schedule')
     await page.waitForLoadState('networkidle')
 
-    // 验证统计卡片
-    await expect(page.getByText('本周工单')).toBeVisible()
-    await expect(page.getByText('下周预排')).toBeVisible()
-    await expect(page.getByText('周期')).toBeVisible()
-
-    // 验证数值（避免依赖具体栅格 class）
-    await expect(page.getByText('10').first()).toBeVisible()
-    await expect(page.getByText('8').first()).toBeVisible()
+    await expect(page.getByText('C26030001').first()).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(/探头-Corneometer/).first()).toBeVisible()
   })
 
-  test('4B.3 【设计目标】日历中的工单应可点击进入执行页面', async ({ page }) => {
+  test('4B.3 【设计目标】有排程的日期可点开查看当日详情', async ({ page }) => {
     await page.goto('/evaluator/schedule')
     await page.waitForLoadState('networkidle')
 
-    // 检查日历区域有工单卡片
-    const calendarGrid = page.locator('.grid-cols-7').last()
-    const woCards = calendarGrid.locator('button')
-    const count = await woCards.count()
-    expect(count).toBeGreaterThan(0)
+    await expect(page.getByText('C26030001').first()).toBeVisible({ timeout: 10000 })
+    await page.getByText('C26030001').first().click()
+    await expect(page.getByRole('heading', { name: /实验室排程/ })).toBeVisible({ timeout: 5000 })
   })
 
-  test('4B.4 【设计目标】可以切换上/下周查看未来排程', async ({ page }) => {
+  test('4B.4 【设计目标】可以切换上/下月查看排程', async ({ page }) => {
     await page.goto('/evaluator/schedule')
     await page.waitForLoadState('networkidle')
 
-    // 点击下一周按钮（最后一个 chevron 按钮）
-    const chevronBtns = page.locator('.flex.items-center.gap-2 button')
+    const chevronBtns = page.locator('.flex.flex-wrap.items-center.gap-2 button')
     await chevronBtns.last().click()
+    await page.waitForTimeout(300)
 
-    // 等待数据刷新
-    await page.waitForTimeout(500)
-
-    // 验证页面仍然在排程视图（数据可能变化但结构不变）
     await expect(page.getByRole('heading', { name: '我的排程' })).toBeVisible()
   })
 })

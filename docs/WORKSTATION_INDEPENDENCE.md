@@ -70,7 +70,7 @@
 - [ ] 飞书后台为子衿应用添加新工作台的 `redirect_uri`
 - [ ] `backend/settings.py` 添加工作台到 `FEISHU_WORKSTATION_APP_IDS`
 - [ ] `backend/urls.py` 添加 API 路由
-- [ ] 运行 `ops/scripts/workstation_health_check.py` 验证
+- [ ] 运行 `python scripts/workstation_health_check.py` 验证
 
 ## 七、禁止事项
 

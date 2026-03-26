@@ -34,7 +34,6 @@ SYSTEM_ROLES = [
     {'name': 'hr_manager', 'display_name': '人力资源经理', 'level': 6, 'category': 'support', 'description': '人事管理和培训'},
     {'name': 'data_manager', 'display_name': '数据经理', 'level': 6, 'category': 'technical', 'description': '数据管理和分析'},
     {'name': 'research_manager', 'display_name': '研究经理', 'level': 6, 'category': 'technical', 'description': '研究项目管理和方案审批'},
-    {'name': 'recruitment_manager', 'display_name': '招募经理', 'level': 6, 'category': 'operation', 'description': '招募团队管理、计划审批'},
 
     # L5 — 主管/高级专员
     {'name': 'crc_supervisor', 'display_name': 'CRC主管', 'level': 5, 'category': 'operation', 'description': 'CRC 团队管理'},
@@ -55,6 +54,7 @@ SYSTEM_ROLES = [
     {'name': 'evaluator', 'display_name': '技术评估员', 'level': 3, 'category': 'technical', 'description': '技术评估和检测执行'},
     {'name': 'receptionist', 'display_name': '前台接待员', 'level': 3, 'category': 'operation', 'description': '前台签到签出与接待队列管理'},
     {'name': 'recruiter', 'display_name': '招募专员', 'level': 3, 'category': 'operation', 'description': '受试者招募'},
+    {'name': 'recruitment_manager', 'display_name': '招募经理', 'level': 6, 'category': 'operation', 'description': '招募团队管理、计划审批'},
     {'name': 'lab_personnel', 'display_name': '实验室人员专员', 'level': 3, 'category': 'support', 'description': '实验室人员台日常管理'},
     {'name': 'subject_self', 'display_name': '受试者(自助)', 'level': 1, 'category': 'external', 'description': '受试者通过微信小程序自助访问'},
 
@@ -69,11 +69,10 @@ SYSTEM_ROLES = [
 
 
 # ============================================================================
-# 角色 → 可访问工作台映射（ROLE_WORKBENCH_MAP）
-# 此常量被 apps/identity/api.py 中的 _build_user_profile 直接引用
+# 角色 → 可访问工作台映射
 # ============================================================================
 ROLE_WORKBENCH_MAP = {
-    # L10: 全部 18 个工作台
+    # L10: 全部（15 业务 + 3 平台 = 18 个工作台）
     'superadmin': [
         'secretary', 'finance', 'research', 'execution', 'quality',
         'hr', 'crm', 'recruitment', 'equipment', 'material',
@@ -93,14 +92,13 @@ ROLE_WORKBENCH_MAP = {
     'tech_director':     ['secretary', 'research', 'execution', 'control-plane'],
     'research_director': ['secretary', 'research', 'quality'],
     # L6: 职能+秘书
-    'sales_manager':       ['secretary', 'crm'],
-    'project_manager':     ['secretary', 'research', 'execution', 'quality'],
-    'quality_manager':     ['secretary', 'quality'],
-    'finance_manager':     ['secretary', 'finance'],
-    'hr_manager':          ['secretary', 'hr'],
-    'data_manager':        ['secretary', 'research', 'control-plane'],
-    'research_manager':    ['secretary', 'research', 'execution', 'quality', 'recruitment'],
-    'recruitment_manager': ['secretary', 'recruitment'],
+    'sales_manager':     ['secretary', 'crm'],
+    'project_manager':   ['secretary', 'research', 'execution', 'quality'],
+    'quality_manager':   ['secretary', 'quality'],
+    'finance_manager':   ['secretary', 'finance'],
+    'hr_manager':        ['secretary', 'hr'],
+    'data_manager':      ['secretary', 'research', 'control-plane'],
+    'research_manager':  ['secretary', 'research', 'execution', 'quality', 'recruitment'],
     # L5
     'crc_supervisor':    ['secretary', 'execution', 'reception'],
     'scheduler':         ['secretary', 'execution'],
@@ -108,7 +106,7 @@ ROLE_WORKBENCH_MAP = {
     'researcher':        ['secretary', 'research'],
     # L4
     'sales':             ['secretary', 'crm'],
-    'business_assistant': ['secretary', 'crm'],
+    'business_assistant':['secretary', 'crm'],
     'it_specialist':     ['secretary', 'control-plane'],
     'data_analyst':      ['secretary', 'research'],
     # L3
@@ -118,6 +116,7 @@ ROLE_WORKBENCH_MAP = {
     'technician':        ['secretary', 'execution', 'equipment', 'material', 'facility', 'lab-personnel'],
     'evaluator':         ['secretary', 'evaluator'],
     'recruiter':         ['secretary', 'recruitment'],
+    'recruitment_manager': ['secretary', 'recruitment'],
     'lab_personnel':     ['secretary', 'lab-personnel'],
     'subject_self':      [],
     'finance':           ['secretary', 'finance'],
@@ -181,6 +180,8 @@ SYSTEM_PERMISSIONS = [
 
     # --- 排程 (scheduling) ---
     ('scheduling', 'plan', 'read', 'project', '查看排程计划'),
+    ('scheduling', 'plan', 'create', 'project', '创建排程/上传执行订单'),
+    ('scheduling', 'plan', 'update', 'project', '更新排程计划'),
 
     # --- 工单 (workorder) ---
     ('workorder', 'workorder', 'read', 'project', '查看工单'),
@@ -281,7 +282,7 @@ SYSTEM_PERMISSIONS = [
     ('resource', 'item', 'read', 'global', '查看资源条目'),
     ('sample', 'instance', 'read', 'project', '查看样本实例'),
     ('resource', 'sample', 'read', 'global', '查看样品管理'),
-    ('resource', 'sample', 'dispense', 'project', '发放/领用样品'),
+    ('resource', 'sample', 'dispense', 'project', '发放/领用样品（需同工单+受试者+访视点唯一）'),
 
     # --- 二维码 (qrcode) ---
     ('qrcode', 'record', 'read', 'project', '查看二维码记录'),
@@ -290,6 +291,7 @@ SYSTEM_PERMISSIONS = [
 
     # --- 安全/伦理/文档 ---
     ('safety', 'ae', 'read', 'project', '查看安全事件'),
+    ('safety', 'ae', 'create', 'project', '上报/随访安全事件'),
     ('ethics', 'app', 'read', 'project', '查看伦理申请'),
     ('document', 'doc', 'read', 'global', '查看文档'),
 
@@ -306,7 +308,6 @@ SYSTEM_PERMISSIONS = [
     ('agent', 'chat', 'use', 'personal', '使用AI智能体对话'),
     ('agent', 'agent', 'read', 'global', '查看智能体列表'),
     ('agent', 'session', 'read', 'personal', '查看自己的会话'),
-
     # --- 子衿个人业务助理 (assistant) ---
     ('assistant', 'context', 'read', 'personal', '读取角色授权范围内的跨工作台上下文（只读）'),
     ('assistant', 'summary', 'generate', 'personal', '生成业务摘要/日报/常规分析草稿'),
@@ -364,13 +365,14 @@ SYSTEM_PERMISSIONS = [
 # 角色 → 权限映射（使用通配符简化）
 # ============================================================================
 ROLE_PERMISSION_MAP = {
-    'superadmin': ['*'],
+    'superadmin': ['*'],  # 全部权限
     'admin': ['*'],
 
     'general_manager': [
         'dashboard.*', 'protocol.*', 'subject.*', 'visit.*', 'workorder.*',
         'edc.*', 'crm.*', 'quality.*', 'finance.*', 'hr.*',
         'feasibility.*', 'proposal.*', 'closeout.*',
+        'scheduling.plan.read', 'scheduling.plan.create',
         'agent.*', 'assistant.*', 'signature.*', 'control.*', 'system.audit.read',
         'knowledge.*', 'system.notification.read',
     ],
@@ -383,14 +385,16 @@ ROLE_PERMISSION_MAP = {
     ],
     'project_director': [
         'dashboard.*', 'protocol.*', 'subject.*', 'visit.*', 'workorder.*',
-        'edc.*', 'quality.*',
+        'edc.*', 'quality.*', 'safety.ae.read',
         'feasibility.*', 'proposal.*', 'closeout.*',
+        'scheduling.plan.read', 'scheduling.plan.create',
         'assistant.context.read', 'assistant.summary.generate',
         'system.notification.read',
     ],
     'tech_director': [
         'dashboard.*', 'protocol.protocol.read', 'edc.*',
         'subject.subject.read', 'visit.*', 'workorder.*', 'resource.*', 'sample.*',
+        'scheduling.plan.read', 'scheduling.plan.create',
         'assistant.context.read', 'assistant.summary.generate', 'control.*',
         'system.notification.read',
     ],
@@ -413,16 +417,18 @@ ROLE_PERMISSION_MAP = {
         'dashboard.*', 'protocol.protocol.read', 'protocol.protocol.update',
         'subject.*', 'visit.*', 'workorder.*', 'edc.crf.read', 'edc.crf.verify',
         'quality.deviation.read', 'quality.deviation.create', 'quality.capa.read',
+        'safety.ae.read',
         'resource.sample.read', 'resource.sample.dispense',
+        'scheduling.plan.read', 'scheduling.plan.create',
         'signature.signature.read', 'signature.signature.create',
-        'assistant.context.read', 'assistant.summary.generate',
-        'assistant.automation.execute', 'assistant.policy.manage', 'assistant.preference.manage',
+        'assistant.context.read', 'assistant.summary.generate', 'assistant.automation.execute', 'assistant.policy.manage', 'assistant.preference.manage',
         'agent.chat.use', 'agent.session.read',
         'system.notification.read',
     ],
     'quality_manager': [
         'dashboard.overview.read', 'dashboard.stats.read', 'dashboard.feishu_scan.read',
         'dashboard.activities.read', 'quality.*', 'protocol.protocol.read',
+        'safety.ae.read', 'safety.ae.create',
         'signature.*', 'assistant.context.read', 'assistant.summary.generate',
         'knowledge.*', 'agent.chat.use', 'agent.session.read',
         'system.notification.read',
@@ -444,8 +450,7 @@ ROLE_PERMISSION_MAP = {
         'dashboard.*', 'protocol.protocol.read', 'subject.subject.read',
         'edc.crf.read', 'edc.crf.verify', 'edc.record.read',
         'feasibility.assessment.read', 'proposal.proposal.read', 'closeout.closeout.read',
-        'assistant.context.read', 'assistant.summary.generate',
-        'control.dashboard.read', 'control.object.read', 'control.event.read',
+        'assistant.context.read', 'assistant.summary.generate', 'control.dashboard.read', 'control.object.read', 'control.event.read',
         'system.notification.read',
     ],
     'research_manager': [
@@ -457,18 +462,13 @@ ROLE_PERMISSION_MAP = {
         'agent.chat.use', 'agent.session.read',
         'system.notification.read',
     ],
-    'recruitment_manager': [
-        'dashboard.overview.read', 'dashboard.stats.read', 'dashboard.activities.read',
-        'subject.*', 'subject.recruitment.*',
-        'assistant.context.read', 'assistant.summary.generate',
-        'system.notification.read',
-    ],
 
     'crc_supervisor': [
         'dashboard.overview.read', 'dashboard.stats.read', 'dashboard.feishu_scan.read',
         'dashboard.activities.read',
         'subject.*', 'visit.*', 'workorder.*', 'edc.crf.read', 'edc.crf.create',
         'resource.sample.read', 'resource.sample.dispense',
+        'scheduling.plan.read', 'scheduling.plan.create',
         'assistant.context.read', 'assistant.summary.generate',
         'system.notification.read',
     ],
@@ -476,6 +476,7 @@ ROLE_PERMISSION_MAP = {
         'dashboard.overview.read', 'dashboard.stats.read', 'dashboard.activities.read',
         'visit.*', 'workorder.workorder.read',
         'system.notification.read',
+        'scheduling.plan.read', 'scheduling.plan.create',
     ],
     'customer_success': [
         'dashboard.overview.read', 'dashboard.stats.read', 'dashboard.feishu_scan.read',
@@ -487,8 +488,7 @@ ROLE_PERMISSION_MAP = {
     'researcher': [
         'dashboard.overview.read', 'dashboard.stats.read', 'dashboard.feishu_scan.read',
         'dashboard.activities.read',
-        'protocol.protocol.read', 'protocol.protocol.create', 'protocol.protocol.update',
-        'subject.subject.read', 'visit.plan.read',
+        'protocol.protocol.read', 'protocol.protocol.create', 'protocol.protocol.update', 'subject.subject.read', 'visit.plan.read',
         'feasibility.assessment.read', 'proposal.proposal.read', 'closeout.closeout.read',
         'assistant.context.read', 'assistant.summary.generate',
         'knowledge.entry.view', 'knowledge.entry.create',
@@ -506,8 +506,7 @@ ROLE_PERMISSION_MAP = {
     'business_assistant': [
         'dashboard.overview.read', 'dashboard.stats.read', 'dashboard.activities.read',
         'crm.client.read', 'crm.opportunity.read',
-        'assistant.context.read', 'assistant.summary.generate',
-        'assistant.automation.execute', 'assistant.policy.manage', 'assistant.preference.manage',
+        'assistant.context.read', 'assistant.summary.generate', 'assistant.automation.execute', 'assistant.policy.manage', 'assistant.preference.manage',
         'system.notification.read',
     ],
     'it_specialist': [
@@ -529,6 +528,7 @@ ROLE_PERMISSION_MAP = {
         'workorder.workorder.read', 'workorder.workorder.update',
         'edc.crf.read', 'edc.crf.create',
         'resource.sample.read', 'resource.sample.dispense',
+        'scheduling.plan.read', 'scheduling.plan.create',
         'assistant.context.read', 'assistant.summary.generate',
         'agent.chat.use',
         'system.notification.read',
@@ -539,6 +539,7 @@ ROLE_PERMISSION_MAP = {
         'workorder.workorder.read', 'workorder.workorder.update',
         'edc.crf.read', 'edc.crf.create', 'resource.*', 'sample.*',
         'resource.sample.dispense',
+        'scheduling.plan.read', 'scheduling.plan.create',
         'agent.chat.use',
         'system.notification.read',
     ],
@@ -546,9 +547,10 @@ ROLE_PERMISSION_MAP = {
         'dashboard.overview.read', 'dashboard.stats.read', 'dashboard.activities.read',
         'workorder.workorder.read', 'workorder.workorder.update',
         'edc.crf.read', 'edc.crf.create', 'resource.*', 'sample.*',
+        'scheduling.plan.read', 'scheduling.plan.create',
         'resource.sample.dispense',
         'agent.chat.use',
-        'system.notification.read',
+        'system.notification.read'
     ],
     'evaluator': [
         'dashboard.overview.read', 'dashboard.stats.read', 'dashboard.activities.read',
@@ -573,6 +575,12 @@ ROLE_PERMISSION_MAP = {
         'agent.chat.use', 'agent.session.read',
         'system.notification.read',
     ],
+    'recruitment_manager': [
+        'dashboard.overview.read', 'dashboard.stats.read', 'dashboard.activities.read',
+        'subject.*', 'subject.recruitment.*',
+        'assistant.context.read', 'assistant.summary.generate',
+        'system.notification.read',
+    ],
     'lab_personnel': [
         'dashboard.overview.read', 'dashboard.stats.read', 'dashboard.activities.read',
         'lab_personnel.*',
@@ -586,6 +594,7 @@ ROLE_PERMISSION_MAP = {
         'agent.session.read',
         'system.notification.read',
     ],
+
     'finance': [
         'dashboard.overview.read', 'dashboard.stats.read', 'dashboard.activities.read',
         'finance.quote.read', 'finance.contract.read',
@@ -601,6 +610,7 @@ ROLE_PERMISSION_MAP = {
         'quality.deviation.read', 'quality.deviation.create',
         'quality.capa.read', 'quality.sop.read',
         'quality.change.read', 'quality.audit.read', 'edc.record.read',
+        'safety.ae.read', 'safety.ae.create',
         'assistant.context.read', 'assistant.summary.generate',
         'system.notification.read',
     ],
@@ -707,6 +717,7 @@ class Command(BaseCommand):
         self.stdout.write(f'  角色-权限关联: 新建 {created}, 总计 {RolePermission.objects.count()}')
 
     def _clear_authz_cache(self):
+        """清除所有账号的权限缓存，使新角色权限立即生效"""
         account_ids = AccountRole.objects.values_list('account_id', flat=True).distinct()
         authz = get_authz_service()
         for aid in account_ids:

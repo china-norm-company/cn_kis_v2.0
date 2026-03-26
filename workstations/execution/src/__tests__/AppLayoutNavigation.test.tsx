@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
+import { ThemeProvider } from '../contexts/ThemeContext'
 
 const mockHasAnyPermission = vi.fn()
 const mockCanSeeMenu = vi.fn()
@@ -27,6 +28,8 @@ vi.mock('@cn-kis/feishu-sdk', () => ({
     canAccessWorkbench: () => true,
     isMenuVisible: () => true,
     canSeeMenu: mockCanSeeMenu,
+    getWorkstationMode: () => 'full' as const,
+    profile: { visible_menu_items: {} as Record<string, string[]> },
   }),
   LoginFallback: () => <div>Login</div>,
 }))
@@ -53,9 +56,11 @@ function renderWithProviders(ui: React.ReactElement) {
   })
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/dashboard']}>
-        {ui}
-      </MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/dashboard']}>
+          {ui}
+        </MemoryRouter>
+      </ThemeProvider>
     </QueryClientProvider>,
   )
 }
@@ -79,6 +84,7 @@ describe('AppLayout 角色化导航', () => {
     renderWithProviders(<AppLayout />)
 
     expectVisibleLabel('仪表盘')
+    expectVisibleLabel('项目管理')
     expectVisibleLabel('工单管理')
     expectVisibleLabel('排程管理')
     expectVisibleLabel('访视管理')
@@ -91,13 +97,14 @@ describe('AppLayout 角色化导航', () => {
 
   it('后端 visible_menu_items 优先控制可见性', () => {
     mockCanSeeMenu.mockImplementation((_wb: string, menu: string) =>
-      ['dashboard', 'workorders', 'scheduling', 'analytics'].includes(menu),
+      ['dashboard', 'workorders', 'project-management', 'scheduling', 'analytics'].includes(menu),
     )
 
     renderWithProviders(<AppLayout />)
 
     expectVisibleLabel('仪表盘')
     expectVisibleLabel('工单管理')
+    expectVisibleLabel('项目管理')
     expectVisibleLabel('排程管理')
     expectVisibleLabel('分析报表')
     expect(screen.queryByText('EDC采集')).not.toBeInTheDocument()

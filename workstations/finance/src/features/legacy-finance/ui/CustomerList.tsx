@@ -27,12 +27,17 @@ import {
 } from "@/shared/ui/alert-dialog";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
+import { useFeishuContext } from "@cn-kis/feishu-sdk";
+import { FINANCE_PERMS } from "@/shared/lib/financePermissions";
 
 interface CustomerListProps {
   onCustomerSelect?: (customer: any) => void;
 }
 
 export function CustomerList({ onCustomerSelect }: CustomerListProps) {
+  const { hasPermission } = useFeishuContext();
+  const canManageCustomer = hasPermission(FINANCE_PERMS.invoiceCreate);
+
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [searchTerm, setSearchTerm] = useState("");
@@ -113,6 +118,11 @@ export function CustomerList({ onCustomerSelect }: CustomerListProps) {
 
   return (
     <div className="space-y-4">
+      {!canManageCustomer && (
+        <p className="text-xs text-muted-foreground rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+          当前为只读查看：客户主数据维护由财务人员操作。
+        </p>
+      )}
       {/* 搜索和筛选栏 */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-1 gap-2">
@@ -138,16 +148,18 @@ export function CustomerList({ onCustomerSelect }: CustomerListProps) {
             <option value="inactive">禁用</option>
           </select>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
-            <Upload className="mr-2 h-4 w-4" />
-            批量导入
-          </Button>
-          <Button onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            新建客户
-          </Button>
-        </div>
+        {canManageCustomer && (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" />
+              批量导入
+            </Button>
+            <Button onClick={() => setCreateDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              新建客户
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* 客户列表 */}
@@ -205,20 +217,24 @@ export function CustomerList({ onCustomerSelect }: CustomerListProps) {
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(customer)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(customer.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      {canManageCustomer && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEdit(customer)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {canManageCustomer && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(customer.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

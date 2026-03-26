@@ -14,8 +14,10 @@ export interface QueueItem {
   name_pinyin_initials?: string
   /** SC号：签到时按项目生成，同一项目+受试者跨访视不变 */
   sc_number?: string
-  /** RD号，逻辑待定，暂空 */
+  /** RD号：入组后等在接待台工单执行侧维护 */
   rd_number?: string
+  /** 入组情况（与 SubjectProjectSC.enrollment_status 一致） */
+  enrollment_status?: string
   gender?: string
   age?: number | null
   appointment_time: string
@@ -67,6 +69,10 @@ export interface TodayStats {
   signed_in_count: number
   /** 无预约临时到访人数 */
   walk_in_count: number
+  /** 入组情况各状态数量（初筛合格/正式入组/不合格/复筛不合格/退出/缺席） */
+  enrollment_status_counts?: Record<string, number>
+  /** 当日队列中出现的项目（与 today-stats 内队列聚合一致，供项目筛选，避免额外拉大包） */
+  project_options?: Array<{ code: string; name: string }>
 }
 
 export interface CheckinResult {
@@ -128,9 +134,14 @@ export interface FlowcardProgress {
 }
 
 export const receptionApi = {
-  /** 今日受试者队列（支持分页、项目筛选） */
+  /**
+   * 今日受试者队列。
+   * source: execution=工单执行（独立 SC/RD/签到签出），board=接待看板（独立数据，两者互不影响）
+   */
   todayQueue(
-    dateOrParams?: string | { target_date?: string; page?: number; page_size?: number; project_code?: string },
+    dateOrParams?:
+      | string
+      | { target_date?: string; page?: number; page_size?: number; project_code?: string; source?: 'execution' | 'board' },
   ) {
     const params = typeof dateOrParams === 'string' ? { target_date: dateOrParams } : dateOrParams
     const p: Record<string, string | number | undefined> = {}
@@ -138,18 +149,36 @@ export const receptionApi = {
     if (params?.page != null) p.page = params.page
     if (params?.page_size != null) p.page_size = params.page_size
     if (params?.project_code != null && params.project_code !== '') p.project_code = params.project_code
+    if (params?.source === 'board' || params?.source === 'execution') p.source = params.source
     return api.get<TodayQueue>('/reception/today-queue', { params: Object.keys(p).length ? p : undefined })
   },
 
-  /** 今日队列导出数据（按日期/项目/状态筛选，不含手机号） */
-  todayQueueExport(params?: { target_date?: string; project_code?: string; status?: string }) {
+  /** 今日队列导出数据（按日期/项目/状态筛选；含手机号等字段由前端生成 Excel）；source 同上 */
+  todayQueueExport(params?: { target_date?: string; project_code?: string; status?: string; source?: 'execution' | 'board' }) {
     const p: Record<string, string | undefined> = {}
     if (params?.target_date) p.target_date = params.target_date
     if (params?.project_code != null && params.project_code !== '') p.project_code = params.project_code
     if (params?.status != null && params.status !== '') p.status = params.status
+    if (params?.source === 'board' || params?.source === 'execution') p.source = params.source
     return api.get<{ items: QueueItem[]; date: string; total: number }>(
       '/reception/today-queue/export',
       { params: Object.keys(p).length ? p : undefined },
+    )
+  },
+
+  /** 接待看板签到（与工单执行签到独立，SC/RD 号独立）。project_code 可选，同天多项目时指定为哪个项目分配 SC 号。 */
+  boardCheckin(data: { subject_id: number; target_date?: string; project_code?: string }) {
+    return api.post<{ id: number; subject_id: number; checkin_date: string; checkin_time: string | null; checkout_time: string | null }>(
+      '/reception/board-checkin',
+      data,
+    )
+  },
+
+  /** 接待看板签出（与工单执行签出独立） */
+  boardCheckout(data: { subject_id: number; target_date?: string }) {
+    return api.post<{ id: number; subject_id: number; checkin_date: string; checkin_time: string | null; checkout_time: string | null }>(
+      '/reception/board-checkout',
+      data,
     )
   },
 
@@ -160,16 +189,17 @@ export const receptionApi = {
     })
   },
 
-  /** 今日统计 */
-  todayStats(date?: string, projectCode?: string) {
+  /** 今日统计；source=board 时与接待看板队列同源，与工单执行统计独立 */
+  todayStats(date?: string, projectCode?: string, source?: 'execution' | 'board') {
     const params: Record<string, string> = {}
     if (date) params.target_date = date
     if (projectCode) params.project_code = projectCode
+    if (source === 'board' || source === 'execution') params.source = source
     return api.get<TodayStats>('/reception/today-stats', { params: Object.keys(params).length ? params : undefined })
   },
 
-  /** 快速签到 */
-  quickCheckin(data: { subject_id: number; method?: string; location?: string }) {
+  /** 快速签到，project_code 可选，同天多项目时用于为该项目分配 SC 号 */
+  quickCheckin(data: { subject_id: number; method?: string; location?: string; project_code?: string }) {
     return api.post<CheckinResult>('/reception/quick-checkin', data)
   },
 
@@ -195,9 +225,16 @@ export const receptionApi = {
     return api.get<FlowcardProgress>(`/reception/flowcard/${checkinId}/progress`)
   },
 
-  /** 叫号 */
-  callNext(stationId: string = 'default') {
-    return api.post<CallNextResult>('/reception/call-next', null, { params: { station_id: stationId } })
+  /** 叫号；可选 project_code 仅在该项目内按 SC 顺序叫号 */
+  callNext(stationId: string = 'default', projectCode?: string) {
+    const params: Record<string, string> = { station_id: stationId }
+    if (projectCode) params.project_code = projectCode
+    return api.post<CallNextResult>('/reception/call-next', null, { params })
+  },
+
+  /** 过号：将执行中改回等候并顺延排队 */
+  missCall(checkinId: number) {
+    return api.post<{ ok: boolean; message?: string; checkin_id?: number }>('/reception/miss-call', { checkin_id: checkinId })
   },
 
   /** 查询排位 */
@@ -248,6 +285,33 @@ export const receptionApi = {
     })
   },
 
+  /** 更新入组情况与 RD 号（工单执行页面用） */
+  updateProjectSc(data: {
+    subject_id: number
+    project_code: string
+    enrollment_status?: string
+    rd_number?: string
+  }) {
+    return api.patch<{ enrollment_status?: string; rd_number?: string }>('/reception/project-sc', data)
+  },
+
+  /** 更新接待看板入组情况 / RD / SC（与工单执行 project-sc 独立） */
+  updateBoardProjectSc(data: {
+    subject_id: number
+    project_code: string
+    enrollment_status?: string
+    rd_number?: string
+    sc_number?: string
+  }) {
+    return api.patch<{
+      subject_id: number
+      project_code: string
+      enrollment_status?: string
+      rd_number?: string
+      sc_number?: string
+    }>('/reception/board-project-sc', data)
+  },
+
   /** 跨工作台状态回写 */
   crossWorkstationSync(data: {
     enrollment_id: number
@@ -268,6 +332,7 @@ export interface CallNextResult {
     name: string
     checkin_id: number
     checkin_time: string
+    sc_number?: string
   }
   station?: string
   message?: string

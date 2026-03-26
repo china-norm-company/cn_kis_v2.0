@@ -3,8 +3,11 @@
  * 支持按时间维度（本月/本季/本年/自定义）汇总：总申请、已处理、待处理
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
+import { useFeishuContext } from "@cn-kis/feishu-sdk";
 import { useInvoiceRequests } from "../model/useInvoiceRequests";
+import { useUpdateInvoice } from "../model/useInvoices";
+import { FINANCE_PERMS } from "@/shared/lib/financePermissions";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Badge } from "@/shared/ui/badge";
@@ -16,7 +19,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/shared/ui/table";
-import { Plus, Search, Eye, Download, Pencil, Trash2 } from "lucide-react";
+import { Plus, Search, Eye, Download, Pencil, Trash2, Upload } from "lucide-react";
+import { saveInvoiceFile, downloadInvoiceFile } from "@/shared/services/fileStorage";
+import { invoicesApi } from "../api/invoicesApi";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { CreateInvoiceRequestDialog } from "./CreateInvoiceRequestDialog";
@@ -55,7 +60,34 @@ const STATUS_COLOR: Record<InvoiceRequestStatus, "default" | "secondary" | "dest
   cancelled: "destructive",
 };
 
+function isOwnInvoiceRequest(request: InvoiceRequest, profile: { id: number; display_name?: string; username?: string } | null): boolean {
+  if (!profile) return false;
+  if (request.request_by_id != null && Number(request.request_by_id) === Number(profile.id)) return true;
+  const rb = (request.request_by || "").trim();
+  if (!rb) return false;
+  const dn = (profile.display_name || "").trim();
+  const un = (profile.username || "").trim();
+  return rb === dn || rb === un;
+}
+
 export function InvoiceRequestList() {
+  const { profile, hasPermission, hasAnyPermission } = useFeishuContext();
+  const canFinanceFull = hasPermission(FINANCE_PERMS.invoiceCreate);
+  const canSubmitInvoiceRequest = hasAnyPermission([
+    FINANCE_PERMS.invoiceCreate,
+    FINANCE_PERMS.invoiceRequestSubmit,
+  ]);
+  const canUploadEinvoice = hasAnyPermission([
+    FINANCE_PERMS.invoiceCreate,
+    FINANCE_PERMS.invoiceEinvoice,
+  ]);
+
+  const showRowEditDelete = (request: InvoiceRequest) => {
+    if (request.status !== "pending" && request.status !== "processing") return false;
+    if (canFinanceFull) return true;
+    return canSubmitInvoiceRequest && isOwnInvoiceRequest(request, profile);
+  };
+
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const [searchTerm, setSearchTerm] = useState("");
@@ -71,6 +103,9 @@ export function InvoiceRequestList() {
   const [requestToDelete, setRequestToDelete] = useState<InvoiceRequest | null>(null);
   const [exporting, setExporting] = useState(false);
   const deleteMutation = useDeleteInvoiceRequest();
+  const updateInvoiceMutation = useUpdateInvoice();
+  const electronicFileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadLinkedInvoiceId, setUploadLinkedInvoiceId] = useState<number | null>(null);
 
   const { startDate, endDate } = useMemo(
     () => getStartEndForPeriod(timePeriod, customStart, customEnd),
@@ -100,7 +135,7 @@ export function InvoiceRequestList() {
     };
   }, [summaryData]);
 
-  const { data, isLoading, error } = useInvoiceRequests({
+  const { data, isLoading, error, refetch } = useInvoiceRequests({
     page,
     page_size: pageSize,
     status: statusFilter !== "all" ? statusFilter : undefined,
@@ -160,6 +195,52 @@ export function InvoiceRequestList() {
       alert("导出失败，请重试");
     } finally {
       setExporting(false);
+    }
+  };
+
+  const triggerElectronicUpload = (linkedId: number) => {
+    setUploadLinkedInvoiceId(linkedId);
+    electronicFileInputRef.current?.click();
+  };
+
+  const handleElectronicFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const invId = uploadLinkedInvoiceId;
+    e.target.value = "";
+    setUploadLinkedInvoiceId(null);
+    if (!file || !invId) return;
+    try {
+      const fileId = await saveInvoiceFile(invId, file);
+      await updateInvoiceMutation.mutateAsync({
+        id: invId,
+        electronic_invoice_file: fileId,
+        electronic_invoice_file_name: file.name,
+      });
+      await refetch();
+    } catch (err) {
+      console.error("上传电子发票失败:", err);
+      alert(`上传失败：${err instanceof Error ? err.message : "请稍后重试"}`);
+    }
+  };
+
+  const handleDownloadElectronic = async (request: InvoiceRequest) => {
+    const invId = request.linked_invoice_id;
+    if (!invId) return;
+    try {
+      await refetch();
+    } catch {
+      /* ignore */
+    }
+    let inv = await invoicesApi.getInvoiceById(invId);
+    if (!inv?.electronic_invoice_file) {
+      alert("电子发票文件不存在，请刷新后重试或重新上传。");
+      return;
+    }
+    try {
+      await downloadInvoiceFile(inv.electronic_invoice_file, inv.electronic_invoice_file_name || "电子发票");
+    } catch (err) {
+      console.error("下载电子发票失败:", err);
+      alert(`下载失败：${err instanceof Error ? err.message : "请稍后重试"}`);
     }
   };
 
@@ -234,12 +315,22 @@ export function InvoiceRequestList() {
             <Download className="h-4 w-4 mr-2" />
             {exporting ? "导出中…" : "导出Excel"}
           </Button>
-          <Button onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            提交开票申请
-          </Button>
+          {canSubmitInvoiceRequest && (
+            <Button onClick={() => setCreateDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              提交开票申请
+            </Button>
+          )}
         </div>
       </div>
+
+      <input
+        ref={electronicFileInputRef}
+        type="file"
+        className="hidden"
+        accept=".pdf,.ofd,image/*"
+        onChange={handleElectronicFileSelected}
+      />
 
       {/* 申请列表 */}
       <div className="border rounded-lg">
@@ -252,13 +343,14 @@ export function InvoiceRequestList() {
               <TableHead>总金额（含税）</TableHead>
               <TableHead>申请人</TableHead>
               <TableHead>状态</TableHead>
+              <TableHead>电子发票</TableHead>
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8">
+                <TableCell colSpan={8} className="text-center py-8">
                   <div className="flex items-center justify-center">
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
                     <span className="ml-2">加载中...</span>
@@ -267,7 +359,7 @@ export function InvoiceRequestList() {
               </TableRow>
             ) : requests.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                   暂无数据
                 </TableCell>
               </TableRow>
@@ -290,6 +382,43 @@ export function InvoiceRequestList() {
                       {STATUS_LABEL[request.status]}
                     </Badge>
                   </TableCell>
+                  <TableCell className="whitespace-nowrap text-sm">
+                    {!request.linked_invoice_id ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : request.electronic_invoice_file_name ? (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs text-muted-foreground">可下载</span>
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="h-auto p-0 text-xs justify-start"
+                          onClick={() => handleDownloadElectronic(request)}
+                          title={request.electronic_invoice_file_name}
+                        >
+                          <Download className="h-3.5 w-3.5 mr-1" />
+                          下载
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs text-amber-700">未上传</span>
+                        {canUploadEinvoice ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            disabled={updateInvoiceMutation.isPending}
+                            onClick={() => triggerElectronicUpload(request.linked_invoice_id!)}
+                          >
+                            <Upload className="h-3.5 w-3.5 mr-1" />
+                            上传
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">无上传权限</span>
+                        )}
+                      </div>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
                       <Button
@@ -303,7 +432,7 @@ export function InvoiceRequestList() {
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
-                      {(request.status === "pending" || request.status === "processing") && (
+                      {showRowEditDelete(request) && (
                         <>
                           <Button
                             variant="ghost"

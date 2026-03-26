@@ -20,11 +20,22 @@ vi.mock('react-router-dom', async () => {
 
 vi.mock('@cn-kis/api-client', () => ({
   qrcodeApi: {
-    resolve: vi.fn().mockResolvedValue({
+    /** ScanPage 经 SmartQRScanner 调用 smartResolve，非旧版 resolve */
+    smartResolve: vi.fn().mockResolvedValue({
       data: {
-        entity_type: 'subject',
-        subject: { id: 1, name: '李华' },
-        today_work_orders: [{ id: 10, title: 'Corneometer 测试' }],
+        entity: {
+          id: 1,
+          entity_type: 'subject',
+          entity_id: 1,
+          qr_data: '',
+          qr_hash: 'mock',
+          label: 'S001',
+          is_active: true,
+          create_time: '',
+        },
+        recommended_action: 'jump_to_workorder',
+        action_data: { work_order_id: 10 },
+        alternative_actions: [],
       },
     }),
   },

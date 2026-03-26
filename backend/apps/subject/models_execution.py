@@ -24,6 +24,7 @@ class SubjectCheckin(models.Model):
         verbose_name = '签到记录'
         indexes = [
             models.Index(fields=['subject', 'checkin_date']),
+            models.Index(fields=['subject', 'checkin_date', 'project_code']),
             models.Index(fields=['enrollment', 'status']),
         ]
 
@@ -32,11 +33,19 @@ class SubjectCheckin(models.Model):
     work_order = models.ForeignKey('workorder.WorkOrder', on_delete=models.SET_NULL, null=True, blank=True, related_name='subject_checkins')
 
     checkin_date = models.DateField('签到日期')
+    # 与 SubjectAppointment.project_code 对齐；同日多项目到访时各项目一条签到，避免队列行共用同一记录
+    project_code = models.CharField('项目编号', max_length=128, blank=True, default='', db_index=True)
     checkin_time = models.DateTimeField('签到时间', null=True, blank=True)
     checkout_time = models.DateTimeField('签出时间', null=True, blank=True)
     status = models.CharField('状态', max_length=20, choices=CheckinStatus.choices, default=CheckinStatus.CHECKED_IN, db_index=True)
     location = models.CharField('签到位置', max_length=200, blank=True, default='')
     notes = models.TextField('备注', blank=True, default='')
+    # 过号：顺延 3 位时记录过号时刻及当时该项目内即将被叫的 SC 序号（叫号序 = 该值 + 3）
+    missed_call_at = models.DateTimeField('过号时间', null=True, blank=True)
+    missed_after_sc_rank = models.PositiveSmallIntegerField(
+        '过号时队首SC序号', null=True, blank=True,
+        help_text='过号时该项目内即将被叫的 SC 序号，用于叫号序=该值+3',
+    )
 
     created_by_id = models.IntegerField('操作人ID', null=True, blank=True)
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
@@ -264,11 +273,21 @@ class SubjectAppointment(models.Model):
         return f'{self.subject.name} - {self.appointment_date}'
 
 
+class EnrollmentStatusSC(models.TextChoices):
+    """入组情况（今日队列用）：与 SubjectProjectSC 关联。"""
+    PRE_SCREEN_PASS = '初筛合格', '初筛合格'
+    ENROLLED = '正式入组', '正式入组'
+    DISQUALIFIED = '不合格', '不合格'
+    RE_SCREEN_FAIL = '复筛不合格', '复筛不合格'
+    WITHDRAWN = '退出', '退出'
+    NO_SHOW = '缺席', '缺席'
+
+
 class SubjectProjectSC(models.Model):
     """
     受试者-项目 SC/RD 号：同一受试者（subject）在同一项目（project_code）下唯一一条记录。
-    SC 号在接待看板点击「签到」后，对该项目下首次签到的受试者按顺序分配 001、002、003...
-    RD 号逻辑待定，暂存空。
+    仅在访视点为 V1 时，签到时按项目内顺序分配 SC 号；同项目后续访视均使用该 SC 号。
+    RD 号仅当入组情况为「正式入组」时可填写（如 RD001）。
     与 t_subject_appointment 逻辑关联：预约列表通过 subject_id + project_code 关联本表取 SC/RD 展示。
     """
     class Meta:
@@ -281,8 +300,19 @@ class SubjectProjectSC(models.Model):
 
     subject = models.ForeignKey('subject.Subject', on_delete=models.CASCADE, related_name='project_sc_records')
     project_code = models.CharField('项目编号', max_length=100, db_index=True)
-    sc_number = models.CharField('SC号', max_length=20, blank=True, default='', help_text='如 001、002，签到后按项目内顺序分配')
-    rd_number = models.CharField('RD号', max_length=20, blank=True, default='', help_text='逻辑待定，暂空')
+    sc_number = models.CharField(
+        'SC号', max_length=20, blank=True, default='',
+        help_text='如 001、002，仅在访视点 V1 签到时按项目内顺序分配，后续访视复用',
+    )
+    rd_number = models.CharField(
+        'RD号', max_length=20, blank=True, default='',
+        help_text='仅当入组情况为正式入组时可填写，如 RD001',
+    )
+    enrollment_status = models.CharField(
+        '入组情况', max_length=20, blank=True, default='',
+        choices=[(c.value, c.label) for c in EnrollmentStatusSC],
+        help_text='初筛合格/正式入组/不合格/复筛不合格/退出/缺席',
+    )
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)
     created_by_id = models.IntegerField('创建人ID', null=True, blank=True)
@@ -339,3 +369,54 @@ class SubjectSupportTicket(models.Model):
 
     def __str__(self):
         return f'{self.ticket_no} - {self.title}'
+
+
+# ============================================================================
+# 接待看板独立签到/签出（与工单执行 SubjectCheckin 分离，互不影响）
+# ============================================================================
+class ReceptionBoardCheckin(models.Model):
+    """接待看板专用签到/签出记录，与工单执行的 SubjectCheckin 独立。"""
+
+    class Meta:
+        db_table = 't_reception_board_checkin'
+        verbose_name = '接待看板签到记录'
+        indexes = [
+            models.Index(fields=['subject_id', 'checkin_date']),
+        ]
+        unique_together = [['subject', 'checkin_date']]
+
+    subject = models.ForeignKey('subject.Subject', on_delete=models.CASCADE, related_name='reception_board_checkins')
+    checkin_date = models.DateField('签到日期')
+    checkin_time = models.DateTimeField('接待看板签到时间', null=True, blank=True)
+    checkout_time = models.DateTimeField('接待看板签出时间', null=True, blank=True)
+    appointment_id = models.IntegerField('关联预约ID', null=True, blank=True, db_index=True)
+
+    create_time = models.DateTimeField('创建时间', auto_now_add=True)
+    update_time = models.DateTimeField('更新时间', auto_now=True)
+
+    def __str__(self):
+        return f'Board {self.subject.name} - {self.checkin_date}'
+
+
+class ReceptionBoardProjectSc(models.Model):
+    """接待看板专用 SC 号/入组情况/RD 号，与工单执行 SubjectProjectSC 独立。"""
+
+    class Meta:
+        db_table = 't_reception_board_project_sc'
+        verbose_name = '接待看板项目SC'
+        unique_together = [['subject', 'project_code']]
+        indexes = [
+            models.Index(fields=['subject_id', 'project_code']),
+        ]
+
+    subject = models.ForeignKey('subject.Subject', on_delete=models.CASCADE, related_name='reception_board_project_sc')
+    project_code = models.CharField('项目编号', max_length=64, db_index=True)
+    sc_number = models.CharField('SC号', max_length=20, blank=True, default='')
+    enrollment_status = models.CharField('入组情况', max_length=32, blank=True, default='')
+    rd_number = models.CharField('RD号', max_length=20, blank=True, default='')
+
+    create_time = models.DateTimeField('创建时间', auto_now_add=True)
+    update_time = models.DateTimeField('更新时间', auto_now=True)
+
+    def __str__(self):
+        return f'Board {self.subject.name} {self.project_code}'

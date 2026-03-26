@@ -81,6 +81,7 @@ export default function ProposalDetailPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const proposalId = Number(id)
+  const proposalIdOk = Number.isFinite(proposalId)
   const [activeTab, setActiveTab] = useState('versions')
 
   /* ---- Queries ---- */
@@ -88,19 +89,19 @@ export default function ProposalDetailPage() {
   const { data: proposalRes, isLoading } = useQuery({
     queryKey: ['proposal', proposalId],
     queryFn: () => api.get<ProposalDetail>(`/proposal/${proposalId}`),
-    enabled: !!proposalId,
+    enabled: proposalIdOk,
   })
 
   const { data: versionsRes } = useQuery({
     queryKey: ['proposal', proposalId, 'versions'],
     queryFn: () => api.get<{ items: ProposalVersion[] }>(`/proposal/${proposalId}/versions`),
-    enabled: !!proposalId && activeTab === 'versions',
+    enabled: proposalIdOk && activeTab === 'versions',
   })
 
   const { data: checklistRes } = useQuery({
     queryKey: ['proposal', proposalId, 'checklist'],
     queryFn: () => api.get<{ items: ChecklistItem[] }>(`/proposal/${proposalId}/checklist`),
-    enabled: !!proposalId && activeTab === 'checklist',
+    enabled: proposalIdOk && activeTab === 'checklist',
   })
 
   const { data: commsRes } = useQuery({
@@ -110,7 +111,7 @@ export default function ProposalDetailPage() {
         '/proposal/communications/list',
         { params: { proposal_id: proposalId } },
       ),
-    enabled: !!proposalId && activeTab === 'communications',
+    enabled: proposalIdOk && activeTab === 'communications',
   })
 
   /* ---- Mutations ---- */

@@ -13,7 +13,7 @@ export interface AdverseEvent {
   description: string
   start_date: string
   end_date: string | null
-  severity: 'mild' | 'moderate' | 'severe'
+  severity: 'mild' | 'moderate' | 'severe' | 'very_severe'
   relation: 'unrelated' | 'possible' | 'probable' | 'certain'
   action_taken: string
   outcome: string
@@ -21,6 +21,16 @@ export interface AdverseEvent {
   status: 'reported' | 'under_review' | 'approved' | 'following' | 'closed'
   report_date: string
   create_time: string
+  /** 协议/项目编号（Protocol.code） */
+  project_code?: string
+  /** 项目名称（Protocol.title） */
+  project_name?: string
+  /** 受试者姓名 */
+  subject_name?: string
+  /** 受试者项目 SC 号（t_subject_project_sc） */
+  sc_number?: string
+  /** 受试者项目 RD 号 */
+  rd_number?: string
   deviation_id?: number | null
   change_request_id?: number | null
   follow_ups?: AEFollowUp[]

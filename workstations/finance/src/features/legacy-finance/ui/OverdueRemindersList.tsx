@@ -15,8 +15,13 @@ import { AlertTriangle, Send, Download } from "lucide-react";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { useToast } from "@/shared/ui/use-toast";
+import { useFeishuContext } from "@cn-kis/feishu-sdk";
+import { FINANCE_PERMS } from "@/shared/lib/financePermissions";
 
 export function OverdueRemindersList() {
+  const { hasPermission } = useFeishuContext();
+  const canOperateReminders = hasPermission(FINANCE_PERMS.invoiceCreate);
+
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [customerFilter, setCustomerFilter] = useState("");
@@ -96,7 +101,7 @@ export function OverdueRemindersList() {
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              {selectedIds.length > 0 && (
+              {canOperateReminders && selectedIds.length > 0 && (
                 <Button
                   onClick={handleSendBatch}
                   disabled={sendBatchRemindersMutation.isPending}
@@ -114,6 +119,11 @@ export function OverdueRemindersList() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          {!canOperateReminders && (
+            <p className="text-xs text-muted-foreground rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+              当前为只读查看逾期列表；发送催款通知由财务人员操作。
+            </p>
+          )}
           {/* 筛选条件 */}
           <div className="flex gap-2">
             <Input
@@ -141,12 +151,14 @@ export function OverdueRemindersList() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-12">
-                    <Checkbox
-                      checked={selectedIds.length === data.reminders.length && data.reminders.length > 0}
-                      onCheckedChange={handleSelectAll}
-                    />
-                  </TableHead>
+                  {canOperateReminders && (
+                    <TableHead className="w-12">
+                      <Checkbox
+                        checked={selectedIds.length === data.reminders.length && data.reminders.length > 0}
+                        onCheckedChange={handleSelectAll}
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>发票号</TableHead>
                   <TableHead>客户名称</TableHead>
                   <TableHead>项目编号</TableHead>
@@ -161,12 +173,14 @@ export function OverdueRemindersList() {
               <TableBody>
                 {data.reminders.map((reminder) => (
                   <TableRow key={reminder.id}>
-                    <TableCell>
-                      <Checkbox
-                        checked={selectedIds.includes(reminder.id)}
-                        onCheckedChange={(checked) => handleSelectOne(reminder.id, checked as boolean)}
-                      />
-                    </TableCell>
+                    {canOperateReminders && (
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedIds.includes(reminder.id)}
+                          onCheckedChange={(checked) => handleSelectOne(reminder.id, checked as boolean)}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell className="font-medium">{reminder.invoice_no}</TableCell>
                     <TableCell>{reminder.customer_name}</TableCell>
                     <TableCell>{reminder.project_code}</TableCell>
@@ -200,7 +214,7 @@ export function OverdueRemindersList() {
                           const today = new Date().toISOString().split('T')[0];
                           const hasSentToday = reminder.last_reminder_date === today;
                           
-                          return (
+                          return canOperateReminders ? (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -220,7 +234,7 @@ export function OverdueRemindersList() {
                               <Send className="h-4 w-4 mr-1" />
                               {hasSentToday ? '今日已发送' : '发送'}
                             </Button>
-                          );
+                          ) : null;
                         })()}
                       </div>
                     </TableCell>

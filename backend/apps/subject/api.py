@@ -26,9 +26,31 @@ from .services import (
 )
 from .models import Subject
 from apps.identity.decorators import require_permission, _get_account_from_request
-from apps.identity.filters import get_visible_object
+from apps.identity.filters import get_visible_object, filter_queryset_by_scope
 
 router = Router()
+
+
+def _pick_keep_subject_id_for_merge(subject_ids: list[int]) -> int:
+    """同号多条时选取主档 id：预约数多 > 入组数多 > id 小（与合并脚本一致）。"""
+    from .models import Enrollment
+    from .models_execution import AppointmentStatus, SubjectAppointment
+
+    ids = sorted({int(i) for i in subject_ids})
+    if not ids:
+        raise ValueError('empty subject_ids')
+    if len(ids) == 1:
+        return ids[0]
+
+    def appt_count(sid: int) -> int:
+        return SubjectAppointment.objects.filter(subject_id=sid).exclude(
+            status=AppointmentStatus.CANCELLED
+        ).count()
+
+    def enr_count(sid: int) -> int:
+        return Enrollment.objects.filter(subject_id=sid).count()
+
+    return sorted(ids, key=lambda sid: (-appt_count(sid), -enr_count(sid), sid))[0]
 
 
 # ============================================================================
@@ -136,21 +158,70 @@ def list_subjects(request, params: SubjectQueryParams = Query(...)):
     }
 
 
+@router.get('/resolve-by-phone', summary='按手机号解析受试者（接待台新建预约匹配主档）')
+@require_permission('subject.subject.read')
+def resolve_subject_by_phone(request, phone: str = Query(..., min_length=1)):
+    """
+    规范化手机号后匹配 t_subject；多条时与小程序/合并脚本相同规则取主档。
+    仅返回当前账号数据权限下可见的那条。
+    """
+    from django.utils import timezone as dj_timezone
+    from .services.subject_service import (
+        normalize_subject_phone,
+        find_subjects_by_mobile_normalized,
+        resolve_subject_for_mobile_session,
+    )
+
+    n = normalize_subject_phone(phone)
+    if not n:
+        return 400, {'code': 400, 'msg': '请输入有效11位手机号', 'data': None}
+
+    candidate_ids = list(find_subjects_by_mobile_normalized(n).values_list('id', flat=True))
+    if not candidate_ids:
+        return 404, {'code': 404, 'msg': '未找到该手机号的受试者', 'data': None}
+
+    qs = Subject.objects.filter(id__in=candidate_ids, is_deleted=False)
+    account = _get_account_from_request(request)
+    if account:
+        qs = filter_queryset_by_scope(
+            qs,
+            account,
+            field_mapping={'project': 'enrollments__protocol_id'},
+        )
+    visible_ids = list(qs.values_list('id', flat=True))
+    if not visible_ids:
+        return 403, {'code': 403, 'msg': '当前账号不可见该手机号下的受试者档案', 'data': None}
+
+    canonical = resolve_subject_for_mobile_session(phone, dj_timezone.localdate())
+    if canonical and canonical.id in visible_ids:
+        chosen_id = canonical.id
+    else:
+        chosen_id = _pick_keep_subject_id_for_merge(visible_ids)
+
+    subject = get_visible_object(Subject.objects.filter(id=chosen_id, is_deleted=False), account)
+    if not subject:
+        return 404, {'code': 404, 'msg': '受试者不存在或不可见', 'data': None}
+    return {'code': 200, 'msg': 'OK', 'data': _subject_to_dict(subject)}
+
+
 @router.post('/create', summary='创建受试者')
 @require_permission('subject.subject.create')
 def create_subject(request, data: SubjectCreateIn):
     """创建新受试者"""
     account = _get_account_from_request(request)
-    subject = svc_create_subject(
-        name=data.name,
-        gender=data.gender or '',
-        age=data.age,
-        phone=data.phone or '',
-        skin_type=data.skin_type or '',
-        risk_level=data.risk_level or 'low',
-        source_channel=data.source_channel or '',
-        account=account,
-    )
+    try:
+        subject = svc_create_subject(
+            name=data.name,
+            gender=data.gender or '',
+            age=data.age,
+            phone=data.phone or '',
+            skin_type=data.skin_type or '',
+            risk_level=data.risk_level or 'low',
+            source_channel=data.source_channel or '',
+            account=account,
+        )
+    except ValueError as e:
+        return 400, {'code': 400, 'msg': str(e), 'data': None}
     return {
         'code': 200,
         'msg': 'OK',
@@ -327,7 +398,10 @@ def update_subject(request, subject_id: int, data: SubjectUpdateIn):
     account = _get_account_from_request(request)
     if not get_visible_object(Subject.objects.filter(id=subject_id, is_deleted=False), account):
         return 404, {'code': 404, 'msg': '受试者不存在'}
-    subject = svc_update_subject(subject_id, **data.dict(exclude_unset=True))
+    try:
+        subject = svc_update_subject(subject_id, **data.dict(exclude_unset=True))
+    except ValueError as e:
+        return 400, {'code': 400, 'msg': str(e), 'data': None}
     if not subject:
         return 404, {'code': 404, 'msg': '受试者不存在'}
     return {'code': 200, 'msg': 'OK', 'data': _subject_to_dict(subject)}

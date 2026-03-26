@@ -2,7 +2,7 @@
 方案准备工作流 API
 
 端点：
-- 方案: /proposal/create|create-from-opportunity|list|{id}
+- 方案: /proposal/create|create-from-opportunity|list|quality-check|{id}
 - 版本: /proposal/{id}/versions/create|list
 - 清单: /proposal/{id}/checklist/update|status
 - 审查: /proposal/{id}/submit-review|finalize
@@ -214,6 +214,21 @@ def list_proposals(request, params: ProposalQueryParams = Query(...)):
         logger.exception('proposal/list 500: %s', e)
         msg = str(e) if getattr(settings, 'DEBUG', False) else '方案列表加载失败，请查看服务端日志'
         return 500, {'code': 500, 'msg': msg, 'data': None}
+
+
+@router.get('/quality-check', summary='方案质量检查（占位，非方案 ID）')
+@require_permission('proposal.proposal.read')
+def proposal_quality_check_placeholder(request):
+    """
+    显式静态路径，必须写在 /{proposal_id} 之前。
+    否则 GET /proposal/quality-check 会被 int 路径参数匹配并返回 422。
+    研究台「方案质量检查」页嵌入方案检查台，本接口仅用于避免误匹配。
+    """
+    return {
+        'code': 200,
+        'msg': 'OK',
+        'data': {'embed': 'protocol-qc'},
+    }
 
 
 @router.get('/{proposal_id}', summary='方案详情')

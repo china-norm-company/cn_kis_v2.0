@@ -7,7 +7,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { AlertCircle, ExternalLink } from 'lucide-react'
 
-const DEFAULT_QC_URL = 'http://127.0.0.1:5000/'
+/** 与 vite proxy `/protocol-qc` → 127.0.0.1:5000 一致，同源避免 iframe 与直连端口差异 */
+const DEFAULT_QC_URL = '/protocol-qc/'
 const LOAD_TIMEOUT_MS = 15000
 
 export default function QualityCheckPage() {

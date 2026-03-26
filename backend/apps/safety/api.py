@@ -8,11 +8,14 @@
 - POST /safety/adverse-events/{id}/follow-up  添加随访
 """
 from ninja import Router, Schema, Query
-from typing import Optional
+from typing import Optional, Tuple
 from datetime import date
+from django.db.models import Q
 from apps.identity.decorators import require_permission, _get_account_from_request
+from apps.subject.models_execution import SubjectProjectSC
 
 from . import services
+from .models import AdverseEvent
 
 router = Router()
 
@@ -49,7 +52,58 @@ class FollowUpCreateIn(Schema):
     notes: Optional[str] = ''
 
 
-def _ae_to_dict(ae) -> dict:
+def _subject_project_sc_pair(ae) -> Optional[Tuple[int, str]]:
+    """(subject_id, project_code) 用于关联 t_subject_project_sc。"""
+    if not ae.enrollment_id:
+        return None
+    en = ae.enrollment
+    if not en or not en.protocol_id:
+        return None
+    pcode = (en.protocol.code or '').strip()
+    if not pcode:
+        return None
+    return (en.subject_id, pcode)
+
+
+def _batch_subject_project_sc_records(aes: list) -> dict:
+    pairs = {_subject_project_sc_pair(ae) for ae in aes}
+    pairs.discard(None)
+    if not pairs:
+        return {}
+    q = Q()
+    for sid, pc in pairs:
+        q |= Q(subject_id=sid, project_code=pc)
+    rows = SubjectProjectSC.objects.filter(q, is_deleted=False)
+    return {(r.subject_id, r.project_code): r for r in rows}
+
+
+def _resolve_subject_project_sc(ae):
+    pair = _subject_project_sc_pair(ae)
+    if not pair:
+        return None
+    return SubjectProjectSC.objects.filter(
+        subject_id=pair[0], project_code=pair[1], is_deleted=False,
+    ).first()
+
+
+def _ae_to_dict(ae, sc_record=None) -> dict:
+    project_code = ''
+    project_name = ''
+    subject_name = ''
+    if ae.enrollment_id:
+        en = ae.enrollment
+        sub = getattr(en, 'subject', None)
+        prot = getattr(en, 'protocol', None)
+        if sub:
+            subject_name = (sub.name or '').strip()
+        if prot:
+            project_code = (prot.code or '').strip()
+            project_name = (prot.title or '').strip()
+    sc_number = ''
+    rd_number = ''
+    if sc_record is not None:
+        sc_number = (getattr(sc_record, 'sc_number', None) or '').strip()
+        rd_number = (getattr(sc_record, 'rd_number', None) or '').strip()
     return {
         'id': ae.id, 'enrollment_id': ae.enrollment_id,
         'work_order_id': ae.work_order_id,
@@ -62,6 +116,11 @@ def _ae_to_dict(ae) -> dict:
         'deviation_id': getattr(ae, 'deviation_id', None),
         'change_request_id': getattr(ae, 'change_request_id', None),
         'create_time': ae.create_time.isoformat(),
+        'project_code': project_code,
+        'project_name': project_name,
+        'subject_name': subject_name,
+        'sc_number': sc_number,
+        'rd_number': rd_number,
     }
 
 
@@ -94,7 +153,9 @@ def create_ae(request, data: AECreateIn):
         reported_by_id=account.id if account else None,
         open_id=data.open_id or '',
     )
-    return {'code': 200, 'msg': 'AE上报成功', 'data': _ae_to_dict(ae)}
+    ae = AdverseEvent.objects.select_related('enrollment__subject', 'enrollment__protocol').get(pk=ae.id)
+    sc = _resolve_subject_project_sc(ae)
+    return {'code': 200, 'msg': 'AE上报成功', 'data': _ae_to_dict(ae, sc)}
 
 
 @router.get('/adverse-events/list', summary='AE列表')
@@ -106,10 +167,15 @@ def list_ae(request, params: AEQueryParams = Query(...)):
         is_sae=params.is_sae,
         page=params.page, page_size=params.page_size,
     )
+    items = result['items']
+    sc_by_pair = _batch_subject_project_sc_records(items)
     return {
         'code': 200, 'msg': 'OK',
         'data': {
-            'items': [_ae_to_dict(ae) for ae in result['items']],
+            'items': [
+                _ae_to_dict(ae, sc_by_pair.get(_subject_project_sc_pair(ae)))
+                for ae in items
+            ],
             'total': result['total'],
         },
     }
@@ -121,7 +187,8 @@ def get_ae(request, ae_id: int):
     ae = services.get_adverse_event(ae_id)
     if not ae:
         return 404, {'code': 404, 'msg': 'AE不存在'}
-    data = _ae_to_dict(ae)
+    sc = _resolve_subject_project_sc(ae)
+    data = _ae_to_dict(ae, sc)
     data['follow_ups'] = [_followup_to_dict(f) for f in ae.follow_ups.all()]
     return {'code': 200, 'msg': 'OK', 'data': data}
 

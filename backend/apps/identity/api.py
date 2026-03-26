@@ -11,16 +11,92 @@
 - GET  /auth/profile            完整用户画像
 - POST /auth/logout             登出
 """
+
 from ninja import Router, Schema
 from typing import Optional, List, Dict
-from datetime import timedelta
+from datetime import datetime, timedelta
 from django.utils import timezone
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 import logging
+import httpx
+import time
 
 from .decorators import require_permission, require_any_permission
+
+# WeChat Phone Number API Configuration
+WECHAT_ACCESS_TOKEN_URL = 'https://api.weixin.qq.com/cgi-bin/token'
+WECHAT_GET_USER_PHONE_NUMBER_URL = (
+    'https://api.weixin.qq.com/wxa/business/getuserphonenumber'
+)
+
+# Token cache for WeChat access_token
+_wechat_token_cache: dict = {
+    'access_token': None,
+    'expires_at': None,
+}
+
+
+def _ensure_wechat_access_token():
+    """Get cached access_token or fetch a new one from WeChat API."""
+    global _wechat_token_cache
+
+    now = datetime.now()
+    cached_token = _wechat_token_cache.get('access_token')
+    expires_at = _wechat_token_cache.get('expires_at')
+
+    # Check if cache is valid (with 120s buffer)
+    if cached_token and expires_at and now < expires_at - timedelta(seconds=120):
+        return cached_token, True
+
+    # Fetch new token
+    appid = getattr(settings, 'WECHAT_APPID', '')
+    secret = getattr(settings, 'WECHAT_SECRET', '')
+
+    if not appid or not secret:
+        raise ValueError('WECHAT_APPID or WECHAT_SECRET not configured')
+
+    resp = httpx.get(
+        WECHAT_ACCESS_TOKEN_URL,
+        params={'grant_type': 'client_credential', 'appid': appid, 'secret': secret},
+        timeout=10.0,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+
+    errcode = data.get('errcode', 0)
+    if errcode:
+        raise ValueError(f"WeChat API error: {data.get('errmsg', 'Unknown error')}")
+
+    access_token = data.get('access_token')
+    expires_in = data.get('expires_in', 7200)
+
+    # Update cache
+    _wechat_token_cache['access_token'] = access_token
+    _wechat_token_cache['expires_at'] = now + timedelta(seconds=expires_in)
+
+    return access_token, False
+
+
+def _invalidate_wechat_token_cache():
+    """Clear the access_token cache."""
+    global _wechat_token_cache
+    _wechat_token_cache['access_token'] = None
+    _wechat_token_cache['expires_at'] = None
+
+
+def _call_wechat_getuserphonenumber(access_token: str, code: str):
+    """Call WeChat getuserphonenumber API."""
+    resp = httpx.post(
+        WECHAT_GET_USER_PHONE_NUMBER_URL,
+        params={'access_token': access_token},
+        json={'code': code},
+        timeout=10.0,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
 
 router = Router()
 auth_logger = logging.getLogger('cn_kis.auth')
@@ -40,7 +116,11 @@ def _auth_trace(request, event: str, **fields) -> None:
         'user_id': getattr(request, 'user_id', '-') or '-',
         'username': getattr(request, 'username', '-') or '-',
         'ip': (
-            (request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip() if request.META.get('HTTP_X_FORWARDED_FOR') else '')
+            (
+                request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
+                if request.META.get('HTTP_X_FORWARDED_FOR')
+                else ''
+            )
             or request.META.get('REMOTE_ADDR', '-')
             or '-'
         ),
@@ -62,6 +142,7 @@ class FeishuCallbackIn(Schema):
     workstation: Optional[str] = None
     trace_id: Optional[str] = None
 
+
 class WechatLoginIn(Schema):
     code: str
 
@@ -80,11 +161,13 @@ class SmsVerifyIn(Schema):
     code: str
     scene: Optional[str] = 'cn_kis_login'
 
+
 class TokenOut(Schema):
     access_token: str
     user: dict
     roles: List[str] = []
     visible_workbenches: List[str] = []
+
 
 class UserOut(Schema):
     id: int
@@ -95,8 +178,10 @@ class UserOut(Schema):
     account_type: str
     roles: List[str] = []
 
+
 class UserProfileOut(Schema):
     """完整用户画像：含角色、权限、可见工作台、可见菜单"""
+
     id: int
     username: str
     display_name: str
@@ -147,7 +232,7 @@ def _build_user_profile(account) -> dict:
     返回数据新增 workstation_modes 字段：{workstation: mode, ...}
     """
     from .authz import get_authz_service
-    from .management.commands.seed_roles import ROLE_WORKBENCH_MAP
+    from .role_workbench import ROLE_WORKBENCH_MAP
 
     authz = get_authz_service()
 
@@ -155,7 +240,12 @@ def _build_user_profile(account) -> dict:
     roles = authz.get_account_roles(account.id)
     role_names = [r.name for r in roles]
     role_details = [
-        {'name': r.name, 'display_name': r.display_name, 'level': r.level, 'category': r.category}
+        {
+            'name': r.name,
+            'display_name': r.display_name,
+            'level': r.level,
+            'category': r.category,
+        }
         for r in roles
     ]
 
@@ -165,6 +255,7 @@ def _build_user_profile(account) -> dict:
 
     # 数据作用域
     from .filters import get_data_scope
+
     data_scope = get_data_scope(account)
 
     # 可见工作台（取所有角色的并集）
@@ -183,6 +274,7 @@ def _build_user_profile(account) -> dict:
     workstation_modes = {}
     try:
         from .models import AccountWorkstationConfig
+
         configs = AccountWorkstationConfig.objects.filter(account=account)
         for cfg in configs:
             ws = cfg.workstation
@@ -198,7 +290,9 @@ def _build_user_profile(account) -> dict:
                 current = set(visible_menus.get(ws, []))
                 visible_menus[ws] = sorted(allowed & current)
                 # 管理员在 pilot 下也始终保留系统管理菜单，避免前端闪退
-                if ws == 'secretary' and ('admin' in role_names or 'superadmin' in role_names):
+                if ws == 'secretary' and (
+                    'admin' in role_names or 'superadmin' in role_names
+                ):
                     for key in ('admin/roles', 'admin/accounts'):
                         if key not in visible_menus[ws]:
                             visible_menus[ws] = sorted(visible_menus[ws] + [key])
@@ -252,7 +346,9 @@ def _compute_visible_menus(perm_codes: list, workbenches: list) -> dict:
             'business': ['dashboard.overview.read'],
             'team': ['dashboard.overview.read'],
             'protocols': ['protocol.protocol.read'],
-            'project-full-link': ['protocol.protocol.read'],  # 项目全链路：与「我的协议」同权限
+            'project-full-link': [
+                'protocol.protocol.read'
+            ],  # 项目全链路：与「我的协议」同权限
             'visits': ['visit.plan.read', 'visit.node.read'],
             'subjects': ['subject.subject.read'],
             'overview': ['protocol.protocol.read'],
@@ -494,7 +590,13 @@ def feishu_callback(request, data: FeishuCallbackIn):
     trace_id = data.trace_id or ''
     state_payload = None
     app_id = data.app_id or settings.FEISHU_APP_ID
-    _auth_trace(request, 'oauth_callback_start', app_id=app_id or '-', workstation=data.workstation or '-', trace_id=trace_id or '-')
+    _auth_trace(
+        request,
+        'oauth_callback_start',
+        app_id=app_id or '-',
+        workstation=data.workstation or '-',
+        trace_id=trace_id or '-',
+    )
     if data.state:
         try:
             state_payload = parse_and_verify_auth_state(data.state, data.workstation)
@@ -504,12 +606,21 @@ def feishu_callback(request, data: FeishuCallbackIn):
                 request,
                 'oauth_state_verified',
                 app_id=app_id or '-',
-                workstation=(state_payload.get('ws') if state_payload else data.workstation) or '-',
+                workstation=(
+                    state_payload.get('ws') if state_payload else data.workstation
+                )
+                or '-',
                 trace_id=trace_id or '-',
             )
         except Exception as e:
             err_code = map_auth_exception_to_error_code(e)
-            _auth_trace(request, 'oauth_state_invalid', app_id=app_id or '-', error_code=err_code, trace_id=trace_id or '-')
+            _auth_trace(
+                request,
+                'oauth_state_invalid',
+                app_id=app_id or '-',
+                error_code=err_code,
+                trace_id=trace_id or '-',
+            )
             return 401, {
                 'code': 401,
                 'msg': '认证状态无效，请重新登录',
@@ -521,13 +632,22 @@ def feishu_callback(request, data: FeishuCallbackIn):
     # 仅当请求的 app_id 在后端未配置凭证时，才用主应用兜底（如前端误用主应用 ID 的工作台）。
     force_primary = getattr(settings, 'FEISHU_PRIMARY_AUTH_FORCE', True)
     primary_app_id = getattr(settings, 'FEISHU_PRIMARY_APP_ID', None)
-    if force_primary and primary_app_id and (app_id or '') not in getattr(settings, 'FEISHU_APP_CREDENTIALS', {}):
+    if (
+        force_primary
+        and primary_app_id
+        and (app_id or '') not in getattr(settings, 'FEISHU_APP_CREDENTIALS', {})
+    ):
         app_id = primary_app_id
     expected_app_id = settings.FEISHU_WORKSTATION_APP_IDS.get(workstation)
     # force_primary 开启时，app_id 已被替换为主应用，跳过工作台匹配校验
-    if workstation and expected_app_id and app_id != expected_app_id and not force_primary:
+    if (
+        workstation
+        and expected_app_id
+        and app_id != expected_app_id
+        and not force_primary
+    ):
         logger.warning(
-            f"OAuth 回调 app/workstation 不一致: ws={workstation} expected={expected_app_id} got={app_id}"
+            f'OAuth 回调 app/workstation 不一致: ws={workstation} expected={expected_app_id} got={app_id}'
         )
         _auth_trace(
             request,
@@ -540,18 +660,23 @@ def feishu_callback(request, data: FeishuCallbackIn):
         return 400, {
             'code': 400,
             'msg': '飞书应用与工作台不匹配，请从对应工作台入口登录',
-            'data': {'error_code': 'AUTH_APP_WORKSTATION_MISMATCH', 'trace_id': trace_id or ''},
+            'data': {
+                'error_code': 'AUTH_APP_WORKSTATION_MISMATCH',
+                'trace_id': trace_id or '',
+            },
         }
 
     app_secret = settings.FEISHU_APP_CREDENTIALS.get(app_id)
     if not app_secret:
         registered = list(settings.FEISHU_APP_CREDENTIALS.keys())
         logger.warning(
-            "OAuth 回调: 未识别的 app_id=%s，后端已配置的飞书应用: %s",
+            'OAuth 回调: 未识别的 app_id=%s，后端已配置的飞书应用: %s',
             app_id,
             registered,
         )
-        _auth_trace(request, 'oauth_unknown_app', app_id=app_id or '-', trace_id=trace_id or '-')
+        _auth_trace(
+            request, 'oauth_unknown_app', app_id=app_id or '-', trace_id=trace_id or '-'
+        )
         return 400, {
             'code': 400,
             'msg': f'未识别的飞书应用: {app_id}',
@@ -559,14 +684,25 @@ def feishu_callback(request, data: FeishuCallbackIn):
         }
 
     try:
-        account = feishu_oauth_login(data.code, app_id, app_secret, state_payload, redirect_uri=data.redirect_uri)
+        account = feishu_oauth_login(
+            data.code, app_id, app_secret, state_payload, redirect_uri=data.redirect_uri
+        )
     except ValueError as e:
-        logger.error(f"OAuth 回调失败 (app_id={app_id}): {e}")
-        _auth_trace(request, 'oauth_callback_error', app_id=app_id or '-', error_type='value_error', trace_id=trace_id or '-')
+        logger.error(f'OAuth 回调失败 (app_id={app_id}): {e}')
+        _auth_trace(
+            request,
+            'oauth_callback_error',
+            app_id=app_id or '-',
+            error_type='value_error',
+            trace_id=trace_id or '-',
+        )
         return 400, {
             'code': 400,
             'msg': str(e),
-            'data': {'error_code': map_auth_exception_to_error_code(e), 'trace_id': trace_id or ''},
+            'data': {
+                'error_code': map_auth_exception_to_error_code(e),
+                'trace_id': trace_id or '',
+            },
         }
     except Exception as e:
         logger.exception(f"OAuth 回调异常 (app_id={app_id}): {e}")
@@ -597,7 +733,7 @@ def feishu_callback(request, data: FeishuCallbackIn):
     visible_menu_items = profile.get('visible_menu_items', {})
     menu_total = sum(len(items) for items in visible_menu_items.values())
 
-    logger.info(f"OAuth 登录成功: account={account.id} app_id={app_id}")
+    logger.info(f'OAuth 登录成功: account={account.id} app_id={app_id}')
     _auth_trace(
         request,
         'oauth_callback_success',
@@ -628,13 +764,21 @@ def feishu_callback(request, data: FeishuCallbackIn):
             'feishu_app_id': app_id,
             'auth_trace_id': trace_id or '',
             'issued_at': timezone.now().isoformat(),
-            'expires_at': (timezone.now() + timedelta(hours=settings.JWT_EXPIRATION_HOURS)).isoformat(),
-            'auth_ver': state_payload.get('ver', 'legacy') if state_payload else 'legacy',
+            'expires_at': (
+                timezone.now() + timedelta(hours=settings.JWT_EXPIRATION_HOURS)
+            ).isoformat(),
+            'auth_ver': state_payload.get('ver', 'legacy')
+            if state_payload
+            else 'legacy',
         },
     }
 
 
-@router.post('/dev-login', summary='开发模式登录（仅 DEBUG）', response={200: dict, 403: dict, 500: dict})
+@router.post(
+    '/dev-login',
+    summary='开发模式登录（仅 DEBUG）',
+    response={200: dict, 403: dict, 500: dict},
+)
 def dev_login(request):
     """本地开发时免飞书登录，返回 JWT 与用户信息。仅当 DEBUG=True 时可用。"""
     from .services import create_session
@@ -672,7 +816,21 @@ def dev_login(request):
     except Exception:
         role_names = []
         visible_workbenches = ['evaluator', 'secretary']
-        visible_menu_items = {'evaluator': ['dashboard', 'workorders', 'scan', 'schedule', 'detections', 'exceptions', 'history', 'knowledge', 'growth', 'profile', 'settings']}
+        visible_menu_items = {
+            'evaluator': [
+                'dashboard',
+                'workorders',
+                'scan',
+                'schedule',
+                'detections',
+                'exceptions',
+                'history',
+                'knowledge',
+                'growth',
+                'profile',
+                'settings',
+            ]
+        }
         workstation_modes = {'evaluator': 'full'}
     return {
         'access_token': token,
@@ -691,58 +849,121 @@ def dev_login(request):
     }
 
 
-@router.post('/wechat/login', summary='微信小程序登录', response={200: dict, 400: dict, 500: dict})
+@router.post(
+    '/wechat/login',
+    summary='微信小程序手机号一键登录',
+    response={200: dict, 400: dict, 500: dict},
+)
 def wechat_login(request, data: WechatLoginIn):
-    """微信小程序授权码登录（受试者端）
-    支持两种模式:
-    - 云托管模式: 从 X-WX-OPENID 头直接获取 openid（无需 code2session）
-    - 直连模式: 用 code 调用微信 code2session 换取 openid
     """
-    from .services import wechat_oauth_login, wechat_cloudrun_login, create_session
-    import time
+    微信小程序手机号一键登录（无状态版）
+
+    Flow:
+    - 前端通过 getPhoneNumber 获取 code
+    - 后端用 code 调用微信 getuserphonenumber API 换取手机号
+    - 创建仅包含手机号的 JWT Token（不持久化到数据库）
+    """
+    from .phone_session import create_phone_session
 
     trace_id = request.META.get('HTTP_X_CLIENT_TRACE_ID', '')[:80]
-    wx_openid = request.META.get('HTTP_X_WX_OPENID', '')
-    code_len = len(data.code or '')
+    code = data.code
+    code_len = len(code or '')
     started = time.monotonic()
+
     _auth_trace(
         request,
-        'wechat_login_start',
+        'wechat_phone_login_start',
         trace_id=trace_id or '-',
         code_len=code_len,
-        wx_openid_present=bool(wx_openid),
     )
+
     try:
-        if wx_openid:
-            account = wechat_cloudrun_login(wx_openid, trace_id=trace_id)
-        else:
-            # 本地开发环境：如果配置了 WECHAT_DEV_OPENID 且未提供 code，则使用模拟登录
-            if getattr(settings, 'DEBUG', False) and not data.code:
-                dev_openid = getattr(settings, 'WECHAT_DEV_OPENID', 'dev-openid-test-001')
-                account = wechat_cloudrun_login(dev_openid, trace_id=trace_id)
-            else:
-                account = wechat_oauth_login(data.code, trace_id=trace_id)
+        # Step 1: Get access_token from cache or WeChat API
+        access_token, from_cache = _ensure_wechat_access_token()
+        auth_logger.info(
+            f"wechat_access_token_ready trace_id={trace_id or '-'} from_cache={from_cache}"
+        )
+
+        # Step 2: Call getuserphonenumber API
+        phone_result = _call_wechat_getuserphonenumber(access_token, code)
+
+        auth_logger.info(
+            f"wechat_getuserphonenumber_result trace_id={trace_id or '-'} "
+            f"errcode={phone_result.get('errcode')} has_phone_info={'phone_info' in phone_result}"
+        )
+
+        # Step 3: Handle token expired (40001) with retry
+        if phone_result.get('errcode') == 40001:
+            auth_logger.warning(
+                f"wechat_access_token_expired trace_id={trace_id or '-'}, retrying..."
+            )
+            _invalidate_wechat_token_cache()
+            access_token, _ = _ensure_wechat_access_token()
+            phone_result = _call_wechat_getuserphonenumber(access_token, code)
+
+            auth_logger.info(
+                f"wechat_getuserphonenumber_retry_result trace_id={trace_id or '-'} "
+                f"errcode={phone_result.get('errcode')} has_phone_info={'phone_info' in phone_result}"
+            )
+
+        # Step 4: Check for errors
+        errcode = phone_result.get('errcode', 0)
+        if errcode != 0:
+            errmsg = phone_result.get('errmsg', '微信接口错误')
+            auth_logger.error(
+                f"wechat_getuserphonenumber_error trace_id={trace_id or '-'} "
+                f'errcode={errcode} errmsg={errmsg}'
+            )
+            return 400, {
+                'code': 400,
+                'msg': f'获取手机号失败: {errmsg}',
+                'data': {'error_code': 'WECHAT_PHONE_API_ERROR'},
+            }
+
+        # Step 5: Extract phone number
+        phone_info = phone_result.get('phone_info', {})
+        phone_number = phone_info.get('phoneNumber') or phone_info.get(
+            'purePhoneNumber'
+        )
+
+        if not phone_number:
+            auth_logger.error(f"wechat_phone_number_missing trace_id={trace_id or '-'}")
+            return 400, {
+                'code': 400,
+                'msg': '未能获取到手机号',
+                'data': {'error_code': 'WECHAT_PHONE_NOT_FOUND'},
+            }
+
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        auth_logger.info(
+            f"wechat_phone_login_success trace_id={trace_id or '-'} "
+            f'phone={phone_number[:3]}****{phone_number[-4:]} elapsed_ms={elapsed_ms}'
+        )
+
     except ValueError as e:
+        elapsed_ms = int((time.monotonic() - started) * 1000)
         _auth_trace(
             request,
-            'wechat_login_fail',
+            'wechat_phone_login_fail',
             trace_id=trace_id or '-',
-            elapsed_ms=int((time.monotonic() - started) * 1000),
+            elapsed_ms=elapsed_ms,
             error=str(e)[:220],
         )
         return 400, {
             'code': 400,
             'msg': str(e),
-            'data': {'error_code': 'WECHAT_OAUTH_FAILED'},
+            'data': {'error_code': 'WECHAT_PHONE_API_ERROR'},
         }
     except Exception as exc:
         import traceback
+
+        elapsed_ms = int((time.monotonic() - started) * 1000)
         tb = traceback.format_exc()[-500:]
         _auth_trace(
             request,
-            'wechat_login_error',
+            'wechat_phone_login_error',
             trace_id=trace_id or '-',
-            elapsed_ms=int((time.monotonic() - started) * 1000),
+            elapsed_ms=elapsed_ms,
             error=f'{exc.__class__.__name__}: {exc}',
         )
         return 500, {
@@ -751,67 +972,94 @@ def wechat_login(request, data: WechatLoginIn):
             'data': {'error_code': 'WECHAT_LOGIN_INTERNAL_ERROR', 'traceback': tb},
         }
 
-    token = create_session(
-        account,
+    # Step 6: Create or update Subject record in t_subject (no account link)
+    from apps.subject.models import Subject, AuthLevel, SubjectSourceChannel, SubjectStatus
+    from apps.subject.services.subject_service import generate_subject_no
+
+    try:
+        subject = Subject.objects.filter(phone=phone_number, is_deleted=False).first()
+        if not subject:
+            subject = Subject.objects.create(
+                subject_no=generate_subject_no(),
+                name='微信用户',
+                phone=phone_number,
+                source_channel=SubjectSourceChannel.WECHAT,
+                auth_level=AuthLevel.PHONE_VERIFIED,
+                status=SubjectStatus.SCREENING,
+            )
+            auth_logger.info(f"wechat_subject_created trace_id={trace_id or '-'} subject_no={subject.subject_no}")
+        else:
+            # Update auth_level if needed
+            if subject.auth_level != AuthLevel.PHONE_VERIFIED:
+                subject.auth_level = AuthLevel.PHONE_VERIFIED
+                subject.save(update_fields=['auth_level', 'update_time'])
+            auth_logger.info(f"wechat_subject_exists trace_id={trace_id or '-'} subject_no={subject.subject_no}")
+    except Exception as e:
+        auth_logger.exception('wechat_login subject create/update failed: %s', e)
+        # Don't fail the login, just log the error
+        subject = None
+
+    # Create phone-only session (no database persistence)
+    token = create_phone_session(
+        phone_number,
         device_info=request.META.get('HTTP_USER_AGENT', ''),
         ip_address=request.META.get('REMOTE_ADDR', ''),
     )
 
-    # 检查是否已绑定 Subject（受试者身份）
-    needs_bind = False
-    try:
-        from apps.subject.models import Subject
-        subject = Subject.objects.filter(account=account).first()
-        if not subject:
-            subject = Subject.objects.filter(phone=account.username.replace('wx_', '', 1)).first()
-            if subject and not subject.account_id:
-                subject.account = account
-                subject.save(update_fields=['account', 'update_time'])
-        if not subject:
-            needs_bind = True
-    except Exception:
-        needs_bind = True
-
+    elapsed_ms = int((time.monotonic() - started) * 1000)
     _auth_trace(
         request,
-        'wechat_login_success',
+        'wechat_phone_login_complete',
         trace_id=trace_id or '-',
-        account_id=account.id,
-        elapsed_ms=int((time.monotonic() - started) * 1000),
+        phone=f'{phone_number[:3]}****{phone_number[-4:]}',
+        subject_no=subject.subject_no if subject else None,
+        elapsed_ms=elapsed_ms,
     )
-
-    # 获取角色信息，与飞书 OAuth 登录保持一致
-    try:
-        profile = _build_user_profile(account)
-        role_names = [r['name'] for r in profile.get('roles', [])]
-        visible_workbenches = profile.get('visible_workbenches', [])
-    except Exception:
-        role_names = []
-        visible_workbenches = []
 
     return {
         'access_token': token,
-        'user': {
-            'id': account.id,
-            'username': account.username,
-            'display_name': account.display_name,
-            'email': account.email or '',
-            'avatar': account.avatar or '',
-            'account_type': account.account_type,
+        'subject': {
+            'id': subject.id if subject else None,
+            'subject_no': subject.subject_no if subject else None,
+            'name': subject.name if subject else None,
+            'phone': phone_number,
         },
-        'roles': role_names,
-        'visible_workbenches': visible_workbenches,
     }
+
+
+@router.post('/wechat/logout', summary='微信登出')
+def wechat_logout(request):
+    """
+    微信登出：将 Token 加入 Redis 黑名单实现失效
+    """
+    from .phone_session import revoke_phone_session
+
+    _auth_trace(request, 'wechat_logout')
+    auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+    if auth_header.startswith('Bearer '):
+        token = auth_header[7:]
+        revoke_phone_session(token)
+        _auth_trace(request, 'wechat_logout_revoked')
+    return {'code': 200, 'msg': 'OK'}
 
 
 def _ensure_subject_account_by_phone(phone: str):
     from .models import Account, AccountType
     from apps.subject.models import Subject, AuthLevel
-    from apps.subject.services.subject_service import generate_subject_no
+    from apps.subject.services.subject_service import (
+        generate_subject_no,
+        find_subjects_by_mobile_normalized,
+        normalize_subject_phone,
+        resolve_subject_for_mobile_session,
+    )
 
-    account = Account.objects.filter(phone=phone, account_type=AccountType.SUBJECT, is_deleted=False).first()
+    account = Account.objects.filter(
+        phone=phone, account_type=AccountType.SUBJECT, is_deleted=False
+    ).first()
     if not account:
-        account = Account.objects.filter(username=f'sms_{phone}', is_deleted=False).first()
+        account = Account.objects.filter(
+            username=f'sms_{phone}', is_deleted=False
+        ).first()
     if not account:
         account = Account.objects.create(
             username=f'sms_{phone}',
@@ -823,13 +1071,18 @@ def _ensure_subject_account_by_phone(phone: str):
         account.phone = phone
         account.save(update_fields=['phone', 'update_time'])
 
-    subject = Subject.objects.filter(phone=phone, is_deleted=False).first()
+    n = normalize_subject_phone(phone)
+    subject = None
+    if n and find_subjects_by_mobile_normalized(n).exists():
+        subject = resolve_subject_for_mobile_session(phone, timezone.localdate())
+    if subject is None:
+        subject = Subject.objects.filter(phone=phone, is_deleted=False).first()
     if not subject:
         subject = Subject.objects.create(
             subject_no=generate_subject_no(),
             account=account,
             name='受试者',
-            phone=phone,
+            phone=n if n else phone,
             auth_level=AuthLevel.PHONE_VERIFIED,
         )
     else:
@@ -840,7 +1093,10 @@ def _ensure_subject_account_by_phone(phone: str):
         if (subject.phone or '').strip() != phone:
             subject.phone = phone
             update_fields.append('phone')
-        if subject.auth_level != AuthLevel.PHONE_VERIFIED and not subject.identity_verified_at:
+        if (
+            subject.auth_level != AuthLevel.PHONE_VERIFIED
+            and not subject.identity_verified_at
+        ):
             subject.auth_level = AuthLevel.PHONE_VERIFIED
             update_fields.append('auth_level')
         if update_fields:
@@ -850,7 +1106,9 @@ def _ensure_subject_account_by_phone(phone: str):
     return account, subject
 
 
-@router.post('/sms/send', summary='发送短信验证码', response={200: dict, 400: dict, 500: dict})
+@router.post(
+    '/sms/send', summary='发送短信验证码', response={200: dict, 400: dict, 500: dict}
+)
 def sms_send(request, data: SmsSendIn):
     from .services_sms import send_sms_verify_code
 
@@ -868,7 +1126,11 @@ def sms_send(request, data: SmsSendIn):
     return {'code': 200, 'msg': 'OK', 'data': result}
 
 
-@router.post('/sms/verify', summary='校验短信验证码并登录', response={200: dict, 400: dict, 500: dict})
+@router.post(
+    '/sms/verify',
+    summary='校验短信验证码并登录',
+    response={200: dict, 400: dict, 500: dict},
+)
 def sms_verify(request, data: SmsVerifyIn):
     from .services import create_session
     from .services_sms import verify_sms_code
@@ -1001,17 +1263,30 @@ def _default_dev_profile():
         'email': 'dev@cnkis.local',
         'avatar': '',
         'account_type': 'dev',
-        'roles': [{'name': 'admin', 'display_name': '管理员', 'level': 0, 'category': ''}],
+        'roles': [
+            {'name': 'admin', 'display_name': '管理员', 'level': 0, 'category': ''}
+        ],
         'permissions': ['*'],
         'data_scope': 'global',
         'visible_workbenches': ['reception', 'secretary'],
         'visible_menu_items': {
-            'reception': ['dashboard', 'appointments', 'schedule', 'scan', 'station-qr', 'journey', 'analytics', 'display'],
+            'reception': [
+                'dashboard',
+                'appointments',
+                'schedule',
+                'scan',
+                'station-qr',
+                'journey',
+                'analytics',
+                'display',
+            ],
         },
     }
 
 
-@router.get('/profile', summary='完整用户画像', response={200: dict, 401: dict, 500: dict})
+@router.get(
+    '/profile', summary='完整用户画像', response={200: dict, 401: dict, 500: dict}
+)
 def get_profile(request):
     """
     获取完整用户画像：角色、权限、数据作用域、可见工作台、可见菜单
@@ -1071,7 +1346,9 @@ def logout(request):
     if auth_header.startswith('Bearer '):
         token = auth_header[7:]
         token_hash = hashlib.sha256(token.encode()).hexdigest()
-        revoked = SessionToken.objects.filter(token_hash=token_hash).update(is_revoked=True)
+        revoked = SessionToken.objects.filter(token_hash=token_hash).update(
+            is_revoked=True
+        )
         _auth_trace(request, 'logout_success', revoked_sessions=revoked)
     else:
         _auth_trace(request, 'logout_no_token')
@@ -1103,7 +1380,9 @@ class RoleListOut(Schema):
     is_system: bool
 
 
-@router.get('/roles/list', summary='角色列表', response={200: dict, 401: dict, 403: dict})
+@router.get(
+    '/roles/list', summary='角色列表', response={200: dict, 401: dict, 403: dict}
+)
 @require_any_permission(['system.role.read', 'system.role.manage'])
 def list_roles(request):
     """获取所有可用角色（需 system.role.read 或 system.role.manage 权限）"""
@@ -1114,6 +1393,7 @@ def list_roles(request):
         return 401, {'code': 401, 'msg': '未授权', 'data': None}
 
     from .models import Role
+
     roles = Role.objects.filter(is_active=True).order_by('-level', 'name')
     data = [
         {
@@ -1129,7 +1409,11 @@ def list_roles(request):
     return {'code': 200, 'msg': 'OK', 'data': data}
 
 
-@router.get('/roles/account/{account_id}', summary='用户角色列表', response={200: dict, 401: dict, 403: dict})
+@router.get(
+    '/roles/account/{account_id}',
+    summary='用户角色列表',
+    response={200: dict, 401: dict, 403: dict},
+)
 @require_any_permission(['system.role.read', 'system.role.manage'])
 def list_account_roles(request, account_id: int):
     """获取指定用户的角色（需 system.role.read 或 system.role.manage 权限）"""
@@ -1138,6 +1422,7 @@ def list_account_roles(request, account_id: int):
         return 401, {'code': 401, 'msg': '未授权', 'data': None}
 
     from .authz import get_authz_service
+
     authz = get_authz_service()
     roles = authz.get_account_roles(account_id)
     data = [
@@ -1152,7 +1437,9 @@ def list_account_roles(request, account_id: int):
     return {'code': 200, 'msg': 'OK', 'data': data}
 
 
-@router.post('/roles/assign', summary='分配角色', response={200: dict, 401: dict, 403: dict})
+@router.post(
+    '/roles/assign', summary='分配角色', response={200: dict, 401: dict, 403: dict}
+)
 def assign_role(request, data: AssignRoleIn):
     """
     为用户分配角色
@@ -1165,6 +1452,7 @@ def assign_role(request, data: AssignRoleIn):
         return 401, {'code': 401, 'msg': '未授权', 'data': None}
 
     from .authz import get_authz_service
+
     authz = get_authz_service()
     if not authz.has_permission(account, 'system.role.manage'):
         return 403, {
@@ -1181,7 +1469,9 @@ def assign_role(request, data: AssignRoleIn):
     }
 
 
-@router.post('/roles/remove', summary='移除角色', response={200: dict, 401: dict, 403: dict})
+@router.post(
+    '/roles/remove', summary='移除角色', response={200: dict, 401: dict, 403: dict}
+)
 def remove_role(request, data: RemoveRoleIn):
     """
     移除用户角色
@@ -1193,6 +1483,7 @@ def remove_role(request, data: RemoveRoleIn):
         return 401, {'code': 401, 'msg': '未授权', 'data': None}
 
     from .authz import get_authz_service
+
     authz = get_authz_service()
     if not authz.has_permission(account, 'system.role.manage'):
         return 403, {
@@ -1209,8 +1500,12 @@ def remove_role(request, data: RemoveRoleIn):
     }
 
 
-@router.get('/accounts/list', summary='账号列表', response={200: dict, 401: dict, 403: dict})
-def list_accounts(request, page: int = 1, page_size: int = 50, keyword: Optional[str] = None):
+@router.get(
+    '/accounts/list', summary='账号列表', response={200: dict, 401: dict, 403: dict}
+)
+def list_accounts(
+    request, page: int = 1, page_size: int = 50, keyword: Optional[str] = None
+):
     """
     获取系统账号列表（含角色信息）
 
@@ -1221,6 +1516,7 @@ def list_accounts(request, page: int = 1, page_size: int = 50, keyword: Optional
         return 401, {'code': 401, 'msg': '未授权', 'data': None}
 
     from .authz import get_authz_service
+
     authz = get_authz_service()
     if not authz.has_permission(account, 'system.account.manage'):
         return 403, {
@@ -1230,24 +1526,31 @@ def list_accounts(request, page: int = 1, page_size: int = 50, keyword: Optional
         }
 
     from .models import Account, AccountRole
+
     qs = Account.objects.filter(is_deleted=False)
     if keyword:
         from django.db.models import Q
+
         qs = qs.filter(
-            Q(display_name__icontains=keyword) |
-            Q(username__icontains=keyword) |
-            Q(email__icontains=keyword)
+            Q(display_name__icontains=keyword)
+            | Q(username__icontains=keyword)
+            | Q(email__icontains=keyword)
         )
     qs = qs.order_by('-last_login_time', '-create_time')
     total = qs.count()
     offset = (page - 1) * page_size
-    items = list(qs[offset:offset + page_size])
+    items = list(qs[offset : offset + page_size])
 
-    # 批量获取角色
+    # 批量获取角色（与前端约定：{ name, display_name }[]；按 role.name 去重，避免项目级多行重复）
     account_ids = [a.id for a in items]
-    role_map = {}
+    role_map = {}  # account_id -> { role_name: { name, display_name } }
     for ar in AccountRole.objects.filter(account_id__in=account_ids).select_related('role'):
-        role_map.setdefault(ar.account_id, []).append(ar.role.display_name)
+        r = ar.role
+        bucket = role_map.setdefault(ar.account_id, {})
+        bucket[r.name] = {
+            'name': r.name,
+            'display_name': (r.display_name or '').strip() or r.name,
+        }
 
     data = [
         {
@@ -1258,7 +1561,7 @@ def list_accounts(request, page: int = 1, page_size: int = 50, keyword: Optional
             'avatar': a.avatar,
             'account_type': a.account_type,
             'status': a.status,
-            'roles': role_map.get(a.id, []),
+            'roles': list(role_map.get(a.id, {}).values()),
             'last_login_time': a.last_login_time.isoformat() if a.last_login_time else None,
             'create_time': a.create_time.isoformat(),
         }
@@ -1277,10 +1580,24 @@ def list_accounts(request, page: int = 1, page_size: int = 50, keyword: Optional
 
 # 18 个工作台的合法标识（来自 workstation-independence.mdc）
 VALID_WORKSTATION_KEYS = {
-    'secretary', 'finance', 'research', 'execution', 'quality',
-    'hr', 'crm', 'recruitment', 'equipment', 'material',
-    'facility', 'evaluator', 'lab-personnel', 'ethics', 'reception',
-    'control-plane', 'admin', 'digital-workforce',
+    'secretary',
+    'finance',
+    'research',
+    'execution',
+    'quality',
+    'hr',
+    'crm',
+    'recruitment',
+    'equipment',
+    'material',
+    'facility',
+    'evaluator',
+    'lab-personnel',
+    'ethics',
+    'reception',
+    'control-plane',
+    'admin',
+    'digital-workforce',
 }
 
 VALID_MODES = {'blank', 'pilot', 'full'}
@@ -1341,16 +1658,19 @@ def list_users_for_perf(request, page: int = 1, page_size: int = 200, q: str = '
     返回格式兼容绩效台前端所需的 { openId, name, avatar, username } 结构。
     """
     from .models import Account
-    qs = Account.objects.filter(is_deleted=False, status='active').order_by('display_name')
+
+    qs = Account.objects.filter(is_deleted=False, status='active').order_by(
+        'display_name'
+    )
     if q:
         qs = qs.filter(
-            Q(display_name__icontains=q) |
-            Q(username__icontains=q) |
-            Q(feishu_open_id__icontains=q)
+            Q(display_name__icontains=q)
+            | Q(username__icontains=q)
+            | Q(feishu_open_id__icontains=q)
         )
     total = qs.count()
     offset = (page - 1) * page_size
-    accounts = qs[offset: offset + page_size]
+    accounts = qs[offset : offset + page_size]
     items = [
         {
             'openId': a.feishu_open_id or a.username,
@@ -1419,11 +1739,13 @@ def set_workstation_config(request, account_id: int, data: WorkstationConfigBatc
                     'note': cfg_in.note,
                 },
             )
-            updated.append({
-                'workstation': cfg_in.workstation,
-                'mode': cfg_in.mode,
-                'created': created,
-            })
+            updated.append(
+                {
+                    'workstation': cfg_in.workstation,
+                    'mode': cfg_in.mode,
+                    'created': created,
+                }
+            )
 
     # 清除权限缓存（profile 中会重新计算）
     authz = get_authz_service()

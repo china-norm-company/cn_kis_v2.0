@@ -114,6 +114,18 @@ export const productDistributionApi = {
   getAllWorkOrders: () =>
     unwrap(api.get<KisBody<any>>('/product/workorders', { params: { page: 1, pageSize: 100 } })),
 
+  /** 项目执行概览：按日期返回当日项目执行项 */
+  getExecutionOverview: (date: string) =>
+    unwrap(
+      api.get<KisBody<{ items: Array<Record<string, unknown>> }>>('/product/execution-overview', {
+        params: { date: date.slice(0, 10) },
+      }),
+    ),
+
+  /** 项目执行概览：按月份返回每日项目数量，用于月历角标 */
+  getExecutionOverviewCounts: (month: string) =>
+    unwrap(api.get<KisBody<Record<string, number>>>('/product/execution-overview/counts', { params: { month: month.slice(0, 7) } })),
+
   /** 导出 Excel：POST 表头与行数据，触发浏览器下载 */
   exportExcel: async (params: {
     sheet_name: string

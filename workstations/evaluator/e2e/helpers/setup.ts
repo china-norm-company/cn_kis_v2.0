@@ -152,6 +152,40 @@ export async function setupApiMocks(page: Page) {
     await route.fulfill({ json: { code: 0, msg: 'ok', data } })
   })
 
+  // 实验室月历排程（与接待台同源，评估台「我的排程」）
+  await page.route('**/api/v1/scheduling/lab-schedule/month**', async (route) => {
+    const url = new URL(route.request().url())
+    const ym = url.searchParams.get('year_month') ?? '2026-03'
+    const d1 = `${ym}-05`
+    const d2 = `${ym}-18`
+    await route.fulfill({
+      json: {
+        code: 0,
+        msg: 'ok',
+        data: {
+          items: [
+            {
+              date: d1,
+              protocol_code: 'C26030001',
+              equipment: '探头-Corneometer 1',
+              person_role: '林紫倩/评估',
+              room: 'D04-1',
+              sample_size: 2,
+            },
+            {
+              date: d2,
+              protocol_code: 'C26030002',
+              equipment: '探头-Tewameter 1',
+              person_role: '王芳',
+              room: 'D05-2',
+              sample_size: 1,
+            },
+          ],
+        },
+      },
+    })
+  })
+
   // Profile
   await page.route('**/api/v1/evaluator/my-profile**', async (route) => {
     await route.fulfill({ json: { code: 0, msg: 'ok', data: profileData } })

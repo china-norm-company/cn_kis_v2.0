@@ -9,6 +9,7 @@ import os
 from typing import Optional
 
 from libs.notification import _safe_send, _build_card, _build_card_with_actions, NOTIFICATION_CHAT_ID
+from libs.time_format import format_local_hhmm
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +163,7 @@ def notify_subject_checkin(subject, checkin, chat_id: str = None) -> bool:
         color="blue",
         fields=[
             {"name": "受试者", "value": f"{subject.name} ({subject.subject_no})"},
-            {"name": "签到时间", "value": checkin.checkin_time.strftime('%H:%M') if checkin.checkin_time else ""},
+            {"name": "签到时间", "value": format_local_hhmm(checkin.checkin_time)},
             {"name": "位置", "value": checkin.location or "前台"},
         ],
         note="维周·执行台 - 请准备接待",

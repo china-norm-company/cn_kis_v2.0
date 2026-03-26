@@ -12,10 +12,13 @@ import { FeishuSyncPage } from './pages/FeishuSyncPage'
 import { PilotConfigPage } from './pages/PilotConfigPage'
 import { useApiInit } from './hooks/useApiInit'
 
+/** 与 React Router v7 行为对齐，消除控制台 future flag 提示 */
+const routerFuture = { v7_relativeSplatPath: true } as const
+
 export default function App() {
   useApiInit()
   return (
-    <HashRouter>
+    <HashRouter future={routerFuture}>
       <Routes>
         <Route element={<AppLayout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />

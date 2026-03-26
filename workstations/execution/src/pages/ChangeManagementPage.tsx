@@ -10,7 +10,6 @@
  */
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { PermissionGuard } from '@cn-kis/feishu-sdk'
 import { workflowApi, protocolApi } from '@cn-kis/api-client'
 import type { WorkflowInstance, ImpactAnalysis } from '@cn-kis/api-client'
 import { DataTable, Badge, Empty, StatCard, Modal, Button } from '@cn-kis/ui-kit'
@@ -108,11 +107,9 @@ export default function ChangeManagementPage() {
           <h2 className="text-xl font-semibold text-slate-800">变更管理</h2>
           <p className="text-sm text-slate-500 mt-1">协议变更、排程调整、偏差升级的审批流程跟踪</p>
         </div>
-        <PermissionGuard permission="workflow.change.create">
-          <Button variant="primary" onClick={() => setShowCreateModal(true)}>
-            <Plus className="w-4 h-4 mr-1" /> 发起变更
-          </Button>
-        </PermissionGuard>
+        <Button variant="primary" onClick={() => setShowCreateModal(true)}>
+          <Plus className="w-4 h-4 mr-1" /> 发起变更
+        </Button>
       </div>
 
       {/* KPI Cards */}

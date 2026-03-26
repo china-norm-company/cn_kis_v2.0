@@ -1,0 +1,18 @@
+---
+description: 微信小程序扫码签到 V1.1 非回归约束与需求文档
+globs: apps/wechat-mini/**,backend/apps/subject/**,backend/apps/identity/**,packages/api-client/**
+alwaysApply: false
+---
+
+# 扫码签到 V1.1 — 非回归与文档
+
+## 强制
+
+1. **登录**：不得在未获负责人确认的情况下，改动或弱化已发布的微信登录、鉴权主路径。
+2. **签到 / 签出**：同上；若接口、状态机或 UI 主路径有破坏性变更，**必须先说明影响并等待确认**。
+3. **需求与变更**：以 `docs/WECHAT_MINI_CHECKIN_SCAN_V1.1.md` 为准；每次相关需求或实现变更须在文末 **变更记录** 表追加一行。
+
+## 文档路径
+
+- **主文档**：`docs/comprehensive_research/签到签出功能优化/扫码签到功能优化V1.1.md`
+- **入口**：`docs/WECHAT_MINI_CHECKIN_SCAN_V1.1.md`（跳转说明）

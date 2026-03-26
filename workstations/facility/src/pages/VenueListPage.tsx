@@ -78,7 +78,7 @@ function VenueChangeModal({ venues, venueTypeOptions, onClose, onSuccess }: { ve
 
   const handleSubmit = () => {
     if (!selectedId) return
-    const payload: Record<string, unknown> = { venue_id: selectedId }
+    const payload: { venue_id: number; [k: string]: unknown } = { venue_id: selectedId }
     const changes: string[] = []
     if (form.name !== detail?.name) { payload.name = form.name; changes.push('name') }
     if (form.center !== (detail?.center || '')) { payload.center = form.center; changes.push('center') }

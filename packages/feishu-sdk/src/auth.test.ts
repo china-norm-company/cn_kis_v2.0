@@ -62,6 +62,7 @@ describe('FeishuAuth state handling', () => {
       '/api/v1/auth/feishu/callback',
       expect.objectContaining({
         code: 'oauth-code',
+        redirect_uri: 'https://example.com/secretary/',
         state: 'stored-oauth-state',
         trace_id: 'trace-001',
       }),
@@ -98,6 +99,7 @@ describe('FeishuAuth state handling', () => {
       '/api/v1/auth/feishu/callback',
       expect.objectContaining({
         code: 'in-app-code',
+        redirect_uri: 'https://example.com/secretary/',
         state: undefined,
         trace_id: 'trace-002',
       }),

@@ -16,6 +16,8 @@ import { zhCN } from "date-fns/locale";
 import type { InvoiceRequest } from "@/entities/finance/invoice-request-domain";
 import { ProcessInvoiceRequestDialog } from "./ProcessInvoiceRequestDialog";
 import { useState } from "react";
+import { useFeishuContext } from "@cn-kis/feishu-sdk";
+import { FINANCE_PERMS } from "@/shared/lib/financePermissions";
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "待处理",
@@ -32,7 +34,8 @@ const STATUS_COLOR: Record<string, "default" | "secondary" | "destructive" | "ou
 };
 
 const INVOICE_TYPE_LABEL: Record<string, string> = {
-  vat_special: "增值税专用发票",
+  full_elec_special: "全电专票",
+  full_elec_normal: "全电普票",
   proforma: "形式发票",
 };
 
@@ -53,6 +56,8 @@ export function ViewInvoiceRequestDialog({
   request,
 }: ViewInvoiceRequestDialogProps) {
   const [processDialogOpen, setProcessDialogOpen] = useState(false);
+  const { hasPermission } = useFeishuContext();
+  const canProcessInvoiceRequest = hasPermission(FINANCE_PERMS.invoiceCreate);
 
   if (!request) return null;
 
@@ -92,7 +97,7 @@ export function ViewInvoiceRequestDialog({
               </div>
               <div>
                 <label className="text-sm font-medium text-muted-foreground">发票类型</label>
-                <p className="mt-1">{INVOICE_TYPE_LABEL[request.invoice_type ?? "vat_special"] ?? request.invoice_type ?? "增值税专用发票"}</p>
+                <p className="mt-1">{INVOICE_TYPE_LABEL[request.invoice_type ?? "full_elec_special"] ?? request.invoice_type ?? "全电专票"}</p>
               </div>
               <div>
                 <label className="text-sm font-medium text-muted-foreground">金额类型</label>
@@ -170,7 +175,7 @@ export function ViewInvoiceRequestDialog({
             )}
 
             {/* 操作按钮 */}
-            {request.status === 'pending' && (
+            {request.status === 'pending' && canProcessInvoiceRequest && (
               <div className="flex justify-end gap-2 pt-4 border-t">
                 <Button onClick={() => setProcessDialogOpen(true)}>
                   处理申请

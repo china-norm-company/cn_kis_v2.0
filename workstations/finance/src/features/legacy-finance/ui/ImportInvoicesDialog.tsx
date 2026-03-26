@@ -38,7 +38,7 @@ interface ParsedInvoice {
   invoice_currency?: string;
   invoice_amount_tax_included?: number;
   revenue_amount: number;
-  invoice_type: "专票" | "普票" | "全电专票" | "全电普票";
+  invoice_type: "全电专票" | "全电普票" | "形式发票";
   company_name: string;
   project_code: string;
   po?: string;
@@ -133,11 +133,15 @@ export function ImportInvoicesDialog({ open, onOpenChange, onSuccess }: ImportIn
       if (!invoice.revenue_amount || invoice.revenue_amount <= 0) validationErrors.push("收入金额必须大于0");
       if (!invoice.sales_manager) validationErrors.push("客户经理不能为空");
       if (!invoice.invoice_type) {
-        // 尝试从其他字段推断
-        invoice.invoice_type = "专票"; // 默认值
+        invoice.invoice_type = "全电专票"; // 默认值
       }
+      // 兼容旧导入：专票/全电转票 -> 全电专票，普票/全电普票 -> 全电普票
+      const t = (invoice.invoice_type as string).trim();
+      if (["专票", "全电转票", "全电专票"].includes(t)) invoice.invoice_type = "全电专票";
+      else if (["普票", "全电普票"].includes(t)) invoice.invoice_type = "全电普票";
+      else if (t !== "形式发票") invoice.invoice_type = "全电专票";
       if (!invoice.company_name) {
-        invoice.company_name = "复硕咨询"; // 默认值
+        invoice.company_name = "复硕正态"; // 默认值
       }
 
       if (validationErrors.length > 0) {

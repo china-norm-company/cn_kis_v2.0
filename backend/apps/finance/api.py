@@ -27,18 +27,34 @@ from .schema import (
     FinReportCreateIn,
     CustomerQueryParams, CustomerCreateIn, CustomerUpdateIn,
     InvoiceRequestQueryParams, InvoiceRequestCreateIn, InvoiceRequestUpdateIn,
+    OverdueReminderBatchSendIn,
 )
-from apps.identity.decorators import _get_account_from_request, require_permission
+from apps.identity.decorators import _get_account_from_request, require_permission, require_any_permission
 from apps.identity.filters import get_visible_object
+
+# 发票管理（新）— 与前端 GET /finance/invoices 对接，返回全部发票（团队共享，无按人过滤）
+from .api_legacy_invoices import (
+    list_legacy_invoices,
+    create_legacy_invoice,
+    get_legacy_invoice,
+    update_legacy_invoice,
+    delete_legacy_invoice,
+    LegacyInvoiceQueryParams,
+    LegacyInvoiceCreateIn,
+    LegacyInvoiceUpdateIn,
+)
+from .models_legacy_invoice import LegacyInvoice
 
 router = Router()
 
 from .api_payable import router as payable_router
 from .api_expense import router as expense_router
 from .api_settlement import router as settlement_router
+from .api_notifications import router as notifications_router
 router.add_router('/payables/', payable_router, tags=['应付管理'])
 router.add_router('/expenses/', expense_router, tags=['费用报销'])
 router.add_router('/settlements/', settlement_router, tags=['项目决算'])
+router.add_router('/notifications/', notifications_router, tags=['财务通知'])
 
 
 # ============================================================================
@@ -103,7 +119,82 @@ def _item_amount_inclusive(amount, amount_type: str, tax_rate) -> float:
     return am * (1 + rate)
 
 
-def _invoice_request_to_dict(req) -> dict:
+def _linked_electronic_meta_for_request(req) -> dict:
+    """根据 invoice_ids 关联 LegacyInvoice（优先取列表最后一项，与处理申请创建发票顺序一致）。"""
+    from .models_legacy_invoice import LegacyInvoice
+    empty = {
+        'linked_invoice_id': None,
+        'electronic_invoice_file': None,
+        'electronic_invoice_file_name': None,
+    }
+    ids = req.invoice_ids or []
+    if not ids:
+        return empty
+    id_list = []
+    for x in ids:
+        try:
+            id_list.append(int(x))
+        except (TypeError, ValueError):
+            continue
+    for iid in reversed(id_list):
+        inv = LegacyInvoice.objects.filter(id=iid, is_deleted=False).first()
+        if inv:
+            ef = (inv.electronic_invoice_file or '').strip() or None
+            en = (inv.electronic_invoice_file_name or '').strip() or None
+            return {
+                'linked_invoice_id': inv.id,
+                'electronic_invoice_file': ef,
+                'electronic_invoice_file_name': en,
+            }
+    return empty
+
+
+def _batch_linked_electronic_meta(requests: list) -> dict:
+    """req.id -> 电子发票摘要，批量查询避免列表 N+1。"""
+    from .models_legacy_invoice import LegacyInvoice
+    empty = {
+        'linked_invoice_id': None,
+        'electronic_invoice_file': None,
+        'electronic_invoice_file_name': None,
+    }
+    if not requests:
+        return {}
+    all_ids = set()
+    for req in requests:
+        for x in (req.invoice_ids or []):
+            try:
+                all_ids.add(int(x))
+            except (TypeError, ValueError):
+                continue
+    if not all_ids:
+        return {req.id: dict(empty) for req in requests}
+    inv_map = {
+        inv.id: inv
+        for inv in LegacyInvoice.objects.filter(id__in=all_ids, is_deleted=False)
+    }
+    out = {}
+    for req in requests:
+        meta = dict(empty)
+        for x in reversed(req.invoice_ids or []):
+            try:
+                iid = int(x)
+            except (TypeError, ValueError):
+                continue
+            inv = inv_map.get(iid)
+            if inv:
+                ef = (inv.electronic_invoice_file or '').strip() or None
+                en = (inv.electronic_invoice_file_name or '').strip() or None
+                meta = {
+                    'linked_invoice_id': inv.id,
+                    'electronic_invoice_file': ef,
+                    'electronic_invoice_file_name': en,
+                }
+                break
+        out[req.id] = meta
+    return out
+
+
+def _invoice_request_to_dict(req, electronic_meta: Optional[dict] = None) -> dict:
     amount_type = getattr(req, 'amount_type', None) or 'inclusive_of_tax'
     tax_rate = getattr(req, 'tax_rate', None)
     rate_val = float(tax_rate) if tax_rate is not None else 0.06
@@ -117,11 +208,11 @@ def _invoice_request_to_dict(req) -> dict:
             'amount_inclusive_of_tax': round(am_inclusive, 2),
             'service_content': i.service_content or '',
         })
-    return {
+    base = {
         'id': req.id,
         'request_date': req.request_date.isoformat(),
         'customer_name': req.customer_name,
-        'invoice_type': getattr(req, 'invoice_type', 'vat_special') or 'vat_special',
+        'invoice_type': getattr(req, 'invoice_type', 'full_elec_special') or 'full_elec_special',
         'amount_type': amount_type,
         'tax_rate': rate_val,
         'items': items,
@@ -137,6 +228,10 @@ def _invoice_request_to_dict(req) -> dict:
         'created_at': req.create_time.isoformat(),
         'updated_at': req.update_time.isoformat(),
     }
+    if electronic_meta is None:
+        electronic_meta = _linked_electronic_meta_for_request(req)
+    base.update(electronic_meta)
+    return base
 
 
 def _client_to_dict(c) -> dict:
@@ -523,8 +618,77 @@ def generate_payment_plans(request, contract_id: int):
 
 
 # ============================================================================
-# 发票 API
+# 发票 API（发票管理（新）与前端 GET /finance/invoices 对接，团队共享）
 # ============================================================================
+from .api_legacy_invoices import (
+    list_legacy_invoices,
+    create_legacy_invoice,
+    get_legacy_invoice,
+    update_legacy_invoice,
+    delete_legacy_invoice,
+    list_overdue_reminders_payload,
+    LegacyInvoiceQueryParams,
+    LegacyInvoiceCreateIn,
+    LegacyInvoiceUpdateIn,
+)
+from .models_legacy_invoice import LegacyInvoice
+
+
+@router.get('/invoices', summary='发票列表（新，团队共享）')
+@require_permission('finance.invoice.read')
+def list_legacy_invoices_route(request, params: LegacyInvoiceQueryParams = Query(...)):
+    """与前端「发票管理（新）」对接，返回全部发票，不做按人过滤。"""
+    return list_legacy_invoices(request, params)
+
+
+@router.post('/invoices', summary='创建发票（新）')
+@require_permission('finance.invoice.create')
+def create_legacy_invoice_route(request, data: LegacyInvoiceCreateIn):
+    """与前端「发票管理（新）」对接。"""
+    return create_legacy_invoice(request, data)
+
+
+@router.get('/overdue-reminders', summary='逾期催款提醒（基于新发票台账）')
+@require_permission('finance.invoice.read')
+def list_overdue_reminders_route(
+    request,
+    page: int = 1,
+    page_size: int = 20,
+    customer_name: Optional[str] = None,
+    sales_manager: Optional[str] = None,
+    min_overdue_days: Optional[int] = None,
+):
+    return list_overdue_reminders_payload(
+        page=page,
+        page_size=page_size,
+        customer_name=customer_name,
+        sales_manager=sales_manager,
+        min_overdue_days=min_overdue_days,
+    )
+
+
+@router.post('/overdue-reminders/batch-send', summary='批量催款（占位，可后续接飞书）')
+@require_permission('finance.invoice.read')
+def overdue_reminders_batch_send(request, data: OverdueReminderBatchSendIn):
+    ids = list(data.reminder_ids or [])
+    return {
+        'code': 200,
+        'msg': 'OK',
+        'success': True,
+        'data': {
+            'success_count': len(ids),
+            'failed_count': 0,
+            'failed_ids': [],
+        },
+    }
+
+
+@router.post('/overdue-reminders/{reminder_id}/send', summary='单笔催款（占位）')
+@require_permission('finance.invoice.read')
+def overdue_reminder_send(request, reminder_id: int):
+    return {'code': 200, 'msg': 'OK', 'success': True, 'data': {'sent': True}}
+
+
 @router.get('/invoices/list', summary='发票列表')
 @require_permission('finance.invoice.read')
 def list_invoices(request, params: InvoiceQueryParams = Query(...)):
@@ -559,6 +723,10 @@ def create_invoice(request, data: InvoiceCreateIn):
 @router.get('/invoices/{invoice_id}', summary='发票详情')
 @require_permission('finance.invoice.read')
 def get_invoice(request, invoice_id: int):
+    # 优先按「发票（新）」查，与列表一致，团队共享
+    legacy_inv = LegacyInvoice.objects.filter(id=invoice_id, is_deleted=False).first()
+    if legacy_inv:
+        return get_legacy_invoice(request, invoice_id)
     account = _get_account_from_request(request)
     inv = get_visible_object(Invoice.objects.filter(id=invoice_id), account)
     if not inv:
@@ -568,11 +736,16 @@ def get_invoice(request, invoice_id: int):
 
 @router.put('/invoices/{invoice_id}', summary='更新发票')
 @require_permission('finance.invoice.create')
-def update_invoice(request, invoice_id: int, data: InvoiceUpdateIn):
+def update_invoice(request, invoice_id: int, data: LegacyInvoiceUpdateIn):
+    legacy_inv = LegacyInvoice.objects.filter(id=invoice_id, is_deleted=False).first()
+    if legacy_inv:
+        return update_legacy_invoice(request, invoice_id, data)
     account = _get_account_from_request(request)
     if not get_visible_object(Invoice.objects.filter(id=invoice_id), account):
         return 404, {'code': 404, 'msg': '发票不存在'}
-    inv = services.update_invoice(invoice_id, **data.dict(exclude_unset=True))
+    # 合同发票仅更新部分字段
+    payload = {k: v for k, v in data.dict(exclude_unset=True).items() if k in ('status', 'invoice_date')}
+    inv = services.update_invoice(invoice_id, **payload)
     if not inv:
         return 404, {'code': 404, 'msg': '发票不存在'}
     return {'code': 200, 'msg': 'OK', 'data': _invoice_to_dict(inv)}
@@ -581,6 +754,9 @@ def update_invoice(request, invoice_id: int, data: InvoiceUpdateIn):
 @router.delete('/invoices/{invoice_id}', summary='删除发票')
 @require_permission('finance.invoice.create')
 def delete_invoice(request, invoice_id: int):
+    legacy_inv = LegacyInvoice.objects.filter(id=invoice_id, is_deleted=False).first()
+    if legacy_inv:
+        return delete_legacy_invoice(request, invoice_id)
     account = _get_account_from_request(request)
     if not get_visible_object(Invoice.objects.filter(id=invoice_id), account):
         return 404, {'code': 404, 'msg': '发票不存在'}
@@ -606,10 +782,15 @@ def list_invoice_requests(request, params: InvoiceRequestQueryParams = Query(...
     total = result['total']
     page_size = result['page_size']
     total_pages = (total + page_size - 1) // page_size if page_size else 0
+    items = result['items']
+    batch_electronic = _batch_linked_electronic_meta(items)
     return {
         'code': 200, 'msg': 'OK',
         'data': {
-            'requests': [_invoice_request_to_dict(r) for r in result['items']],
+            'requests': [
+                _invoice_request_to_dict(r, electronic_meta=batch_electronic.get(r.id))
+                for r in items
+            ],
             'total_records': total,
             'total_pages': total_pages,
             'current_page': result['page'],
@@ -628,14 +809,14 @@ def get_invoice_request(request, req_id: int):
 
 
 @router.post('/invoice-requests', summary='创建开票申请')
-@require_permission('finance.invoice.create')
+@require_any_permission(['finance.invoice.create', 'finance.invoice_request.submit'])
 def create_invoice_request(request, data: InvoiceRequestCreateIn):
     account = _get_account_from_request(request)
     items = [it.dict() for it in data.items]
     req = services.create_invoice_request(
         request_date=data.request_date,
         customer_name=data.customer_name,
-        invoice_type=getattr(data, 'invoice_type', 'vat_special') or 'vat_special',
+        invoice_type=getattr(data, 'invoice_type', 'full_elec_special') or 'full_elec_special',
         amount_type=getattr(data, 'amount_type', 'inclusive_of_tax') or 'inclusive_of_tax',
         tax_rate=getattr(data, 'tax_rate', None),
         items=items,
@@ -649,26 +830,34 @@ def create_invoice_request(request, data: InvoiceRequestCreateIn):
 
 
 @router.put('/invoice-requests/{req_id}', summary='更新开票申请')
-@require_permission('finance.invoice.create')
+@require_any_permission(['finance.invoice.create', 'finance.invoice_request.submit'])
 def update_invoice_request(request, req_id: int, data: InvoiceRequestUpdateIn):
     account = _get_account_from_request(request)
-    if not get_visible_object(InvoiceRequest.objects.filter(id=req_id), account, scope_override='global'):
+    req = get_visible_object(InvoiceRequest.objects.filter(id=req_id), account, scope_override='global')
+    if not req:
         return 404, {'code': 404, 'msg': '开票申请不存在'}
     payload = data.dict(exclude_unset=True)
     if 'items' in payload and payload['items'] is not None:
         payload['items'] = [it.dict() if hasattr(it, 'dict') else it for it in payload['items']]
-    req = services.update_invoice_request(req_id, **payload)
-    if not req:
+    from .invoice_request_access import account_may_update_invoice_request
+    if not account_may_update_invoice_request(account, req, payload):
+        return 403, {'code': 403, 'msg': '无权限更新该开票申请（商务仅能修改本人待处理申请，且不可修改处理状态/关联发票）'}
+    updated = services.update_invoice_request(req_id, **payload)
+    if not updated:
         return 404, {'code': 404, 'msg': '开票申请不存在'}
-    return {'code': 200, 'msg': 'OK', 'data': _invoice_request_to_dict(req)}
+    return {'code': 200, 'msg': 'OK', 'data': _invoice_request_to_dict(updated)}
 
 
 @router.delete('/invoice-requests/{req_id}', summary='删除开票申请')
-@require_permission('finance.invoice.create')
+@require_any_permission(['finance.invoice.create', 'finance.invoice_request.submit'])
 def delete_invoice_request(request, req_id: int):
     account = _get_account_from_request(request)
-    if not get_visible_object(InvoiceRequest.objects.filter(id=req_id), account, scope_override='global'):
+    req = get_visible_object(InvoiceRequest.objects.filter(id=req_id), account, scope_override='global')
+    if not req:
         return 404, {'code': 404, 'msg': '开票申请不存在'}
+    from .invoice_request_access import account_may_delete_invoice_request
+    if not account_may_delete_invoice_request(account, req):
+        return 403, {'code': 403, 'msg': '无权限删除该开票申请'}
     ok = services.delete_invoice_request(req_id)
     if not ok:
         return 404, {'code': 404, 'msg': '开票申请不存在'}
@@ -825,18 +1014,38 @@ def credit_invoice(request, invoice_id: int):
 # ============================================================================
 # 回款 API
 # ============================================================================
-@router.get('/payments/list', summary='回款列表')
-@require_permission('finance.payment.read')
-def list_payments(request, data: PaymentQueryParams = Query(...)):
+def _list_payments_response(request, data: PaymentQueryParams):
     account = _get_account_from_request(request)
-    result = services.list_payments(status=data.status, invoice_id=data.invoice_id, page=data.page, page_size=data.page_size, account=account)
+    result = services.list_payments(
+        status=data.status,
+        invoice_id=data.invoice_id,
+        page=data.page,
+        page_size=data.page_size,
+        account=account,
+        start_date=data.start_date,
+        end_date=data.end_date,
+    )
     return {
         'code': 200, 'msg': 'OK',
+        'success': True,
         'data': {
             'items': [_payment_to_dict(p) for p in result['items']],
             'total': result['total'], 'page': result['page'], 'page_size': result['page_size'],
         },
     }
+
+
+@router.get('/payments', summary='回款列表（与 /payments/list 一致）')
+@require_permission('finance.payment.read')
+def list_payments_root(request, data: PaymentQueryParams = Query(...)):
+    """兼容前端 GET /finance/payments。"""
+    return _list_payments_response(request, data)
+
+
+@router.get('/payments/list', summary='回款列表')
+@require_permission('finance.payment.read')
+def list_payments(request, data: PaymentQueryParams = Query(...)):
+    return _list_payments_response(request, data)
 
 
 @router.get('/payments/stats', summary='回款统计')
@@ -1294,8 +1503,13 @@ def ar_aging(request):
 @router.get('/dashboard', summary='财务看板')
 @require_permission('finance.report.read')
 def finance_dashboard(request):
-    from apps.finance.services.analysis_service import get_finance_dashboard
-    return {'code': 200, 'msg': 'OK', 'data': get_finance_dashboard()}
+    try:
+        from apps.finance.services.analysis_service import get_finance_dashboard
+        return {'code': 200, 'msg': 'OK', 'data': get_finance_dashboard()}
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception('finance_dashboard failed: %s', e)
+        return {'code': 200, 'msg': 'OK', 'data': {}}
 
 
 @router.get('/dashboard/trends', summary='看板趋势数据')
@@ -1356,8 +1570,13 @@ def analytics_revenue_trend(request, period: str = 'month', months: int = 12):
 @router.get('/analytics/revenue/concentration', summary='营收集中度')
 @require_permission('finance.report.read')
 def analytics_revenue_concentration(request, top_n: int = 10):
-    from apps.finance.services.revenue_analytics import get_revenue_concentration
-    return {'code': 200, 'msg': 'OK', 'data': get_revenue_concentration(top_n=top_n)}
+    try:
+        from apps.finance.services.revenue_analytics import get_revenue_concentration
+        return {'code': 200, 'msg': 'OK', 'data': get_revenue_concentration(top_n=top_n)}
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception('analytics_revenue_concentration failed: %s', e)
+        return {'code': 200, 'msg': 'OK', 'data': []}
 
 
 @router.get('/analytics/revenue/recognition', summary='收入确认跟踪')
@@ -1378,8 +1597,13 @@ def analytics_revenue_forecast(request, months: int = 12):
 @router.get('/analytics/cost/structure', summary='成本结构')
 @require_permission('finance.report.read')
 def analytics_cost_structure(request, protocol_id: Optional[int] = None):
-    from apps.finance.services.cost_analytics import get_cost_structure
-    return {'code': 200, 'msg': 'OK', 'data': get_cost_structure(protocol_id=protocol_id)}
+    try:
+        from apps.finance.services.cost_analytics import get_cost_structure
+        return {'code': 200, 'msg': 'OK', 'data': get_cost_structure(protocol_id=protocol_id)}
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception('analytics_cost_structure failed: %s', e)
+        return {'code': 200, 'msg': 'OK', 'data': []}
 
 
 @router.get('/analytics/cost/unit/{protocol_id}', summary='单位成本分析')
@@ -1514,8 +1738,13 @@ def analytics_efficiency_comparison(request, start_date: Optional[date] = None,
 @router.get('/analytics/profit/ranking', summary='项目盈利排行')
 @require_permission('finance.report.read')
 def analytics_profit_ranking(request, limit: int = 20):
-    from apps.finance.services.analysis_service import get_profit_ranking
-    return {'code': 200, 'msg': 'OK', 'data': get_profit_ranking(limit=limit)}
+    try:
+        from apps.finance.services.analysis_service import get_profit_ranking
+        return {'code': 200, 'msg': 'OK', 'data': get_profit_ranking(limit=limit)}
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception('analytics_profit_ranking failed: %s', e)
+        return {'code': 200, 'msg': 'OK', 'data': []}
 
 
 @router.get('/analytics/profit/by-client', summary='客户盈利分析')

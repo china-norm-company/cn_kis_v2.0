@@ -38,9 +38,6 @@ interface EnrollmentDetail {
   status: string
   enrolled_at: string | null
   create_time: string
-  icf_required?: boolean
-  icf_signed?: boolean
-  icf_status_label?: string
 }
 
 export default function SubjectPage() {
@@ -81,24 +78,6 @@ export default function SubjectPage() {
 
   const statusKeys = ['screening', 'enrolled', 'active', 'completed', 'withdrawn']
 
-  const getICFBadge = (enrollment: EnrollmentDetail) => {
-    if (!enrollment.icf_required) {
-      return <Badge variant="default">未配置 ICF</Badge>
-    }
-    if (enrollment.icf_signed) {
-      return (
-        <span className="icf-signed" data-icf-signed="true">
-          <Badge variant="success">已签 ICF</Badge>
-        </span>
-      )
-    }
-    return (
-      <span className="icf-pending" data-icf-signed="false">
-        <Badge variant="warning">未签 ICF</Badge>
-      </span>
-    )
-  }
-
   const columns = [
     {
       key: 'subject_name', header: '受试者', render: (e: EnrollmentDetail) => (
@@ -117,9 +96,6 @@ export default function SubjectPage() {
         const info = STATUS_CONFIG[e.subject_status] || { label: e.subject_status, color: 'default' as const }
         return <Badge variant={info.color}>{info.label}</Badge>
       },
-    },
-    {
-      key: 'icf_status', header: '知情同意', render: (e: EnrollmentDetail) => getICFBadge(e),
     },
     { key: 'enrolled_at', header: '入组时间', render: (e: EnrollmentDetail) => e.enrolled_at?.split('T')[0] || '-' },
     { key: 'create_time', header: '创建时间', render: (e: EnrollmentDetail) => e.create_time?.split('T')[0] || '-' },
@@ -156,8 +132,6 @@ export default function SubjectPage() {
       <div className="flex items-center gap-3">
         <select
           className="text-sm border border-slate-200 rounded-lg px-3 py-2"
-          title="筛选项目"
-          aria-label="筛选项目"
           value={filterProtocol}
           onChange={e => { setFilterProtocol(e.target.value); setPage(1) }}
         >
@@ -166,8 +140,6 @@ export default function SubjectPage() {
         </select>
         <select
           className="text-sm border border-slate-200 rounded-lg px-3 py-2"
-          title="筛选入组状态"
-          aria-label="筛选入组状态"
           value={filterStatus}
           onChange={e => { setFilterStatus(e.target.value); setPage(1) }}
         >
@@ -220,7 +192,7 @@ export default function SubjectPage() {
 
       {/* Detail Drawer */}
       {selectedEnrollment && (
-        <Modal open={!!selectedEnrollment} title="入组详情" onClose={() => setSelectedEnrollment(null)}>
+        <Modal title="入组详情" onClose={() => setSelectedEnrollment(null)}>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -255,33 +227,7 @@ export default function SubjectPage() {
                 <label className="text-xs text-slate-500">创建时间</label>
                 <p className="text-sm">{selectedEnrollment.create_time?.split('T')[0]}</p>
               </div>
-              <div>
-                <label className="text-xs text-slate-500">知情同意状态</label>
-                <div className="mt-0.5">
-                  {getICFBadge(selectedEnrollment)}
-                </div>
-              </div>
             </div>
-
-            {selectedEnrollment.status === 'pending' && !selectedEnrollment.icf_signed && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-amber-800">知情同意未完成，禁止执行入组</p>
-                    <p className="mt-1 text-xs text-amber-700">
-                      需先完成 ICF 签署，再进入后续入组审批/执行流程。
-                    </p>
-                  </div>
-                  <button
-                    data-testid="enroll-button"
-                    disabled
-                    className="rounded-lg bg-slate-300 px-4 py-2 text-sm font-medium text-white opacity-70 cursor-not-allowed"
-                  >
-                    入组
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </Modal>
       )}

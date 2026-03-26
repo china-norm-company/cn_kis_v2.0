@@ -39,6 +39,14 @@ export const executionApi = {
     return api.get<{ items: SubjectCheckin[] }>(`/execution/${subjectId}/checkins`)
   },
 
+  /** 获取该受试者在该项目下最近一次预约时间（用于预填复诊预约时间） */
+  getLatestAppointmentTime(subjectId: number, params?: { project_code?: string }) {
+    return api.get<{ appointment_time: string | null }>(
+      `/execution/${subjectId}/appointments/latest`,
+      { params: params?.project_code ? { project_code: params.project_code } : undefined },
+    )
+  },
+
   /** 新建预约（含访视点、项目；拼音首字母由用户手动填写） */
   createAppointment(subjectId: number, data: {
     appointment_date: string
@@ -53,7 +61,35 @@ export const executionApi = {
     return api.post<{ id: number }>(`/execution/${subjectId}/appointments`, data)
   },
 
-  /** 批量导入预约（Excel 中「首字母」列映射为 name_pinyin_initials，「联络员」列映射为 liaison） */
+  /** 更新单条预约（今日队列编辑用） */
+  updateAppointment(appointmentId: number, data: {
+    appointment_date?: string
+    appointment_time?: string
+    visit_point?: string
+    purpose?: string
+    project_code?: string
+    project_name?: string
+    name_pinyin_initials?: string
+    liaison?: string
+  }) {
+    return api.patch<{ id: number }>(`/execution/appointments/${appointmentId}`, data)
+  },
+
+  /** 批量创建回访预约（签出时复诊预约用） */
+  batchCreateAppointments(subjectId: number, data: {
+    items: Array<{ appointment_date: string; appointment_time?: string; visit_point?: string }>
+    project_code?: string
+    project_name?: string
+    name_pinyin_initials?: string
+    liaison?: string
+    gender?: string
+    age?: number
+    enrollment_id?: number
+  }) {
+    return api.post<{ created: number }>(`/execution/${subjectId}/appointments/batch`, data)
+  },
+
+  /** 批量导入预约（Excel 中「首字母」列映射为 name_pinyin_initials，「联络员」列映射为 liaison；SC号/RD号 非空则直接使用，不依赖签到/入组选择生成） */
   importAppointments(items: Array<{
     subject_phone?: string
     subject_no?: string
@@ -69,6 +105,8 @@ export const executionApi = {
     visit_point?: string
     project_code?: string
     project_name?: string
+    sc_number?: string
+    rd_number?: string
   }>) {
     return api.post<{ created: number; errors: Array<{ row: number; msg: string }> }>(
       '/execution/appointments/import',

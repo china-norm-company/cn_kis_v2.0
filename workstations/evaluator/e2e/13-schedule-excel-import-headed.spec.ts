@@ -35,7 +35,7 @@ function buildWideScheduleFixture(filePath: string) {
   XLSX.writeFile(wb, filePath)
 }
 
-test.describe('排程 Excel 导入 - Headed 验证', () => {
+test.describe.skip('排程 Excel 导入 - Headed 验证（已移除：我的排程改为实验室月历）', () => {
   test.beforeEach(async ({ page }) => {
     await injectAuth(page)
     await setupApiMocks(page)

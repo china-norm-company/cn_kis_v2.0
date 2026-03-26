@@ -71,6 +71,8 @@ def verify_jwt_token(token: str) -> Optional[dict]:
     """验证 JWT Token，并校验会话未撤销/未过期。开发环境下可接受火山云等外部签发 token（仅校验签名与过期）。"""
     try:
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=['HS256'])
+        if payload.get('type') == 'phone_auth':
+            return payload
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         active_session_exists = SessionToken.objects.filter(
             token_hash=token_hash,

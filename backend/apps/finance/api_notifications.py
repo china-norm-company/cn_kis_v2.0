@@ -57,42 +57,36 @@ def _get_notification_bot_credentials():
 
 
 def _resolve_recipient_to_open_id(recipient: str, app_id: str = None, app_secret: str = None) -> Optional[str]:
-    """尝试将接收人（姓名）解析为 open_id"""
+    """尝试将接收人（姓名）解析为 open_id。飞书 open_id 按应用隔离，发消息必须用「当前发信应用」通讯录解析出的 open_id。"""
     if not recipient:
         return None
-    # 1. 若已是 open_id 格式
+    # 1. 若已是 open_id 格式：仅当未指定 app 时可直接用；指定了 app 时该 open_id 可能属于其他应用，会导致 open_id cross app
     if recipient.startswith("ou_"):
-        return recipient
-    # 2. 从 identity Account 查找（display_name / username 匹配，且已绑定飞书）
-    try:
-        from apps.identity.models import Account
+        if not app_id:
+            return recipient
+        return None  # 发信方已指定 app 时，不能用外部传入的 open_id，必须用下面通讯录解析
 
-        acc = (
-            Account.objects.filter(display_name=recipient).first()
-            or Account.objects.filter(display_name__icontains=recipient).first()
-            or Account.objects.filter(username__icontains=recipient).first()
-        )
-        if acc and acc.feishu_open_id:
-            return acc.feishu_open_id
-    except Exception as e:
-        logger.warning(f"[财务通知] Account 查找失败: {e}")
-
-    # 3. 从飞书通讯录按姓名查找（需 app 有通讯录权限）
+    # 2. 使用智能开发助手发信时，必须只用该应用的通讯录解析 open_id，否则会 99992361 open_id cross app
     if app_id and app_secret:
         try:
-            # 3a. 先尝试根部门+子部门一次性获取（fetch_child=True）
-            users_data = feishu_client.list_users(
-                department_id="0", page_size=100, fetch_child=True,
-                app_id=app_id, app_secret=app_secret,
-            )
-            for u in users_data.get("items", []):
-                name = (u.get("name") or u.get("en_name") or "").strip()
-                if name == recipient or recipient in name:
-                    oid = u.get("open_id") or u.get("user_id")
-                    if oid:
-                        logger.info(f"[财务通知] 通讯录匹配: {recipient} -> {oid[:20]}...")
-                        return oid
-            # 3b. 若根部门无结果，递归遍历子部门
+            # 2a. 根部门用户（分页拉全）
+            page_token = ""
+            for _ in range(20):  # 最多 20 页
+                users_data = feishu_client.list_users(
+                    department_id="0", page_token=page_token, page_size=100, fetch_child=False,
+                    app_id=app_id, app_secret=app_secret,
+                )
+                for u in users_data.get("items", []):
+                    name = (u.get("name") or u.get("en_name") or "").strip()
+                    if name == recipient or recipient in name:
+                        oid = u.get("open_id") or u.get("user_id")
+                        if oid:
+                            logger.info(f"[财务通知] 通讯录匹配: {recipient} -> {oid[:20]}...")
+                            return oid
+                page_token = users_data.get("page_token") or ""
+                if not users_data.get("has_more", False) or not page_token:
+                    break
+            # 2b. 若根部门无结果，递归遍历子部门
             seen = set()
             dept_queue = ["0"]
             max_depts = 80
@@ -125,16 +119,16 @@ def _resolve_recipient_to_open_id(recipient: str, app_id: str = None, app_secret
     return None
 
 
-def _send_feishu_text(recipient: str, content: str) -> tuple[bool, str]:
-    """返回 (是否成功, 错误码)。使用智能开发助手凭证发送，不依赖管仲工作台权限"""
+def _send_feishu_text(recipient: str, content: str) -> tuple[bool, str, str]:
+    """返回 (是否成功, 错误码, 错误详情)。使用智能开发助手凭证发送，不依赖管仲工作台权限"""
     app_id, app_secret = _get_notification_bot_credentials()
     if not app_id or not app_secret:
         logger.warning("[财务通知] 未配置智能开发助手凭证 FEISHU_APP_ID_DEV_ASSISTANT / FEISHU_APP_SECRET_DEV_ASSISTANT")
-        return False, "feishu_not_configured"
+        return False, "feishu_not_configured", ""
     open_id = _resolve_recipient_to_open_id(recipient, app_id, app_secret)
     if not open_id:
         logger.warning(f"[财务通知] 无法解析接收人 open_id: recipient={recipient}")
-        return False, "recipient_not_found"
+        return False, "recipient_not_found", ""
     try:
         feishu_client.send_message(
             receive_id=open_id,
@@ -145,37 +139,38 @@ def _send_feishu_text(recipient: str, content: str) -> tuple[bool, str]:
             app_secret=app_secret,
         )
         logger.info(f"[财务通知] 飞书消息已发送: recipient={recipient}, open_id={open_id[:20]}...")
-        return True, ""
+        return True, "", ""
     except FeishuAPIError as e:
-        logger.error(f"[财务通知] 飞书发送失败: {e}")
-        return False, "feishu_api_error"
+        err_msg = getattr(e, "msg", str(e))
+        logger.error("[财务通知] 飞书发送失败: code=%s msg=%s api=%s", e.code, err_msg, getattr(e, "api", ""))
+        return False, "feishu_api_error", err_msg
+
+
+def _notification_payload(ok: bool, error_code: str, error_detail: str):
+    payload = {"code": 0, "msg": "ok" if ok else "send_failed", "data": {"sent": ok}}
+    if not ok and error_code:
+        payload["data"]["error_code"] = error_code
+    if not ok and error_detail:
+        payload["data"]["error_detail"] = error_detail
+    return payload
 
 
 @router.post("/invoice-created", auth=None)
 def notify_invoice_created(request, data: InvoiceCreatedIn):
     """开票完成通知"""
-    ok, error_code = _send_feishu_text(data.recipient, data.content)
-    payload = {"code": 0, "msg": "ok" if ok else "send_failed", "data": {"sent": ok}}
-    if not ok and error_code:
-        payload["data"]["error_code"] = error_code
-    return payload
+    ok, error_code, error_detail = _send_feishu_text(data.recipient, data.content)
+    return _notification_payload(ok, error_code, error_detail)
 
 
 @router.post("/payment-received", auth=None)
 def notify_payment_received(request, data: PaymentReceivedIn):
     """收款完成通知"""
-    ok, error_code = _send_feishu_text(data.recipient, data.content)
-    payload = {"code": 0, "msg": "ok" if ok else "send_failed", "data": {"sent": ok}}
-    if not ok and error_code:
-        payload["data"]["error_code"] = error_code
-    return payload
+    ok, error_code, error_detail = _send_feishu_text(data.recipient, data.content)
+    return _notification_payload(ok, error_code, error_detail)
 
 
 @router.post("/overdue-reminder", auth=None)
 def notify_overdue_reminder(request, data: OverdueReminderIn):
     """催款通知"""
-    ok, error_code = _send_feishu_text(data.recipient, data.content)
-    payload = {"code": 0, "msg": "ok" if ok else "send_failed", "data": {"sent": ok}}
-    if not ok and error_code:
-        payload["data"]["error_code"] = error_code
-    return payload
+    ok, error_code, error_detail = _send_feishu_text(data.recipient, data.content)
+    return _notification_payload(ok, error_code, error_detail)
