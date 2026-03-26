@@ -40,7 +40,7 @@ function ClippedBadgesWithTooltip({
 
   const clearHideTimer = useCallback(() => {
     if (hideTimerRef.current != null) {
-      window.clearTimeout(hideTimerRef.current)
+      clearTimeout(hideTimerRef.current)
       hideTimerRef.current = null
     }
   }, [])
@@ -65,7 +65,7 @@ function ClippedBadgesWithTooltip({
 
   const scheduleClose = useCallback(() => {
     clearHideTimer()
-    hideTimerRef.current = window.setTimeout(() => setOpen(false), TOOLTIP_HIDE_DELAY_MS)
+    hideTimerRef.current = setTimeout(() => setOpen(false), TOOLTIP_HIDE_DELAY_MS)
   }, [clearHideTimer])
 
   useLayoutEffect(() => {
