@@ -29,14 +29,14 @@ export function DashboardPage() {
     { icon: Users, label: '系统账号', value: totalAccounts, color: 'bg-blue-50 text-blue-600', path: '/accounts' },
     { icon: Shield, label: '角色数量', value: totalRoles, color: 'bg-amber-50 text-amber-600', path: '/roles' },
     { icon: FileText, label: '审计日志', value: '查看', color: 'bg-emerald-50 text-emerald-600', path: '/audit' },
-    { icon: Server, label: '工作台', value: 15, color: 'bg-purple-50 text-purple-600', path: '/workstations' },
+    { icon: Server, label: '工作台', value: 19, color: 'bg-purple-50 text-purple-600', path: '/workstations' },
   ]
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-slate-800">系统管理概览</h2>
-        <p className="text-sm text-slate-400 mt-1">CN KIS V1.0 管理后台</p>
+        <p className="text-sm text-slate-400 mt-1">CN KIS V2.0 · 鹿鸣·治理台（公司级上线治理与身份权限）</p>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

@@ -232,7 +232,8 @@ try:
     from apps.core.workstation_keys import (
         ALL_WORKSTATIONS, BUSINESS_WORKSTATIONS, PLATFORM_WORKSTATIONS,
         WS_FINANCE, WS_RESEARCH, WS_EXECUTION, WS_QUALITY,
-        WS_GOVERNANCE, WS_DATA_PLATFORM, INDEPENDENT_AUTH_WORKSTATIONS,
+        WS_ADMIN, WS_DATA_PLATFORM, INDEPENDENT_AUTH_WORKSTATIONS,
+        LEGACY_WS_GOVERNANCE,
     )
     tc('HC-13a: apps.core.workstation_keys 可导入', True)
     tc('HC-13b: ALL_WORKSTATIONS 包含 19 个工作台',
@@ -241,11 +242,12 @@ try:
     tc('HC-13c: BUSINESS_WORKSTATIONS 包含 15 个',
        len(BUSINESS_WORKSTATIONS) == 15,
        f'数量为 {len(BUSINESS_WORKSTATIONS)}，期望 15')
-    tc('HC-13d: INDEPENDENT_AUTH_WORKSTATIONS 包含 governance + data-platform',
-       'governance' in INDEPENDENT_AUTH_WORKSTATIONS and 'data-platform' in INDEPENDENT_AUTH_WORKSTATIONS,
+    tc('HC-13d: INDEPENDENT_AUTH_WORKSTATIONS 包含 admin + data-platform',
+       WS_ADMIN in INDEPENDENT_AUTH_WORKSTATIONS and WS_DATA_PLATFORM in INDEPENDENT_AUTH_WORKSTATIONS,
        f'独立授权台: {INDEPENDENT_AUTH_WORKSTATIONS}')
     tc('HC-13e: WS_FINANCE == "finance"', WS_FINANCE == 'finance', '')
-    tc('HC-13f: WS_GOVERNANCE == "governance"', WS_GOVERNANCE == 'governance', '')
+    tc('HC-13f: WS_ADMIN == "admin"', WS_ADMIN == 'admin', '')
+    tc('HC-13g: LEGACY_WS_GOVERNANCE 仅作历史兼容常量', LEGACY_WS_GOVERNANCE == 'governance', '')
 except ImportError as e:
     tc('HC-13: apps.core.workstation_keys 可导入', False, str(e))
 

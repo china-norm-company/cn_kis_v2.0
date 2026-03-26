@@ -2,6 +2,8 @@
 
 本文固定「谁为主、谁为辅」，避免 GitHub Actions 早晚报与 Celery 全域简报双轨重复、口径打架。
 
+**关联规划（90 天）**：[`docs/plans/launch-governance-90d.plan.md`](plans/launch-governance-90d.plan.md)（仓库内副本，路径已相对化）。
+
 ## 1. 主口径（每日事实源）
 
 | 层级 | 主来源 | 说明 |
