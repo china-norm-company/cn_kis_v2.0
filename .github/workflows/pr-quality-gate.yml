@@ -145,7 +145,7 @@ jobs:
 
             // 0. 分支命名规范校验
             const headBranch = context.payload.pull_request.head.ref;
-            const VALID_TYPES = ["feature", "fix", "chore", "hotfix", "wave"];
+            const VALID_TYPES = ["feature", "fix", "chore", "hotfix", "wave", "docs", "refactor", "test"];
             const VALID_WORKSTATIONS = [
               "secretary", "finance", "research", "execution", "quality",
               "hr", "crm", "recruitment", "equipment", "material", "facility",
