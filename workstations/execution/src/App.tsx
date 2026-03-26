@@ -56,6 +56,7 @@ export default function App() {
       <OfflineBanner visible={offline} />
       <HashRouter>
         <Routes>
+          <Route path="/login" element={<Navigate to="/dashboard" replace />} />
           <Route path="/health" element={<HealthPage workstation="execution" />} />
           <Route path="/witness-verify" element={<WitnessFaceVerifyPage />} />
           <Route path="/witness-consent-dev" element={<WitnessConsentDevPage />} />
