@@ -45,6 +45,7 @@ export interface MyProductReminderItem {
   description: string
 }
 
+/** 格式化为 项目编号-名称-样品-样品编号，如 W26001111-面霜项目-面霜-123 */
 export function formatProductDisplayName(item: {
   project_no?: string | null
   project_name?: string | null
