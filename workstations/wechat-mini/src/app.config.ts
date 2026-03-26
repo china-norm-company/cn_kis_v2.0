@@ -23,6 +23,7 @@ const subPackagePages = [
   'pages/referral/index',
   'pages/checkin/index',
   'pages/sample-confirm/index',
+  'pages/sample-return/index',
   'pages/products/index',
   'pages/products/detail',
   'pages/results/index',
@@ -39,6 +40,7 @@ const subPackagePages = [
   'pages/reception-board/index',
   'pages/qa-patrol/index',
   'pages/demo-hero/index',
+  'pages/dev-api/index',
 ] as const
 
 export default defineAppConfig({
