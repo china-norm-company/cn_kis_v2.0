@@ -1,3 +1,4 @@
+xxx
 # CN KIS V2.0
 
 > ChinaNORM 临床研究信息系统 — 第二代
