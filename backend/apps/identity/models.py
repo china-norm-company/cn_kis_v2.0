@@ -261,3 +261,7 @@ class AccountWorkstationConfig(models.Model):
 
 # 上线治理缺口/目标：独立模块文件，须在此导入以便 Django 应用注册表收录
 from .models_launch_governance import LaunchGovernanceGap, LaunchGovernanceGoal  # noqa: F401
+
+
+# 上线治理缺口/目标：独立模块文件，须在此导入以便 Django 应用注册表收录
+from .models_launch_governance import LaunchGovernanceGap, LaunchGovernanceGoal  # noqa: F401

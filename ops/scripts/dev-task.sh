@@ -41,7 +41,7 @@ die()     { error "$*"; exit 1; }
 VALID_WORKSTATIONS=(
   secretary finance research execution quality hr crm
   recruitment equipment material facility evaluator lab-personnel
-  ethics reception control-plane governance digital-workforce common
+  ethics reception control-plane admin digital-workforce data-platform common
 )
 
 is_valid_workstation() {
@@ -53,7 +53,7 @@ is_valid_workstation() {
 }
 
 # ─── 分支命名校验 ──────────────────────────────────────────────────────────────
-VALID_WS_PATTERN="secretary|finance|research|execution|quality|hr|crm|recruitment|equipment|material|facility|evaluator|lab-personnel|ethics|reception|control-plane|governance|digital-workforce|common"
+VALID_WS_PATTERN="secretary|finance|research|execution|quality|hr|crm|recruitment|equipment|material|facility|evaluator|lab-personnel|ethics|reception|control-plane|admin|governance|digital-workforce|data-platform|common"
 BRANCH_PATTERN="^(feature|fix|hotfix)/(${VALID_WS_PATTERN})/[0-9]+-[a-z0-9-]+$|^chore/common/[0-9]+-[a-z0-9-]+$|^wave/[0-9]+/[0-9]+-[a-z0-9-]+$"
 
 is_valid_branch() {
