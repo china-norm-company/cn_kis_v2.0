@@ -151,7 +151,10 @@ export default function SchedulePersonnelPage() {
     enabled: Number.isInteger(orderId),
   })
 
-  const orderPayload = (orderRes as { data?: { data?: { headers?: string[]; rows?: unknown[] } } })?.data?.data
+  // 与 ScheduleCorePage 一致：api 返回 { code, msg, data: { id, headers, rows } }，勿用 .data.data
+  const orderPayload =
+    (orderRes as { data?: { data?: { id?: number; headers?: string[]; rows?: unknown[] } } })?.data?.data
+    ?? (orderRes as { data?: { id?: number; headers?: string[]; rows?: unknown[] } })?.data
   const schedule = (
     (scheduleRes as { data?: { data?: Record<string, unknown> } })?.data?.data
     ?? (scheduleRes as { data?: Record<string, unknown> })?.data
