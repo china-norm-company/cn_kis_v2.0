@@ -115,14 +115,9 @@ jobs:
           FEISHU_APP_SECRET: dummy
         run: |
           echo "=== 检查迁移文件一致性 ==="
-          echo "Python version: $(python --version)"
 
           # 1. 检查是否有 leaf node 冲突（多个未收敛的迁移末梢）
-          MIGRATION_OUTPUT=$(python manage.py showmigrations --list 2>&1) || {
-            echo "::error::showmigrations --list 退出码非零，错误输出："
-            echo "$MIGRATION_OUTPUT"
-            exit 1
-          }
+          MIGRATION_OUTPUT=$(python manage.py showmigrations --list 2>&1)
           echo "$MIGRATION_OUTPUT"
 
           # 检测冲突：如果 showmigrations 本身报错，说明有冲突
