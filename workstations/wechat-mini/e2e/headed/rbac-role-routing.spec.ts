@@ -7,7 +7,7 @@
  * 并通过 localStorage 注入登录 token 和 userInfo，验证路由跳转行为。
  *
  * 运行方式：
- *   cd apps/wechat-mini
+ *   cd workstations/wechat-mini
  *   HEADED=1 pnpm exec playwright test e2e/headed/rbac-role-routing.spec.ts
  */
 import { expect, test } from '@playwright/test'

@@ -642,6 +642,10 @@ export default function IndexPage() {
           <Text className='home-task-card__name'>检查最新消息通知</Text>
           <Text className='home-task-card__meta'>避免错过预约调整与项目动态</Text>
         </View>
+        <View className='home-task-card__item' onClick={() => navigateTo('/pages/products/index')}>
+          <Text className='home-task-card__name'>我的产品</Text>
+          <Text className='home-task-card__meta'>查看物流、确认签收、寄回样品</Text>
+        </View>
       </View>
 
       <View className='home-primary-actions'>
@@ -652,6 +656,10 @@ export default function IndexPage() {
         <View className='home-primary-actions__btn' onClick={() => navigateTo('/pages/visit/index')}>
           <Text className='home-primary-actions__title'>访视进度</Text>
           <Text className='home-primary-actions__sub'>时间线/窗口期</Text>
+        </View>
+        <View className='home-primary-actions__btn' onClick={() => navigateTo('/pages/products/index')}>
+          <Text className='home-primary-actions__title'>我的产品</Text>
+          <Text className='home-primary-actions__sub'>签收/退回</Text>
         </View>
         <View className='home-primary-actions__btn' onClick={() => navigateTo('/pages/report/index')}>
           <Text className='home-primary-actions__title'>情况反馈</Text>
@@ -734,7 +742,7 @@ export default function IndexPage() {
             ) : null}
             <View className='status-row'>
               <Text className='status-label'>入组日期</Text>
-              <Text className='status-value'>{enrollmentsData.items[0]?.enrolled_at?.split('T')[0] || userInfo?.enrollDate || '--'}</Text>
+              <Text className='status-value'>{formatEnrollDate(enrollmentsData.items[0]?.enrolled_at || userInfo?.enrollDate)}</Text>
             </View>
           </View>
         </View>

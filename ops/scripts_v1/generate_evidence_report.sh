@@ -4,8 +4,8 @@
 
 set -e
 ROOT="${BASE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-EVIDENCE_DIR="$ROOT/apps/wechat-mini/test-results/evidence"
-REPORT_FILE="$ROOT/apps/wechat-mini/test-results/EVIDENCE_CHAIN_REPORT.md"
+EVIDENCE_DIR="$ROOT/workstations/wechat-mini/test-results/evidence"
+REPORT_FILE="$ROOT/workstations/wechat-mini/test-results/EVIDENCE_CHAIN_REPORT.md"
 
 mkdir -p "$(dirname "$REPORT_FILE")"
 
