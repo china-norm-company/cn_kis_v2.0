@@ -10,6 +10,11 @@ import { SessionsPage } from './pages/SessionsPage'
 import { SystemConfigPage } from './pages/SystemConfigPage'
 import { FeishuSyncPage } from './pages/FeishuSyncPage'
 import { PilotConfigPage } from './pages/PilotConfigPage'
+import { LaunchOverviewPage } from './pages/launch/LaunchOverviewPage'
+import { LaunchLifecyclePage } from './pages/launch/LaunchLifecyclePage'
+import { LaunchWorkstationsMapPage } from './pages/launch/LaunchWorkstationsMapPage'
+import { LaunchGapsPage } from './pages/launch/LaunchGapsPage'
+import { LaunchGoalsPage } from './pages/launch/LaunchGoalsPage'
 import { useApiInit } from './hooks/useApiInit'
 
 export default function App() {
@@ -29,6 +34,11 @@ export default function App() {
           <Route path="/sessions" element={<SessionsPage />} />
           <Route path="/config" element={<SystemConfigPage />} />
           <Route path="/feishu" element={<FeishuSyncPage />} />
+          <Route path="/launch/overview" element={<LaunchOverviewPage />} />
+          <Route path="/launch/lifecycle" element={<LaunchLifecyclePage />} />
+          <Route path="/launch/workstations" element={<LaunchWorkstationsMapPage />} />
+          <Route path="/launch/gaps" element={<LaunchGapsPage />} />
+          <Route path="/launch/goals" element={<LaunchGoalsPage />} />
         </Route>
       </Routes>
     </HashRouter>

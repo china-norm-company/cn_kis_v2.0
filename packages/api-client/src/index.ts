@@ -558,6 +558,15 @@ export type {
   RiskScanResult,
 } from './modules/lab-personnel'
 
+// 鹿鸣·上线治理（/auth/governance/launch/*）
+export { launchGovernanceApi } from './modules/launch-governance'
+export type {
+  WorkstationRegistryItem,
+  LaunchLifecycleNode,
+  LaunchGapItem,
+  LaunchGoalItem,
+} from './modules/launch-governance'
+
 // 易快报集成（全量采集 + 四层安全注入）
 export { ekuaibaoApi } from './modules/ekuaibao'
 export type {

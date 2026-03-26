@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, Shield, Users, Lock, FileText, Monitor, Key, Settings, MessageSquare, LogOut, Sliders, ExternalLink, Radar } from 'lucide-react'
+import { LayoutDashboard, Shield, Users, Lock, FileText, Monitor, Key, Settings, MessageSquare, LogOut, Sliders, ExternalLink, Radar, Rocket } from 'lucide-react'
 import { FeishuAuthProvider, useFeishuContext, LoginFallback, createWorkstationFeishuConfig, getWorkstationUrl } from '@cn-kis/feishu-sdk'
 
 const FEISHU_CONFIG = createWorkstationFeishuConfig('admin')
@@ -18,6 +18,16 @@ const navGroups = [
       { path: '/roles', label: '角色管理', icon: Shield, permissions: ['system.role.manage'] },
       { path: '/permissions', label: '权限管理', icon: Lock, permissions: ['system.role.manage'] },
       { path: '/sessions', label: '会话管理', icon: Key, permissions: ['system.account.manage'] },
+    ],
+  },
+  {
+    label: '上线治理',
+    items: [
+      { path: '/launch/overview', label: '上线总览', icon: Rocket, permissions: ['system.role.manage'] },
+      { path: '/launch/lifecycle', label: '最小闭环', icon: Rocket, permissions: ['system.role.manage'] },
+      { path: '/launch/workstations', label: '19 台地图', icon: Rocket, permissions: ['system.role.manage'] },
+      { path: '/launch/gaps', label: '缺口池', icon: Rocket, permissions: ['system.role.manage'] },
+      { path: '/launch/goals', label: '目标节奏', icon: Rocket, permissions: ['system.role.manage'] },
     ],
   },
   {
