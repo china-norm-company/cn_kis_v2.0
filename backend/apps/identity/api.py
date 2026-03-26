@@ -3,6 +3,9 @@
 
 端点：
 - POST /auth/feishu/callback    飞书OAuth回调
+- GET  /auth/feishu/relay/start   飞书OAuth 服务器中转（跳转授权）
+- GET  /auth/feishu/relay/callback 飞书 OAuth 中转回跳
+- POST /auth/feishu/relay/redeem   中转一次性 relay_id 换 JWT
 - POST /auth/dev-login          开发模式登录（仅 DEBUG，本地免飞书）
 - POST /auth/wechat/login       微信小程序登录
 - POST /auth/sms/send           发送短信验证码
@@ -13,12 +16,15 @@
 """
 from ninja import Router, Schema
 from typing import Optional, List, Dict
+from django.http import HttpResponseRedirect, HttpResponseNotFound
+from urllib.parse import quote
 from datetime import timedelta
 from django.utils import timezone
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 import logging
+import secrets
 
 from .decorators import require_permission, require_any_permission
 
@@ -61,6 +67,10 @@ class FeishuCallbackIn(Schema):
     state: Optional[str] = None
     workstation: Optional[str] = None
     trace_id: Optional[str] = None
+
+
+class FeishuRelayRedeemIn(Schema):
+    relay_id: str
 
 class WechatLoginIn(Schema):
     code: str
@@ -292,11 +302,20 @@ def _compute_visible_menus(perm_codes: list, workbenches: list) -> dict:
         },
         'hr': {
             'dashboard': ['hr.staff.read'],
+            'roster': ['hr.staff.read'],
+            'archives': ['hr.staff.read'],
+            'archive-changes': ['hr.staff.read'],
+            'archive-exits': ['hr.staff.read'],
             'qualifications': ['hr.staff.read'],
             'competency': ['hr.competency.read'],
             'assessment': ['hr.assessment.read'],
             'training': ['hr.training.read'],
+            'recruitment': ['hr.staff.read'],
+            'performance-ops': ['hr.staff.read'],
+            'compensation': ['hr.staff.read'],
+            'culture': ['hr.staff.read'],
             'workload': ['hr.staff.read'],
+            'collaboration': ['hr.staff.read'],
         },
         'finance': {
             'dashboard': ['finance.quote.read', 'finance.report.read'],
@@ -517,11 +536,12 @@ def feishu_callback(request, data: FeishuCallbackIn):
             }
 
     workstation = (state_payload.get('ws') if state_payload else data.workstation) or ''
-    # 兑换授权码必须使用签发该 code 的飞书应用凭证，否则飞书返回 20024。
-    # 仅当请求的 app_id 在后端未配置凭证时，才用主应用兜底（如前端误用主应用 ID 的工作台）。
+    # 兑换授权码必须使用「authorize 页里的 client_id」对应的应用凭证；code 与该 client_id 绑定。
+    # 切勿用主应用 Secret 去换其它 App 签发的 code —— 飞书会返回 20024 invalid_grant。
+    # force_primary 仅在前端/state 未带 app_id 时兜底为主应用，不得替换已显式给出的 app_id。
     force_primary = getattr(settings, 'FEISHU_PRIMARY_AUTH_FORCE', True)
     primary_app_id = getattr(settings, 'FEISHU_PRIMARY_APP_ID', None)
-    if force_primary and primary_app_id and (app_id or '') not in getattr(settings, 'FEISHU_APP_CREDENTIALS', {}):
+    if force_primary and primary_app_id and not (app_id or '').strip():
         app_id = primary_app_id
     expected_app_id = settings.FEISHU_WORKSTATION_APP_IDS.get(workstation)
     # force_primary 开启时，app_id 已被替换为主应用，跳过工作台匹配校验
@@ -554,7 +574,10 @@ def feishu_callback(request, data: FeishuCallbackIn):
         _auth_trace(request, 'oauth_unknown_app', app_id=app_id or '-', trace_id=trace_id or '-')
         return 400, {
             'code': 400,
-            'msg': f'未识别的飞书应用: {app_id}',
+            'msg': (
+                f'未识别的飞书应用: {app_id}。请让前端 VITE_FEISHU_APP_ID 与后端 FEISHU_APP_ID '
+                f'（或签发 OAuth 时使用的 client_id）一致后再试。'
+            ),
             'data': {'error_code': 'AUTH_APP_MISMATCH', 'trace_id': trace_id or ''},
         }
 
@@ -632,6 +655,166 @@ def feishu_callback(request, data: FeishuCallbackIn):
             'auth_ver': state_payload.get('ver', 'legacy') if state_payload else 'legacy',
         },
     }
+
+
+@router.get('/feishu/relay/start', summary='飞书 OAuth 服务器中转：跳转授权页（用于本地开发走已部署环境权限）')
+def feishu_relay_start(request, workstation: str, return_to: str):
+    """
+    浏览器重定向至飞书授权，redirect_uri 指向本服务 relay/callback。
+    部署服务器须在飞书开放平台登记：{PUBLIC_BASE}/api/v1/auth/feishu/relay/callback
+    并设置 FEISHU_OAUTH_RELAY_ENABLED=1、CORS 允许本地前端来源。
+    """
+    from .services import (
+        FEISHU_BROWSER_OAUTH_SCOPES,
+        feishu_relay_public_callback_url,
+        feishu_relay_validate_return_to,
+        build_feishu_relay_auth_state,
+    )
+
+    if not getattr(settings, 'FEISHU_OAUTH_RELAY_ENABLED', False):
+        return HttpResponseNotFound('OAuth relay is disabled')
+    decoded_return = return_to
+    try:
+        from urllib.parse import unquote
+
+        decoded_return = unquote(return_to)
+    except Exception:
+        pass
+    if not feishu_relay_validate_return_to(decoded_return):
+        return HttpResponseNotFound('return_to not allowed')
+    relay_uri = feishu_relay_public_callback_url(request)
+    app_id = getattr(settings, 'FEISHU_PRIMARY_APP_ID', None) or settings.FEISHU_APP_ID
+    state = build_feishu_relay_auth_state(workstation, decoded_return, relay_uri)
+    authorize_url = (
+        'https://open.feishu.cn/open-apis/authen/v1/authorize'
+        f'?client_id={quote(app_id or "", safe="")}'
+        f'&redirect_uri={quote(relay_uri, safe="")}'
+        '&response_type=code'
+        f'&scope={quote(FEISHU_BROWSER_OAUTH_SCOPES, safe="")}'
+        f'&state={quote(state, safe="")}'
+    )
+    _auth_trace(request, 'oauth_relay_start', app_id=app_id or '-', workstation=workstation or '-')
+    return HttpResponseRedirect(authorize_url)
+
+
+@router.get('/feishu/relay/callback', summary='飞书 OAuth 服务器中转：飞书重定向回本接口')
+def feishu_relay_callback(request, code: Optional[str] = None, state: Optional[str] = None):
+    from .services import (
+        feishu_oauth_login,
+        create_session,
+        parse_and_verify_auth_state,
+        feishu_relay_append_ticket,
+        feishu_relay_public_callback_url,
+        feishu_relay_store_ticket,
+    )
+
+    if not getattr(settings, 'FEISHU_OAUTH_RELAY_ENABLED', False):
+        return HttpResponseNotFound('OAuth relay is disabled')
+    relay_uri = feishu_relay_public_callback_url(request)
+    if not code or not state:
+        return HttpResponseNotFound('missing code or state')
+    try:
+        state_payload = parse_and_verify_auth_state(state, None)
+    except Exception as e:
+        auth_logger.warning('oauth_relay_state_invalid: %s', e)
+        return HttpResponseNotFound('invalid state')
+    if state_payload.get('ver') != 'relay_v1' or not state_payload.get('return_to'):
+        return HttpResponseNotFound('invalid relay state')
+    return_to = str(state_payload.get('return_to') or '')
+    workstation = (state_payload.get('ws') if state_payload else '') or ''
+
+    trace_id = state_payload.get('trace_id', '') or ''
+    app_id = state_payload.get('app_id') or settings.FEISHU_APP_ID
+    force_primary = getattr(settings, 'FEISHU_PRIMARY_AUTH_FORCE', True)
+    primary_app_id = getattr(settings, 'FEISHU_PRIMARY_APP_ID', None)
+    if force_primary and primary_app_id and not (app_id or '').strip():
+        app_id = primary_app_id
+    expected_app_id = settings.FEISHU_WORKSTATION_APP_IDS.get(workstation)
+    if workstation and expected_app_id and app_id != expected_app_id and not force_primary:
+        auth_logger.warning(
+            'oauth_relay app/workstation mismatch ws=%s expected=%s got=%s',
+            workstation,
+            expected_app_id,
+            app_id,
+        )
+        return HttpResponseNotFound('app workstation mismatch')
+    app_secret = settings.FEISHU_APP_CREDENTIALS.get(app_id)
+    if not app_secret:
+        auth_logger.warning('oauth_relay unknown app_id=%s', app_id)
+        return HttpResponseNotFound(f'unknown app {app_id}')
+    try:
+        account = feishu_oauth_login(code, app_id, app_secret, state_payload, redirect_uri=relay_uri)
+    except ValueError as e:
+        auth_logger.error('oauth_relay exchange failed: %s', e)
+        return HttpResponseNotFound(str(e))
+    token = create_session(
+        account,
+        device_info=request.META.get('HTTP_USER_AGENT', ''),
+        ip_address=request.META.get('REMOTE_ADDR', ''),
+    )
+    try:
+        profile = _build_user_profile(account)
+    except Exception as e:
+        auth_logger.exception('oauth_relay profile error: %s', e)
+        return HttpResponseNotFound('profile error')
+    role_names = [role.get('name', '') for role in profile.get('roles', [])]
+    visible_workbenches = profile.get('visible_workbenches', [])
+    bundle = {
+        'access_token': token,
+        'user': {
+            'id': account.id,
+            'username': account.username,
+            'display_name': account.display_name,
+            'email': account.email,
+            'avatar': account.avatar,
+            'account_type': account.account_type,
+        },
+        'roles': role_names,
+        'visible_workbenches': visible_workbenches,
+        'session_meta': {
+            'workstation': workstation,
+            'login_source': 'feishu_oauth_relay',
+            'feishu_app_id': app_id,
+            'auth_trace_id': trace_id or '',
+            'issued_at': timezone.now().isoformat(),
+            'expires_at': (timezone.now() + timedelta(hours=settings.JWT_EXPIRATION_HOURS)).isoformat(),
+            'auth_ver': state_payload.get('ver', 'relay_v1'),
+        },
+    }
+    relay_id = secrets.token_urlsafe(32)
+    ttl = int(getattr(settings, 'FEISHU_OAUTH_RELAY_TICKET_TTL', 120) or 120)
+    feishu_relay_store_ticket(relay_id, bundle, ttl)
+    try:
+        target = feishu_relay_append_ticket(return_to, relay_id)
+    except ValueError:
+        return HttpResponseNotFound('return_to invalid')
+    _auth_trace(
+        request,
+        'oauth_relay_success',
+        account_id=account.id,
+        app_id=app_id or '-',
+        workstation=workstation or '-',
+    )
+    return HttpResponseRedirect(target)
+
+
+@router.post(
+    '/feishu/relay/redeem',
+    summary='OAuth 中转：用一次性 relay_id 换取登录令牌',
+    response={200: dict, 400: dict, 404: dict},
+)
+def feishu_relay_redeem(request, data: FeishuRelayRedeemIn):
+    from .services import feishu_relay_pop_ticket
+
+    if not getattr(settings, 'FEISHU_OAUTH_RELAY_ENABLED', False):
+        return 404, {'code': 404, 'msg': 'OAuth relay 未启用', 'data': None}
+    rid = (data.relay_id or '').strip()
+    if not rid:
+        return 400, {'code': 400, 'msg': '无效的 relay_id', 'data': None}
+    bundle = feishu_relay_pop_ticket(rid)
+    if not bundle:
+        return 404, {'code': 404, 'msg': 'relay 已失效或已使用', 'data': None}
+    return bundle
 
 
 @router.post('/dev-login', summary='开发模式登录（仅 DEBUG）', response={200: dict, 403: dict, 500: dict})

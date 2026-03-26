@@ -20,6 +20,7 @@ import { CollaborationPage } from './pages/CollaborationPage'
 import { StaffArchiveDetailPage } from './pages/StaffArchiveDetailPage'
 import { ArchiveChangesPage } from './pages/ArchiveChangesPage'
 import { ArchiveExitsPage } from './pages/ArchiveExitsPage'
+import { RosterPage } from './pages/RosterPage'
 import { useApiInit } from './hooks/useApiInit'
 
 function App() {
@@ -35,6 +36,7 @@ function App() {
           <Route path="/" element={<AppLayout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="roster" element={<RosterPage />} />
             <Route path="qualifications" element={<QualificationPage />} />
             <Route path="staff/:id" element={<StaffDetailPage />} />
             <Route path="competency" element={<CompetencyPage />} />

@@ -8,10 +8,13 @@
 """
 import os
 import logging
+import io
+import uuid
 from typing import Optional
 from datetime import date, datetime, timedelta
 from django.db.models import Q
 from django.utils import timezone
+import openpyxl
 from apps.identity.filters import filter_queryset_by_scope
 from .models import (
     Staff,
@@ -37,7 +40,7 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 FEISHU_CALENDAR_TRAINING_ID = os.getenv('FEISHU_CALENDAR_TRAINING_ID', '')
-HR_ADMIN_ROLES = {'admin', 'superadmin', 'general_manager'}
+HR_ADMIN_ROLES = {'admin', 'superadmin', 'general_manager', 'hr'}
 HR_DEPARTMENT_ROLES = {'hr_manager'}
 
 
@@ -136,7 +139,7 @@ def list_staff(
     page: int = 1,
     page_size: int = 20,
 ) -> dict:
-    qs = Staff.objects.filter(is_deleted=False)
+    qs = Staff.objects.filter(is_deleted=False).select_related('archive')
     qs = _apply_hr_scope(qs, account, personal_field='account_fk_id', department_field='department')
     if department:
         qs = qs.filter(department__icontains=department)
@@ -146,7 +149,7 @@ def list_staff(
 
 
 def get_staff(staff_id: int, account=None) -> Optional[Staff]:
-    qs = Staff.objects.filter(id=staff_id, is_deleted=False)
+    qs = Staff.objects.filter(id=staff_id, is_deleted=False).select_related('archive')
     qs = _apply_hr_scope(qs, account, personal_field='account_fk_id', department_field='department')
     return qs.first()
 
@@ -155,15 +158,31 @@ def create_staff(name: str, position: str, department: str,
                  employee_no: str = '', email: str = '', phone: str = '',
                  gcp_cert: str = '', gcp_expiry: date = None,
                  gcp_status: str = 'none', other_certs: str = '',
-                 training_status: str = '未开始', account=None) -> Staff:
+                 training_status: str = '未开始', account=None,
+                 feishu_open_id: str = '') -> Staff:
     _ensure_department_write_allowed(account, department)
-    return Staff.objects.create(
+    resolved_open_id = (feishu_open_id or '').strip()
+    if not resolved_open_id:
+        # Staff.feishu_open_id 为唯一字段；Excel/手工新增无飞书ID时生成稳定占位，避免 '' 触发唯一约束
+        resolved_open_id = f'manual_{uuid.uuid4().hex[:24]}'
+    staff = Staff.objects.create(
         name=name, position=position, department=department,
         employee_no=employee_no, email=email, phone=phone,
         gcp_cert=gcp_cert, gcp_expiry=gcp_expiry,
         gcp_status=gcp_status, other_certs=other_certs,
         training_status=training_status,
+        feishu_open_id=resolved_open_id,
     )
+    StaffArchive.objects.get_or_create(
+        staff=staff,
+        defaults={
+            'department': staff.department or '',
+            'employment_status': 'active',
+            'employment_type': 'full_time',
+            'sync_source': 'manual',
+        },
+    )
+    return staff
 
 
 def update_staff(staff_id: int, account=None, **kwargs) -> Optional[Staff]:
@@ -198,6 +217,144 @@ def get_staff_stats(account=None) -> dict:
         'by_gcp_status': {item['gcp_status']: item['count'] for item in by_gcp},
         'total': qs.count(),
     }
+
+
+def sync_staff_from_feishu_contacts() -> dict:
+    """通过飞书通讯录同步员工主数据（Staff + StaffArchive）。"""
+    from apps.hr.services.sync_service import FeishuContactSyncService
+    return FeishuContactSyncService.sync_all()
+
+
+def import_staff_rows(items: list, account=None) -> dict:
+    """
+    批量导入员工基础信息（按工号/姓名+部门匹配 upsert）。
+    仅处理主数据：Staff + StaffArchive。
+    """
+    created = 0
+    updated = 0
+    skipped = 0
+
+    for row in items or []:
+        name = str((row or {}).get('name', '')).strip()
+        department = str((row or {}).get('department', '')).strip()
+        position = str((row or {}).get('position', '')).strip()
+        if not name or not department:
+            skipped += 1
+            continue
+
+        _ensure_department_write_allowed(account, department)
+        employee_no = str((row or {}).get('employee_no', '')).strip()
+        email = str((row or {}).get('email', '')).strip()
+        phone = str((row or {}).get('phone', '')).strip()
+
+        staff = None
+        if employee_no:
+            staff = Staff.objects.filter(employee_no=employee_no, is_deleted=False).first()
+        if not staff:
+            staff = Staff.objects.filter(name=name, department=department, is_deleted=False).first()
+
+        if not staff:
+            staff = create_staff(
+                name=name,
+                position=position or '待完善',
+                department=department,
+                employee_no=employee_no,
+                email=email,
+                phone=phone,
+                account=account,
+            )
+            created += 1
+            continue
+
+        updated_fields = {}
+        if position:
+            updated_fields['position'] = position
+        if employee_no:
+            updated_fields['employee_no'] = employee_no
+        if email:
+            updated_fields['email'] = email
+        if phone:
+            updated_fields['phone'] = phone
+        updated_fields['department'] = department
+
+        update_staff(staff.id, account=account, **updated_fields)
+        StaffArchive.objects.get_or_create(
+            staff=staff,
+            defaults={
+                'department': department,
+                'employment_status': 'active',
+                'employment_type': 'full_time',
+                'sync_source': 'excel_import',
+            },
+        )
+        updated += 1
+
+    return {'created': created, 'updated': updated, 'skipped': skipped}
+
+
+def import_staff_excel(content: bytes, filename: str = '', account=None) -> dict:
+    """从 Excel（.xlsx）导入员工主数据，默认读取“人员信息表”或首个工作表。"""
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True, read_only=True)
+    except Exception as e:
+        raise ValueError(f'无法读取 Excel 文件: {e}')
+
+    ws = wb['人员信息表'] if '人员信息表' in wb.sheetnames else wb[wb.sheetnames[0]]
+    rows = list(ws.iter_rows(min_row=1, max_row=min(30, ws.max_row), values_only=True))
+
+    header_row = None
+    header_idx = None
+    required = {'姓名', '岗位'}
+    for idx, row in enumerate(rows, start=1):
+        vals = [str(v).strip() if v is not None else '' for v in row]
+        if required.issubset(set(vals)):
+            header_row = vals
+            header_idx = idx
+            break
+    if not header_row or not header_idx:
+        raise ValueError('未找到表头，请确保含“姓名/岗位”列')
+
+    def col(name: str) -> int:
+        try:
+            return header_row.index(name)
+        except ValueError:
+            return -1
+
+    idx_name = col('姓名')
+    idx_emp = col('工号')
+    idx_dept = col('组别')
+    idx_center = col('中心')
+    idx_position = col('岗位')
+    idx_phone = col('手机')
+    idx_email = col('邮箱')
+
+    items = []
+    for row in ws.iter_rows(min_row=header_idx + 1, values_only=True):
+        vals = [str(v).strip() if v is not None else '' for v in row]
+        name = vals[idx_name] if idx_name >= 0 and idx_name < len(vals) else ''
+        position = vals[idx_position] if idx_position >= 0 and idx_position < len(vals) else ''
+        department = ''
+        if idx_dept >= 0 and idx_dept < len(vals):
+            department = vals[idx_dept]
+        if not department and idx_center >= 0 and idx_center < len(vals):
+            department = vals[idx_center]
+        if not name:
+            continue
+        items.append({
+            'name': name,
+            'employee_no': vals[idx_emp] if idx_emp >= 0 and idx_emp < len(vals) else '',
+            'department': department or '未分组',
+            'position': position or '待完善',
+            'phone': vals[idx_phone] if idx_phone >= 0 and idx_phone < len(vals) else '',
+            'email': vals[idx_email] if idx_email >= 0 and idx_email < len(vals) else '',
+        })
+
+    if not items:
+        raise ValueError('未识别到可导入的数据行')
+    result = import_staff_rows(items, account=account)
+    result['sheet'] = ws.title
+    result['filename'] = filename
+    return result
 
 
 # ============================================================================

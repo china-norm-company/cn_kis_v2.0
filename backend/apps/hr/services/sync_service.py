@@ -122,8 +122,15 @@ class FeishuContactSyncService:
         if not open_id:
             return False
 
+        # Staff.position 为必填；飞书字段因版本而异，统一兜底避免 get_or_create 失败
+        job_title = (
+            (user_data.get('job_title') or user_data.get('title') or user_data.get('employee_type') or '')
+        )
+        position = (str(job_title).strip() or '待完善')[:200]
+
         sync_payload = {
             'name': name,
+            'position': position,
             'department': department_name,
             'phone': mobile,
             'email': email,
@@ -147,7 +154,9 @@ class FeishuContactSyncService:
                 if field in locked_fields:
                     continue
                 setattr(staff, field, value)
-            staff.save(update_fields=['name', 'department', 'phone', 'email', 'employee_no', 'update_time'])
+            staff.save(
+                update_fields=['name', 'position', 'department', 'phone', 'email', 'employee_no', 'update_time'],
+            )
 
             archive.department = staff.department
             archive.sync_source = 'feishu_contact'

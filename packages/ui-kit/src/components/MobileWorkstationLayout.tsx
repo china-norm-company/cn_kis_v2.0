@@ -10,11 +10,19 @@ export interface MobileWorkstationNavItem {
   indent?: boolean
 }
 
+/** 桌面侧栏分组；移动端仍使用扁平 navItems（可由 navGroups 拍平后传入） */
+export interface MobileWorkstationNavGroup {
+  label: string
+  items: MobileWorkstationNavItem[]
+}
+
 export interface MobileWorkstationLayoutProps {
   title: string
   logoText: string
   logoClassName?: string
   navItems: MobileWorkstationNavItem[]
+  /** 有值时桌面侧栏按分组渲染；移动端底部栏与抽屉仍用 navItems */
+  navGroups?: MobileWorkstationNavGroup[]
   children: ReactNode
   userName?: string
   userAvatar?: string
@@ -58,6 +66,47 @@ function NavigationList({
   )
 }
 
+function NavigationGroupedList({
+  groups,
+  onNavigate,
+}: {
+  groups: MobileWorkstationNavGroup[]
+  onNavigate?: () => void
+}) {
+  return (
+    <div className="flex flex-col gap-4 px-3 py-4">
+      {groups.map((group) => (
+        <div key={group.label}>
+          <div className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+            {group.label}
+          </div>
+          <nav className="flex flex-col gap-1">
+            {group.items.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={onNavigate}
+                className={({ isActive }) =>
+                  clsx(
+                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                    item.indent && 'ml-5 text-[13px]',
+                    isActive
+                      ? 'bg-primary-50 text-primary-700'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800',
+                  )
+                }
+              >
+                <item.icon className="h-5 w-5" />
+                <span>{item.label}</span>
+              </NavLink>
+            ))}
+          </nav>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function UserIdentity({ userName, userAvatar }: { userName?: string; userAvatar?: string }) {
   if (!userName) return null
   return (
@@ -79,6 +128,7 @@ export function MobileWorkstationLayout({
   logoText,
   logoClassName = 'bg-primary-600',
   navItems,
+  navGroups,
   children,
   userName,
   userAvatar,
@@ -91,6 +141,8 @@ export function MobileWorkstationLayout({
 }: MobileWorkstationLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const hasNav = navItems.length > 0
+  const desktopNavGroups =
+    navGroups?.length && navGroups.some((g) => g.items.length > 0) ? navGroups.filter((g) => g.items.length > 0) : null
   const primaryNavItems = useMemo(() => {
     if (mobilePrimaryNavItems?.length) return mobilePrimaryNavItems.slice(0, 5)
     return navItems.slice(0, 5)
@@ -131,7 +183,11 @@ export function MobileWorkstationLayout({
             <span className="text-sm font-semibold text-slate-700">{appName}</span>
           </div>
         </div>
-        <NavigationList items={navItems} />
+        {desktopNavGroups ? (
+          <NavigationGroupedList groups={desktopNavGroups} />
+        ) : (
+          <NavigationList items={navItems} />
+        )}
         {sidebarFooter}
       </aside>
 

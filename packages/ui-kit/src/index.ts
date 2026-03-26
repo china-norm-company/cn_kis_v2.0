@@ -65,6 +65,7 @@ export {
   MobileWorkstationLayout,
   type MobileWorkstationLayoutProps,
   type MobileWorkstationNavItem,
+  type MobileWorkstationNavGroup,
 } from './components/MobileWorkstationLayout'
 
 // LIMS 数据来源标识

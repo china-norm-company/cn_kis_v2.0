@@ -2,6 +2,9 @@
 飞书通讯录同步管理命令
 
 用法：python manage.py sync_feishu_contacts
+
+说明：依赖 libs.feishu_client 使用的 tenant_access_token（与开放平台应用权限一致）。
+同步会 upsert Staff，并 get_or_create StaffArchive（部门等字段与飞书对齐，尊重档案上的 sync_locked_fields）。
 """
 from django.core.management.base import BaseCommand
 

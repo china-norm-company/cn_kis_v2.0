@@ -1,10 +1,28 @@
 import { Outlet } from 'react-router-dom'
 import {
-  LayoutDashboard, Award, Target, ClipboardCheck, GraduationCap,
-  Briefcase, FileArchive, UserPlus, TrendingUp, Wallet, HeartHandshake, Link2, History, UserMinus, type LucideIcon,
+  LayoutDashboard,
+  Award,
+  Target,
+  ClipboardCheck,
+  GraduationCap,
+  Briefcase,
+  FileArchive,
+  UserPlus,
+  TrendingUp,
+  Wallet,
+  HeartHandshake,
+  Link2,
+  History,
+  UserMinus,
+  Users,
+  type LucideIcon,
 } from 'lucide-react'
 import { FeishuAuthProvider, useFeishuContext, LoginFallback, createWorkstationFeishuConfig } from '@cn-kis/feishu-sdk'
-import { MobileWorkstationLayout, type MobileWorkstationNavItem } from '@cn-kis/ui-kit'
+import {
+  MobileWorkstationLayout,
+  type MobileWorkstationNavItem,
+  type MobileWorkstationNavGroup,
+} from '@cn-kis/ui-kit'
 
 const FEISHU_CONFIG = createWorkstationFeishuConfig('hr')
 
@@ -15,12 +33,12 @@ interface NavItem {
   permissions: string[]
 }
 
-interface NavGroup {
+interface NavGroupDef {
   label: string
   items: NavItem[]
 }
 
-const navGroups: NavGroup[] = [
+const navGroupDefs: NavGroupDef[] = [
   {
     label: '总览',
     items: [
@@ -28,17 +46,18 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    label: '人员管理',
+    label: '员工基础信息',
     items: [
-      { path: '/qualifications', label: '资质总览', icon: Award, permissions: ['hr.staff.read'] },
+      { path: '/roster', label: '员工花名册', icon: Users, permissions: ['hr.staff.read'] },
       { path: '/archives', label: '人事档案', icon: FileArchive, permissions: ['hr.staff.read'] },
       { path: '/archive-changes', label: '异动台账', icon: History, permissions: ['hr.staff.read'] },
       { path: '/archive-exits', label: '离职台账', icon: UserMinus, permissions: ['hr.staff.read'] },
     ],
   },
   {
-    label: '能力发展',
+    label: '资质与能力',
     items: [
+      { path: '/qualifications', label: '资质总览', icon: Award, permissions: ['hr.staff.read'] },
       { path: '/competency', label: '胜任力模型', icon: Target, permissions: ['hr.competency.read'] },
       { path: '/assessment', label: '能力评估', icon: ClipboardCheck, permissions: ['hr.assessment.read'] },
       { path: '/training', label: '培训跟踪', icon: GraduationCap, permissions: ['hr.training.read'] },
@@ -57,24 +76,33 @@ const navGroups: NavGroup[] = [
   },
 ]
 
-function useVisibleNavItems(): MobileWorkstationNavItem[] {
+function useVisibleNav(): { navItems: MobileWorkstationNavItem[]; navGroups: MobileWorkstationNavGroup[] } {
   const ctx = useFeishuContext()
   const mode = ctx.getWorkstationMode('hr')
 
-  if (mode === 'blank') return []
+  if (mode === 'blank') {
+    return { navItems: [], navGroups: [] }
+  }
 
-  return navGroups.flatMap((group) =>
-    group.items
-      .filter((item) => {
-        if (mode === 'pilot') {
-          const pilotMenus = ctx.profile?.visible_menu_items?.['hr'] ?? []
-          const menuKey = item.path.replace(/^\//, '')
-          return pilotMenus.includes(menuKey)
-        }
-        return ctx.canSeeMenu('hr', item.path.replace(/^\//, ''), item.permissions)
-      })
-      .map((item) => ({ to: item.path, label: item.label, icon: item.icon })),
-  )
+  const visible = (item: NavItem) => {
+    if (mode === 'pilot') {
+      const pilotMenus = ctx.profile?.visible_menu_items?.['hr'] ?? []
+      const menuKey = item.path.replace(/^\//, '')
+      return pilotMenus.includes(menuKey)
+    }
+    return ctx.canSeeMenu('hr', item.path.replace(/^\//, ''), item.permissions)
+  }
+
+  const navGroups: MobileWorkstationNavGroup[] = navGroupDefs
+    .map((g) => ({
+      label: g.label,
+      items: g.items.filter(visible).map((item) => ({ to: item.path, label: item.label, icon: item.icon })),
+    }))
+    .filter((g) => g.items.length > 0)
+
+  const navItems = navGroups.flatMap((g) => g.items)
+
+  return { navItems, navGroups }
 }
 
 function WorkstationPlaceholder() {
@@ -91,7 +119,7 @@ function WorkstationPlaceholder() {
 
 function LayoutContent() {
   const { user, logout } = useFeishuContext()
-  const visibleItems = useVisibleNavItems()
+  const { navItems, navGroups } = useVisibleNav()
   const mode = useFeishuContext().getWorkstationMode('hr')
 
   if (mode === 'blank') {
@@ -103,8 +131,9 @@ function LayoutContent() {
       title="时雨·人事台"
       logoText="雨"
       logoClassName="bg-violet-600"
-      navItems={visibleItems}
-      mobilePrimaryNavItems={visibleItems.slice(0, 5)}
+      navItems={navItems}
+      navGroups={navGroups}
+      mobilePrimaryNavItems={navItems.slice(0, 5)}
       userName={user?.name}
       userAvatar={user?.avatar}
       onLogout={logout}

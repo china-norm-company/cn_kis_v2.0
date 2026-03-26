@@ -7,12 +7,13 @@
 - 评估: /hr/assessments/list|create|{id}
 - 培训: /hr/trainings/list|create|{id}|stats
 """
-from ninja import Router, Schema, Query
+from ninja import Router, Schema, Query, File
+from ninja.files import UploadedFile
 from typing import Optional, List
 from datetime import date
 
 from . import services
-from apps.identity.decorators import require_permission, _get_account_from_request
+from apps.identity.decorators import require_permission, require_any_permission, _get_account_from_request
 
 router = Router()
 
@@ -53,6 +54,19 @@ class StaffUpdateIn(Schema):
     gcp_status: Optional[str] = None
     other_certs: Optional[str] = None
     training_status: Optional[str] = None
+
+
+class StaffImportItemIn(Schema):
+    name: str
+    department: str
+    position: Optional[str] = ''
+    employee_no: Optional[str] = ''
+    email: Optional[str] = ''
+    phone: Optional[str] = ''
+
+
+class StaffImportIn(Schema):
+    items: List[StaffImportItemIn]
 
 
 class CompetencyCreateIn(Schema):
@@ -336,7 +350,22 @@ class RuleUpdateIn(Schema):
 # ============================================================================
 # 辅助函数
 # ============================================================================
+def _employment_status_label(code: str) -> str:
+    return {
+        'probation': '试用期',
+        'active': '在职',
+        'leave': '停薪留职',
+        'exited': '已离职',
+    }.get(code or 'active', code or '在职')
+
+
 def _staff_to_dict(s) -> dict:
+    emp = 'active'
+    try:
+        arch = s.archive
+        emp = (arch.employment_status or 'active') if arch else 'active'
+    except Exception:
+        emp = 'active'
     return {
         'id': s.id, 'name': s.name, 'position': s.position,
         'employee_no': s.employee_no,
@@ -346,7 +375,8 @@ def _staff_to_dict(s) -> dict:
         'gcp_expiry': s.gcp_expiry.isoformat() if s.gcp_expiry else '',
         'gcp_status': s.gcp_status, 'other_certs': s.other_certs,
         'training_status': s.training_status,
-        'status': '在职',
+        'employment_status': emp,
+        'status': _employment_status_label(emp),
         'create_time': s.create_time.isoformat(),
     }
 
@@ -415,7 +445,7 @@ def staff_stats(request):
 
 
 @router.post('/staff/create', summary='创建人员')
-@require_permission('hr.staff.manage')
+@require_any_permission(['hr.staff.create', 'hr.staff.update', 'hr.staff.manage'])
 def create_staff(request, data: StaffCreateIn):
     account = _get_account_from_request(request)
     try:
@@ -432,6 +462,43 @@ def create_staff(request, data: StaffCreateIn):
     except PermissionError as e:
         return 403, {'code': 403, 'msg': str(e)}
     return {'code': 200, 'msg': 'OK', 'data': _staff_to_dict(s)}
+
+
+@router.post('/staff/sync-feishu', summary='同步飞书通讯录到员工主数据')
+@require_any_permission(['hr.staff.create', 'hr.staff.update', 'hr.staff.manage'])
+def sync_staff_from_feishu(request):
+    stats = services.sync_staff_from_feishu_contacts()
+    return {'code': 200, 'msg': 'OK', 'data': stats}
+
+
+@router.post('/staff/import', summary='批量导入员工基础信息')
+@require_any_permission(['hr.staff.create', 'hr.staff.update', 'hr.staff.manage'])
+def import_staff(request, data: StaffImportIn):
+    account = _get_account_from_request(request)
+    try:
+        result = services.import_staff_rows([item.dict() for item in data.items], account=account)
+    except PermissionError as e:
+        return 403, {'code': 403, 'msg': str(e)}
+    return {'code': 200, 'msg': 'OK', 'data': result}
+
+
+@router.post('/staff/import-excel', summary='Excel 批量导入员工基础信息')
+@require_any_permission(['hr.staff.create', 'hr.staff.update', 'hr.staff.manage'])
+def import_staff_excel(request, file: File[UploadedFile] = File(...)):
+    account = _get_account_from_request(request)
+    name_lower = (file.name or '').lower()
+    if not name_lower.endswith('.xlsx'):
+        return 400, {'code': 400, 'msg': '仅支持 .xlsx 文件'}
+    content = file.read()
+    if not content:
+        return 400, {'code': 400, 'msg': '文件为空'}
+    try:
+        result = services.import_staff_excel(content, filename=file.name or '', account=account)
+    except PermissionError as e:
+        return 403, {'code': 403, 'msg': str(e)}
+    except ValueError as e:
+        return 400, {'code': 400, 'msg': str(e)}
+    return {'code': 200, 'msg': 'OK', 'data': result}
 
 
 @router.get('/staff/{staff_id}', summary='人员详情')
