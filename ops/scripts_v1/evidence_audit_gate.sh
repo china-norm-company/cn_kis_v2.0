@@ -6,7 +6,7 @@
 
 set -e
 ROOT="${BASE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-EVIDENCE_DIR="$ROOT/apps/wechat-mini/test-results/evidence"
+EVIDENCE_DIR="$ROOT/workstations/wechat-mini/test-results/evidence"
 REQUIRED="${EVIDENCE_REQUIRED_SCENARIOS:-}"
 
 if [ ! -d "$EVIDENCE_DIR" ]; then

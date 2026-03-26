@@ -12,7 +12,7 @@ const root = process.cwd()
 
 const SOURCE_DIRS = [
   'packages/api-client/src',
-  'apps/wechat-mini/src',
+  'workstations/wechat-mini/src',
   'apps/mobile-rn/src',
 ]
 

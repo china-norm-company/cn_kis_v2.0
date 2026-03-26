@@ -43,7 +43,6 @@ const navGroups = [
   },
 ]
 
-
 function SidebarNav() {
   const { canSeeMenu } = useFeishuContext()
   return (

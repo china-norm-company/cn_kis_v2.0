@@ -1,23 +1,33 @@
 """
-唇部脱屑检测服务
+唇部脱屑检测服务 v5
 
-算法原理（逆向自原始开发样本 processed/*_flaky_blue.jpg + batch_final/v22 比对）：
-  1. 限定 ROI：图像垂直方向 30%~90% 为唇部有效区域，避免检测扩散到人中/下巴皮肤
-  2. White Top-Hat 变换：用大椭圆核（51×51）提取「相对周围更亮的小斑片」
-     —— 脱屑皮屑（干燥角质层翘起）比周围唇组织反光更强，正好符合 top-hat 特征
-  3. LAB-L 亮度过滤：只保留 L >= 150 的像素，排除图像阴影区的噪声
-  4. 形态学精修：开运算去碎点 + 闭运算填孔 + 小区域剔除
-  5. 蓝色标注：直接替换像素（BGR 255,80,0），与原始样本完全一致
+核心设计（基于真实样本数据逆向分析）：
+  ─────────────────────────────────────────────────────────────────────────
+  参考数据（processed/ 原始算法输出）：
+    RD007 T3d → 2.82% 覆盖，RD007 T0 → 6.28% 覆盖
+    原始检测区域：y=21-75%，x=16-79%（相对整图）
+    原始检测像素特征：TopHat 均值=27，BlackHat-A 均值=9
+  ─────────────────────────────────────────────────────────────────────────
 
-颜色依据：
-  统计 processed/*_flaky_blue.jpg 中最高频蓝色值 → BGR (255, 80, 0)
+  算法思路（v5 重构）：
 
-输出格式（均为 JPEG base64 字符串）：
-  blue_b64  — 蓝色标注图（唇部脱屑区域替换为蓝色）
-  comp_b64  — 对比图（原图 | 标注图，左右拼接）
-  orig_b64  — 原图（等比缩放到处理尺寸）
-  peeling_pct — 脱屑像素占总唇部 ROI 像素百分比（保留 2 位小数）
-  filename  — 原始文件名
+  1. 宽 ROI（y=15-78%，x=4-96%）覆盖上下唇，同时排除极边缘的图像噪声
+  2. A >= 140 作为唇部组织约束——在标准近景唇部图片中，y < 20% 的
+     人中/上方皮肤 A 值约 135-139，可被此阈值排除；y=15-78% 以外靠硬
+     边界切断
+  3. TopHat（51×51 灰度白顶帽）AND BlackHat-A（51×51 A通道黑顶帽）
+     严格合取，同时满足「局部亮斑 + 局部去红/发白」才标记：
+       ─ 普通条件：TopHat >= 28 AND BlackHat-A >= 10
+       ─ 强亮斑加成：TopHat >= 44（单独触发，对应大块脱屑反光）
+  4. L 范围过滤：100-240（排除暗缝区和镜面高光）
+  5. 形态学精修：开运算去孤立噪点 + 闭运算合并相邻碎斑
+  6. 最小连通域剔除（< 15px = 噪点）
+
+  效果验证（RD007）：
+    T3d：覆盖 2.86%（原始 2.82%）✓
+    T0 ：覆盖 3.98-5%（原始 6.28%）——保形，轻度偏低
+
+颜色：BGR (255, 80, 0)（纯蓝）
 """
 
 from __future__ import annotations
@@ -31,42 +41,47 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# ─── 算法参数 ─────────────────────────────────────────────────────────────────
+# ─── 算法参数（基于真实样本逆向分析定标）────────────────────────────────────
 
-# 输入图像最长边限制（过大的图会较慢）
 _MAX_SIDE = 1200
 
-# 唇部 ROI 垂直范围（占图像高度比例）
-# 依据：batch_final / v22 所有样本的蓝色行范围均落在 30%~90% 内
-_ROI_Y_START = 0.30
-_ROI_Y_END   = 0.90
+# 宽 ROI 边界（上下唇整体区域）
+_ROI_Y_START = 0.15
+_ROI_Y_END   = 0.78
+_ROI_X_START = 0.04   # 横向缩进，消除侧边伪响应
+_ROI_X_END   = 0.96
 
-# White Top-Hat 核大小（椭圆形）
-# 核越大，提取的「亮斑」越大；51 对应 800px 高的图约 6% 高度，适合脱屑斑片尺寸
-_TOPHAT_KERNEL_SIZE = 51
+# 唇部 A 通道约束（LAB-A >= 140 对应唇部红色组织）
+_A_LIP_MIN = 140
 
-# LAB-L 通道亮度阈值（只保留足够亮的区域，排除阴影噪声）
-_L_BRIGHTNESS_THRESH = 150   # [0,255]
+# 检测核大小（51×51 匹配脱皮斑块尺寸）
+_KERNEL_SIZE = 51
 
-# Top-Hat 差值阈值
-_TOPHAT_THRESH = 30          # 越大越严格；30 在 batch_final 上 F1=0.51
+# 普通脱皮：TopHat AND BlackHat-A 严格合取
+_TOPHAT_THRESH   = 28   # 局部亮斑阈值
+_BLACKHAT_THRESH = 10   # 局部去红/发白阈值
 
-# 形态学操作核大小
-_MORPH_OPEN_K  = 3    # 开运算（去细碎噪点）
-_MORPH_CLOSE_K = 11   # 闭运算（填小孔）
+# 强亮斑单独触发（大块角质反光，不需要 BlackHat-A 配合）
+_TOPHAT_STRONG = 44
 
-# 最小连通区域像素数（小于此视为噪声）
-_MIN_REGION_PX = 30
+# 亮度范围（排除口缝深阴影和镜面高光/牙齿）
+_L_MIN = 100
+_L_MAX = 240
 
-# 蓝色标注色（BGR）：直接替换像素
-# 逆向依据：统计 processed/*_flaky_blue.jpg 最高频像素 → B=255, G=80, R=0
+# 形态学精修
+_MORPH_OPEN_K  = 3
+_MORPH_CLOSE_K = 5
+
+# 最小连通域（< 15px 为噪点）
+_MIN_REGION_PX = 15
+
+# 蓝色标注 BGR
 _BLUE_COLOR_BGR = (255, 80, 0)
 
 
 # ─── 工具函数 ────────────────────────────────────────────────────────────────
 
 def _to_jpeg_b64(img_bgr: np.ndarray) -> str:
-    """BGR ndarray → JPEG base64 字符串"""
     ok, buf = cv2.imencode('.jpg', img_bgr, [cv2.IMWRITE_JPEG_QUALITY, 88])
     if not ok:
         raise RuntimeError('JPEG encode failed')
@@ -74,15 +89,14 @@ def _to_jpeg_b64(img_bgr: np.ndarray) -> str:
 
 
 def _load_and_resize(data: bytes) -> np.ndarray:
-    """bytes → BGR ndarray，等比缩放到 _MAX_SIDE"""
     arr = np.frombuffer(data, dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if img is None:
         raise ValueError('无法解码图像，请确认文件格式为 JPG/PNG')
     h, w = img.shape[:2]
     if max(h, w) > _MAX_SIDE:
-        scale = _MAX_SIDE / max(h, w)
-        img = cv2.resize(img, (int(w * scale), int(h * scale)),
+        s = _MAX_SIDE / max(h, w)
+        img = cv2.resize(img, (int(w * s), int(h * s)),
                          interpolation=cv2.INTER_AREA)
     return img
 
@@ -96,68 +110,81 @@ def detect_lip_scaliness(image_bytes: bytes,
 
     Returns:
         {
-            'blue_b64':    str,    # 蓝色标注图（base64 JPEG）
-            'comp_b64':    str,    # 左右对比拼接图（base64 JPEG）
-            'orig_b64':    str,    # 原图（base64 JPEG）
-            'peeling_pct': float,  # 脱屑面积占比 %
+            'blue_b64':    str,
+            'comp_b64':    str,
+            'orig_b64':    str,
+            'peeling_pct': float,
             'filename':    str,
         }
     """
     img = _load_and_resize(image_bytes)
     h, w = img.shape[:2]
 
-    # 1. 确定唇部 ROI（垂直限定，避免超出唇部范围）
+    # ── 1. 预计算通道（全图）─────────────────────────────────────────────────
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    lab  = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    A_ch = lab[:, :, 1].astype(np.int32)
+    L_ch = lab[:, :, 0].astype(np.int32)
+
+    # ── 2. 形态学信号（全图计算，避免边界截断误差）───────────────────────────
+    k_morph = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (_KERNEL_SIZE, _KERNEL_SIZE))
+
+    tophat     = cv2.morphologyEx(gray,        cv2.MORPH_TOPHAT,   k_morph).astype(np.int32)
+    blackhat_a = cv2.morphologyEx(lab[:, :, 1], cv2.MORPH_BLACKHAT, k_morph).astype(np.int32)
+
+    # ── 3. ROI 范围 ───────────────────────────────────────────────────────────
     y_lo = int(h * _ROI_Y_START)
     y_hi = int(h * _ROI_Y_END)
-    roi = img[y_lo:y_hi, :]
+    x_lo = int(w * _ROI_X_START)
+    x_hi = int(w * _ROI_X_END)
 
-    # 2. 转灰度，做 White Top-Hat（提取相对周围更亮的小斑片）
-    gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-    kernel_th = cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE, (_TOPHAT_KERNEL_SIZE, _TOPHAT_KERNEL_SIZE)
+    # ── 4. 候选掩膜 ───────────────────────────────────────────────────────────
+    #
+    #  条件 A：A >= 140（唇部红色组织，排除上方人中/皮肤区）
+    #  条件 B：(TopHat>=28 AND BlackHat-A>=10) OR TopHat>=44
+    #           ─ 普通：局部亮斑 + 局部去红，同时满足
+    #           ─ 强亮：极亮局部斑块（大块角质剥离），单独触发
+    #  条件 C：L 在 100-240（排除深阴影/口缝，以及高光/牙齿）
+    #
+    raw_mask = np.zeros((h, w), dtype=np.uint8)
+    roi_cond = (
+        (A_ch[y_lo:y_hi, x_lo:x_hi] >= _A_LIP_MIN) &
+        (
+            ((tophat[y_lo:y_hi, x_lo:x_hi] >= _TOPHAT_THRESH) &
+             (blackhat_a[y_lo:y_hi, x_lo:x_hi] >= _BLACKHAT_THRESH))
+            |
+            (tophat[y_lo:y_hi, x_lo:x_hi] >= _TOPHAT_STRONG)
+        ) &
+        (L_ch[y_lo:y_hi, x_lo:x_hi] >= _L_MIN) &
+        (L_ch[y_lo:y_hi, x_lo:x_hi] <= _L_MAX)
     )
-    tophat = cv2.morphologyEx(gray_roi, cv2.MORPH_TOPHAT, kernel_th)
+    raw_mask[y_lo:y_hi, x_lo:x_hi] = roi_cond.astype(np.uint8) * 255
 
-    # 3. 转 LAB，取 L 通道做亮度过滤
-    lab_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2LAB)
-    L_roi = lab_roi[:, :, 0]
+    # ── 5. 形态学精修 ─────────────────────────────────────────────────────────
+    k_open  = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (_MORPH_OPEN_K,  _MORPH_OPEN_K))
+    k_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (_MORPH_CLOSE_K, _MORPH_CLOSE_K))
+    clean   = cv2.morphologyEx(raw_mask, cv2.MORPH_OPEN,  k_open)
+    clean   = cv2.morphologyEx(clean,    cv2.MORPH_CLOSE, k_close)
 
-    # 4. 脱屑初始掩膜 = top-hat 高 AND 亮度足够
-    raw_mask = (
-        (tophat.astype(np.int32) >= _TOPHAT_THRESH) &
-        (L_roi.astype(np.int32) >= _L_BRIGHTNESS_THRESH)
-    ).astype(np.uint8) * 255
-
-    # 5. 形态学去噪 + 填孔
-    k_open  = cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE, (_MORPH_OPEN_K, _MORPH_OPEN_K))
-    k_close = cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE, (_MORPH_CLOSE_K, _MORPH_CLOSE_K))
-    clean = cv2.morphologyEx(raw_mask, cv2.MORPH_OPEN,  k_open)
-    clean = cv2.morphologyEx(clean,    cv2.MORPH_CLOSE, k_close)
-
-    # 6. 剔除小连通域
+    # ── 6. 剔除极小连通域 ─────────────────────────────────────────────────────
     n_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
         clean, connectivity=8)
-    roi_mask = np.zeros_like(clean)
+    full_mask = np.zeros((h, w), dtype=np.uint8)
     for lbl in range(1, n_labels):
         if stats[lbl, cv2.CC_STAT_AREA] >= _MIN_REGION_PX:
-            roi_mask[labels == lbl] = 255
+            full_mask[labels == lbl] = 255
 
-    # 7. 将 ROI 掩膜放回全图尺寸
-    full_mask = np.zeros((h, w), dtype=np.uint8)
-    full_mask[y_lo:y_hi, :] = roi_mask
-
-    # 8. 计算脱屑占比（分母用全图像素，与原始版本一致）
+    # ── 7. 脱屑占比 ───────────────────────────────────────────────────────────
     peeling_px  = int(full_mask.sum() // 255)
-    total_px    = h * w
-    peeling_pct = round(peeling_px / total_px * 100, 2) if total_px else 0.0
+    peeling_pct = round(peeling_px / (h * w) * 100, 2) if h * w else 0.0
+    logger.debug('lip_scaliness detected=%d px (%.2f%%)', peeling_px, peeling_pct)
 
-    # 9. 蓝色标注图（直接替换像素，颜色与原始样本一致）
+    # ── 8. 蓝色标注图 ─────────────────────────────────────────────────────────
     blue_img = img.copy()
     blue_img[full_mask == 255] = _BLUE_COLOR_BGR
 
-    # 10. 对比拼接图（左：原图，右：标注图）
+    # ── 9. 对比拼接图（原图 | 分隔线 | 蓝色叠加图）───────────────────────────
     sep      = np.full((h, 3, 3), 200, dtype=np.uint8)
     comp_img = np.concatenate([img, sep, blue_img], axis=1)
 

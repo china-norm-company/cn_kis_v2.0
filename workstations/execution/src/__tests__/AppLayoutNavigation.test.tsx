@@ -89,6 +89,7 @@ describe('AppLayout 角色化导航', () => {
     expectVisibleLabel('排程管理')
     expectVisibleLabel('访视管理')
     expectVisibleLabel('受试者')
+    expectVisibleLabel('知情管理')
     expectVisibleLabel('变更管理')
     expectVisibleLabel('EDC采集')
     expectVisibleLabel('LIMS')
@@ -110,6 +111,7 @@ describe('AppLayout 角色化导航', () => {
     expect(screen.queryByText('EDC采集')).not.toBeInTheDocument()
     expect(screen.queryByText('变更管理')).not.toBeInTheDocument()
     expect(screen.queryByText('受试者')).not.toBeInTheDocument()
+    expect(screen.queryByText('知情管理')).not.toBeInTheDocument()
     expect(screen.queryByText('LIMS')).not.toBeInTheDocument()
   })
 

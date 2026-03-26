@@ -1,13 +1,18 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { View, Text, Button, Input, Checkbox } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { buildSubjectEndpoints, type VisitNodeItem } from '@cn-kis/subject-core'
 import { taroApiClient, taroAuthProvider } from '../../adapters/subject-core'
-import { get, getCurrentApiBaseUrl, getCurrentChannel, getMyEnrollments, getMyBindingStatus, type MyEnrollmentsData } from '../../utils/api'
+import { get, getCurrentApiBaseUrl, getCurrentChannel, getMyBindingStatus, type MyEnrollmentsData } from '../../utils/api'
 import { PAGE_COPY } from '../../constants/copy'
-import type { UserInfo } from '@cn-kis/subject-core'
+import type { UserInfo } from '../../utils/auth'
 import HeroBrandAnimation from '../../components/ui/HeroBrandAnimation'
-import { bindPhone, getLocalRouteTarget, needsPhoneBind, refreshRolesFromProfile } from '../../utils/auth'
+import {
+  bindPhone,
+  getLocalRouteTarget,
+  needsPhoneBind,
+  refreshRolesFromProfile,
+} from '../../utils/auth'
 import './index.scss'
 
 const LOGIN_PAGE_BUILD = 'login-build-2026-02-28-hero-css-hi-fi'
@@ -44,6 +49,101 @@ interface QueuePositionInfo {
   position: number
   wait_minutes: number
   status: string
+}
+
+/** 附录 A：/my/home-dashboard 项目块 */
+interface HomeDashboardProject {
+  project_code: string
+  project_name: string
+  visit_point: string
+  appointment_id: number | null
+  enrollment_status: string
+  sc_number: string
+  sc_display: string
+  queue_checkin_today: 'none' | 'checked_in' | 'checked_out'
+  enrollment_id: number | null
+  protocol_id: number | null
+  is_primary?: boolean
+}
+
+interface HomeDashboardData {
+  as_of_date: string
+  display_name: string
+  display_name_source: string
+  primary_project: HomeDashboardProject | null
+  other_projects: HomeDashboardProject[]
+  projects_ordered: Array<HomeDashboardProject & { is_primary: boolean }>
+}
+
+function queueCheckinTodayLabel(v: HomeDashboardProject['queue_checkin_today']): string {
+  if (v === 'checked_in') return '今日签到：已签到'
+  if (v === 'checked_out') return '今日签到：已签出'
+  return '今日签到：未签到'
+}
+
+function enrollmentStatusBadgeClass(status: string): string {
+  const s = (status || '').trim()
+  if (s === '正式入组') return 'badge-confirmed'
+  if (s === '初筛合格') return 'badge-pending'
+  if (s === '不合格' || s === '复筛不合格' || s === '退出' || s === '缺席') return 'badge-waiting'
+  return 'badge-pending'
+}
+
+/** 问候语：dashboard 优先，其次 profile 的 display_name，再排除占位真名（§2.2） */
+function resolveHomeGreetingName(
+  homeDashboard: HomeDashboardData | null,
+  userInfo: UserInfo | null
+): string {
+  const fromDash = homeDashboard?.display_name?.trim()
+  if (fromDash) return fromDash
+  const fromProfile = userInfo?.displayName?.trim()
+  if (fromProfile) return fromProfile
+  const legal = (userInfo?.name || '').trim()
+  if (legal && legal !== '预览用户' && legal !== '微信用户') return legal
+  return '受试者'
+}
+
+/** 单项目字段区；入组状态仅在卡片标题区展示（badge），此处不再重复「入组情况」行 */
+function DashboardProjectRows({ p }: { p: HomeDashboardProject }) {
+  return (
+    <View className='status-info home-dashboard-block'>
+      <View className='status-row'>
+        <Text className='status-label'>项目名称</Text>
+        <Text className='status-value'>{p.project_name || '--'}</Text>
+      </View>
+      {p.project_code ? (
+        <View className='status-row'>
+          <Text className='status-label'>项目编号</Text>
+          <Text className='status-value'>{p.project_code}</Text>
+        </View>
+      ) : null}
+      {p.visit_point ? (
+        <View className='status-row'>
+          <Text className='status-label'>访视点</Text>
+          <Text className='status-value'>{p.visit_point}</Text>
+        </View>
+      ) : null}
+      {p.sc_display ? (
+        <View className='status-row'>
+          <Text className='status-label'>SC 号</Text>
+          <Text className='status-value'>{p.sc_display}</Text>
+        </View>
+      ) : null}
+      <View className='status-row'>
+        <Text className='status-label'>今日签到</Text>
+        <Text className='status-value'>{queueCheckinTodayLabel(p.queue_checkin_today)}</Text>
+      </View>
+    </View>
+  )
+}
+
+/** 入组日期展示：ISO 日期转成「YYYY年M月D日」 */
+function formatEnrollDate(isoOrYmd: string | undefined): string {
+  if (!isoOrYmd) return '--'
+  const ymd = isoOrYmd.split('T')[0]
+  const [y, m, d] = ymd.split('-').map(Number)
+  if (!y || !m || !d) return ymd
+  return `${y}年${m}月${d}日`
 }
 
 type LoginTraceEntry = { ts?: string; stage?: string; detail?: string; traceId?: string }
@@ -95,6 +195,11 @@ export default function IndexPage() {
   const [loginError, setLoginError] = useState('')
   const [loginTrace, setLoginTrace] = useState('')
   const [enrollmentsData, setEnrollmentsData] = useState<MyEnrollmentsData | null>(null)
+  const [homeDashboard, setHomeDashboard] = useState<HomeDashboardData | null>(null)
+  const [moreProjectsExpanded, setMoreProjectsExpanded] = useState(false)
+
+  // 使用 ref 防止并发重复请求（避免 useDidShow 和 handleLogin 同时触发）
+  const isFetchingHomeDataRef = useRef(false)
 
   const refreshLoginTrace = () => {
     try {
@@ -160,6 +265,10 @@ export default function IndexPage() {
   }, [])
 
   const fetchHomeData = useCallback(async (user: UserInfo) => {
+    // 防止并发重复请求
+    if (isFetchingHomeDataRef.current) return
+
+    isFetchingHomeDataRef.current = true
     setHomeDataError('')
     try {
       // 检查手机号绑定状态，未绑定则跳转绑定页
@@ -169,10 +278,53 @@ export default function IndexPage() {
         return
       }
 
-      // 加载入组数据
-      const enrollRes = await getMyEnrollments()
-      if (enrollRes.code === 200 && enrollRes.data) {
-        setEnrollmentsData(enrollRes.data)
+      setHomeDashboard(null)
+      setMoreProjectsExpanded(false)
+
+      const dashRes = await get<HomeDashboardData>('/my/home-dashboard', { silent: true })
+      const dash: HomeDashboardData | null =
+        dashRes.code === 200 && dashRes.data ? (dashRes.data as HomeDashboardData) : null
+      setHomeDashboard(dash)
+
+      const useDashProjects = !!(dash && (dash.projects_ordered?.length ?? 0) > 0)
+
+      if (!useDashProjects) {
+        // 聚合无项目块时回退：与登录态一致的入组/预约卡片（V1.1 前行为）
+        if (user.enrollmentId && user.enrollmentStatus === 'enrolled') {
+          setEnrollmentsData({
+            items: [{
+              id: user.enrollmentId,
+              protocol_title: user.projectName,
+              plan_id: user.planId,
+              enrolled_at: user.enrollDate,
+              protocol_id: user.protocolId,
+              status: user.enrollmentStatus,
+            }],
+            has_appointment: false,
+            pending_appointment: null,
+          })
+        } else if (user.enrollmentStatus === 'pending') {
+          setEnrollmentsData({
+            items: [],
+            has_appointment: true,
+            pending_appointment: {
+              appointment_date: user.enrollDate || '',
+              appointment_time: null,
+              project_name: user.projectName || '',
+              project_code: '',
+              visit_point: '',
+              status: 'pending',
+            },
+          })
+        } else {
+          setEnrollmentsData({
+            items: [],
+            has_appointment: false,
+            pending_appointment: null,
+          })
+        }
+      } else {
+        setEnrollmentsData(null)
       }
 
       await fetchNextVisit(user)
@@ -185,7 +337,10 @@ export default function IndexPage() {
       }
     } catch {
       setQueueInfo(null)
+      setHomeDashboard(null)
       setHomeDataError('首页信息刷新失败，可点击重试')
+    } finally {
+      isFetchingHomeDataRef.current = false
     }
   }, [fetchNextVisit])
 
@@ -200,6 +355,7 @@ export default function IndexPage() {
       setUserInfo(null)
       setNextVisit(null)
       setQueueInfo(null)
+      setHomeDashboard(null)
       return
     }
 
@@ -212,6 +368,7 @@ export default function IndexPage() {
       setUserInfo(null)
       setNextVisit(null)
       setQueueInfo(null)
+      setHomeDashboard(null)
       return
     }
     setNeedsBind(false)
@@ -224,14 +381,16 @@ export default function IndexPage() {
     void fetchHomeData(user!)
   })
 
-  const handleLogin = async () => {
+  const handleLogin = async (event: any) => {
+    const code = event?.detail?.code
+
     if (loginSubmitting) return
     setLoginSubmitting(true)
     Taro.removeStorageSync('last_login_error')
     setLoginError('')
     refreshLoginTrace()
     try {
-      const user = await taroAuthProvider.loginWithWechat()
+      const user = await taroAuthProvider.loginWithWechat(code)
       refreshLoginTrace()
       if (user) {
         if (needsPhoneBind()) {
@@ -331,7 +490,7 @@ export default function IndexPage() {
         </View>
 
         <View className='home-login-panel'>
-          <Button className='home-login-panel__btn login-btn' onClick={handleLogin} disabled={loginSubmitting}>
+          <Button className='home-login-panel__btn login-btn' openType='getPhoneNumber' onGetPhoneNumber={handleLogin} disabled={loginSubmitting}>
             {loginSubmitting ? '登录中...' : '微信快捷登录'}
           </Button>
           <Button
@@ -440,7 +599,7 @@ export default function IndexPage() {
           {renderHeroMiniMedia()}
         </View>
         <View className='home-top-card__main'>
-          <Text className='home-top-card__title'>您好，{userInfo?.name || '受试者'}</Text>
+          <Text className='home-top-card__title'>您好，{resolveHomeGreetingName(homeDashboard, userInfo)}</Text>
           <Text className='home-top-card__sub'>编号: {userInfo?.subjectNo || '--'}</Text>
           <Text className='home-top-card__quote'>some day U bloom, some day U grow roots</Text>
         </View>
@@ -482,6 +641,10 @@ export default function IndexPage() {
           <Text className='home-task-card__name'>检查最新消息通知</Text>
           <Text className='home-task-card__meta'>避免错过预约调整与项目动态</Text>
         </View>
+        <View className='home-task-card__item' onClick={() => navigateTo('/pages/products/index')}>
+          <Text className='home-task-card__name'>我的产品</Text>
+          <Text className='home-task-card__meta'>查看物流、确认签收、寄回样品</Text>
+        </View>
       </View>
 
       <View className='home-primary-actions'>
@@ -493,14 +656,73 @@ export default function IndexPage() {
           <Text className='home-primary-actions__title'>访视进度</Text>
           <Text className='home-primary-actions__sub'>时间线/窗口期</Text>
         </View>
+        <View className='home-primary-actions__btn' onClick={() => navigateTo('/pages/products/index')}>
+          <Text className='home-primary-actions__title'>我的产品</Text>
+          <Text className='home-primary-actions__sub'>签收/退回</Text>
+        </View>
         <View className='home-primary-actions__btn' onClick={() => navigateTo('/pages/report/index')}>
           <Text className='home-primary-actions__title'>情况反馈</Text>
           <Text className='home-primary-actions__sub'>不良反应/问题</Text>
         </View>
       </View>
 
-      {/* 入组状态卡片 */}
-      {enrollmentsData && enrollmentsData.items.length > 0 ? (
+      {/* 入组状态：优先 home-dashboard 多项目（主项目 + 默认折叠「更多项目」） */}
+      {homeDashboard && (homeDashboard.projects_ordered?.length ?? 0) > 0 ? (
+        <View className='card status-card' data-testid='home-dashboard-projects'>
+          <View className='card-header'>
+            <Text className='card-title'>入组状态</Text>
+            {homeDashboard.primary_project ? (
+              <View
+                className={`badge ${enrollmentStatusBadgeClass(homeDashboard.primary_project.enrollment_status)}`}
+              >
+                {(homeDashboard.primary_project.enrollment_status || '').trim() || '—'}
+              </View>
+            ) : homeDashboard.other_projects.length === 1 ? (
+              <View
+                className={`badge ${enrollmentStatusBadgeClass(homeDashboard.other_projects[0].enrollment_status)}`}
+              >
+                {(homeDashboard.other_projects[0].enrollment_status || '').trim() || '—'}
+              </View>
+            ) : (
+              <View className='badge badge-pending'>多项目</View>
+            )}
+          </View>
+          {homeDashboard.primary_project ? (
+            <DashboardProjectRows p={homeDashboard.primary_project} />
+          ) : homeDashboard.other_projects.length === 1 ? (
+            <DashboardProjectRows p={homeDashboard.other_projects[0]} />
+          ) : null}
+          {((homeDashboard.primary_project && homeDashboard.other_projects.length > 0) ||
+            (!homeDashboard.primary_project && homeDashboard.other_projects.length > 1)) ? (
+            <View className='home-project-more'>
+              <View
+                className='home-project-more__toggle'
+                onClick={() => setMoreProjectsExpanded((v) => !v)}
+              >
+                <Text className='home-project-more__toggle-text'>
+                  更多项目（{homeDashboard.other_projects.length}）
+                  {moreProjectsExpanded ? ' ▲' : ' ▼'}
+                </Text>
+              </View>
+              {moreProjectsExpanded ? (
+                <View className='home-project-more__list'>
+                  {homeDashboard.other_projects.map((p) => (
+                    <View key={p.project_code} className='home-project-subcard'>
+                      <View className='home-project-subcard__bar'>
+                        <Text className='home-project-subcard__title'>{p.project_name || p.project_code}</Text>
+                        <View className={`badge badge-sm ${enrollmentStatusBadgeClass(p.enrollment_status)}`}>
+                          {(p.enrollment_status || '').trim() || '—'}
+                        </View>
+                      </View>
+                      <DashboardProjectRows p={p} />
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+        </View>
+      ) : enrollmentsData && enrollmentsData.items.length > 0 ? (
         <View className='card status-card' data-testid='enrollment-card'>
           <View className='card-header'>
             <Text className='card-title'>入组状态</Text>
@@ -519,7 +741,7 @@ export default function IndexPage() {
             ) : null}
             <View className='status-row'>
               <Text className='status-label'>入组日期</Text>
-              <Text className='status-value'>{enrollmentsData.items[0]?.enrolled_at?.split('T')[0] || userInfo?.enrollDate || '--'}</Text>
+              <Text className='status-value'>{formatEnrollDate(enrollmentsData.items[0]?.enrolled_at || userInfo?.enrollDate)}</Text>
             </View>
           </View>
         </View>

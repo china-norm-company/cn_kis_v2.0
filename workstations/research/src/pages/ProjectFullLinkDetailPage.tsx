@@ -13,12 +13,15 @@ import { Button, Card, Badge } from '@cn-kis/ui-kit'
 import { Edit, ArrowLeft, Sparkles, Calendar, Send, Loader2, AlertCircle } from 'lucide-react'
 import { TableOfContents } from '../components/ProjectFullLink/TableOfContents'
 import { ProjectFormViewer } from '../components/ProjectFullLink/ProjectFormViewer'
-import type { JSONObject } from '../components/ProjectFullLink/ProjectFormViewer'
 import { VisitPlanPreviewDialog } from '../components/ProjectFullLink/VisitPlanPreviewDialog'
 import { SchedulingWorkflowProgress } from '../components/ProjectFullLink/SchedulingWorkflowProgress'
 import type { SchedulingApprovalRecord, SchedulingWorkflowStatus } from '../lib/schedulerApprovalTypes'
 import { convertParsedDataToVisitPlan } from '../utils/visitPlanConverter'
 
+type JSONValue = string | number | boolean | null | JSONObject | JSONValue[]
+interface JSONObject {
+  [key: string]: JSONValue
+}
 
 /** 从 localStorage 读取排程项目（与 KIS 一致） */
 function getSchedulerProject(projectId: number, protocolId: number): {

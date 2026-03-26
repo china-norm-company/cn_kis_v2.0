@@ -20,9 +20,9 @@ const variantStyles: Record<BadgeVariant, string> = {
   warning: 'bg-warning-100 text-warning-600',
   error: 'bg-error-100 text-error-600',
   info: 'bg-info-100 text-info-600',
-  secondary: 'bg-slate-200 text-slate-600',
+  secondary: 'bg-slate-100 text-slate-600',
   outline: 'border border-slate-300 text-slate-700 bg-transparent',
-  destructive: 'bg-red-100 text-red-700',
+  destructive: 'bg-error-100 text-error-700',
 }
 
 const sizeStyles: Record<BadgeSize, string> = {
@@ -51,3 +51,4 @@ export function Badge({
     </span>
   )
 }
+

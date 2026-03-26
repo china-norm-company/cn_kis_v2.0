@@ -41,7 +41,6 @@ import {
 } from '../components/ProjectFullLink/AiParseProgressDialog'
 import { TableOfContents } from '../components/ProjectFullLink/TableOfContents'
 import { ProjectFormViewer } from '../components/ProjectFullLink/ProjectFormViewer'
-import type { JSONObject } from '../components/ProjectFullLink/ProjectFormViewer'
 import { VisitPlanPreviewDialog } from '../components/ProjectFullLink/VisitPlanPreviewDialog'
 import { convertParsedDataToVisitPlan } from '../utils/visitPlanConverter'
 import { protocolExtractV2Api } from '../lib/protocolExtractV2'
@@ -52,6 +51,11 @@ import {
   extractSubagentResult,
   extractSubagentExtractions,
 } from '../lib/protocolExtractUtils'
+
+type JSONValue = string | number | boolean | null | JSONObject | JSONValue[]
+interface JSONObject {
+  [key: string]: JSONValue
+}
 
 const buildDefaultAiProgressItems = (): AiParseProgressItem[] =>
   SUBAGENTS.map((s) => ({ subagent: s, status: 'pending' }))
@@ -67,6 +71,9 @@ const normalizeAiProgressItems = (items?: AiParseProgressItem[]): AiParseProgres
 }
 
 const MAX_AI_LOGS = 200
+
+const getApiBaseUrl = (): string =>
+  (import.meta.env.VITE_API_BASE_URL as string) || '/api/v1'
 
 /** 与 KIS 一致：从错误对象提取可读信息 */
 function formatErrorMessage(error: unknown): string {
@@ -332,24 +339,32 @@ export default function ProjectFullLinkEditPage() {
     setShowAiProgressDialog(true)
   }
 
-  /** 与 KIS 一致：从后端下载方案文件（按 file_id，静态路径 /system/files/{id}/download） */
+  /** 与 KIS 一致：从后端下载方案文件（system/files，需 file_id），用于单独解析时无本地缓存 */
   const fetchProtocolFileByFileId = async (protocol: { file_id: number | null; protocol_name?: string }): Promise<File> => {
     const fileId = protocol.file_id
     if (fileId == null) throw new Error('方案未关联文件，无法解析')
-    try {
-      return await projectFullLinkApi.downloadSystemFile(fileId, protocol.protocol_name || 'protocol.pdf')
-    } catch {
-      throw new Error('获取方案文件失败')
-    }
+    const baseUrl = getApiBaseUrl().replace(/\/$/, '')
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch(`${baseUrl}/system/files/${fileId}/download`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!response.ok) throw new Error('获取方案文件失败')
+    const blob = await response.blob()
+    const name = protocol.protocol_name || 'protocol.pdf'
+    return new File([blob], name)
   }
 
-  /** 与 KIS 一致：按方案 ID 下载方案文件（静态路径 /projects/protocols/{id}/download） */
+  /** 与 KIS 一致：按方案 ID 下载方案文件（使用 file_path，当前项目上传后无 file_id 时用此接口） */
   const fetchProtocolFileByProtocolId = async (protocolId: number, protocolName?: string): Promise<File> => {
-    try {
-      return await projectFullLinkApi.downloadProtocolFile(protocolId, protocolName || 'protocol.pdf')
-    } catch {
-      throw new Error('获取方案文件失败')
-    }
+    const baseUrl = getApiBaseUrl().replace(/\/$/, '')
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch(`${baseUrl}/projects/protocols/${protocolId}/download`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!response.ok) throw new Error('获取方案文件失败')
+    const blob = await response.blob()
+    const name = protocolName || 'protocol.pdf'
+    return new File([blob], name)
   }
 
   const handleAiUploadDialogChange = (open: boolean) => {
@@ -373,14 +388,14 @@ export default function ProjectFullLinkEditPage() {
       }
       if (wasPendingSingle) {
         if (protocolId) {
-          await runAiParse(file, [wasPendingSingle], false, protocolId)
+          runAiParse(file, [wasPendingSingle], false, protocolId)
         } else {
           setIsAIParsing(false)
         }
         return
       }
       if (protocolId) {
-        await runAiParse(file, SUBAGENTS, true, protocolId)
+        runAiParse(file, SUBAGENTS, true, protocolId)
       } else {
         setIsAIParsing(false)
       }

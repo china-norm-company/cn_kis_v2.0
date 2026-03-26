@@ -1,18 +1,12 @@
 import { useState } from 'react'
 import { View, Text } from '@tarojs/components'
 import Taro from '@tarojs/taro'
-import { taroApiClient } from '../../adapters/subject-core'
-import { MiniPage, MiniCard, MiniButton } from '../../components/ui'
+import { taroApiClient } from '@/adapters/subject-core'
+import { MiniPage, MiniCard, MiniButton } from '@/components/ui'
 import './index.scss'
 
 type ScanAction = 'checkin' | 'checkout' | 'already_checked_out' | null
 type ResultStatus = 'idle' | 'success' | 'already_out' | 'fail'
-interface ScanCheckinData {
-  action?: ScanAction
-  project_name?: string
-  visit_point?: string
-  location?: string
-}
 interface ScanCheckinData {
   action?: ScanAction
   project_name?: string

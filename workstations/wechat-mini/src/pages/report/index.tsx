@@ -1,13 +1,29 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { View, Text, Textarea, Button, RadioGroup, Radio, Picker, Image } from '@tarojs/components'
 import Taro from '@tarojs/taro'
-import { taroApiClient } from '../../adapters/subject-core'
+import { taroApiClient } from '@/adapters/subject-core'
 import './index.scss'
 
+interface EnrolledRow {
+  id: number
+  protocol_title?: string
+  project_code?: string
+  status?: string
+}
+
+function formatEnrollmentLabel(e: EnrolledRow): string {
+  const code = (e.project_code || '').trim()
+  const title = (e.protocol_title || '').trim()
+  if (code && title) return `${code} · ${title}`
+  return code || title || `入组 #${e.id}`
+}
+
+/** 与线下《不良事件报告表》症状严重程度一致 */
 const SEVERITY_OPTIONS = [
-  { label: '轻度', value: 'mild', desc: '不影响日常活动' },
+  { label: '轻微', value: 'mild', desc: '不影响日常活动' },
   { label: '中度', value: 'moderate', desc: '部分影响日常活动' },
-  { label: '重度', value: 'severe', desc: '严重影响日常活动' },
+  { label: '严重', value: 'severe', desc: '严重影响日常活动' },
+  { label: '非常严重', value: 'very_severe', desc: '危及生命或需紧急医疗处置' },
 ]
 
 export default function ReportPage() {
@@ -17,6 +33,42 @@ export default function ReportPage() {
   const [photos, setPhotos] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+
+  const [enrollLoading, setEnrollLoading] = useState(true)
+  const [enrolledRows, setEnrolledRows] = useState<EnrolledRow[]>([])
+  const [enrollPickerIndex, setEnrollPickerIndex] = useState(0)
+  const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<number | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setEnrollLoading(true)
+    taroApiClient
+      .get('/my/enrollments', undefined, { silent: true })
+      .then((res) => {
+        if (cancelled) return
+        if (res.code !== 200 || !res.data) {
+          setEnrolledRows([])
+          return
+        }
+        const payload = res.data as { items?: EnrolledRow[] }
+        const rows = (payload.items || []).filter((i) => i.status === 'enrolled')
+        setEnrolledRows(rows)
+        if (rows.length === 1) {
+          setSelectedEnrollmentId(rows[0].id)
+        } else if (rows.length > 1) {
+          setEnrollPickerIndex(0)
+          setSelectedEnrollmentId(rows[0].id)
+        } else {
+          setSelectedEnrollmentId(null)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setEnrollLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleChoosePhoto = () => {
     Taro.chooseImage({
@@ -51,19 +103,47 @@ export default function ReportPage() {
       Taro.showToast({ title: '请选择发生时间', icon: 'none' })
       return
     }
+    if (!enrollLoading && enrolledRows.length === 0) {
+      Taro.showToast({
+        title: '暂无已入组项目，请完成入组后再上报',
+        icon: 'none',
+        duration: 3500,
+      })
+      return
+    }
+    if (enrolledRows.length > 1 && selectedEnrollmentId == null) {
+      Taro.showToast({ title: '请选择所属项目', icon: 'none' })
+      return
+    }
+    const enrollmentId =
+      selectedEnrollmentId ?? (enrolledRows.length === 1 ? enrolledRows[0].id : null)
+    if (enrollmentId == null) {
+      Taro.showToast({ title: '无法确定所属项目，请稍后重试', icon: 'none' })
+      return
+    }
 
     setSubmitting(true)
     try {
-      // 直接通过安全管理模块创建 AE 记录
-      const res = await taroApiClient.post('/my/report-ae', {
-        symptom_description: symptom.trim(),
-        severity,
-        occur_date: occurDate,
-      })
+      const res = await taroApiClient.post(
+        '/my/report-ae',
+        {
+          symptom_description: symptom.trim(),
+          severity,
+          occur_date: occurDate,
+          enrollment_id: enrollmentId,
+        },
+        { silent: true },
+      )
 
       if (res.code === 200) {
         setSubmitted(true)
         Taro.showToast({ title: '上报成功', icon: 'success' })
+      } else {
+        Taro.showToast({
+          title: res.msg || '上报失败',
+          icon: 'none',
+          duration: 4000,
+        })
       }
     } finally {
       setSubmitting(false)
@@ -98,6 +178,44 @@ export default function ReportPage() {
       <View className='form-header'>
         <Text className='form-title'>不良反应上报</Text>
         <Text className='form-desc'>请如实描述您遇到的不良反应症状</Text>
+      </View>
+
+      <View className='form-card'>
+        <Text className='field-label'>关联项目</Text>
+        {enrollLoading ? (
+          <Text className='report-enroll-hint'>正在加载您的入组信息…</Text>
+        ) : enrolledRows.length === 0 ? (
+          <View className='report-enroll-warning'>
+            <Text className='report-enroll-warning__text'>
+              您当前没有「已入组」记录（可能仍在审批中）。不良反应将记入具体项目，请待入组完成后再试，或联系研究中心。
+            </Text>
+          </View>
+        ) : enrolledRows.length === 1 ? (
+          <Text className='report-enroll-hint'>{formatEnrollmentLabel(enrolledRows[0])}</Text>
+        ) : (
+          <>
+            <Text className='report-enroll-hint'>您参与多个项目，请选择本次不良反应所属项目</Text>
+            <Picker
+              mode='selector'
+              range={enrolledRows.map(formatEnrollmentLabel)}
+              value={enrollPickerIndex}
+              onChange={(e) => {
+                const idx = Number(e.detail.value)
+                if (Number.isFinite(idx) && enrolledRows[idx]) {
+                  setEnrollPickerIndex(idx)
+                  setSelectedEnrollmentId(enrolledRows[idx].id)
+                }
+              }}
+            >
+              <View className='date-picker'>
+                <Text className='date-text'>
+                  {formatEnrollmentLabel(enrolledRows[enrollPickerIndex] || enrolledRows[0])}
+                </Text>
+                <Text className='date-arrow'>›</Text>
+              </View>
+            </Picker>
+          </>
+        )}
       </View>
 
       {/* 症状描述 */}
@@ -203,7 +321,7 @@ export default function ReportPage() {
         <Button
           className='btn-primary'
           onClick={handleSubmit}
-          disabled={submitting}
+          disabled={submitting || enrollLoading || enrolledRows.length === 0}
         >
           {submitting ? '提交中...' : '提交上报'}
         </Button>

@@ -5,7 +5,12 @@ const CLOUDRUN_ENV_ID = 'prod-3gfhkz1551e76534'
 const CLOUDRUN_SERVICE = 'utest'
 const CLOUDRUN_API_PREFIX = '/api/v1'
 
-let cloudRunAvailable: boolean | null = null
+const USE_DIRECT_API =
+  typeof process !== 'undefined' &&
+  process?.env &&
+  String(process.env.TARO_APP_USE_DIRECT_API || '').toLowerCase() === 'true'
+
+let cloudRunAvailable: boolean | null = USE_DIRECT_API ? false : null
 type CloudContainerResponse = {
   statusCode?: number
   errCode?: number
@@ -55,8 +60,8 @@ function getResponseMsg(payload: unknown, fallback: string): string {
 
 /**
  * 严格按微信开放文档「调用云托管服务」使用 wx.cloud.callContainer。
- * 云中转/生产通过构建期环境变量注入 HTTPS 基址；
- * 本地开发可通过 TARO_APP_API_BASE 指定 127.0.0.1。
+ * 云中转/生产通过构建期环境变量注入基址；
+ * 本地或真机调试可通过 TARO_APP_API_BASE 指定 http(s)://host:port/api/v1（http 需在开发者工具勾选「不校验合法域名」）。
  */
 async function cloudContainerRequest(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
@@ -82,13 +87,16 @@ async function cloudContainerRequest(
 
 /**
  * API 基础地址：
- * - 微信小程序中 wx.request 必须使用完整 HTTPS URL，相对路径会报 invalid url。
+ * - 微信小程序中 wx.request 必须使用完整 URL（http 或 https），相对路径会报 invalid url。
  * - 使用云托管时通过 wx.cloud.callContainer 走 path，无需完整 URL。
- * - 云托管不可用或未开通时，必须通过 TARO_APP_API_BASE 构建时传入完整 HTTPS 基址（如 https://your-domain.com/api/v1）。
+ * - 云托管不可用或未开通时，通过 TARO_APP_API_BASE 构建时传入完整基址（如 https://your-domain.com/api/v1 或 http://局域网IP:8001/api/v1）。
  */
-/** 微信小程序 wx.request 必须使用完整 URL，相对路径会导致 invalid url */
+/** H5 等非小程序端相对 API 前缀（小程序内 wx 环境用空串走云托管 path） */
 const WEB_RELAY_BASE = '/api/v1'
-const isFullUrl = (s: string) => /^https:\/\//i.test((s || '').trim())
+/** 微信小程序 wx.request 必须使用完整 URL；备份兜底地址仅允许 https */
+const isHttpsUrl = (s: string) => /^https:\/\//i.test((s || '').trim())
+/** 直连 wx.request 的绝对基址（http 或 https） */
+const isAbsoluteApiBaseUrl = (s: string) => /^https?:\/\//i.test((s || '').trim())
 const CLOUD_RELAY_BACKUP_BASE_RAW =
   typeof process !== 'undefined' &&
   process &&
@@ -105,28 +113,107 @@ const ENABLE_API_FALLBACK =
 function normalizeRelayBase(raw?: string): string | undefined {
   if (!raw) return undefined
   const value = raw.trim()
-  // 1) 允许本地开发：127.0.0.1 / localhost（开发时需勾选「不校验合法域名」）
-  if (/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/.*)?$/i.test(value)) {
+  // http(s)://host[:port][/path] — host 为域名或 IPv4；http 时微信端需勾选「不校验合法域名」
+  if (/^https?:\/\/[a-zA-Z0-9.-]+(?::\d+)?(\/.*)?$/i.test(value)) {
     return value.replace(/\/+$/, '')
   }
-  // 2) 其他 HTTPS 直连（生产域名通过环境变量注入，不在源码中硬编码）
-  if (/^https:\/\/[a-z0-9.-]+(?::\d+)?(\/.*)?$/i.test(value)) {
+  // 3) 局域网 HTTP 开发（如 http://10.x.x.x:8001/api/v1；开发者工具需勾选「不校验合法域名」）
+  if (/^http:\/\/(10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?(\/.*)?$/i.test(value)) {
     return value.replace(/\/+$/, '')
   }
   return undefined
 }
 
-// 由 config defineConstants 注入；未配置时默认 localhost，所有对后端的请求走本地
-const DEFAULT_LOCALHOST_BASE = 'http://192.168.71.113:8001/api/v1'
+// 由 config defineConstants 注入，构建时 TARO_APP_API_BASE=http://127.0.0.1:8001/api/v1
 const rawEnvBase: string | undefined = process.env.TARO_APP_API_BASE as string | undefined
 const compileEnvBaseUrl = rawEnvBase ? normalizeRelayBase(rawEnvBase) : undefined
 
-const runtimeDefaultBase = (typeof wx !== 'undefined' && !!wx) ? DEFAULT_LOCALHOST_BASE : WEB_RELAY_BASE
+const runtimeDefaultBase = (typeof wx !== 'undefined' && !!wx) ? '' : WEB_RELAY_BASE
 export const API_BASE_URL = (compileEnvBaseUrl || runtimeDefaultBase).replace(/\/+$/, '')
 const CLOUD_RELAY_BACKUP_BASE = (CLOUD_RELAY_BACKUP_BASE_RAW || '').trim().replace(/\/+$/, '')
 const REQUEST_TIMEOUT_MS = 8000
 const RETRY_TIMEOUT_MS = 12000
 let currentApiBaseUrl = API_BASE_URL
+
+const INITIAL_COMPILED_API_BASE = API_BASE_URL
+
+/** 本机 / 局域网私网可直连（含 localhost、127.0.0.1、RFC1918），用于真机联调与联调地址覆盖判断 */
+export function isPrivateLanApiBase(base: string): boolean {
+  const s = (base || '').trim()
+  if (!s) return false
+  try {
+    const u = new URL(s.startsWith('http') ? s : `http://${s}`)
+    const h = u.hostname
+    if (h === 'localhost' || h === '127.0.0.1') return true
+    return /^(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})$/.test(
+      h,
+    )
+  } catch {
+    return false
+  }
+}
+
+export const DEV_API_BASE_STORAGE_KEY = 'cn_kis_dev_api_base_url'
+
+export function allowsDevApiBaseStorageOverride(): boolean {
+  const b = (API_BASE_URL || '').trim()
+  const compiledIsLocalhost = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/.*)?$/i.test(b)
+  return compiledIsLocalhost || isPrivateLanApiBase(API_BASE_URL)
+}
+
+export function applyDevApiBaseOverrideFromStorage(): void {
+  if (!allowsDevApiBaseStorageOverride()) return
+  try {
+    const raw = Taro.getStorageSync(DEV_API_BASE_STORAGE_KEY)
+    if (raw == null || raw === '') return
+    const s = typeof raw === 'string' ? raw.trim() : String(raw).trim()
+    if (!s) return
+    const normalized = normalizeRelayBase(s)
+    if (normalized) currentApiBaseUrl = normalized
+  } catch {
+    // ignore
+  }
+}
+
+export function getDevApiBaseOverrideRaw(): string {
+  if (!allowsDevApiBaseStorageOverride()) return ''
+  try {
+    const raw = Taro.getStorageSync(DEV_API_BASE_STORAGE_KEY)
+    return typeof raw === 'string' ? raw : ''
+  } catch {
+    return ''
+  }
+}
+
+export function setDevApiBaseOverride(
+  url: string | null | undefined,
+): { ok: boolean; msg?: string } {
+  if (!allowsDevApiBaseStorageOverride()) {
+    return { ok: false, msg: '当前构建为正式 API 地址，不支持本地覆盖' }
+  }
+  const empty = !url || !String(url).trim()
+  if (empty) {
+    try {
+      Taro.removeStorageSync(DEV_API_BASE_STORAGE_KEY)
+    } catch {
+      // ignore
+    }
+    currentApiBaseUrl = INITIAL_COMPILED_API_BASE
+    return { ok: true }
+  }
+  const trimmed = String(url).trim()
+  const normalized = normalizeRelayBase(trimmed)
+  if (!normalized) {
+    return { ok: false, msg: '请输入有效的 http(s):// 地址，局域网需为 http://192.168.x.x:端口/api/v1 形式' }
+  }
+  try {
+    Taro.setStorageSync(DEV_API_BASE_STORAGE_KEY, trimmed)
+    currentApiBaseUrl = normalized
+    return { ok: true }
+  } catch {
+    return { ok: false, msg: '保存失败' }
+  }
+}
 
 function isWebRuntime(): boolean {
   // 小程序运行时 Taro 会注入浏览器兼容对象，不能仅靠 window/document 判断。
@@ -143,9 +230,14 @@ function isRelativeApiBase(base: string): boolean {
   return /^\/[a-z0-9/_-]*$/i.test(base)
 }
 
-/** 当前配置的基址是否为本地（localhost/127.0.0.1/192.168.x.x），是则不走云托管，直接 wx.request 到本地 */
+/** localhost / 127.0.0.1 基址 */
 function isLocalhostBase(base: string): boolean {
-  return /^https?:\/\/(127\.0\.0\.1|localhost|192\.168\.\d+\.\d+)(:\d+)?(\/.*)?$/i.test((base || '').trim())
+  return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/.*)?$/i.test((base || '').trim())
+}
+
+/** 任意 http 基址（含局域网/公网 IP）：不走云托管，直接 wx.request */
+function isPlainHttpApiBase(base: string): boolean {
+  return /^http:\/\//i.test((base || '').trim())
 }
 
 export function getCurrentApiBaseUrl(): string {
@@ -154,6 +246,36 @@ export function getCurrentApiBaseUrl(): string {
 
 export function getCurrentChannel(): string {
   return cloudRunAvailable === true ? 'cloudrun' : 'https'
+}
+
+/**
+ * 是否应对 /auth/wechat/login 使用 dev-bypass-wechat（不调微信、免 IP 白名单）。
+ */
+export function shouldUseWechatLoginBypass(): boolean {
+  if (/127\.0\.0\.1|localhost/.test((process.env.TARO_APP_API_BASE as string) || '')) {
+    return true
+  }
+  const base = (getCurrentApiBaseUrl() || '').trim()
+  if (isLocalhostBase(base)) return true
+  const lower = base.toLowerCase()
+  if (lower.includes('localhost') || lower.includes('127.0.0.1')) return true
+  // H5 开发：相对路径 /api/v1 通常由 devServer 代理到本机 Django
+  if (
+    isRelativeApiBase(base) &&
+    typeof process !== 'undefined' &&
+    process.env &&
+    process.env.NODE_ENV !== 'production'
+  ) {
+    return true
+  }
+  return false
+}
+
+/** 本地开发：实名页「开始认证」走服务端 dev-skip；含局域网 IP */
+export function shouldUseIdentityVerifyDevBypass(): boolean {
+  if (shouldUseWechatLoginBypass()) return true
+  if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'production') return false
+  return isPrivateLanApiBase(getCurrentApiBaseUrl())
 }
 
 /** 统一响应格式 */
@@ -261,10 +383,13 @@ async function request<T = unknown>(
     return response
   }
 
-  // 配置为 localhost 时强制走 wx.request 到本地，不请求云托管 utest
-  const useLocalhost = isLocalhostBase(currentApiBaseUrl)
+  // localhost 或显式 http 基址：直连后端，不先走云托管 utest
+  const useDirectHttpRequest =
+    (USE_DIRECT_API && isAbsoluteApiBaseUrl(currentApiBaseUrl)) ||
+    isLocalhostBase(currentApiBaseUrl) ||
+    isPlainHttpApiBase(currentApiBaseUrl)
   const cloud = (typeof wx !== 'undefined' ? resolveWxCloud(wx?.cloud) : undefined) ?? resolveWxCloud(Taro.cloud)
-  if (!useLocalhost && cloudRunAvailable !== false && cloud?.callContainer) {
+  if (!useDirectHttpRequest && cloudRunAvailable !== false && cloud?.callContainer) {
     try {
       const resp = await cloudContainerRequest(method, url, data, header)
       cloudRunAvailable = true
@@ -289,11 +414,10 @@ async function request<T = unknown>(
   }
 
   try {
-    // 小程序 wx.request 必须用完整 URL；允许 https、本地 http(localhost/127.0.0.1)、H5 相对路径
+    // 小程序 wx.request 必须用完整 URL；允许 http(s) 绝对地址、H5 相对路径
     const baseValid = !!(
       currentApiBaseUrl &&
-      (isFullUrl(currentApiBaseUrl) ||
-        isLocalhostBase(currentApiBaseUrl) ||
+      (isAbsoluteApiBaseUrl(currentApiBaseUrl) ||
         (!isWeappLikeRuntime() && isWebRuntime() && isRelativeApiBase(currentApiBaseUrl)))
     )
     if (!baseValid) {
@@ -341,7 +465,7 @@ async function request<T = unknown>(
     const tryBackup =
       ENABLE_API_FALLBACK &&
       !!CLOUD_RELAY_BACKUP_BASE &&
-      isFullUrl(CLOUD_RELAY_BACKUP_BASE) &&
+      isHttpsUrl(CLOUD_RELAY_BACKUP_BASE) &&
       currentApiBaseUrl !== CLOUD_RELAY_BACKUP_BASE &&
       /timeout|timed out|errcode:-100|cronet|network|request:fail/i.test(
         String(getErrorMessage(error))

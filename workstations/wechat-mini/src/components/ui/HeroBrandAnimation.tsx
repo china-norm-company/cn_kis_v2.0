@@ -1,8 +1,7 @@
-import { useState } from 'react'
 import { View, Image } from '@tarojs/components'
 import './HeroBrandAnimation.scss'
 
-const HERO_APNG = '/assets/hero-brand.apng'
+/** 仅打包 GIF：APNG 约 700KB+，会导致微信小程序主包超过 2MB（错误码 80051） */
 const HERO_GIF = '/assets/hero-brand.gif'
 
 interface HeroBrandAnimationProps {
@@ -11,26 +10,13 @@ interface HeroBrandAnimationProps {
 }
 
 export default function HeroBrandAnimation(props: HeroBrandAnimationProps) {
-  const [apngFailed, setApngFailed] = useState(false)
   const classes = ['hero-brand']
   if (props.compact) classes.push('hero-brand--compact')
   if (props.className) classes.push(props.className)
 
   return (
     <View className={classes.join(' ')}>
-      {!apngFailed && (
-        <Image
-          className='hero-brand__img'
-          src={HERO_APNG}
-          mode='aspectFit'
-          onError={() => setApngFailed(true)}
-        />
-      )}
-      <Image
-        className={`hero-brand__img hero-brand__img--fallback ${apngFailed ? 'hero-brand__img--show' : ''}`}
-        src={HERO_GIF}
-        mode='aspectFit'
-      />
+      <Image className='hero-brand__img hero-brand__img--show' src={HERO_GIF} mode='aspectFit' />
     </View>
   )
 }

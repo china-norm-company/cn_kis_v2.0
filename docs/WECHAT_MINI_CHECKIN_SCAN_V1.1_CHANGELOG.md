@@ -36,7 +36,7 @@
 - **需求**：去掉明细区重复行「入组情况」，在卡片标题区 badge 展示状态（初筛合格、正式入组等）。
 - **实现**：
   - **后端**：`enrollment_status` 优先 **`SubjectProjectSC.enrollment_status`**；若无 SC 文案则用 **`Enrollment.get_status_display()`**。
-  - **前端**（`apps/wechat-mini/src/pages/index/index.tsx`）：`DashboardProjectRows` 移除「入组情况」行；主 badge 无文案时占位为「—」。
+  - **前端**（`workstations/wechat-mini/src/pages/index/index.tsx`）：`DashboardProjectRows` 移除「入组情况」行；主 badge 无文案时占位为「—」。
 
 ### 4. 排队页「签到时间」少 8 小时
 

@@ -125,6 +125,20 @@ async function mockLifecycleApis(page: Page, audit: ApiAudit) {
         }],
       })
     }
+    if (path === '/api/v1/my/enrollments') {
+      return fulfill(route, {
+        items: [{
+          id: USER_INFO.enrollmentId,
+          protocol_id: USER_INFO.protocolId,
+          protocol_title: USER_INFO.projectName,
+          project_code: 'PRJ-LIFE',
+          status: 'enrolled',
+          enrolled_at: `${USER_INFO.enrollDate}T10:00:00`,
+        }],
+        has_appointment: false,
+        pending_appointment: null,
+      })
+    }
     if (path === '/api/v1/signature/create' && method === 'POST') {
       return fulfill(route, { signature_id: 1 }, '签署成功')
     }
