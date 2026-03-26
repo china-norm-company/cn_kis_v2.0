@@ -130,7 +130,7 @@ export default function VisitPage() {
         )}
         <View
           className='visit-focus-card__action'
-          onClick={() => Taro.navigateTo({ url: '/subpackages/pkg/pages/appointment/index' })}
+          onClick={() => Taro.navigateTo({ url: '/pages/appointment/index' })}
         >
           <Text className='visit-focus-card__action-text'>管理预约</Text>
         </View>
@@ -189,7 +189,7 @@ export default function VisitPage() {
                 description={PAGE_COPY.visit.timelineEmpty.description}
                 icon={PAGE_COPY.visit.timelineEmpty.icon}
                 actionText={PAGE_COPY.visit.timelineEmpty.actionText}
-                onAction={() => Taro.navigateTo({ url: '/subpackages/pkg/pages/projects/index' })}
+                onAction={() => Taro.navigateTo({ url: '/pages/projects/index' })}
               />
             </View>
           ) : visits.map((visit, index) => {
@@ -242,7 +242,7 @@ export default function VisitPage() {
                 description={PAGE_COPY.visit.upcomingEmpty.description}
                 icon={PAGE_COPY.visit.upcomingEmpty.icon}
                 actionText={PAGE_COPY.visit.upcomingEmpty.actionText}
-                onAction={() => Taro.navigateTo({ url: '/subpackages/pkg/pages/appointment/index' })}
+                onAction={() => Taro.navigateTo({ url: '/pages/appointment/index' })}
               />
             </View>
           ) : upcoming.map(item => {
@@ -264,7 +264,7 @@ export default function VisitPage() {
             )
           })}
           <View className='action-row'>
-            <View className='action-btn' onClick={() => Taro.navigateTo({ url: '/subpackages/pkg/pages/appointment/index' })}>
+            <View className='action-btn' onClick={() => Taro.navigateTo({ url: '/pages/appointment/index' })}>
               <Text>预约新访视</Text>
             </View>
           </View>

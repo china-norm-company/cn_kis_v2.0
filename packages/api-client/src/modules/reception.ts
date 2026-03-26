@@ -4,6 +4,7 @@
  * 对应后端：/api/v1/reception/
  */
 import { api } from '../client'
+import type { Subject, SubjectCreateIn } from '../types'
 
 export interface QueueItem {
   appointment_id: number | null
@@ -134,6 +135,26 @@ export interface FlowcardProgress {
 }
 
 export const receptionApi = {
+  appointmentSubjectList(params?: {
+    status?: string
+    keyword?: string
+    search?: string
+    page?: number
+    page_size?: number
+  }) {
+    return api.get<{ items: Subject[]; total: number; page: number; page_size: number }>(
+      '/reception/appointment-subject-list',
+      { params },
+    )
+  },
+
+  appointmentSubjectCreate(data: SubjectCreateIn) {
+    return api.post<{ id: number; subject_no: string; name: string; status: string }>(
+      '/reception/appointment-subject-create',
+      data,
+    )
+  },
+
   /**
    * 今日受试者队列。
    * source: execution=工单执行（独立 SC/RD/签到签出），board=接待看板（独立数据，两者互不影响）

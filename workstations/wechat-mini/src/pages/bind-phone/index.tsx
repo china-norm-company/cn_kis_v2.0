@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { View, Text, Input, Button } from '@tarojs/components'
 import Taro from '@tarojs/taro'
-import { bindPhone } from '../../utils/api'
+import { bindPhone } from '@/utils/api'
 import './index.scss'
 
 export default function BindPhonePage() {

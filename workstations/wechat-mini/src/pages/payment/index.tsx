@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { View, Text } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { buildSubjectEndpoints, type MyPaymentItem, type MyPaymentSummary } from '@cn-kis/subject-core'
-import { taroApiClient } from '../../adapters/subject-core'
-import { MiniEmpty } from '../../components/ui'
-import { PAGE_COPY } from '../../constants/copy'
+import { taroApiClient } from '@/adapters/subject-core'
+import { MiniEmpty } from '@/components/ui'
+import { PAGE_COPY } from '@/constants/copy'
 
 const subjectApi = buildSubjectEndpoints(taroApiClient)
 

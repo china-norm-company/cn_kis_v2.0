@@ -7,11 +7,11 @@ import { useState, useEffect } from 'react'
 import { View, Text, Image } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import { buildSubjectEndpoints } from '@cn-kis/subject-core'
-import { taroApiClient, taroAuthProvider } from '../../adapters/subject-core'
+import { taroApiClient, taroAuthProvider } from '@/adapters/subject-core'
 
 const subjectApi = buildSubjectEndpoints(taroApiClient)
-import { MiniEmpty } from '../../components/ui'
-import { PAGE_COPY } from '../../constants/copy'
+import { MiniEmpty } from '@/components/ui'
+import { PAGE_COPY } from '@/constants/copy'
 import './index.scss'
 
 interface QRInfo {

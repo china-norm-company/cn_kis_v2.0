@@ -1,5 +1,5 @@
 import Taro from '@tarojs/taro'
-import { post, get, getCurrentChannel } from './api'
+import { post, get, getCurrentChannel, getCurrentApiBaseUrl } from './api'
 import { computePrimaryRole, resolveLoginRoute } from '@cn-kis/subject-core'
 import type { RouteTarget } from '@cn-kis/subject-core'
 
@@ -71,6 +71,7 @@ export interface UserInfo {
   roles?: string[]
   /** 主角色（优先级最高的角色） */
   primary_role?: string
+  wechatNickName?: string
   /** 问候展示名（GET /my/profile 的 display_name，与 home-dashboard 规则一致） */
   displayName?: string
   displayNameSource?: string
@@ -122,6 +123,16 @@ const MOCK_USER: UserInfo = {
   protocolId: 1,
 }
 
+function createLocalDevMockUser(): UserInfo {
+  return {
+    ...MOCK_USER,
+    id: `dev-mock-${Date.now()}`,
+    roles: ['subject'],
+    account_type: 'subject',
+    enrollmentStatus: 'enrolled',
+  }
+}
+
 function isNoBackendError(code: number | undefined, msg: string | undefined): boolean {
   if (code !== -1) return false
   const s = String(msg || '')
@@ -165,6 +176,23 @@ function isWechatLoginRawResponse(value: unknown): value is WechatLoginRawRespon
   return typeof value.access_token === 'string'
 }
 
+function isWechatDevTools(): boolean {
+  try {
+    if (typeof wx !== 'undefined' && wx) {
+      const getAccountInfoSync = Reflect.get(wx, 'getAccountInfoSync') as
+        | (() => { miniProgram?: { envVersion?: string } })
+        | undefined
+      if (typeof getAccountInfoSync === 'function') {
+        const accountInfo = getAccountInfoSync()
+        return (accountInfo?.miniProgram?.envVersion as string) === 'develop'
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return false
+}
+
 function extractWechatLoginPayload(res: unknown): {
   raw: Partial<WechatLoginResponseEnvelope>
   payload?: WechatLoginRawResponse
@@ -194,10 +222,15 @@ function extractWechatLoginPayload(res: unknown): {
  */
 export async function wechatLogin(phoneCode?: string): Promise<UserInfo | null> {
   const traceId = `wxlogin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  const isLocalDev = /127\.0\.0\.1|localhost/.test(
-    (process.env.TARO_APP_API_BASE as string) || ''
+  const apiBase = getCurrentApiBaseUrl?.() ?? (process.env.TARO_APP_API_BASE as string) ?? ''
+  const isLocalDev = /127\.0\.0\.1|localhost/.test(apiBase)
+  const isDevTools = isWechatDevTools()
+  const isLocalDevOrSimulator = isLocalDev || isDevTools
+  appendLoginTrace(
+    traceId,
+    'start',
+    `点击登录按钮，开始微信登录流程 isLocalDev=${isLocalDev} isDevTools=${isDevTools}`,
   )
-  appendLoginTrace(traceId, 'start', '点击登录按钮，开始微信登录流程')
 
   const fail = (title: string): null => {
     const withTrace = `${title} [trace:${traceId}]`
@@ -370,9 +403,9 @@ export async function wechatLogin(phoneCode?: string): Promise<UserInfo | null> 
     return normalizedUser
   } catch (error) {
     console.error('[Auth Error]', error)
-    if (isLocalDev) {
+    if (isLocalDevOrSimulator) {
       Taro.hideLoading()
-      appendLoginTrace(traceId, 'local_fallback', '本地开发且后端未启动，使用模拟账号进入首页')
+      appendLoginTrace(traceId, 'local_fallback', '本地开发或开发者工具环境，使用模拟账号进入首页')
       const mockUser = createLocalDevMockUser()
       Taro.setStorageSync('token', 'dev-mock-token')
       Taro.setStorageSync('userInfo', JSON.stringify(mockUser))
