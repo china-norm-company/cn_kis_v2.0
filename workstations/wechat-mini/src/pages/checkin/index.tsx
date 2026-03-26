@@ -13,18 +13,6 @@ interface ScanCheckinData {
   visit_point?: string
   location?: string
 }
-interface ScanCheckinResponse {
-  code: number
-  msg: string
-  data: ScanCheckinData | null
-}
-
-interface ScanCheckinData {
-  action?: ScanAction
-  project_name?: string
-  visit_point?: string
-  location?: string
-}
 
 export default function CheckinPage() {
   const [resultStatus, setResultStatus] = useState<ResultStatus>('idle')

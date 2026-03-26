@@ -123,7 +123,8 @@ export function buildSubjectEndpoints(api: ApiClient) {
     getMyProducts: (status = 'all') => api.get(`${SUBJECT_ENDPOINTS.products}?status=${status}`),
     getMyProductDetail: (id: number) => api.get(`${SUBJECT_ENDPOINTS.products}/${id}`),
     createMyProductUsage: (id: number, data: Record<string, unknown>) => api.post(`${SUBJECT_ENDPOINTS.products}/${id}/usage`, data),
-    createMyProductReturn: (id: number, data: Record<string, unknown>) => api.post(`${SUBJECT_ENDPOINTS.products}/${id}/return`, data),
+    createMyProductReturn: (id: number, data: Record<string, unknown>) =>
+      api.post(`${SUBJECT_ENDPOINTS.products}/${id}/return`, data, { silent: true }),
     getMyProductReminders: () => api.get(SUBJECT_ENDPOINTS.productReminders),
     getMyReferrals: () => api.get(SUBJECT_ENDPOINTS.referrals),
     getVisitNodes: (planId?: number) => api.get(planId ? `${SUBJECT_ENDPOINTS.visitNodes}?plan_id=${planId}` : SUBJECT_ENDPOINTS.visitNodes),
@@ -138,7 +139,8 @@ export function buildSubjectEndpoints(api: ApiClient) {
     getAgentCallStatus: (callId: string) => api.get(`/agents/calls/${encodeURIComponent(callId)}`),
     sendSmsVerifyCode: (data: { phone: string; scene?: string }) => api.post(AUTH_ENDPOINTS.smsSend, data, { auth: false }),
     verifySmsCodeLogin: (data: { phone: string; code: string; scene?: string }) => api.post(AUTH_ENDPOINTS.smsVerify, data, { auth: false }),
-    getSampleConfirmUrl: (dispensingId: number, data?: Record<string, unknown>) => api.post(`/my/sample-confirm?dispensing_id=${dispensingId}`, data || {}),
+    getSampleConfirmUrl: (dispensingId: number, data?: Record<string, unknown>) =>
+      api.post(`/my/sample-confirm?dispensing_id=${dispensingId}`, data || {}, { silent: true }),
     getQrcodeImageUrl: (qrData: string) => `/api/v1/qrcode/image?data=${encodeURIComponent(qrData)}`,
   }
 }

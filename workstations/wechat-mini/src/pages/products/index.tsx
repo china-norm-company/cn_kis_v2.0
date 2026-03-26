@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, ScrollView } from '@tarojs/components'
-import Taro from '@tarojs/taro'
+import Taro, { useDidShow } from '@tarojs/taro'
 import { MiniCard, MiniEmpty, MiniPage, MiniButton } from '@/components/ui'
 import { buildSubjectEndpoints, type MyProductItem, type MyProductReminderItem, formatProductDisplayName } from '@cn-kis/subject-core'
 import { taroApiClient } from '@/adapters/subject-core'
+import { resolveServerProductData } from './data'
 
 const subjectApi = buildSubjectEndpoints(taroApiClient)
 import './index.scss'
@@ -127,13 +128,13 @@ export default function ProductsPage() {
         subjectApi.getMyProducts(nextStatus),
         subjectApi.getMyProductReminders(),
       ])
-      if (productsRes.code === 200) {
-        const realItems = (productsRes.data as { items?: MyProductItem[] } | null)?.items || []
-        const realReminders = (remindersRes.data as { items?: MyProductReminderItem[] } | null)?.items || []
-        if (realItems.length > 0 || realReminders.length > 0) {
-          setItems(realItems)
-          setReminders(realReminders)
-        }
+      const resolved = resolveServerProductData(
+        productsRes as { code?: number; data?: { items?: MyProductItem[] } | null },
+        remindersRes as { code?: number; data?: { items?: MyProductReminderItem[] } | null },
+      )
+      if (resolved) {
+        setItems(resolved.items)
+        setReminders(resolved.reminders)
       }
     } catch {
       // 请求失败时保持模拟数据，用户已能看到内容
@@ -143,6 +144,15 @@ export default function ProductsPage() {
   useEffect(() => {
     void loadData(status)
   }, [status])
+
+  const didShowOnceRef = useRef(false)
+  useDidShow(() => {
+    if (!didShowOnceRef.current) {
+      didShowOnceRef.current = true
+      return
+    }
+    void loadData(status)
+  })
 
   const stats = useMemo(() => {
     const total = items.length
