@@ -388,12 +388,14 @@ jobs:
         env:
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_BOT_WEBHOOK_URL }}
           FEISHU_CHAT_ID: ${{ secrets.FEISHU_DEV_GROUP_CHAT_ID }}
+          FEISHU_APPROVAL_CHAT_ID: ${{ secrets.FEISHU_APPROVAL_CHAT_ID }}
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
         with:
           script: |
             const webhook = process.env.FEISHU_WEBHOOK;
             const chatId  = process.env.FEISHU_CHAT_ID;
+            const approvalChatId = process.env.FEISHU_APPROVAL_CHAT_ID;
             const appId   = process.env.FEISHU_APP_ID;
             const appSecret = process.env.FEISHU_APP_SECRET;
 
@@ -419,17 +421,42 @@ jobs:
               const base   = pr.base.ref;
 
               if (action === 'opened' || action === 'ready_for_review') {
+                const commitSha = pr.head.sha;
+                const repo_full = `${repo.owner}/${repo.repo}`;
                 card = {
                   header: {
                     title: { content: `🔔 新 PR 待审核 #${number}`, tag: 'plain_text' },
                     template: 'blue',
                   },
                   elements: [
-                    { tag: 'div', text: { content: `**标题**：${title}\n**作者**：${author}\n**分支**：\`${branch}\` → \`${base}\``, tag: 'lark_md' }},
+                    { tag: 'div', text: { content: `**标题**：${title}\n**作者**：${author}\n**分支**：\`${branch}\` → \`${base}\`\n\n需要 **2 人** 点击「✅ 批准合并」后方可合并。`, tag: 'lark_md' }},
+                    { tag: 'hr' },
                     { tag: 'action', actions: [
-                      { tag: 'button', text: { content: '查看 PR', tag: 'plain_text' }, url, type: 'primary' },
+                      {
+                        tag: 'button',
+                        text: { content: '✅ 批准合并', tag: 'plain_text' },
+                        type: 'primary',
+                        value: {
+                          action: 'approve_pr',
+                          pr_number: String(number),
+                          commit_sha: commitSha,
+                          repo: repo_full,
+                        },
+                      },
+                      {
+                        tag: 'button',
+                        text: { content: '🔴 拒绝', tag: 'plain_text' },
+                        type: 'danger',
+                        value: {
+                          action: 'reject_pr',
+                          pr_number: String(number),
+                          commit_sha: commitSha,
+                          repo: repo_full,
+                        },
+                      },
+                      { tag: 'button', text: { content: '查看变更', tag: 'plain_text' }, url: `${url}/files`, type: 'default' },
                     ]},
-                    { tag: 'note', elements: [{ tag: 'plain_text', content: `${new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})} | CN KIS V2.0` }]},
+                    { tag: 'note', elements: [{ tag: 'plain_text', content: `点按钮即可完成审批，无需登录 GitHub · ${new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})} | CN KIS V2.0` }]},
                   ],
                 };
               } else if (action === 'review_requested') {
@@ -670,6 +697,37 @@ jobs:
 
             const payload = { msg_type: 'interactive', card: JSON.stringify(card) };
 
+            // 判断是否需要同时发到审批群（PR opened / review_requested 才需要）
+            const isPrApprovalEvent = (
+              (ev === 'pull_request' && ['opened', 'ready_for_review', 'review_requested'].includes(context.payload.action))
+            );
+
+            // ── 发送函数（App Bot 模式）─────────────────────────────────────
+            async function sendToChat(targetChatId, cardPayload) {
+              const tokenResp = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+              });
+              const tokenData = await tokenResp.json();
+              if (tokenData.code !== 0) {
+                core.warning(`获取飞书 token 失败：${JSON.stringify(tokenData)}`);
+                return;
+              }
+              const accessToken = tokenData.tenant_access_token;
+              const msgResp = await fetch('https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ receive_id: targetChatId, ...cardPayload }),
+              });
+              const msgData = await msgResp.json();
+              if (msgData.code === 0) {
+                core.info(`飞书通知发送成功 → ${targetChatId}`);
+              } else {
+                core.warning(`飞书通知失败：${JSON.stringify(msgData)}`);
+              }
+            }
+
             // ── 发送方式 1：自定义机器人 Webhook（推荐，最简单）────────────────
             if (webhook) {
               const resp = await fetch(webhook, {
@@ -686,28 +744,10 @@ jobs:
             }
             // ── 发送方式 2：App Bot（需要 FEISHU_APP_ID + FEISHU_APP_SECRET + FEISHU_DEV_GROUP_CHAT_ID）
             else if (chatId && appId && appSecret) {
-              // 先获取 tenant_access_token
-              const tokenResp = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
-              });
-              const tokenData = await tokenResp.json();
-              if (tokenData.code !== 0) {
-                core.warning(`获取飞书 token 失败：${JSON.stringify(tokenData)}`);
-                return;
-              }
-              const accessToken = tokenData.tenant_access_token;
-
-              const msgResp = await fetch('https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ receive_id: chatId, ...payload }),
-              });
-              const msgData = await msgResp.json();
-              if (msgData.code === 0) {
-                core.info('飞书通知发送成功（App Bot 模式）');
-              } else {
-                core.warning(`飞书通知失败：${JSON.stringify(msgData)}`);
+              // 发到开发群
+              await sendToChat(chatId, payload);
+              // PR 审批事件同时发到审批群（带批准/拒绝按钮的那条）
+              if (isPrApprovalEvent && approvalChatId && approvalChatId !== chatId) {
+                await sendToChat(approvalChatId, payload);
               }
             }
