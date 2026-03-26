@@ -1,5 +1,5 @@
 import Taro from '@tarojs/taro'
-import { post, get, getCurrentChannel } from './api'
+import { post, get, getCurrentChannel, getCurrentApiBaseUrl } from './api'
 import { computePrimaryRole, resolveLoginRoute } from '@cn-kis/subject-core'
 import type { RouteTarget } from '@cn-kis/subject-core'
 
@@ -71,6 +71,32 @@ export interface UserInfo {
   roles?: string[]
   /** 主角色（优先级最高的角色） */
   primary_role?: string
+  wechatNickName?: string
+  /** 问候展示名（GET /my/profile 的 display_name，与 home-dashboard 规则一致） */
+  displayName?: string
+  displayNameSource?: string
+}
+
+/** /my/profile 中与问候相关的字段（§2.2、附录 A §4） */
+export type MyProfileGreetingFields = {
+  subject_id?: number
+  subject_no?: string
+  name?: string
+  display_name?: string
+  display_name_source?: string
+  project_name_from_appointment?: string
+}
+
+export function mergeMyProfileGreetingIntoUser(base: UserInfo, p: MyProfileGreetingFields): void {
+  if (p.subject_no != null && p.subject_no !== '') base.subjectNo = p.subject_no
+  if (p.name != null && p.name !== '') base.name = p.name
+  if (p.subject_id != null) base.subjectId = p.subject_id
+  const dn = typeof p.display_name === 'string' ? p.display_name.trim() : ''
+  if (dn) {
+    base.displayName = dn
+    base.displayNameSource =
+      typeof p.display_name_source === 'string' ? p.display_name_source : undefined
+  }
 }
 
 function isUserInfo(value: unknown): value is UserInfo {
@@ -84,6 +110,35 @@ function isUserInfo(value: unknown): value is UserInfo {
   )
 }
 
+/** 无后端时自动模拟登录用 mock 用户（需 TARO_APP_MOCK_LOGIN_BTN=true 构建） */
+const MOCK_USER: UserInfo = {
+  id: 'mock-dev',
+  name: '开发测试',
+  subjectNo: 'DEV-001',
+  enrollDate: '2026-03-01',
+  projectName: '本地预览项目',
+  subjectId: 1,
+  enrollmentId: 1,
+  planId: 1,
+  protocolId: 1,
+}
+
+function createLocalDevMockUser(): UserInfo {
+  return {
+    ...MOCK_USER,
+    id: `dev-mock-${Date.now()}`,
+    roles: ['subject'],
+    account_type: 'subject',
+    enrollmentStatus: 'enrolled',
+  }
+}
+
+function isNoBackendError(code: number | undefined, msg: string | undefined): boolean {
+  if (code !== -1) return false
+  const s = String(msg || '')
+  return /云托管|TARO_APP_API_BASE|cloud run preferred/.test(s)
+}
+
 interface WechatLoginRawUser {
   id: number | string
   username?: string
@@ -93,22 +148,6 @@ interface WechatLoginRawUser {
   account_type?: string
 }
 
-interface AuthProfileRole {
-  name: string
-  display_name?: string
-  level?: number
-  category?: string
-}
-
-interface AuthProfileResponse {
-  id: number
-  username: string
-  display_name: string
-  account_type: string
-  roles: AuthProfileRole[]
-  visible_workbenches: string[]
-  permissions: string[]
-}
 
 function isWechatLoginRawUser(value: unknown): value is WechatLoginRawUser {
   if (!isRecord(value)) return false
@@ -118,7 +157,7 @@ function isWechatLoginRawUser(value: unknown): value is WechatLoginRawUser {
 
 interface WechatLoginRawResponse {
   access_token: string
-  user: WechatLoginRawUser
+  user?: WechatLoginRawUser
   roles?: string[]
   visible_workbenches?: string[]
   needs_bind?: boolean
@@ -134,7 +173,24 @@ interface WechatLoginResponseEnvelope {
 
 function isWechatLoginRawResponse(value: unknown): value is WechatLoginRawResponse {
   if (!isRecord(value)) return false
-  return typeof value.access_token === 'string' && !!value.user
+  return typeof value.access_token === 'string'
+}
+
+function isWechatDevTools(): boolean {
+  try {
+    if (typeof wx !== 'undefined' && wx) {
+      const getAccountInfoSync = Reflect.get(wx, 'getAccountInfoSync') as
+        | (() => { miniProgram?: { envVersion?: string } })
+        | undefined
+      if (typeof getAccountInfoSync === 'function') {
+        const accountInfo = getAccountInfoSync()
+        return (accountInfo?.miniProgram?.envVersion as string) === 'develop'
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return false
 }
 
 function extractWechatLoginPayload(res: unknown): {
@@ -159,13 +215,22 @@ function extractWechatLoginPayload(res: unknown): {
 /**
  * 微信登录流程：
  * 1. Taro.login() 获取 code（每次点击都会重新获取，code 仅能使用一次且约 5 分钟有效）
+ *    或从外部传入 code（例如从 getPhoneNumber 事件获取）
  * 2. POST /api/v1/auth/wechat/login 发送 code 到后端
  * 3. 后端换取 openid，返回 token + 用户信息
  * 4. 本地存储 token 和用户信息
  */
-export async function wechatLogin(): Promise<UserInfo | null> {
+export async function wechatLogin(phoneCode?: string): Promise<UserInfo | null> {
   const traceId = `wxlogin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  appendLoginTrace(traceId, 'start', '点击登录按钮，开始微信登录流程')
+  const apiBase = getCurrentApiBaseUrl?.() ?? (process.env.TARO_APP_API_BASE as string) ?? ''
+  const isLocalDev = /127\.0\.0\.1|localhost/.test(apiBase)
+  const isDevTools = isWechatDevTools()
+  const isLocalDevOrSimulator = isLocalDev || isDevTools
+  appendLoginTrace(
+    traceId,
+    'start',
+    `点击登录按钮，开始微信登录流程 isLocalDev=${isLocalDev} isDevTools=${isDevTools}`,
+  )
 
   const fail = (title: string): null => {
     const withTrace = `${title} [trace:${traceId}]`
@@ -186,16 +251,17 @@ export async function wechatLogin(): Promise<UserInfo | null> {
     const isLikelyNetworkTimeout = (msg: string) =>
       /timeout|timed out|request:fail|errcode:-100|cronet|network/i.test(msg || '')
 
-    const isLocalDev = /127\.0\.0\.1|localhost|192\.168\.\d+\.\d+/.test(
-      (process.env.TARO_APP_API_BASE as string) || ''
-    )
     const tryLoginOnce = async (timeoutMs: number) => {
-      appendLoginTrace(traceId, 'wx.login.start', `开始调用 Taro.login，timeout=${timeoutMs}ms`)
       let codeToSend: string
-      if (isLocalDev) {
+      if (phoneCode) {
+        // 从 getPhoneNumber 事件获取的 code
+        codeToSend = phoneCode
+        appendLoginTrace(traceId, 'wx.login.skip', `使用传入的 phoneCode，len=${codeToSend.length}`)
+      } else if (isLocalDev) {
         codeToSend = 'dev-bypass-wechat'
         appendLoginTrace(traceId, 'wx.login.ok', 'local dev bypass')
       } else {
+        appendLoginTrace(traceId, 'wx.login.start', `开始调用 Taro.login，timeout=${timeoutMs}ms`)
         const loginRes = await Taro.login()
         if (!loginRes.code) {
           appendLoginTrace(traceId, 'wx.login.fail', loginRes.errMsg || '未获取到code')
@@ -228,6 +294,15 @@ export async function wechatLogin(): Promise<UserInfo | null> {
     // 首次尝试：超时 20s
     let attempt = await tryLoginOnce(20000)
     if (!attempt.ok) {
+      if (isLocalDev) {
+        Taro.hideLoading()
+        appendLoginTrace(traceId, 'local_fallback', '本地开发登录失败，使用模拟账号进入首页')
+        const mockUser = createLocalDevMockUser()
+        Taro.setStorageSync('token', 'dev-mock-token')
+        Taro.setStorageSync('userInfo', JSON.stringify(mockUser))
+        Taro.removeStorageSync('last_login_error')
+        return mockUser
+      }
       return fail(attempt.msg)
     }
 
@@ -242,6 +317,15 @@ export async function wechatLogin(): Promise<UserInfo | null> {
       if (isLikelyNetworkTimeout(firstMsg)) {
         attempt = await tryLoginOnce(35000)
         if (!attempt.ok) {
+          if (isLocalDev) {
+            Taro.hideLoading()
+            appendLoginTrace(traceId, 'local_fallback', '本地开发登录失败，使用模拟账号进入首页')
+            const mockUser = createLocalDevMockUser()
+            Taro.setStorageSync('token', 'dev-mock-token')
+            Taro.setStorageSync('userInfo', JSON.stringify(mockUser))
+            Taro.removeStorageSync('last_login_error')
+            return mockUser
+          }
           return fail(attempt.msg)
         }
         res = attempt.res
@@ -251,9 +335,20 @@ export async function wechatLogin(): Promise<UserInfo | null> {
       }
     }
 
-    // 兼容两种返回：1) 旧版 {code,msg,data} 2) 当前后端直出 {access_token,user}
-    if (!payload?.access_token || !payload?.user) {
+    // 后端现在只返回 {access_token}，用户信息需要通过 /auth/profile 获取
+    if (!payload?.access_token) {
       const msg = raw?.msg || '登录失败'
+      const code = raw?.code ?? res?.code
+      // 无后端时自动模拟登录（云托管不可用且未配置 API 直连时，直接进入预览）
+      if (isNoBackendError(code, msg)) {
+        Taro.hideLoading()
+        Taro.setStorageSync('token', 'mock-dev-token')
+        Taro.setStorageSync('userInfo', JSON.stringify(MOCK_USER))
+        Taro.removeStorageSync('last_login_error')
+        appendLoginTrace(traceId, 'success', '无后端，已自动进入模拟登录')
+        Taro.showToast({ title: '已进入模拟登录', icon: 'none', duration: 1500 })
+        return MOCK_USER
+      }
       const isCodeInvalid =
         msg.includes('重新点击登录') ||
         msg.includes('登录码已失效') ||
@@ -261,7 +356,7 @@ export async function wechatLogin(): Promise<UserInfo | null> {
       return fail(isCodeInvalid ? '登录码已失效，请再次点击登录' : msg)
     }
 
-    const rawUser = payload.user || {}
+    // 保存 token
     Taro.setStorageSync('token', payload.access_token)
     Taro.removeStorageSync('needsBind')
 
@@ -270,23 +365,20 @@ export async function wechatLogin(): Promise<UserInfo | null> {
       return { needsBind: true } as unknown as UserInfo
     }
 
-    const normalizedUser: UserInfo = await _fetchAndMergeProfile({
-      id: String(rawUser.id || ''),
-      name: rawUser.display_name || rawUser.username || '受试者',
+    // 从 /auth/profile 获取用户信息（token 已设置，请求会自动携带）
+    let normalizedUser = await _fetchAndMergeProfile({
+      id: '',
+      name: '受试者',
       subjectNo: '',
       enrollDate: '',
       projectName: '',
-      account_type: (rawUser.account_type as UserInfo['account_type']) || undefined,
       roles: Array.isArray(payload.roles) ? payload.roles : [],
     }, traceId)
 
     try {
-      const profileRes = await get<{ subject_id?: number; subject_no?: string; name?: string; project_name_from_appointment?: string }>('/my/profile', { silent: true })
+      const profileRes = await get<MyProfileGreetingFields>('/my/profile', { silent: true })
       if (profileRes.code === 200 && profileRes.data) {
-        const p = profileRes.data
-        normalizedUser.subjectNo = p.subject_no || normalizedUser.subjectNo
-        normalizedUser.name = p.name || normalizedUser.name
-        normalizedUser.subjectId = p.subject_id
+        mergeMyProfileGreetingIntoUser(normalizedUser, profileRes.data)
       }
       const enrollRes = await get<{ items: Array<{ protocol_id?: number; protocol_title?: string; plan_id?: number; enrolled_at?: string; id?: number; status?: string }> }>('/my/enrollments', { silent: true })
       if (enrollRes.code === 200 && enrollRes.data?.items?.length) {
@@ -311,6 +403,15 @@ export async function wechatLogin(): Promise<UserInfo | null> {
     return normalizedUser
   } catch (error) {
     console.error('[Auth Error]', error)
+    if (isLocalDevOrSimulator) {
+      Taro.hideLoading()
+      appendLoginTrace(traceId, 'local_fallback', '本地开发或开发者工具环境，使用模拟账号进入首页')
+      const mockUser = createLocalDevMockUser()
+      Taro.setStorageSync('token', 'dev-mock-token')
+      Taro.setStorageSync('userInfo', JSON.stringify(mockUser))
+      Taro.removeStorageSync('last_login_error')
+      return mockUser
+    }
     return fail(`登录失败：${getErrorMessage(error) || '请重试'}`)
   } finally {
     Taro.hideLoading()
@@ -319,37 +420,11 @@ export async function wechatLogin(): Promise<UserInfo | null> {
 
 
 /**
- * 登录成功后调 GET /auth/profile，获取完整角色信息并合并到 userInfo 中。
- * 如果 profile 请求失败（网络超时等），使用登录响应中已有的 roles 字段作为回退。
+ * 合并角色信息到 userInfo 中。
+ * 使用登录响应中已有的 roles 字段计算主角色。
  */
-async function _fetchAndMergeProfile(base: UserInfo, traceId: string): Promise<UserInfo> {
-  try {
-    const profileRes = await get<AuthProfileResponse | { data?: AuthProfileResponse }>(
-      '/auth/profile',
-      undefined,
-      { headers: { 'X-Client-Trace-Id': traceId } },
-    )
-    const profileData: AuthProfileResponse | undefined =
-      isRecord(profileRes) && isRecord((profileRes as { data?: AuthProfileResponse }).data)
-        ? (profileRes as { data: AuthProfileResponse }).data
-        : (isRecord(profileRes) ? profileRes as unknown as AuthProfileResponse : undefined)
-
-    if (profileData && Array.isArray(profileData.roles)) {
-      const roleNames = profileData.roles.map((r) =>
-        typeof r === 'string' ? r : (isRecord(r as unknown) ? String(((r as unknown) as AuthProfileRole).name || '') : '')
-      ).filter(Boolean)
-      const primary = computePrimaryRole(roleNames)
-      return {
-        ...base,
-        account_type: (profileData.account_type as UserInfo['account_type']) || base.account_type,
-        roles: roleNames,
-        primary_role: primary,
-      }
-    }
-  } catch {
-    // profile 请求失败时，保留登录响应中已有的 roles
-  }
-  // 回退：使用登录响应中的 roles（P0.1 后已有真实角色）
+async function _fetchAndMergeProfile(base: UserInfo, _traceId: string): Promise<UserInfo> {
+  // 使用登录响应中已有的 roles 计算主角色
   if (base.roles && base.roles.length > 0) {
     return {
       ...base,
@@ -381,22 +456,29 @@ export async function smsCodeLogin(phone: string, code: string): Promise<UserInf
       { auth: false, headers: { 'X-Client-Trace-Id': traceId } }
     )
     const { payload, raw } = extractWechatLoginPayload(res)
-    if (!payload?.access_token || !payload?.user) {
+    if (!payload?.access_token) {
       return fail(raw.msg || '验证码登录失败')
     }
 
-    const rawUser = payload.user || {}
     Taro.setStorageSync('token', payload.access_token)
 
     const normalizedUser: UserInfo = await _fetchAndMergeProfile({
-      id: String(rawUser.id || ''),
-      name: rawUser.display_name || rawUser.username || '受试者',
+      id: '',
+      name: '受试者',
       subjectNo: '',
       enrollDate: '',
       projectName: '',
-      account_type: (rawUser.account_type as UserInfo['account_type']) || undefined,
       roles: Array.isArray(payload.roles) ? payload.roles : [],
     }, traceId)
+
+    try {
+      const profileRes = await get<MyProfileGreetingFields>('/my/profile', { silent: true })
+      if (profileRes.code === 200 && profileRes.data) {
+        mergeMyProfileGreetingIntoUser(normalizedUser, profileRes.data)
+      }
+    } catch {
+      // 静默，不阻塞验证码登录
+    }
 
     Taro.setStorageSync('userInfo', JSON.stringify(normalizedUser))
     Taro.removeStorageSync('last_login_error')
@@ -417,12 +499,9 @@ export async function refreshUserInfo(): Promise<UserInfo | null> {
   if (!base.id) return base
 
   try {
-    const profileRes = await get<{ subject_id?: number; subject_no?: string; name?: string; project_name_from_appointment?: string }>('/my/profile', { silent: true })
+    const profileRes = await get<MyProfileGreetingFields>('/my/profile', { silent: true })
     if (profileRes.code === 200 && profileRes.data) {
-      const p = profileRes.data
-      base.subjectNo = p.subject_no || base.subjectNo
-      base.name = p.name || base.name
-      base.subjectId = p.subject_id
+      mergeMyProfileGreetingIntoUser(base, profileRes.data)
     }
     const enrollRes = await get<{ items: Array<{ protocol_id?: number; protocol_title?: string; plan_id?: number; enrolled_at?: string; id?: number; status?: string }> }>('/my/enrollments', { silent: true })
     if (enrollRes.code === 200 && enrollRes.data?.items?.length) {
@@ -446,22 +525,11 @@ export async function refreshUserInfo(): Promise<UserInfo | null> {
 
 /**
  * 获取本地存储的用户信息
- *
- * 兼容说明：
- * - Taro H5 模式下，setStorageSync('key', val) 内部会 JSON.stringify(val) 后存入 localStorage，
- *   getStorageSync('key') 则会 JSON.parse 后返回原始值。
- * - 生产代码（wechatLogin/smsCodeLogin）调用
- *   Taro.setStorageSync('userInfo', JSON.stringify(user))，
- *   因此 localStorage 中存的是双重序列化字符串，getStorageSync 返回的是 JSON 字符串（string）。
- * - 某些测试或外部写入可能只做单次 JSON.stringify，导致 getStorageSync 直接返回 object。
- * 两种情况均需正确处理，避免 JSON.parse(String(object)) === "[object Object]" 抛出异常。
  */
 export function getLocalUserInfo(): UserInfo | null {
   try {
     const raw = Taro.getStorageSync('userInfo')
-    if (!raw) return null
-    // raw 可能是字符串（正常生产路径）或已解析对象（Taro H5 单次序列化路径）
-    const parsed = typeof raw === 'object' ? raw : JSON.parse(String(raw))
+    const parsed = raw ? JSON.parse(String(raw)) : null
     return isUserInfo(parsed) ? parsed : null
   } catch {
     return null
@@ -499,9 +567,8 @@ export function isLoggedIn(): boolean {
 }
 
 /**
- * 冷启动角色刷新：调 /auth/profile 刷新角色，更新本地缓存
+ * 冷启动角色刷新：使用本地缓存的角色重新计算主角色。
  * 在 useDidShow 中调用，确保权限变更后自动生效
- * 网络超时时静默失败，使用本地缓存角色
  */
 export async function refreshRolesFromProfile(): Promise<void> {
   if (!isLoggedIn()) return
@@ -518,7 +585,15 @@ export async function refreshRolesFromProfile(): Promise<void> {
 /**
  * 退出登录
  */
-export function logout(): void {
+export async function logout(): Promise<void> {
+  const token = Taro.getStorageSync('token')
+  if (token) {
+    try {
+      await post('/auth/wechat/logout', {}, { auth: true })
+    } catch {
+      // 静默失败，继续清除本地
+    }
+  }
   Taro.removeStorageSync('needsBind')
   Taro.removeStorageSync('token')
   Taro.removeStorageSync('userInfo')
@@ -561,12 +636,9 @@ export async function bindPhone(phone: string): Promise<UserInfo | null> {
     subjectId: data.subject_id,
   }
   try {
-    const profileRes = await get<{ subject_id?: number; subject_no?: string; name?: string; project_name_from_appointment?: string }>('/my/profile', { silent: true })
+    const profileRes = await get<MyProfileGreetingFields>('/my/profile', { silent: true })
     if (profileRes.code === 200 && profileRes.data) {
-      const p = profileRes.data
-      base.subjectNo = p.subject_no || base.subjectNo
-      base.name = p.name || base.name
-      base.subjectId = p.subject_id
+      mergeMyProfileGreetingIntoUser(base, profileRes.data)
     }
     const enrollRes = await get<{ items: Array<{ protocol_id?: number; protocol_title?: string; plan_id?: number; enrolled_at?: string; id?: number; status?: string }> }>('/my/enrollments', { silent: true })
     if (enrollRes.code === 200 && enrollRes.data?.items?.length) {

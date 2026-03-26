@@ -24,6 +24,7 @@ class SubjectCheckin(models.Model):
         verbose_name = '签到记录'
         indexes = [
             models.Index(fields=['subject', 'checkin_date']),
+            models.Index(fields=['subject', 'checkin_date', 'project_code']),
             models.Index(fields=['enrollment', 'status']),
         ]
 
@@ -32,11 +33,19 @@ class SubjectCheckin(models.Model):
     work_order = models.ForeignKey('workorder.WorkOrder', on_delete=models.SET_NULL, null=True, blank=True, related_name='subject_checkins')
 
     checkin_date = models.DateField('签到日期')
+    # 与 SubjectAppointment.project_code 对齐；同日多项目到访时各项目一条签到，避免队列行共用同一记录
+    project_code = models.CharField('项目编号', max_length=128, blank=True, default='', db_index=True)
     checkin_time = models.DateTimeField('签到时间', null=True, blank=True)
     checkout_time = models.DateTimeField('签出时间', null=True, blank=True)
     status = models.CharField('状态', max_length=20, choices=CheckinStatus.choices, default=CheckinStatus.CHECKED_IN, db_index=True)
     location = models.CharField('签到位置', max_length=200, blank=True, default='')
     notes = models.TextField('备注', blank=True, default='')
+    # 过号：顺延 3 位时记录过号时刻及当时该项目内即将被叫的 SC 序号（叫号序 = 该值 + 3）
+    missed_call_at = models.DateTimeField('过号时间', null=True, blank=True)
+    missed_after_sc_rank = models.PositiveSmallIntegerField(
+        '过号时队首SC序号', null=True, blank=True,
+        help_text='过号时该项目内即将被叫的 SC 序号，用于叫号序=该值+3',
+    )
 
     created_by_id = models.IntegerField('操作人ID', null=True, blank=True)
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
@@ -116,8 +125,6 @@ class SubjectPayment(models.Model):
         verbose_name = '礼金支付'
         indexes = [
             models.Index(fields=['subject', 'status']),
-            models.Index(fields=['project_code']),
-            models.Index(fields=['nas_import_batch']),
         ]
 
     subject = models.ForeignKey('subject.Subject', on_delete=models.CASCADE, related_name='payments')
@@ -133,45 +140,6 @@ class SubjectPayment(models.Model):
     payment_method = models.CharField('支付方式', max_length=50, blank=True, default='', help_text='微信/银行转账/现金')
     transaction_id = models.CharField('交易号', max_length=100, blank=True, default='')
     notes = models.TextField('备注', blank=True, default='')
-
-    # ── NAS 历史档案导入扩展字段 ─────────────────────────────────────────
-    bank_account_encrypted = models.TextField(
-        '收款账号（加密）', blank=True, default='',
-        help_text='AES Fernet 加密的银行卡号，使用 libs.field_encryption 解密',
-    )
-    bank_account_last4 = models.CharField(
-        '收款账号后4位', max_length=4, blank=True, default='',
-        help_text='明文后4位，用于展示和模糊匹配',
-    )
-    platform = models.CharField(
-        '支付平台', max_length=50, blank=True, default='',
-        help_text='八羿/捷仕达/安徽创启/安徽斯长/宿钲/融辰/怀宁青枫',
-        db_index=True,
-    )
-    project_code = models.CharField(
-        '项目代码', max_length=50, blank=True, default='',
-        db_index=True,
-    )
-    nas_paid_date = models.DateField(
-        'NAS实际支付日期', null=True, blank=True,
-        help_text='从文件名解析的实际支付日期',
-    )
-    nas_import_batch = models.CharField(
-        'NAS导入批次', max_length=30, blank=True, default='',
-        help_text='格式 nas-YYYY-MM-DD',
-        db_index=True,
-    )
-    # ── 积分关联 ──────────────────────────────────────────────────────────
-    points_awarded = models.IntegerField(
-        '奖励积分', default=0,
-        help_text='本次支付奖励的积分（1元=1分）',
-    )
-
-    # ── 协议关联（通过 project_code → Protocol.code 反向填充）──────────────
-    protocol_id = models.IntegerField(
-        '协议ID', null=True, blank=True, db_index=True,
-        help_text='关联 t_protocol.id，由 link_lims_ekb_to_protocol 命令填充',
-    )
 
     created_by_id = models.IntegerField('创建人ID', null=True, blank=True)
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
@@ -270,11 +238,21 @@ class SubjectAppointment(models.Model):
         return f'{self.subject.name} - {self.appointment_date}'
 
 
+class EnrollmentStatusSC(models.TextChoices):
+    """入组情况（今日队列用）：与 SubjectProjectSC 关联。"""
+    PRE_SCREEN_PASS = '初筛合格', '初筛合格'
+    ENROLLED = '正式入组', '正式入组'
+    DISQUALIFIED = '不合格', '不合格'
+    RE_SCREEN_FAIL = '复筛不合格', '复筛不合格'
+    WITHDRAWN = '退出', '退出'
+    NO_SHOW = '缺席', '缺席'
+
+
 class SubjectProjectSC(models.Model):
     """
     受试者-项目 SC/RD 号：同一受试者（subject）在同一项目（project_code）下唯一一条记录。
-    SC 号在接待看板点击「签到」后，对该项目下首次签到的受试者按顺序分配 001、002、003...
-    RD 号逻辑待定，暂存空。
+    仅在访视点为 V1 时，签到时按项目内顺序分配 SC 号；同项目后续访视均使用该 SC 号。
+    RD 号仅当入组情况为「正式入组」时可填写（如 RD001）。
     与 t_subject_appointment 逻辑关联：预约列表通过 subject_id + project_code 关联本表取 SC/RD 展示。
     """
     class Meta:
@@ -287,11 +265,18 @@ class SubjectProjectSC(models.Model):
 
     subject = models.ForeignKey('subject.Subject', on_delete=models.CASCADE, related_name='project_sc_records')
     project_code = models.CharField('项目编号', max_length=100, db_index=True)
-    sc_number = models.CharField('SC号', max_length=20, blank=True, default='', help_text='如 001、002，签到后按项目内顺序分配')
-    rd_number = models.CharField('RD号', max_length=20, blank=True, default='', help_text='逻辑待定，暂空')
-    protocol_id = models.IntegerField(
-        '协议ID', null=True, blank=True, db_index=True,
-        help_text='关联 t_protocol.id，由 link_protocol_to_project_sc 命令按 project_code=Protocol.code 填充',
+    sc_number = models.CharField(
+        'SC号', max_length=20, blank=True, default='',
+        help_text='如 001、002，仅在访视点 V1 签到时按项目内顺序分配，后续访视复用',
+    )
+    rd_number = models.CharField(
+        'RD号', max_length=20, blank=True, default='',
+        help_text='仅当入组情况为正式入组时可填写，如 RD001',
+    )
+    enrollment_status = models.CharField(
+        '入组情况', max_length=20, blank=True, default='',
+        choices=[(c.value, c.label) for c in EnrollmentStatusSC],
+        help_text='初筛合格/正式入组/不合格/复筛不合格/退出/缺席',
     )
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)
@@ -301,57 +286,6 @@ class SubjectProjectSC(models.Model):
 
     def __str__(self):
         return f'{self.subject_id}@{self.project_code} -> {self.sc_number or "-"}'
-
-
-# ============================================================================
-# 历史访客记录（来自 NAS 身份证系统导出，结构化访客到访全貌）
-# ============================================================================
-class SubjectVisitRecord(models.Model):
-    """
-    受试者历史到访记录。
-
-    来源：NAS 身份证系统导出（visitor_registration），每条对应一次实际到访。
-    与 t_subject_checkin 的区别：
-      - t_subject_checkin 是执行台系统内的操作记录（手动签到/签出）
-      - t_subject_visit_record 是门禁系统自动采集的原始访客记录，精度更高
-    通过 questionnaire_id 外键关联 t_subject_questionnaire 可取到原始全字段 JSONB。
-    """
-
-    class Meta:
-        db_table = 't_subject_visit_record'
-        verbose_name = '历史访客记录'
-        indexes = [
-            models.Index(fields=['subject', 'visit_date']),
-            models.Index(fields=['project_code']),
-            models.Index(fields=['visit_date']),
-            models.Index(fields=['questionnaire_id']),
-        ]
-
-    subject = models.ForeignKey(
-        'subject.Subject', on_delete=models.CASCADE,
-        related_name='visit_records', verbose_name='受试者',
-    )
-    questionnaire_id = models.BigIntegerField(
-        '来源问卷ID', null=True, blank=True, db_index=True,
-        help_text='关联 t_subject_questionnaire.id，可取原始全字段 JSONB',
-    )
-    visit_no = models.CharField('访客单号', max_length=50, blank=True, default='')
-    visit_date = models.DateField('来访日期')
-    visit_time = models.DateTimeField('来访时间', null=True, blank=True)
-    departure_time = models.DateTimeField('离开时间', null=True, blank=True)
-    project_code = models.CharField('来访事由/项目编号', max_length=100, blank=True, default='', db_index=True)
-    purpose = models.CharField('来访事由（原始）', max_length=500, blank=True, default='')
-    location = models.CharField('进入门岗/房号', max_length=200, blank=True, default='')
-    liaison = models.CharField('被访人/联络员', max_length=100, blank=True, default='')
-    is_departed = models.BooleanField('已离开', default=False)
-    skin_type_obs = models.CharField('现场观察肤质', max_length=20, blank=True, default='')
-    source_batch = models.CharField('来源批次', max_length=50, blank=True, default='')
-
-    create_time = models.DateTimeField('创建时间', auto_now_add=True)
-    update_time = models.DateTimeField('更新时间', auto_now=True)
-
-    def __str__(self):
-        return f'{self.subject_id} @ {self.visit_date} ({self.project_code})'
 
 
 # ============================================================================
@@ -402,6 +336,9 @@ class SubjectSupportTicket(models.Model):
         return f'{self.ticket_no} - {self.title}'
 
 
+# ============================================================================
+# 接待看板独立签到/签出（与工单执行 SubjectCheckin 分离，互不影响）
+# ============================================================================
 class ReceptionBoardCheckin(models.Model):
     """接待看板专用签到/签出记录，与工单执行的 SubjectCheckin 独立。"""
 

@@ -10,6 +10,7 @@ import {
   Database,
   FlaskConical,
   BarChart3,
+  FileSignature,
 } from 'lucide-react'
 import { FeishuAuthProvider, useFeishuContext, LoginFallback, createWorkstationFeishuConfig } from '@cn-kis/feishu-sdk'
 import { MobileWorkstationLayout, type MobileWorkstationNavItem } from '@cn-kis/ui-kit'
@@ -47,6 +48,7 @@ const navItems: Array<{
   { to: '/scheduling', icon: CalendarClock, label: '排程管理', permissions: ['visit.plan.read'] },
   { to: '/visits', icon: CalendarCheck, label: '访视管理', permissions: ['visit.plan.read'] },
   { to: '/subjects', icon: Users, label: '受试者', permissions: ['subject.subject.read'] },
+  { to: '/consent', icon: FileSignature, label: '知情管理', permissions: ['subject.subject.read'] },
   { to: '/workorders', icon: ClipboardList, label: '工单管理', permissions: ['workorder.workorder.read'] },
   { to: '/changes', icon: GitBranch, label: '变更管理', permissions: ['protocol.protocol.read'] },
   { to: '/edc', icon: Database, label: 'EDC采集', permissions: ['edc.crf.read'] },

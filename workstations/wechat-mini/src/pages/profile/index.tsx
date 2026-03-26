@@ -118,11 +118,15 @@ export default function ProfilePage() {
     <View className='profile-page'>
       <View className='profile-top-card'>
         <View className='profile-avatar'>
-          <Text className='profile-avatar__text'>{userInfo?.name?.charAt(0) || '?'}</Text>
+          <Text className='profile-avatar__text'>
+            {(userInfo?.wechatNickName || userInfo?.name)?.charAt(0) || '?'}
+          </Text>
         </View>
         <View className='profile-user'>
           <Text className='profile-user__name'>
-            {loggedIn ? (userInfo?.name || '受试者') : '未登录'}
+            {loggedIn
+              ? (userInfo?.wechatNickName || userInfo?.name || '受试者')
+              : '未登录'}
           </Text>
           <Text className='profile-user__org'>消费者综合研究服务平台</Text>
           {loggedIn && (

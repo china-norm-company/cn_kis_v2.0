@@ -37,7 +37,7 @@ export const taroUIAdapter = {
 } satisfies UIAdapter
 
 export const taroAuthProvider = {
-  loginWithWechat: () => wechatLogin() as Promise<UserInfo | null>,
+  loginWithWechat: (code?: string) => wechatLogin(code) as Promise<UserInfo | null>,
   loginWithSms: (credentials: { phone?: string; code?: string }) => {
     const phone = credentials.phone || ''
     const code = credentials.code || ''

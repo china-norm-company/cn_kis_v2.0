@@ -132,6 +132,9 @@ const AUTH_SESSION_FALLBACK_KEY = '__cnkis_auth_fallback__'
 const OAUTH_RETRY_GUARD_KEY = 'cnkis_oauth_retry_once'
 const OAUTH_STATE_KEY = 'cnkis_auth_state'
 const OAUTH_TRACE_ID_KEY = 'cnkis_auth_trace_id'
+const OAUTH_EXCHANGE_INFLIGHT_KEY = 'cnkis_oauth_exchange_inflight'
+
+let oauthCodeExchangePromise: Promise<AuthResult | null> | null = null
 
 function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
@@ -372,30 +375,67 @@ export class FeishuAuth {
 
     if (code) {
       const storedState = this.getSessionValue(OAUTH_STATE_KEY)
-      if (oauthParamsInHash && window.location.hash.includes('?')) {
-        const cleanHash = window.location.hash.split('?')[0]
-        window.history.replaceState({}, '', window.location.pathname + cleanHash)
-      } else {
-        window.history.replaceState({}, '', window.location.pathname + window.location.hash)
+      if (oauthCodeExchangePromise) {
+        return oauthCodeExchangePromise
       }
-      try {
-        const result = await this.exchangeCode(code, state || storedState || undefined)
-        this.clearStoredOAuthContext()
-        this.clearOAuthRetryGuard()
-        return result
-      } catch (err) {
-        console.error('[FeishuAuth] 授权码交换失败:', err)
-        if (err instanceof AuthError && this.shouldRetryOAuthExchange(err)) {
-          const retried = this.getSessionValue(OAUTH_RETRY_GUARD_KEY)
-          if (!retried) {
-            this.setSessionValue(OAUTH_RETRY_GUARD_KEY, '1')
-            console.warn('[FeishuAuth] 授权码可重试，发起一次 OAuth 重试')
-            this.redirectToAuth(false)
-            return null
+
+      oauthCodeExchangePromise = (async (): Promise<AuthResult | null> => {
+        try {
+          try {
+            if (typeof sessionStorage !== 'undefined') {
+              if (sessionStorage.getItem(OAUTH_EXCHANGE_INFLIGHT_KEY) === '1') {
+                return null
+              }
+              sessionStorage.setItem(OAUTH_EXCHANGE_INFLIGHT_KEY, '1')
+            }
+          } catch {
+            // sessionStorage 不可用时仍尝试换票
           }
+
+          try {
+            const result = await this.exchangeCode(code, state || storedState || undefined)
+            this.clearStoredOAuthContext()
+            this.clearOAuthRetryGuard()
+            if (oauthParamsInHash && window.location.hash.includes('?')) {
+              const cleanHash = window.location.hash.split('?')[0]
+              window.history.replaceState({}, '', window.location.pathname + cleanHash)
+            } else {
+              window.history.replaceState({}, '', window.location.pathname + (window.location.hash || ''))
+            }
+            try {
+              if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.removeItem(OAUTH_EXCHANGE_INFLIGHT_KEY)
+              }
+            } catch {
+              // ignore
+            }
+            return result
+          } catch (err) {
+            try {
+              if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.removeItem(OAUTH_EXCHANGE_INFLIGHT_KEY)
+              }
+            } catch {
+              // ignore
+            }
+            console.error('[FeishuAuth] 授权码交换失败:', err)
+            if (err instanceof AuthError && this.shouldRetryOAuthExchange(err)) {
+              const retried = this.getSessionValue(OAUTH_RETRY_GUARD_KEY)
+              if (!retried) {
+                this.setSessionValue(OAUTH_RETRY_GUARD_KEY, '1')
+                console.warn('[FeishuAuth] 授权码可重试，发起一次 OAuth 重试')
+                this.redirectToAuth(false)
+                return null
+              }
+            }
+            throw err
+          }
+        } finally {
+          oauthCodeExchangePromise = null
         }
-        throw err
-      }
+      })()
+
+      return oauthCodeExchangePromise
     }
 
     // 2. 飞书端内免登（JSSDK）

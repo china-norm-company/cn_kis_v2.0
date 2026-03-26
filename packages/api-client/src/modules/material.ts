@@ -39,6 +39,7 @@ export interface ProductItem {
   id: number
   name: string
   code: string
+  protocol_id?: number | null
   batch_number: string
   specification: string
   storage_condition: string
@@ -47,6 +48,8 @@ export interface ProductItem {
   product_type_display: string
   sponsor: string
   protocol_name: string
+  study_project_type?: string | null
+  study_project_type_display?: string
   sample_count: number
   in_stock_count: number
   distributed_count: number
@@ -312,6 +315,9 @@ export const materialApi = {
     product_type?: string
     storage_condition?: string
     expiry_status?: string
+    protocol_bound?: string
+    stock_kind?: string
+    study_project_type?: string
     page?: number
     page_size?: number
   }) =>
@@ -330,8 +336,17 @@ export const materialApi = {
     product_type?: string
     sponsor?: string
     description?: string
+    protocol_id?: number
+    protocol_name?: string
+    study_project_type?: string
   }) =>
     api.post('/material/products/create', data),
+
+  linkProductSubject: (productId: number, data: {
+    phone: string
+    name?: string
+  }) =>
+    api.post(`/material/products/${productId}/link-subject`, data),
 
   updateProduct: (id: number, data: Partial<ProductItem>) =>
     api.put(`/material/products/${id}`, data),
@@ -693,7 +708,15 @@ export const materialApi = {
   createProductReceipt: (data: {
     product_id: number; batch_id?: number; expected_quantity: number
     source_type?: string; supplier?: string; po_number?: string; delivery_note?: string
-  }) => api.post<ProductReceiptItem>('/product-management/product-receipts/create', data),
+  }) => api.post<ProductReceiptItem>('/product-management/product-receipts/create', {
+    product_id: data.product_id,
+    batch_id: data.batch_id,
+    expected_qty: data.expected_quantity,
+    source_type: data.source_type,
+    supplier: data.supplier,
+    po_number: data.po_number,
+    delivery_note: data.delivery_note,
+  }),
 
   listProductReceipts: (params?: { product_id?: number; status?: string; page?: number; page_size?: number }) =>
     api.get<{ items: ProductReceiptItem[]; total: number }>('/product-management/product-receipts', { params }),
@@ -703,7 +726,20 @@ export const materialApi = {
     documents_complete?: boolean; temperature_compliant?: boolean; appearance_normal?: boolean
     arrival_temperature?: number; accepted_quantity?: number; rejected_quantity?: number
     inspection_notes?: string; rejection_reason?: string; storage_location_id?: number
-  }) => api.post<ProductReceiptItem>(`/product-management/product-receipts/${id}/inspect`, data),
+  }) => api.post<ProductReceiptItem>(`/product-management/product-receipts/${id}/inspect`, {
+    packaging_intact: data.packaging_intact,
+    label_correct: data.label_correct,
+    quantity_match: data.quantity_match,
+    documents_complete: data.documents_complete,
+    temperature_compliant: data.temperature_compliant,
+    appearance_normal: data.appearance_normal,
+    arrival_temp: data.arrival_temperature,
+    accepted_qty: data.accepted_quantity,
+    rejected_qty: data.rejected_quantity,
+    notes: data.inspection_notes,
+    rejection_reason: data.rejection_reason,
+    location_id: data.storage_location_id,
+  }),
 
   // --- 产品库存 ---
   getProductInventorySummary: (productId: number) =>

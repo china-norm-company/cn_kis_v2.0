@@ -9,19 +9,13 @@
  * 运行方式：
  *   cd workstations/wechat-mini
  *   HEADED=1 pnpm exec playwright test e2e/headed/rbac-role-routing.spec.ts
- *
- * Taro H5 存储格式（必须遵守）：
- *   Taro.setStorageSync('key', val) 存储格式：localStorage['key'] = JSON.stringify({data: val})
- *   Taro.getStorageSync('key') 读取：JSON.parse(localStorage['key']).data
- *   直接写 localStorage 时必须遵循 {data: value} 包装格式，否则 getStorageSync 返回 ""。
  */
 import { expect, test } from '@playwright/test'
 
 // ============================================================
 // 辅助：注入登录态（token + userInfo）到 localStorage
-// 使用 Taro H5 内部存储格式 { data: value }
 // ============================================================
-async function injectLoginStateBeforeLoad(
+async function injectLoginState(
   page: import('@playwright/test').Page,
   options: {
     roles?: string[]
@@ -29,7 +23,7 @@ async function injectLoginStateBeforeLoad(
   } = {},
 ) {
   const { roles = [], accountType = 'subject' } = options
-  const userInfoObject = {
+  const userInfo = JSON.stringify({
     id: 'test-user-001',
     name: '测试用户',
     subjectNo: 'SB-TEST-001',
@@ -38,18 +32,13 @@ async function injectLoginStateBeforeLoad(
     account_type: accountType,
     roles,
     primary_role: roles[0] || 'viewer',
-  }
-  await page.addInitScript(
-    ({ tokenData, userInfoData }) => {
-      // Taro H5 存储格式：{ data: value }
-      // getStorageSync('key') 从 localStorage['key'] 中读取 JSON.parse(...).data
-      localStorage.setItem('token', JSON.stringify({ data: tokenData }))
-      localStorage.setItem('userInfo', JSON.stringify({ data: userInfoData }))
+  })
+  await page.evaluate(
+    ({ token, info }) => {
+      localStorage.setItem('token', token)
+      localStorage.setItem('userInfo', info)
     },
-    {
-      tokenData: 'mock-token-for-testing',
-      userInfoData: userInfoObject,
-    },
+    { token: 'mock-token-for-testing', info: userInfo },
   )
 }
 
@@ -89,7 +78,8 @@ async function mockAuthProfile(
 test.describe('RBAC 角色路由', () => {
   // 用例 1：受试者账号登录后留在首页
   test('受试者登录后留在受试者首页，显示欢迎内容', async ({ page }) => {
-    await injectLoginStateBeforeLoad(page, {
+    await page.goto('/')
+    await injectLoginState(page, {
       roles: [],
       accountType: 'subject',
     })
@@ -108,27 +98,35 @@ test.describe('RBAC 角色路由', () => {
 
   // 用例 2：技术员角色登录后自动跳转到技术员工作台
   test('技术员角色登录后应跳转到 technician 页面', async ({ page }) => {
-    await injectLoginStateBeforeLoad(page, { roles: ['technician'], accountType: 'internal' })
-    await mockAuthProfile(page, ['technician'])
+    await page.goto('/')
+    await injectLoginState(page, {
+      roles: ['technician'],
+      accountType: 'internal',
+    })
+    // 导航到首页触发 useDidShow 角色检查
     await page.goto('/')
     await page.waitForLoadState('domcontentloaded')
-    // Taro.reLaunch('/pages/technician/index') → H5 hash 路由
-    await expect(page).toHaveURL(/#\/pages\/technician\/index/, { timeout: 12000 })
+
+    // 首页会检测角色并重定向
+    await expect(page).toHaveURL(/#\/pages\/technician\/index/, { timeout: 10000 })
   })
 
   // 用例 3：评估员角色登录后应跳转到技术员工作台
   test('评估员角色登录后应跳转到 technician 页面', async ({ page }) => {
-    await injectLoginStateBeforeLoad(page, { roles: ['evaluator'], accountType: 'internal' })
-    await mockAuthProfile(page, ['evaluator'])
+    await page.goto('/')
+    await injectLoginState(page, {
+      roles: ['evaluator'],
+      accountType: 'internal',
+    })
     await page.goto('/')
     await page.waitForLoadState('domcontentloaded')
-    // resolveLoginRoute('internal', ['evaluator']) = 'technician_workbench' → reLaunch
-    await expect(page).toHaveURL(/#\/pages\/technician\/index/, { timeout: 12000 })
+    await expect(page).toHaveURL(/#\/pages\/technician\/index/, { timeout: 10000 })
   })
 
   // 用例 4：受试者账号无法访问技术员页面（被重定向）
   test('受试者无 technician 角色时访问技术员页面应被重定向', async ({ page }) => {
-    await injectLoginStateBeforeLoad(page, {
+    await page.goto('/')
+    await injectLoginState(page, {
       roles: [],
       accountType: 'subject',
     })
@@ -142,17 +140,21 @@ test.describe('RBAC 角色路由', () => {
 
   // 用例 5：多角色用户（evaluator + qa）按优先级进入技术员工作台
   test('多角色用户（evaluator + qa）按优先级进入技术员工作台', async ({ page }) => {
-    await injectLoginStateBeforeLoad(page, { roles: ['evaluator', 'qa'], accountType: 'internal' })
-    await mockAuthProfile(page, ['evaluator', 'qa'])
+    await page.goto('/')
+    await injectLoginState(page, {
+      roles: ['evaluator', 'qa'],
+      accountType: 'internal',
+    })
     await page.goto('/')
     await page.waitForLoadState('domcontentloaded')
-    // evaluator 优先级高于 qa，resolveLoginRoute 返回 'technician_workbench'
-    await expect(page).toHaveURL(/#\/pages\/technician\/index/, { timeout: 12000 })
+    // evaluator 在 FIELD_EXECUTOR 组中，优先级高于 qa
+    await expect(page).toHaveURL(/#\/pages\/technician\/index/, { timeout: 10000 })
   })
 
   // 用例 6：零角色用户（仅 viewer）进入受试者默认首页，不崩溃
   test('零角色用户（仅 viewer）进入受试者默认首页，不崩溃', async ({ page }) => {
-    await injectLoginStateBeforeLoad(page, {
+    await page.goto('/')
+    await injectLoginState(page, {
       roles: ['viewer'],
       accountType: 'internal',
     })

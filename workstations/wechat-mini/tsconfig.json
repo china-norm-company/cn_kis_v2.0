@@ -20,6 +20,7 @@
     "types": ["@tarojs/taro", "node"],
     "paths": {
       "@/*": ["./src/*"],
+      "@cn-kis/consent-placeholders": ["../../packages/consent-placeholders/src/index.ts"],
       "@cn-kis/subject-core": ["../../packages/subject-core/src/index.ts"]
     },
     "baseUrl": "."
