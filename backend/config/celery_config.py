@@ -20,6 +20,22 @@ timezone = 'Asia/Shanghai'
 enable_utc = True
 
 beat_schedule = {
+    # ══════════════════════════════════════════════════════════════
+    # 智能运营早晚报（Issue #4）
+    # 总经理视角：LLM 分析 + 全域指标 + 工作台推广状态 → 飞书群
+    # ══════════════════════════════════════════════════════════════
+    'ops-morning-briefing': {
+        'task': 'apps.secretary.tasks.send_morning_briefing',
+        'schedule': crontab(hour=9, minute=0),
+    },
+    'ops-evening-briefing': {
+        'task': 'apps.secretary.tasks.send_evening_briefing',
+        'schedule': crontab(hour=18, minute=0),
+    },
+    'ops-weekly-briefing': {
+        'task': 'apps.secretary.tasks.send_weekly_briefing',
+        'schedule': crontab(hour=8, minute=30, day_of_week='mon'),
+    },
     # ── 纯通知类（不调用 AI） ──
     'notification-daily-alerts': {
         'task': 'apps.notification.tasks.push_all_alerts',
@@ -101,6 +117,16 @@ beat_schedule = {
         'task': 'apps.secretary.tasks.feishu_token_health_check',
         'schedule': crontab(hour='0,6,12,18', minute=15),
     },
+    # 每天早上 8:30：向开发群发过期用户汇总 + 逐人私信提醒重新授权
+    'feishu-token-expiry-morning-alert': {
+        'task': 'apps.secretary.tasks.feishu_token_expiry_morning_alert',
+        'schedule': crontab(hour=8, minute=30),
+    },
+    # 每 6 小时：自动扫描 pending checkpoint 并触发补采（覆盖 token 刚恢复 / 新用户）
+    'feishu-auto-backfill-sweep': {
+        'task': 'apps.secretary.tasks.feishu_auto_backfill_sweep',
+        'schedule': crontab(hour='1,7,13,19', minute=0),
+    },
 }
 
 # V2 安全开关：测试环境禁用生产采集类任务
@@ -147,4 +173,3 @@ if PRODUCTION_TASKS_DISABLED:
     # 'project-startup-readiness-check'
     # 'quality-kpi-daily-snapshot'
     # 'agent-monthly-budget-reset'
-}

@@ -9,12 +9,10 @@
 """
 import csv
 import io
-import json
 import logging
-import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from django.db import transaction
 from django.utils import timezone

@@ -27,12 +27,11 @@ Usage:
 import os
 import re
 import logging
-from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from collections import defaultdict
 
 from django.core.management.base import BaseCommand
-from django.db import connection, transaction
+from django.db import connection
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -115,7 +114,7 @@ class Command(BaseCommand):
     # 1. 员工受试者结算模板（最高价值 — 含真实身份信息）
     # ==================================================================
     def phase_settlement(self):
-        import openpyxl, xlrd
+        import openpyxl
 
         files = self._find_settlement_files()
         self.stdout.write(f'找到 {len(files)} 个结算相关文件')
@@ -343,7 +342,6 @@ class Command(BaseCommand):
     def _upsert_settlement_subjects(self, records):
         from apps.subject.models import Subject, Enrollment, EnrollmentStatus
         from apps.protocol.models import Protocol
-        from apps.knowledge.models import KnowledgeEntry
 
         proto_cache = {}
         saved = 0
@@ -658,7 +656,6 @@ class Command(BaseCommand):
     def _upsert_weekly(self, records):
         from apps.subject.models import Subject, Enrollment, EnrollmentStatus
         from apps.protocol.models import Protocol
-        from apps.knowledge.models import KnowledgeEntry
 
         proto_cache = {}
         saved = 0
@@ -841,7 +838,7 @@ class Command(BaseCommand):
                 source_key='visit_signals_all',
                 defaults={
                     'entry_type': 'lesson_learned',
-                    'title': f'访视记录信号汇总',
+                    'title': '访视记录信号汇总',
                     'content': content,
                     'status': 'published', 'is_published': True,
                 }
@@ -852,8 +849,7 @@ class Command(BaseCommand):
     # 6. 知识图谱 — 受试者全生命周期
     # ==================================================================
     def phase_kg(self):
-        from apps.subject.models import Subject, Enrollment
-        from apps.subject.models_execution import SubjectPayment
+        from apps.subject.models import Enrollment
         from apps.knowledge.models import KnowledgeEntity, KnowledgeRelation
 
         self.stdout.write('构建全生命周期知识图谱...')
@@ -924,10 +920,7 @@ class Command(BaseCommand):
     # 7. 向量化（批量生成全景文本并索引）
     # ==================================================================
     def phase_vectorize(self):
-        from apps.subject.models import Subject, Enrollment
-        from apps.subject.models_timeseries import SkinMeasurementRecord
-        from apps.subject.models_execution import SubjectQuestionnaire, ComplianceRecord, SubjectPayment
-        from apps.subject.models_domain import SkinProfile
+        from apps.subject.models import Subject
         from apps.knowledge.models import KnowledgeEntry
 
         subjects = Subject.objects.filter(is_deleted=False)

@@ -85,3 +85,26 @@ temp/
 playwright-report/
 test-results/
 coverage/
+
+# ============================================================
+# 大型目录 / 敏感数据 / 嵌套项目
+# ============================================================
+# 飞书用户 token（含敏感凭证，禁止提交）
+backend/data/
+
+# 截图测试产物（二进制，不纳入版本管理）
+tests/ui-acceptance/screenshots-*/
+tests/ui-acceptance/screenshots/
+
+# 项目副本（误操作生成，不提交）
+cn_kis_v2.0/
+
+# React Native / 微信小程序（源码已纳入仓库，仅排除构建产物和依赖）
+workstations/mobile-rn/node_modules/
+workstations/mobile-rn/android/build/
+workstations/mobile-rn/android/app/build/
+workstations/mobile-rn/android/.gradle/
+workstations/mobile-rn/ios/
+workstations/wechat-mini/node_modules/
+workstations/wechat-mini/dist/
+workstations/wechat-mini/.swc/

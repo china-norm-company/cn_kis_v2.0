@@ -4,11 +4,10 @@
 汇总项目全生命周期的质量数据，生成结构化报告。
 """
 import logging
-from django.db.models import Count, Q
+from django.db.models import Count
 
 from ..models import (
-    Deviation, DeviationStatus, DeviationSeverity,
-    CAPA, CAPAStatus,
+    Deviation, DeviationStatus, CAPA, CAPAStatus,
 )
 
 logger = logging.getLogger(__name__)

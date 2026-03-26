@@ -1,0 +1,132 @@
+---
+description: 部署前测试验收规范（强制）——所有服务器改动必须先测试再部署
+globs:
+alwaysApply: true
+---
+
+# 部署前测试验收规范（强制）
+
+## 核心原则
+
+**任何涉及服务器的改动，必须先完成测试验收，再执行部署。禁止直接部署未经验证的代码。**
+
+## 必须遵守的三步流程
+
+```
+1. 本地/测试环境验证  →  2. Headed 浏览器验收  →  3. 部署到服务器
+```
+
+### 第 1 步：本地验证
+
+改动类型 | 最低验证要求
+---------|------------
+前端 scope / OAuth 参数 | 构建后用 headed 浏览器打开授权 URL，截图确认无错误码
+前端 UI 改动 | 本地 `pnpm dev` 截图确认页面正常
+后端 API 新增 | `python manage.py check` 无错误，可用 curl 或 Django shell 验证逻辑
+数据库 migration | `python manage.py showmigrations` 确认链路完整，`migrate --noinput` 无报错
+配置文件改动 | `python manage.py check` 通过
+
+### 第 2 步：Headed 浏览器验收（强制）
+
+以下改动**必须**用 Playwright headed 模式（`headless: false`）完成截图验收：
+
+- 飞书 OAuth scope 列表改动
+- 登录/授权流程改动
+- 前端页面关键路径改动
+- 飞书 API 集成改动
+
+**OAuth scope 验收必须使用的测试脚本**：
+```bash
+# 完整真实授权流程（等待用户扫码 + 授权同意 + 跳转）
+node tests/ui-acceptance/test-oauth-full.mjs
+```
+此脚本会打开 headed 浏览器，等待最多 5 分钟让用户完成完整授权流程，在授权同意页截图，检测错误码，最终验证 redirect 成功。
+
+**禁止使用的简化方式**：
+- `test-im-scopes.mjs`（旧脚本）— 只截图登录页，不等授权，已废弃
+
+**验收标准**：
+- OAuth 页面：截图显示飞书登录/授权界面，**无错误码（如 20043）**
+- UI 页面：截图无红屏、无 JS 报错
+- 所有截图保存存档作为验收凭证
+
+### 第 3 步：部署到服务器
+
+只有在第 1、2 步验证通过后，才能执行：
+```bash
+# 前端
+rsync -avz --delete -e "ssh -i ~/.ssh/openclaw1.1.pem" dist/ root@118.196.64.48:/var/www/...
+
+# 后端
+scp -i ~/.ssh/openclaw1.1.pem files root@118.196.64.48:/opt/cn-kis-v2/backend/...
+kill -HUP <gunicorn-master-pid>  # 优雅重载
+```
+
+## 关于飞书 OAuth Scope 的特别规定
+
+飞书 scope 名称容易出错（例：`minutes:media:readonly` 不存在，错误码 20043）。
+
+**每次修改 scope 列表后必须：**
+1. 用 `tests/ui-acceptance/test-im-scopes.mjs` 或类似脚本测试授权 URL
+2. Headed 截图确认页面正常（飞书扫码登录页面显示 = 通过）
+3. 确认通过后再 `pnpm build` + `rsync` 部署
+
+**已验证的 scope 记录**（2026-03-24）：
+
+| scope | 状态 | 类型 | 备注 |
+|-------|------|------|------|
+| `minutes:media:readonly` | ❌ **无效** | — | Scope 名称不存在，错误码 20043 |
+| `im:message.group_msg:readonly` | ❌ **禁止放入 OAuth scope** | 应用级 | 在飞书后台已开通但属于应用权限（机器人事件订阅），放入用户 OAuth URL 触发 20043 |
+| `im:message.p2p_msg:readonly` | ❌ **禁止放入 OAuth scope** | 应用级 | 同上 |
+| `im:message:readonly` | ✅ **有效** | 用户委托 | 正确的用户级 IM 消息读取 scope |
+| 其余 21 项（完整列表） | ✅ 静态检查通过 | 用户委托 | 需人工扫码验收授权页面 |
+
+## AI 的禁止行为
+
+- ❌ **未经测试直接执行 scp / rsync / kill -HUP 到生产服务器**
+- ❌ 未跑 Playwright headed 测试直接修改 OAuth scope 并部署
+- ❌ 以"应该没问题"为由跳过测试步骤
+- ❌ 仅用 curl 测试飞书授权页面（飞书页面需要 JS 渲染，curl 无效）
+- ❌ 浏览器测试未截图就声称"测试通过"
+- ❌ **只展示登录/授权界面截图，不等待用户实际完成授权就声称测试通过**
+- ❌ **用静态分析、只检查登录页加载、页面标题等简化方式代替真实授权流程**
+- ❌ **OAuth scope 测试不经过完整"扫码→授权同意页→点击授权→跳转"流程就判定为通过**
+
+## OAuth 测试脚本的固定参数（禁止随意修改）
+
+以下参数已与飞书注册配置对齐，**任何改动前必须查证，禁止猜测**：
+
+| 参数 | 正确值 | 来源依据 |
+|------|--------|----------|
+| `redirect_uri` | `http://118.196.64.48/login` | 已在飞书注册；`china-norm.com` 尚未注册，禁用 |
+| `app_id` 参数名 | `app_id=` | 与 `batch_refresh_tokens.py` / `tasks.py` 一致，禁用 `client_id=` |
+| `state` 参数 | **不传** | 后端会校验 state，Playwright 浏览器无 sessionStorage，传了必报 AUTH_STATE_INVALID |
+
+**查证方式**：修改前先读 `tests/ui-acceptance/run-ui-tests.mjs`（注释有说明）和 `ops/scripts_v1/test_arch_restructure_acceptance.py`（有已验证值）。
+
+## 飞书 Scope 的关键区分：应用权限 vs 用户委托权限
+
+飞书权限有两种类型，**只有用户委托权限才能放在 OAuth scope 里**：
+
+| 类型 | 使用 Token | 是否能进 OAuth scope | 典型例子 |
+|------|-----------|---------------------|---------|
+| **用户委托权限** | `user_access_token` | ✅ 可以 | `im:message:readonly`、`calendar:calendar:readonly` |
+| **应用权限** | `tenant_access_token` | ❌ 不可以（触发 20043） | `im:message.group_msg:readonly`、`im:message.p2p_msg:readonly` |
+
+**判断方法**：在飞书开发者后台，该权限的 token 类型如果是"使用 app_access_token 调用 API"或事件订阅，则是应用权限，不能放进 OAuth scope。
+
+## 关于 headed 测试的重要限制
+
+飞书 OAuth 授权分两个阶段：
+1. **登录页**（扫码/账密）→ 自动化 Playwright 只能验证这一步
+2. **授权/同意页**（权限列表）→ 20043 错误出现在这一步，**必须人工扫码后截图确认**
+
+Playwright 测试只能做**静态检查 + 登录页加载验证**，不能替代人工扫码验收授权页。
+
+## 参考
+
+- 测试脚本目录：`tests/ui-acceptance/`
+- 截图存档目录：`tests/ui-acceptance/screenshots-*/`
+- 服务器 SSH：`ssh -i ~/.ssh/openclaw1.1.pem root@118.196.64.48`
+- V2 后端路径：`/opt/cn-kis-v2/backend/`
+- V2 前端路径：`/var/www/cn-kis/secretary/`

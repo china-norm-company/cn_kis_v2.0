@@ -1,0 +1,97 @@
+name: 缺陷修复
+description: 报告某个工作台的 Bug
+title: "fix(<工作台>): <简要描述问题>"
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: workstation
+    attributes:
+      label: 工作台
+      description: Bug 出现在哪个工作台？
+      options:
+        - 秘书台（secretary）
+        - 财务台（finance）
+        - 研究台（research）
+        - 执行台（execution）
+        - 质量台（quality）
+        - 人事台（hr）
+        - 客户台（crm）
+        - 招募台（recruitment）
+        - 设备台（equipment）
+        - 物料台（material）
+        - 设施台（facility）
+        - 评估台（evaluator）
+        - 人员台（lab-personnel）
+        - 伦理台（ethics）
+        - 接待台（reception）
+        - 统管台（control-plane）
+        - 治理台（governance）
+        - 智能台（digital-workforce）
+        - 不确定
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 发生了什么？
+      placeholder: 点击「提交审核」按钮后，页面没有任何反应，控制台出现红色报错
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 如何一步步触发这个 Bug？
+      placeholder: |
+        1. 打开财务台
+        2. 进入发票申请页
+        3. 填写完整表单
+        4. 点击「提交审核」
+        5. 出现：页面无反应，控制台报错 TypeError
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+      description: 正确应该发生什么？
+      placeholder: 点击后应该提交表单并跳转到审核等待页面
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境信息
+      description: 在哪个环境发现的？
+      placeholder: |
+        - 环境：本地 / 阿里云测试 / 火山云生产
+        - 浏览器：Chrome 122
+        - 操作系统：macOS 14
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: sensitive_domain
+    attributes:
+      label: 是否涉及敏感域？
+      options:
+        - label: 涉及飞书认证/登录/权限
+        - label: 涉及知识资产数据
+        - label: 以上都不涉及
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: 严重程度
+      options:
+        - 轻微（功能可用，体验不好）
+        - 一般（部分功能受影响）
+        - 严重（核心功能无法使用）
+        - 紧急（影响生产数据或认证）
+    validations:
+      required: true

@@ -7,7 +7,7 @@ import logging
 from typing import Optional
 from django.utils import timezone
 
-from ..models import Subject, SubjectStatus, SubjectRiskLevel
+from ..models import Subject, SubjectRiskLevel
 
 logger = logging.getLogger(__name__)
 

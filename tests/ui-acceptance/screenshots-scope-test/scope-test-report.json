@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-03-24T03:21:02.699Z",
+  "results": [
+    {
+      "name": "01-im-scopes-only",
+      "label": "仅测试两个 IM scope",
+      "passed": true,
+      "error": null
+    },
+    {
+      "name": "02-full-24-scopes",
+      "label": "完整 24 项 scope（无 minutes）",
+      "passed": true,
+      "error": null
+    }
+  ]
+}

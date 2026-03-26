@@ -836,7 +836,7 @@ class FeishuClient:
         resp = self.request_with_retry(method='GET', url=url, headers=headers, timeout=15.0, retry=self.RATE_LIMIT_RETRY)
         if resp.status_code != 200:
             raise FeishuAPIError(code=resp.status_code, msg=f'HTTP {resp.status_code}: {resp.text[:200]}',
-                                 api=f'mail attachment download_url')
+                                 api='mail attachment download_url')
         result = resp.json()
         if result.get('code', -1) != 0:
             raise FeishuAPIError(code=result.get('code', -1), msg=result.get('msg', ''), api='mail attachment download_url')
@@ -1624,9 +1624,12 @@ class FeishuClient:
         member_type: str = 'openid', member_role: str = 'admin',
     ) -> Dict:
         """
-        添加知识空间成员
+        添加知识空间成员（仅支持真实用户，member_type='openid'）。
 
-        使用 user_access_token（空间创建者身份）将其他人/应用添加为成员。
+        ⚠️ 重要限制：飞书不支持将 App/Bot 添加为知识库成员。
+        - member_type='appid' 在飞书 Wiki API 中不可用，调用会返回错误。
+        - 知识库操作唯一正确方式：用管理员的 user_access_token 代理执行。
+        - 此方法仅用于将真实飞书用户（openid）加为知识库成员。
         """
         user_token = self.get_user_token()
         return self._user_request(
@@ -1753,7 +1756,7 @@ class FeishuClient:
 
     def get_wiki_node_info(self, token: str) -> Dict:
         """通过 obj_token 或 node_token 获取知识库节点信息"""
-        return self._request('GET', f'wiki/v2/spaces/get_node', params={'token': token})
+        return self._request('GET', 'wiki/v2/spaces/get_node', params={'token': token})
 
     def search_documents(
         self,

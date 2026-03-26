@@ -9,17 +9,15 @@
 5. 工时超负荷（软预警）
 """
 import logging
-from typing import Optional
 from datetime import date, timedelta
-from decimal import Decimal
 
-from django.db.models import Sum, Q
+from django.db.models import Q
 
 from apps.hr.models import Staff, GCPStatus
 from apps.workorder.models import WorkOrder, WorkOrderAssignment
 from apps.lab_personnel.models import (
     LabStaffProfile, StaffCertificate, MethodQualification,
-    CertificateStatus, MethodQualLevel,
+    MethodQualLevel,
 )
 from apps.lab_personnel.models_scheduling import ShiftSlot
 from apps.lab_personnel.models_worktime import WorkTimeSummary

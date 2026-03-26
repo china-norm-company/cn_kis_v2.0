@@ -4,7 +4,6 @@
 基于到访率、问卷完成率和时间窗偏差计算综合依从性评分。
 """
 from decimal import Decimal
-from typing import Optional
 from django.utils import timezone
 
 from ..models_execution import ComplianceRecord, ComplianceLevel

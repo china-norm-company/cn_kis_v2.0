@@ -12,12 +12,11 @@ CDISC Library API: https://library.cdisc.org/api
 认证方式: API Key (Bearer Token)
 """
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import requests
 from django.conf import settings
 from django.db import transaction
-from django.utils import timezone
 
 from .models import (
     EntryType,
@@ -119,7 +118,7 @@ def import_sdtm_domains(version: str = '3-4') -> Dict[str, Any]:
                     subject=entity,
                     object_entity=sdtm_root,
                     relation_type=RelationType.PART_OF,
-                    predicate_uri=f'cdisc:partOf',
+                    predicate_uri='cdisc:partOf',
                     source='cdisc-import',
                 )
                 _ensure_linked_entry(entity, source_type='cdisc_import',

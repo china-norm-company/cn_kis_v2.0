@@ -8,12 +8,11 @@
 4. 双轨并行期数据一致性监控（四类结果）
 """
 import csv
-import json
 import logging
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 from django.db import transaction
 from django.utils import timezone
@@ -277,7 +276,7 @@ class EkbDedupReport:
 
     def generate_html_report(self, output_path: Optional[str] = None) -> str:
         from apps.ekuaibao_integration.models import (
-            EkbConflict, EkbInjectionLog, EkbRawRecord
+            EkbConflict, EkbRawRecord
         )
         from apps.ekuaibao_integration.ekb_exporter import BACKUP_ROOT
 

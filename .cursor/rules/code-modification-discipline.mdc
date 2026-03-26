@@ -1,0 +1,121 @@
+---
+description: 代码修改纪律（强制）——修改前必须分析，绝不整体重写
+globs:
+alwaysApply: true
+---
+
+# 代码修改纪律（强制）
+
+## 核心原则
+
+**修改代码之前必须先分析。禁止对重要模块、关联复杂的代码进行整体重写。**
+
+---
+
+## 修改前的必做分析（4 个问题）
+
+在动任何代码之前，AI 必须明确回答以下 4 个问题：
+
+| 问题 | 目的 |
+|------|------|
+| **目标是什么？** | 只改这一件事，不顺手改其他 |
+| **与哪些代码/模块有关联？** | 搜索相关文件，确认影响范围 |
+| **应该修改哪些部分？** | 精确定位，只动需要改的行 |
+| **应该保留哪些部分？** | 明确不能动的逻辑、配置、参数 |
+
+**执行方式**：用 Grep/Glob/Read 搜索相关代码，阅读后再动手。
+
+---
+
+## 重要模块的修改规范
+
+### 判断标准：什么是"重要/关联多"的代码？
+
+以下类型的文件属于**高风险文件**，修改必须格外谨慎：
+
+- 认证/OAuth 相关（`auth.ts`、`identity/services.py`、`feishu_client.py`）
+- Token 管理（`feishu_fetcher.py`、`feishu_token_store.py`）
+- 数据库 Model（`models.py`、Migration 文件）
+- 路由配置（`urls.py`、`vite.config.ts`）
+- 核心配置（`settings.py`、`.env`、`config.ts`）
+- 测试脚本中已验证的配置（redirect_uri、App ID、参数格式）
+
+### 修改高风险文件的规范
+
+```
+1. 先用 git show 或 Read 读取当前内容，理解现有逻辑
+2. 搜索使用了这段代码的其他地方（Grep）
+3. 只修改目标行/目标块，保留周边代码
+4. 修改后用 ReadLints 检查是否引入 linter 错误
+5. headed 测试验收后再提交
+```
+
+### 绝对禁止的行为
+
+- ❌ 整体重写一个文件（除非该文件是全新创建）
+- ❌ 修改一个功能时顺手"优化/重构"无关的代码
+- ❌ 把"我认为应该这样"的改动强加到无关模块
+- ❌ 为了测试方便而修改生产代码的参数（如 redirect_uri、App ID）
+- ❌ 不读文件就直接写 StrReplace / Write
+
+---
+
+## 已有实现的检查（每次修改前执行）
+
+```
+Step 1: Grep/Glob 搜索关键词，确认现有实现
+Step 2: 读取候选文件（Read），理解边界
+Step 3: 搜索项目中已验证的同类配置（如测试脚本里已工作的参数格式）
+Step 4: 只改目标，保留其他
+```
+
+**反例（本次踩坑复盘）**：
+- 目标：修改 OAuth scope 列表（仅改 auth.ts 的 SCOPES 数组）
+- 错误做法：同时改了测试脚本里的 `app_id`→`client_id`、`redirect_uri`、增加了 `state` 参数
+- 后果：连续触发 20029（redirect_uri 未注册）、AUTH_STATE_INVALID（state 验证失败）
+- 正确做法：只改 scope 列表，测试脚本的 redirect_uri/app_id 格式从现有工作脚本复制
+
+---
+
+## 测试脚本参数的黄金规则
+
+测试脚本里的以下参数**不允许随意修改**，必须与已验证的生产配置完全一致：
+
+| 参数 | 正确值来源 |
+|------|-----------|
+| `redirect_uri` | 已在飞书注册的 URI（查 `run-ui-tests.mjs` 注释或 `test_arch_restructure_acceptance.py`） |
+| `app_id` vs `client_id` | 与现有工作测试脚本保持一致（如 `batch_refresh_tokens.py` 用 `app_id`） |
+| `state` 参数 | 除非明确需要，否则**不加**（后端会验证 state，测试浏览器无 sessionStorage） |
+
+---
+
+## 提交和部署前的 Headed 测试规范
+
+**所有涉及以下内容的改动，提交前必须完成 headed 浏览器测试验收：**
+
+- 飞书 OAuth 流程（scope、redirect_uri、App ID、state 等任何参数）
+- 前端登录/授权逻辑
+- 后端 feishu_callback / token 交换逻辑
+- 任何会影响用户登录体验的改动
+
+**验收工具**：
+```bash
+node tests/ui-acceptance/test-oauth-full.mjs
+```
+
+**验收标准**：截图显示成功进入工作台（URL 不再是 /login），无错误提示。
+
+---
+
+## 修改前备份规范
+
+对于以下场景，**必须先备份再修改**：
+1. 修改已在生产运行的测试脚本参数
+2. 修改 OAuth/认证相关核心代码
+3. 修改 Migration 文件（已 applied 的 migration 禁止修改）
+
+**备份方式**：
+```bash
+cp 目标文件 目标文件.bak_$(date +%Y%m%d)
+# 修改并验收通过后再删除 .bak 文件
+```

@@ -11,9 +11,7 @@
 """
 import json
 import logging
-from typing import Optional
 
-from django.conf import settings
 
 from libs.feishu_client import feishu_client, FeishuAPIError
 

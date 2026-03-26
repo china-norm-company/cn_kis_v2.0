@@ -94,7 +94,7 @@ function VenueChangeModal({ venues, venueTypeOptions, onClose, onSuccess }: { ve
       setMsg('未检测到变更')
       return
     }
-    mutation.mutate(payload)
+    mutation.mutate(payload as { [k: string]: unknown; venue_id: number })
   }
 
   return (

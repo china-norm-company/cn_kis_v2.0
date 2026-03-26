@@ -2182,7 +2182,6 @@ def get_recommended_projects(request):
         return 404, {'code': 404, 'msg': '未找到受试者信息'}
 
     from apps.protocol.models import Protocol
-    from django.db.models import Q
     import datetime
 
     # 获取受试者已参与的项目（排除推荐重复）

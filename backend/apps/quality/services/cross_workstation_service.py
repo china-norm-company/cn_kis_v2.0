@@ -6,7 +6,7 @@
 import logging
 from datetime import date
 
-from ..models import Deviation, DeviationStatus, DeviationSeverity
+from ..models import Deviation, DeviationStatus
 
 logger = logging.getLogger(__name__)
 

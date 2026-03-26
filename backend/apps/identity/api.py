@@ -480,7 +480,7 @@ def _compute_visible_menus(perm_codes: list, workbenches: list) -> dict:
     response={200: dict, 400: dict, 401: dict, 500: dict},
 )
 def feishu_callback(request, data: FeishuCallbackIn):
-    """飞书 OAuth 授权码换取 Token（18 个工作台统一使用子衿 App ID 授权）"""
+    """飞书 OAuth 授权码换取 Token（19 个工作台统一使用子衿 App ID 授权）"""
     logger = auth_logger
 
     from .services import (
@@ -924,8 +924,6 @@ def sms_verify(request, data: SmsVerifyIn):
 @router.post('/wechat/bind-phone', summary='绑定受试者手机号')
 def wechat_bind_phone(request, data: WechatBindPhoneIn):
     """微信小程序首次登录后，按手机号绑定 Subject"""
-    from .services import verify_jwt_token
-    from .models import Account
     from apps.subject.models import Subject
 
     account = _get_account_from_request(request)
@@ -1275,12 +1273,12 @@ def list_accounts(request, page: int = 1, page_size: int = 50, keyword: Optional
 # 工作台配置管理 API（渐进上线支持）
 # ============================================================================
 
-# 18 个工作台的合法标识（来自 workstation-independence.mdc）
+# 19 个工作台的合法标识（唯一真相源：backend/configs/workstations.yaml）
 VALID_WORKSTATION_KEYS = {
     'secretary', 'finance', 'research', 'execution', 'quality',
     'hr', 'crm', 'recruitment', 'equipment', 'material',
     'facility', 'evaluator', 'lab-personnel', 'ethics', 'reception',
-    'control-plane', 'admin', 'digital-workforce',
+    'control-plane', 'admin', 'digital-workforce', 'data-platform',
 }
 
 VALID_MODES = {'blank', 'pilot', 'full'}

@@ -439,3 +439,138 @@ def deactivate_protocol(request, protocol_id: int):
     if not updated:
         return 400, {'code': 400, 'msg': '归档失败'}
     return {'code': 200, 'msg': '协议已归档', 'data': {'id': updated.id, 'status': updated.status}}
+
+
+# ============================================================================
+# 全景成本快照
+# ============================================================================
+@router.get('/{protocol_id}/cost-summary', summary='协议全景成本汇总',
+            response={200: dict, 404: dict})
+@require_permission('protocol.protocol.read')
+def get_cost_summary(request, protocol_id: int):
+    """
+    返回该协议下来自三个来源的成本数据汇总：
+    - 易快报报销单（差旅/采购/耗材等运营费用）
+    - 受试者礼金支付
+    - 预算申请总额
+
+    数据来自 ProtocolCostSnapshot；若无快照则实时计算（较慢）。
+    """
+    from django.db import connection as _conn
+    from .models import ProtocolCostSnapshot
+
+    account = _get_account_from_request(request)
+    proto = get_visible_object(Protocol.objects.filter(id=protocol_id, is_deleted=False), account)
+    if not proto:
+        return 404, {'code': 404, 'msg': '协议不存在'}
+
+    snapshot = ProtocolCostSnapshot.objects.filter(protocol_code=proto.code).first()
+
+    if snapshot:
+        data = {
+            'protocol_code': snapshot.protocol_code,
+            'protocol_title': snapshot.protocol_title,
+            'protocol_status': snapshot.protocol_status,
+            'ekb': {
+                'expense_count': snapshot.ekb_expense_count,
+                'expense_total': float(snapshot.ekb_expense_total),
+                'approved_total': float(snapshot.ekb_approved_total),
+                'expense_types': snapshot.ekb_expense_types,
+            },
+            'subject_payment': {
+                'payment_count': snapshot.subject_payment_count,
+                'paid_count': snapshot.subject_paid_count,
+                'payment_total': float(snapshot.subject_payment_total),
+                'paid_total': float(snapshot.subject_paid_total),
+                'subject_count': snapshot.subject_count,
+            },
+            'budget': {
+                'budget_count': snapshot.budget_count,
+                'budget_total': float(snapshot.budget_total),
+            },
+            'computed_at': snapshot.computed_at.isoformat() if snapshot.computed_at else None,
+            'source': 'snapshot',
+        }
+    else:
+        # 实时计算（无快照时降级）
+        cur = _conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*), COALESCE(SUM(amount),0),
+                   COALESCE(SUM(CASE WHEN approval_status IN ('approved','reimbursed') THEN amount ELSE 0 END),0)
+            FROM t_expense_request WHERE project_name = %s
+        """, [proto.code])
+        e = cur.fetchone()
+
+        cur.execute("""
+            SELECT COUNT(*), COUNT(CASE WHEN status='paid' THEN 1 END),
+                   COALESCE(SUM(amount),0), COALESCE(SUM(CASE WHEN status='paid' THEN amount ELSE 0 END),0),
+                   COUNT(DISTINCT subject_id)
+            FROM t_subject_payment WHERE project_code = %s
+        """, [proto.code])
+        s = cur.fetchone()
+
+        cur.execute("""
+            SELECT COUNT(*), COALESCE(SUM(total_income),0)
+            FROM t_project_budget WHERE project_name = %s
+        """, [proto.code])
+        b = cur.fetchone()
+
+        data = {
+            'protocol_code': proto.code,
+            'protocol_title': proto.title,
+            'protocol_status': proto.status,
+            'ekb': {
+                'expense_count': e[0], 'expense_total': float(e[1]),
+                'approved_total': float(e[2]), 'expense_types': {},
+            },
+            'subject_payment': {
+                'payment_count': s[0], 'paid_count': s[1],
+                'payment_total': float(s[2]), 'paid_total': float(s[3]),
+                'subject_count': s[4],
+            },
+            'budget': {'budget_count': b[0], 'budget_total': float(b[1])},
+            'computed_at': None,
+            'source': 'realtime',
+        }
+
+    return {'code': 200, 'msg': 'OK', 'data': data}
+
+
+@router.get('/cost-summary/top', summary='成本排行榜（Top N 项目）',
+            response={200: dict})
+@require_permission('protocol.protocol.read')
+def get_cost_summary_top(request, by: str = 'ekb_expense_total', limit: int = 20):
+    """
+    按指定维度排序返回 Top N 项目的成本快照。
+
+    by 可选值：
+      ekb_expense_total       按报销金额
+      subject_payment_total   按礼金支付金额
+      budget_total            按预算金额
+      subject_count           按受试者数量
+    """
+    from .models import ProtocolCostSnapshot
+    ALLOWED = {
+        'ekb_expense_total', 'subject_payment_total',
+        'budget_total', 'subject_count',
+    }
+    if by not in ALLOWED:
+        by = 'ekb_expense_total'
+    limit = min(max(limit, 1), 100)
+
+    snapshots = ProtocolCostSnapshot.objects.order_by(f'-{by}')[:limit]
+    items = [
+        {
+            'protocol_code': s.protocol_code,
+            'protocol_title': s.protocol_title,
+            'protocol_status': s.protocol_status,
+            'ekb_expense_total': float(s.ekb_expense_total),
+            'subject_payment_total': float(s.subject_payment_total),
+            'budget_total': float(s.budget_total),
+            'subject_count': s.subject_count,
+            'ekb_expense_count': s.ekb_expense_count,
+            'subject_payment_count': s.subject_payment_count,
+        }
+        for s in snapshots
+    ]
+    return {'code': 200, 'msg': 'OK', 'data': {'items': items, 'total': len(items)}}

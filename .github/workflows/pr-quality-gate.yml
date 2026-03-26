@@ -30,6 +30,13 @@ jobs:
             });
             const changedFiles = filesResp.data.map(f => f.filename);
 
+            // 检查是否触及工作台注册表（需要额外确认）
+            const touchesWorkstationRegistry = changedFiles.some((f) =>
+              f === 'backend/configs/workstations.yaml' ||
+              f === 'backend/apps/identity/api.py' ||
+              f === 'backend/apps/identity/management/commands/seed_roles.py'
+            );
+
             // 检查是否触及 Wave 1 红线文件（认证权限域）
             const touchesAuthScope = changedFiles.some((f) =>
               f.startsWith('backend/apps/identity/') ||
@@ -48,6 +55,38 @@ jobs:
             const touchesCharter = changedFiles.some((f) =>
               f === 'docs/V2_MIGRATION_CHARTER.md'
             );
+
+            // 0. 分支命名规范校验
+            const headBranch = context.payload.pull_request.head.ref;
+            const VALID_TYPES = ["feature", "fix", "chore", "hotfix", "wave"];
+            const VALID_WORKSTATIONS = [
+              "secretary", "finance", "research", "execution", "quality",
+              "hr", "crm", "recruitment", "equipment", "material", "facility",
+              "evaluator", "lab-personnel", "ethics", "reception",
+              "control-plane", "admin", "digital-workforce", "data-platform", "common"
+            ];
+            const EXEMPT_BRANCHES = ["main", "staging", "develop"];
+            const branchPattern = /^(feature|fix|chore|hotfix|wave)\/([^/]+)\/(\d+)-.+$/;
+            const branchMatch = headBranch.match(branchPattern);
+            if (!EXEMPT_BRANCHES.includes(headBranch)) {
+              if (!branchMatch) {
+                failures.push(
+                  `分支名 \`${headBranch}\` 不符合命名规范。\n` +
+                  `正确格式：\`<type>/<workstation>/<issue-id>-<描述>\`\n` +
+                  `示例：\`feature/execution/15-schedule-highlight\`、\`fix/finance/22-invoice-bug\`\n` +
+                  `合法 type：${VALID_TYPES.join(" | ")}\n` +
+                  `合法 workstation：${VALID_WORKSTATIONS.join(" | ")}`
+                );
+              } else {
+                const [, , branchWorkstation] = branchMatch;
+                if (!VALID_WORKSTATIONS.includes(branchWorkstation)) {
+                  failures.push(
+                    `分支中的工作台标识 \`${branchWorkstation}\` 不在合法列表中。\n` +
+                    `合法 workstation：${VALID_WORKSTATIONS.join(" | ")}`
+                  );
+                }
+              }
+            }
 
             // 1. 必须关联 Issue
             const hasIssueLink =
@@ -100,6 +139,17 @@ jobs:
             if (touchesCharter) {
               if (!/\[CHARTER\]/i.test(pr.title)) {
                 failures.push("迁移章程变更须在 PR 标题前加 `[CHARTER]` 前缀，并需要系统负责人 Review。");
+              }
+            }
+
+            // 8. 工作台注册表变更需要声明已运行一致性检查
+            if (touchesWorkstationRegistry) {
+              if (!/- \[x\]\s*已运行.*workstation_consistency_check/i.test(body) &&
+                  !/workstation_consistency_check.*通过/i.test(body)) {
+                failures.push(
+                  "本 PR 涉及工作台注册表（workstations.yaml / identity/api.py / seed_roles.py），" +
+                  "请在 PR 描述中勾选：`已运行 python3 ops/scripts/workstation_consistency_check.py 并通过`。"
+                );
               }
             }
 

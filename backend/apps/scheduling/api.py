@@ -16,7 +16,6 @@ from typing import Optional
 from datetime import date, time as time_type
 from apps.identity.decorators import require_permission, _get_account_from_request
 
-from . import services as sched_services
 
 router = Router()
 
@@ -321,7 +320,6 @@ def cross_project_overview(request):
     CRC主管/排程专员可查看所有项目的排程状态、完成率、冲突数
     """
     from .models import SchedulePlan, ScheduleSlot
-    from django.db.models import Count, Q
 
     plans = SchedulePlan.objects.filter(
         status__in=['draft', 'published'],

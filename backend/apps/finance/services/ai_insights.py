@@ -8,7 +8,6 @@ AI 辅助财务分析服务
 """
 import json
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 

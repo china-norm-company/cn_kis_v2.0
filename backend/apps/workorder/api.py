@@ -17,7 +17,7 @@
 - GET  /workorder/scheduler-dashboard 排程专员仪表盘
 """
 from ninja import Router, Schema, Query
-from typing import Optional, List
+from typing import Optional
 from datetime import datetime, date
 import logging
 
@@ -845,7 +845,7 @@ def analytics_kpi(request, date_from: Optional[str] = None, date_to: Optional[st
     5. 人均工单量
     6. 平均周转时间
     """
-    from django.db.models import Count, Q, Avg, F
+    from django.db.models import Q, Avg, F
     from django.db.models.functions import Extract
 
     qs = WorkOrder.objects.filter(is_deleted=False)
@@ -953,7 +953,7 @@ def analytics_kpi(request, date_from: Optional[str] = None, date_to: Optional[st
 @require_permission('workorder.workorder.read')
 def analytics_summary(request, query: Query[AnalyticsQueryIn]):
     """返回工单综合分析数据：状态分布、按日趋势、按人员统计、质量概览"""
-    from django.db.models import Count, Q, Avg
+    from django.db.models import Count, Q
     from django.db.models.functions import TruncDate
 
     account = _get_account_from_request(request)

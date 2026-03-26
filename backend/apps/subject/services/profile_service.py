@@ -8,7 +8,6 @@ import logging
 from typing import Optional
 from django.conf import settings
 
-from ..models import Subject
 from ..models_profile import (
     SubjectProfile,
     MedicalHistory,

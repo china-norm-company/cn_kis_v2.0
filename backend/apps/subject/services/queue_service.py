@@ -5,8 +5,6 @@
 基于 SubjectCheckin 的签到状态实现队列管理。
 """
 import logging
-from datetime import timedelta
-from typing import Optional
 
 from django.utils import timezone
 from django.db.models import Avg, F
@@ -106,7 +104,6 @@ def get_queue_position(subject_id: int) -> dict:
 def get_display_board(target_date=None) -> dict:
     """大屏展示数据（含当日签到二维码）"""
     from ..models_execution import SubjectCheckin
-    from .checkin_qrcode_service import generate_daily_checkin_qrcode
 
     if not target_date:
         target_date = timezone.now().date()

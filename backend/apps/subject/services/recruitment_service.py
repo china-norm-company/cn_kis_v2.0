@@ -9,8 +9,7 @@ from django.utils import timezone
 from django.db import models, transaction
 
 from ..models_recruitment import (
-    RecruitmentPlan, RecruitmentPlanStatus,
-    EligibilityCriteria,
+    RecruitmentPlan, EligibilityCriteria,
     RecruitmentChannel,
     RecruitmentBudget,
     RecruitmentAd, AdStatus,

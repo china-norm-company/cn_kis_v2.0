@@ -10,7 +10,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.ethics.models_training import (
-    ComplianceTraining, TrainingParticipant, TrainingStatus,
+    ComplianceTraining, TrainingParticipant,
 )
 
 logger = logging.getLogger(__name__)

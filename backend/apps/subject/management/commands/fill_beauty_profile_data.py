@@ -134,7 +134,6 @@ class Command(BaseCommand):
     # ==================================================================
     def phase_d1(self):
         import openpyxl
-        from apps.subject.models_timeseries import SkinMeasurementRecord
 
         excel_files = self._find_raw_data_excels()
         self.stdout.write(f'找到 {len(excel_files)} 个 Raw Data Excel')
@@ -303,7 +302,7 @@ class Command(BaseCommand):
         return visit_map if visit_map else None
 
     def _save_measurement_records(self, records, project_code):
-        from apps.subject.models import Subject, Enrollment
+        from apps.subject.models import Enrollment
         from apps.subject.models_timeseries import SkinMeasurementRecord
 
         cache = {}
@@ -621,9 +620,7 @@ class Command(BaseCommand):
     # Profile: 美丽画像 → KnowledgeEntry
     # ==================================================================
     def phase_profile(self):
-        from apps.subject.models import Subject, Enrollment
-        from apps.subject.models_timeseries import SkinMeasurementRecord
-        from apps.subject.models_execution import SubjectQuestionnaire, ComplianceRecord
+        from apps.subject.models import Subject
         from apps.knowledge.models import KnowledgeEntry
 
         subjects = Subject.objects.filter(is_deleted=False)
@@ -720,7 +717,7 @@ class Command(BaseCommand):
     # KG: 知识图谱 — 受试者→项目/肤质/年龄段关联
     # ==================================================================
     def phase_kg(self):
-        from apps.subject.models import Subject, Enrollment
+        from apps.subject.models import Enrollment
         from apps.knowledge.models import KnowledgeEntity, KnowledgeRelation
 
         enrollments = Enrollment.objects.select_related('subject', 'protocol').all()

@@ -7,14 +7,12 @@
 3. 项目价值标注：管理者标注 → 在采苓项目面板显示
 """
 import logging
-from datetime import datetime
 from typing import Optional, Dict, Any
 
 from django.utils import timezone
 
 from apps.crm.models import (
     ClientValueInsight, ClientBrief, ProjectValueTag,
-    InsightSource,
 )
 
 logger = logging.getLogger(__name__)
@@ -67,7 +65,6 @@ def publish_brief_to_team(brief_id: int) -> Optional[dict]:
 
 def get_enablement_stats(client_id: int = None) -> Dict[str, Any]:
     """赋能活动统计"""
-    from django.db.models import Count
 
     insight_qs = ClientValueInsight.objects.filter(is_deleted=False)
     brief_qs = ClientBrief.objects.filter(is_deleted=False)

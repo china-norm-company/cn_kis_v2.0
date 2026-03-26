@@ -260,7 +260,7 @@ class Command(BaseCommand):
             f'  待处理(pending): {all_pending:,}'
         )
         self.stdout.write(
-            f'  失败(failed):    {all_failed:,}' if all_failed else f'  失败(failed):    0'
+            f'  失败(failed):    {all_failed:,}' if all_failed else '  失败(failed):    0'
         )
         if qdrant_ct >= 0:
             self.stdout.write(

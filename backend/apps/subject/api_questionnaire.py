@@ -7,8 +7,7 @@
 from ninja import Router, Schema
 from typing import Optional, List
 from datetime import date
-from django.utils import timezone
-from django.db.models import Count, Q, Avg
+from django.db.models import Avg
 
 from apps.identity.decorators import require_permission, _get_account_from_request
 from .models_questionnaire import QuestionnaireTemplate, QuestionnaireAssignment, AssignmentStatus

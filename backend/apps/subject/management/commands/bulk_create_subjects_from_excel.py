@@ -11,7 +11,6 @@ Usage:
 import os
 import re
 import logging
-from collections import defaultdict
 
 from django.core.management.base import BaseCommand
 from django.db import connection
@@ -118,14 +117,12 @@ class Command(BaseCommand):
 
     def phase_insert(self):
         """批量写入受试者记录"""
-        import openpyxl
 
         if not hasattr(self, '_cached_records'):
             self.phase_scan()
 
         from apps.subject.models import Subject
         from apps.protocol.models import Protocol
-        from apps.subject.models_execution import SubjectProjectSC
 
         records = self._cached_records
         self.stdout.write(f'准备写入 {len(records):,} 名受试者...')
@@ -219,10 +216,7 @@ class Command(BaseCommand):
 
     def phase_vectorize(self):
         """为所有受试者生成全景知识档案"""
-        from apps.subject.models import Subject, Enrollment
-        from apps.subject.models_timeseries import SkinMeasurementRecord
-        from apps.subject.models_execution import SubjectQuestionnaire, ComplianceRecord, SubjectPayment
-        from apps.subject.models_domain import SkinProfile
+        from apps.subject.models import Subject
         from apps.knowledge.models import KnowledgeEntry
 
         subjects = Subject.objects.filter(is_deleted=False)
@@ -271,12 +265,12 @@ class Command(BaseCommand):
         if not self.dry_run:
             c = connection.cursor()
             c.execute("""
-            UPDATE t_knowledge_entry 
+            UPDATE t_knowledge_entry
             SET index_status='pending'
             WHERE source_type='subject_full_lifecycle'
             AND index_status != 'indexed'
             """)
-            self.stdout.write(f'已标记向量化队列')
+            self.stdout.write('已标记向量化队列')
 
     def _build_text(self, subject):
         from apps.subject.models import Enrollment

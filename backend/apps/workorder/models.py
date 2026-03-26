@@ -53,7 +53,7 @@ class WorkOrder(models.Model):
     # 关联信息
     enrollment = models.ForeignKey('subject.Enrollment', on_delete=models.CASCADE, related_name='work_orders')
     visit_node = models.ForeignKey('visit.VisitNode', on_delete=models.PROTECT, related_name='work_orders', null=True, blank=True)
-    
+
     # S1-5 补强：关联活动（从排程自动生成时关联）
     visit_activity = models.ForeignKey('visit.VisitActivity', on_delete=models.SET_NULL,
                                        null=True, blank=True, related_name='work_orders',
@@ -97,7 +97,7 @@ class WorkOrder(models.Model):
         verbose_name='创建人账号FK',
     )
     due_date = models.DateTimeField('截止日期', null=True, blank=True)
-    
+
     # 飞书集成
     feishu_approval_instance_id = models.CharField('飞书审批实例ID', max_length=100, blank=True, default='', db_index=True)
     feishu_task_id = models.CharField('飞书任务ID', max_length=100, blank=True, default='', db_index=True,
@@ -107,7 +107,7 @@ class WorkOrder(models.Model):
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)
     completed_at = models.DateTimeField('完成时间', null=True, blank=True)
-    
+
     # 合规控制
     sop_confirmed = models.BooleanField('SOP已确认', default=False,
                                         help_text='执行前确认已阅读操作规范')

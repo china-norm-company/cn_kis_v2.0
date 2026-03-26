@@ -95,7 +95,6 @@ def _payment_to_dict(p) -> dict:
 
 
 def _item_amount_inclusive(amount, amount_type: str, tax_rate) -> float:
-    from decimal import Decimal
     am = float(amount)
     rate = float(tax_rate) if tax_rate is not None else 0.06
     if amount_type == 'inclusive_of_tax':
@@ -1644,7 +1643,7 @@ def analytics_metric_trend(request, metric_type: str, months: int = 12):
 def analytics_ai_insight(request, scene: str = 'general'):
     """调用 AI 智能体生成财务洞察"""
     account = _get_account_from_request(request)
-    from apps.finance.services.ai_insights import generate_monthly_insight, generate_settlement_insight, generate_risk_briefing
+    from apps.finance.services.ai_insights import generate_monthly_insight, generate_risk_briefing
     from apps.finance.services.analysis_service import get_finance_dashboard
     from apps.finance.services.risk_analytics import get_risk_dashboard
 

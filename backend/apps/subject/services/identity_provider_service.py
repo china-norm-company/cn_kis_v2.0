@@ -78,7 +78,8 @@ def query_verify_result(byted_token: str) -> dict:
         resp = svc.cert_verify_query(form)
     except Exception as exc:
         error_str = str(exc)
-        import json, re
+        import json
+        import re
         m = re.search(r"b'(\{.*\})'", error_str)
         if m:
             try:
@@ -220,7 +221,8 @@ def _call_cert_h5_token(
         form['idcard_name'] = idcard_name
         form['idcard_no'] = idcard_no
 
-    import json, re
+    import json
+    import re
 
     try:
         resp = svc.cert_h5_token(form)

@@ -13,7 +13,7 @@ LIMS 集成 API
 - POST /lims/instrument/compare       会话比对
 """
 from ninja import Router, Schema, File, UploadedFile
-from typing import List, Optional
+from typing import Optional
 from apps.identity.decorators import require_permission
 
 from .services import LIMSService

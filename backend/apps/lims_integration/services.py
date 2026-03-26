@@ -9,7 +9,6 @@ LIMS 集成服务
 """
 import logging
 from typing import Optional
-from datetime import datetime, date
 from django.utils import timezone
 from django.db import transaction
 

@@ -5,7 +5,7 @@ S3-4：基于在手工单数和项目分配计算工作负荷。
 供派送算法使用。
 """
 import logging
-from typing import List, Dict
+from typing import List
 
 from apps.hr.models import Staff, ProjectAssignment
 from apps.workorder.models import WorkOrder, WorkOrderStatus

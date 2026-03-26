@@ -31,7 +31,7 @@ logger = logging.getLogger('cn_kis.lims.fetcher')
 # LIMS 系统常量
 # ============================================================================
 
-LIMS_BASE_URL = 'http://lims.china-norm.com'
+LIMS_BASE_URL = 'http://lims.china-norm.com:8088'
 LIMS_APP_ID = 'com.qwings.apps.hzpjc'
 
 # RSA 公钥（从 /commons/js/rsa/rsa.pwd.public.js 提取，固定值）

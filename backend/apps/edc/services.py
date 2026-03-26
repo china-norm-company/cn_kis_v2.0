@@ -6,9 +6,7 @@ EDC 数据采集服务
 """
 import logging
 from typing import Optional
-from datetime import datetime
 from django.utils import timezone
-from django.db import transaction
 
 from .models import CRFTemplate, CRFRecord, CRFRecordStatus, InstrumentInterface
 

@@ -105,6 +105,9 @@ if not is_registration_done():
     _safe_add_router(api, '/resource/', resource_router, tags=['资源管理'])
     _safe_add_router(api, '/proposal/', proposal_router, tags=['方案准备'])
 
+    from apps.data_intake.api import router as data_intake_router
+    _safe_add_router(api, '/data-intake/', data_intake_router, tags=['外部数据入库'])
+
     from apps.resource.api_equipment import router as equipment_router
     _safe_add_router(api, '/equipment/', equipment_router, tags=['设备管理'])
 
@@ -186,9 +189,14 @@ if not is_registration_done():
     _safe_add_router(api, '/closeout/', closeout_router, tags=['结项管理'])
     _safe_add_router(api, '/knowledge/', knowledge_router, tags=['知识库'])
 
+    from apps.knowledge.api_system_pulse import router as system_pulse_router
+    _safe_add_router(api, '/internal/', system_pulse_router, tags=['系统脉搏'])
+
     from apps.secretary.api import router as secretary_router, mail_router as secretary_mail_router
     _safe_add_router(api, '/dashboard/', secretary_router, tags=['秘书工作台'])
     _safe_add_router(api, '/', secretary_mail_router, tags=['邮件信号'])
+    from apps.secretary.api_feedback import router as feedback_webhook_router
+    _safe_add_router(api, '/secretary/', feedback_webhook_router, tags=['用户反馈 Webhook'])
     from apps.secretary.digital_workforce_api import router as digital_workforce_router
     _safe_add_router(api, '/digital-workforce/', digital_workforce_router, tags=['中书·数字员工中心'])
     _safe_add_router(api, '/', secretary_mail_router, tags=['邮件信号'])

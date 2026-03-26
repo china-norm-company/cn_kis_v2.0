@@ -12,7 +12,7 @@ from datetime import date, datetime
 from typing import Any, List, Optional
 import openpyxl
 
-from ..models import ResourceItem, ResourceCategory, ResourceType, EquipmentCalibration
+from ..models import ResourceItem, ResourceType, EquipmentCalibration
 
 logger = logging.getLogger(__name__)
 

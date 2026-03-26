@@ -13,7 +13,7 @@ import uuid
 import logging
 import ipaddress
 from threading import Lock
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional, Dict, Any
 import jwt
 import httpx
@@ -297,21 +297,30 @@ def feishu_oauth_login(
     code = _normalize_oauth_code(code)
 
     # 使用 v2 OAuth token 端点换取 user_access_token
-    # redirect_uri 必须与授权 URL 中的完全一致（飞书 20071 校验）
+    # redirect_uri 规则：
+    #   - 浏览器 OAuth：前端传入实际使用的 redirect_uri（window.location.origin + /login），后端直接使用
+    #   - 飞书内 JSSDK：前端不传 redirect_uri，code 由 requestAuthCode 获取，exchange 时不能带 redirect_uri
+    # 不在后端自行推断 redirect_uri，避免 http vs https、IP vs 域名 不一致导致 20071
     _app_id = app_id or settings.FEISHU_APP_ID
     _app_secret = app_secret or settings.FEISHU_APP_SECRET
-    _redirect_uri = redirect_uri or _resolve_redirect_uri(state_payload)
+
+    # 直接使用前端传来的 redirect_uri；JSSDK 流程前端不传，此处为 None
+    _redirect_uri = redirect_uri or None
+
+    body = {
+        'grant_type': 'authorization_code',
+        'client_id': _app_id,
+        'client_secret': _app_secret,
+        'code': code,
+    }
+    if _redirect_uri:
+        body['redirect_uri'] = _redirect_uri
+
     try:
         resp = httpx.post(
             'https://open.feishu.cn/open-apis/authen/v2/oauth/token',
             headers={'Content-Type': 'application/json; charset=utf-8'},
-            json={
-                'grant_type': 'authorization_code',
-                'client_id': _app_id,
-                'client_secret': _app_secret,
-                'code': code,
-                'redirect_uri': _redirect_uri,
-            },
+            json=body,
             timeout=15.0,
         )
         token_data = resp.json()
@@ -468,6 +477,7 @@ def feishu_oauth_login(
         account, open_id, access_token, refresh_token, expires_in, refresh_expires_in,
         issuer_app_id=app_id or '',
         issuer_app_name=_issuer_app_name(app_id),
+        feishu_scope=token_scope or '',
     )
 
     return account
@@ -535,6 +545,7 @@ def _save_feishu_user_token(
     *,
     issuer_app_id: str = '',
     issuer_app_name: str = '',
+    feishu_scope: str = '',
 ):
     """
     存储飞书用户 Token 到 t_feishu_user_token
@@ -548,6 +559,7 @@ def _save_feishu_user_token(
     1. refresh_token 为空时，绝对不能覆盖已有的非空 refresh_token（防止登录覆盖）
     2. refresh_expires_at 不应为 None，应默认 30 天
     3. 每次保存必须写入日志，含 refresh_len 用于审计
+    4. feishu_scope 仅在非空时更新，保留历史 scope（refresh 不会带回 scope 字段）
     """
     try:
         from apps.secretary.models import FeishuUserToken
@@ -566,6 +578,11 @@ def _save_feishu_user_token(
         if not refresh_token and existing and existing.refresh_expires_at:
             effective_refresh_expires_at = existing.refresh_expires_at
 
+        # scope 仅在飞书返回非空值时更新（token refresh 不返回 scope，不能用空值覆盖）
+        effective_scope = feishu_scope if feishu_scope else (
+            getattr(existing, 'feishu_scope', '') or '' if existing else ''
+        )
+
         defaults = {
             'open_id': open_id,
             'access_token': access_token,
@@ -574,6 +591,7 @@ def _save_feishu_user_token(
             'refresh_expires_at': effective_refresh_expires_at,
             'issuer_app_id': issuer_app_id or '',
             'issuer_app_name': issuer_app_name or '',
+            'feishu_scope': effective_scope,
             'requires_reauth': False,
         }
         if existing and (existing.issuer_app_id or '').strip() and existing.issuer_app_id != (issuer_app_id or ''):
@@ -585,9 +603,10 @@ def _save_feishu_user_token(
         FeishuUserToken.objects.update_or_create(account_id=account.id, defaults=defaults)
         logger.info(
             'feishu_token_saved account_id=%s open_id=%s issuer=%s '
-            'access_expires_in=%s refresh_len=%s refresh_exp_days=%s',
+            'access_expires_in=%s refresh_len=%s refresh_exp_days=%s scope_len=%s',
             account.id, (open_id or '')[:20], issuer_app_id or '-',
             expires_in, len(effective_refresh), _refresh_exp_seconds // 86400,
+            len(effective_scope),
         )
     except Exception as e:
         import logging

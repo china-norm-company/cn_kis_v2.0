@@ -1,7 +1,6 @@
 """
 费用报销模型
 """
-from decimal import Decimal
 from django.db import models
 
 

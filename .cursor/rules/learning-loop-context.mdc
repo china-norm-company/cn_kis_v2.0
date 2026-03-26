@@ -1,0 +1,65 @@
+# 学习循环上下文（每次会话必须感知）
+
+## 适用场景
+
+当用户询问"做什么"、"下一步"、"状态如何"、"应该优先处理什么"、"今天做什么"时，
+AI **必须先**读取 `docs/LEARNING_LOOP_STATUS.md`，了解当前 KPI 实际值 vs 目标值，再给出建议。
+
+## 系统背景
+
+CN KIS V2.0 当前正在运行「学习型数据进化闭环」，分三条轨道并行推进：
+
+- **Track A**（数据激活）：将 135 万条 PersonalContext 和 NAS 历史数据激活为可检索的知识和图谱关系
+- **Track B**（学习导入架构）：将所有导入脚本改造为 LearningImportRunner，每次导入自动产生洞察报告和 GitHub Issue
+- **Track C**（智能开发助手枢纽）：让 Cursor AI 感知 KPI 状态，让早晚报含数据维度，建立智能体策略进化闭环
+
+核心文件：
+- KPI 追踪：`docs/LEARNING_LOOP_STATUS.md`
+- 周报存档：`docs/weekly-reports/`
+- 数据激活脚本：`ops/scripts/activate_im_data.sh`
+- 学习导入框架：`backend/apps/data_intake/learning_runner.py`
+- 系统脉搏 API：`backend/apps/knowledge/api_system_pulse.py`
+- 日常晨检技能：`.cursor/skills/check-system-pulse/SKILL.md`（每天开始工作时执行）
+
+## 优先级排序原则
+
+1. **KPI 未达标** → 对应 Track 的命令/代码任务优先
+2. **`data-insight` 标签的 GitHub Issue 超 3 天未处理** → 提醒决策（纳入本周开发 or 关闭）
+3. **Track B 导入脚本未接入 LearningRunner** → 提示改造顺序
+4. **`WorkerPolicyUpdate` 本周为 0** → 提醒运行 `python manage.py train_agent`
+
+## 行动建议格式
+
+当用户询问"下一步做什么"时，输出如下格式：
+
+```
+当前状态：[从 LEARNING_LOOP_STATUS.md 读取的 KPI 摘要]
+
+今日推荐行动：
+1. [最高优先级] [来源：KPI 未达标 / data-insight Issue / Track 进度]
+2. [次优先级]
+3. [可选]
+
+需要你决策的事项：
+- [来自 data-insight Issue 的问题]
+```
+
+## 禁止行为
+
+- 不得在不读取 `LEARNING_LOOP_STATUS.md` 的情况下随意建议"做某个新功能"
+- 不得忽略 `data-insight` 标签的 Issue（这些来自数据分析的洞察，优先级高于主观判断的功能需求）
+- 不得建议跳过 Gate 验收直接进入下一里程碑（Gate KPI 是硬性门禁）
+
+## Gate KPI 参考（第 8 周目标）
+
+| 指标 | 目标 |
+|---|---|
+| `collaborates_with` 图谱关系数 | 10,000+ |
+| IM KnowledgeEntry published 数 | 200,000+ |
+| MailSignalEvent unknown 比例 | <15% |
+| ProactiveInsight 自动生成数 | 200+ |
+| data-insight GitHub Issues 累计 | 20+ |
+| 导入脚本接入 LearningRunner | 6/6 |
+| 受试者价值分层覆盖率 | 80%+ |
+| 子衿回答质量分（L2基准） | +10分 |
+| WorkerPolicyUpdate 累计 | 20+ |

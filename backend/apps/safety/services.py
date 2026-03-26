@@ -4,8 +4,7 @@
 不良事件上报、审批、随访、加急消息。
 """
 import logging
-from typing import Optional, List
-from django.db import transaction
+from typing import Optional
 
 from .models import AdverseEvent, AEFollowUp, AEStatus
 

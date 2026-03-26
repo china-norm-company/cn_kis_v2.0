@@ -6,7 +6,6 @@
 """
 import logging
 import os
-from typing import Optional
 
 from libs.notification import _safe_send, _build_card, _build_card_with_actions, NOTIFICATION_CHAT_ID
 

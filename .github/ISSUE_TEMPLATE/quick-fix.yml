@@ -1,0 +1,71 @@
+name: 快速修复（文案/配置/样式）
+description: 用于文案、颜色、排版、小配置等不影响业务逻辑的细微改动，可走快速通道合并
+title: "[quick-fix] "
+labels: ["quick-fix", "no-migration"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > ⚡ **快速通道**：此类改动无需完整测试步骤，但仍需说明改了什么、为什么改。
+        > 适用范围：文案、按钮颜色/文字、表单提示语、静态配置、注释、格式化等。
+        > ⚠️ 如涉及任何业务逻辑、接口、数据库字段，请改用「新功能」或「Bug 修复」模板。
+
+  - type: dropdown
+    id: workstation
+    attributes:
+      label: 所属工作台
+      options:
+        - secretary（秘书台）
+        - finance（财务台）
+        - research（研究台）
+        - execution（执行台）
+        - quality（质量台）
+        - hr（人力台）
+        - crm（客户台）
+        - recruitment（招聘台）
+        - equipment（设备台）
+        - material（物料台）
+        - facility（设施台）
+        - evaluator（评价台）
+        - lab-personnel（实验室人员台）
+        - ethics（伦理台）
+        - reception（接待台）
+        - governance（治理台）
+        - data-platform（数据台）
+        - control-plane（控制台）
+        - digital-workforce（数字员工台）
+        - common（公共）
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-changed
+    attributes:
+      label: 改了什么
+      description: 用一句话描述，例如「把登录页"确认"改为"登录"」
+      placeholder: 把 XXX 页面的 YYY 文字从「AAA」改为「BBB」
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: 为什么要改
+      description: 用户反馈、视觉不一致、错别字等
+      placeholder: 用户反馈按钮文字与操作描述不一致
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirm-scope
+    attributes:
+      label: 确认改动范围（全部勾选才能使用快速通道）
+      options:
+        - label: 不涉及任何业务逻辑
+          required: true
+        - label: 不涉及数据库表结构（无需迁移）
+          required: true
+        - label: 不涉及接口定义（API 路径/参数/响应结构）
+          required: true
+        - label: 不涉及认证/权限/token 相关代码
+          required: true

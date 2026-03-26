@@ -8,10 +8,9 @@ import logging
 from datetime import date, timedelta
 from typing import Optional, List
 
-from django.db.models import F, Q
-from django.utils import timezone
+from django.db.models import Q
 
-from apps.crm.models import ClientContact, ClientOrgMap, Client
+from apps.crm.models import ClientContact, ClientOrgMap
 
 logger = logging.getLogger(__name__)
 

@@ -56,3 +56,7 @@ volcengine-python-sdk[ark]>=5.0.9
 
 # 监控（可选）
 sentry-sdk>=2.0.0
+
+# LIMS 数据采集
+playwright>=1.40.0       # 浏览器自动化，用于 JS 渲染的 LIMS 页面（需 playwright install chromium）
+pycryptodome>=3.19.0     # LIMS RSA 登录密码加密

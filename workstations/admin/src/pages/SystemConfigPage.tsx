@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@cn-kis/api-client'
-import { Settings, Database, Cloud, Shield, Server, Globe, Cpu, HardDrive } from 'lucide-react'
+import { Shield, Server, Globe, Cpu, HardDrive } from 'lucide-react'
 
 export function SystemConfigPage() {
   const { data: healthData } = useQuery({

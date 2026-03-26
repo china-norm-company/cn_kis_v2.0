@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from apps.ethics.models_compliance import (
     ComplianceCheck, ComplianceFinding,
-    CheckStatus, FindingStatus, FindingSeverity,
+    CheckStatus, FindingStatus,
 )
 
 logger = logging.getLogger(__name__)

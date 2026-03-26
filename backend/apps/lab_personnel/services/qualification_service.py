@@ -5,9 +5,7 @@
 """
 import logging
 from typing import Optional
-from django.db.models import Count, Q
 
-from apps.hr.models import Staff
 from apps.lab_personnel.models import MethodQualification, LabStaffProfile, MethodQualLevel
 from apps.resource.models_detection_method import DetectionMethodTemplate
 

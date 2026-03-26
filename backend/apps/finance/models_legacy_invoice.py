@@ -4,7 +4,6 @@
 与前端「发票管理（新）」schema 对齐，支持 invoice_no、customer_name、project_code、sales_manager 等字段。
 数据存数据库，多用户共享。
 """
-from decimal import Decimal
 from django.db import models
 
 

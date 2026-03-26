@@ -1,0 +1,75 @@
+name: 数据洞察
+description: 由系统学习循环自动发现的改进机会（来自 GapReporter 或人工分析）
+title: "insight: <简要描述>"
+labels: ["data-insight", "auto-generated"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        此 Issue 由系统学习循环（`LearningImportRunner` / `GapReporter`）自动生成，或由开发者在分析历史数据后手动创建。
+        每周一复盘时处理：决定「纳入本周开发」或「关闭（无价值）」。
+
+  - type: dropdown
+    id: insight_type
+    attributes:
+      label: 洞察类型
+      description: 这个洞察属于哪类问题？
+      options:
+        - schema_gap（数据模型字段缺失，现有表无法记录此类信息）
+        - match_failure（实体匹配失败规律，导入时无法关联已有记录）
+        - agent_opportunity（智能体可以介入自动化的场景）
+        - process_inefficiency（业务流程低效点，数据显示存在大量重复/等待）
+        - knowledge_gap（知识库缺失某类业务知识，导致智能体无法回答）
+        - data_quality（数据质量问题，影响分析准确性）
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 数据证据
+      description: 发现此问题的原始数据统计（如：N条记录匹配失败，失败率X%）
+      placeholder: |
+        示例：
+        - 导入 28 个项目 Sheet 时，12,847 条记录因无手机号且无身份证无法匹配受试者
+        - 匹配失败率 10.7%，主要原因：历史数据录入时仅有姓名无联系方式
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: 系统改进建议
+      description: 具体可执行的改进方向（代码/数据模型/流程）
+      placeholder: |
+        示例：
+        - 在 t_subject 增加 name_fuzzy_match 索引，支持姓名模糊匹配
+        - 在导入脚本中增加"姓名+首次访问年份"的弱匹配策略作为降级
+    validations:
+      required: true
+
+  - type: input
+    id: kpi_impact
+    attributes:
+      label: 预期 KPI 影响
+      description: 修复后哪个 KPI 会改善，预期改善幅度
+      placeholder: 示例：修复后 match_failure 率预计从 10.7% 降至 3%，新增 ~1,300 条有效关联
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 建议优先级
+      options:
+        - P0 — 阻塞当前 Gate 验收（必须本周处理）
+        - P1 — 影响 KPI 达标（建议本周处理）
+        - P2 — 优化改进（下个迭代处理）
+        - P3 — 记录备忘（暂不处理）
+    validations:
+      required: true
+
+  - type: input
+    id: generated_by
+    attributes:
+      label: 发现来源
+      description: 由哪个脚本/命令/人工分析发现
+      placeholder: 示例：GapReporter / import_nas_comprehensive.py / 人工分析 2026-03-25

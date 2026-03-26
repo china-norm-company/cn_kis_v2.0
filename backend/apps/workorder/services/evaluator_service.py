@@ -335,7 +335,6 @@ def get_my_schedule(account_id: int, week_offset: int = 0) -> dict:
 
 def get_my_schedule_month(account_id: int, month_offset: int = 0) -> dict:
     """获取评估员指定月份的排程（含工单、备注、附件）"""
-    from datetime import timedelta
     from calendar import monthrange
     from ..models_evaluator_schedule import EvaluatorScheduleNote, EvaluatorScheduleAttachment
 
@@ -439,7 +438,6 @@ def import_schedule_notes(
     replace_existing: bool = True,
 ) -> dict:
     """批量导入排程备注（Excel 解析后调用，支持按姓名筛选）"""
-    from datetime import datetime
     from ..models_evaluator_schedule import EvaluatorScheduleNote
 
     def _norm(s: str) -> str:
@@ -588,7 +586,6 @@ def _parse_ocr_schedule_with_llm(ocr_text: str, person_name: str) -> Optional[di
     """
     import json
     import re
-    from datetime import datetime
 
     prompt = f"""以下是排程表的 OCR 识别结果（每行格式为「行N：列1 | 列2 | 列3 | ...」）。
 
@@ -735,7 +732,6 @@ def _analyze_schedule_image_impl(account_id: int, file_obj, person_name: str) ->
     import base64
     import json
     import re
-    from datetime import datetime
     from ..models_evaluator_schedule import EvaluatorScheduleNote
 
     ALLOWED_EXT = {'.jpg', '.jpeg', '.png', '.webp', '.gif'}
@@ -1532,7 +1528,7 @@ def _capture_environment_snapshot(
     3. 环境超阈值时，force=True + deviation_reason 可强制放行
     """
     try:
-        from apps.resource.models import VenueEnvironmentLog, ResourceItem
+        from apps.resource.models import VenueEnvironmentLog
         from apps.resource.models_detection_method import DetectionMethodTemplate
 
         # 获取检测方法模板的环境阈值
@@ -1817,7 +1813,6 @@ def get_exceptions(work_order_id: int) -> list:
 # ============================================================================
 def get_evaluator_profile(account_id: int) -> dict:
     """获取评估员个人成长数据"""
-    from datetime import timedelta
 
     today = date.today()
     month_start = today.replace(day=1)

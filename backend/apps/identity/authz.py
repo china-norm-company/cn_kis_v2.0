@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from django.core.cache import cache
 
-from .models import Account, AccountRole, Permission, Role, RolePermission
+from .models import Account, AccountRole, Role, RolePermission
 
 logger = logging.getLogger(__name__)
 

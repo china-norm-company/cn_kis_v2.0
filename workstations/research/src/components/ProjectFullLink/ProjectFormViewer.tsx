@@ -18,8 +18,8 @@ import {
   Plus,
 } from 'lucide-react'
 
-type JSONValue = string | number | boolean | null | JSONObject | JSONValue[]
-interface JSONObject {
+export type JSONValue = string | number | boolean | null | JSONObject | JSONValue[]
+export interface JSONObject {
   [key: string]: JSONValue
 }
 
