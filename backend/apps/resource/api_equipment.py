@@ -8,6 +8,7 @@
 
 设备台账：
 - GET  /ledger                          设备列表（增强筛选）
+- GET  /index                           设备列表（与 /ledger 相同，兼容旧客户端）
 - GET  /ledger/{id}                     设备详情
 - POST /ledger/create                   新增设备
 - PUT  /ledger/{id}                     更新设备
@@ -46,6 +47,7 @@
 检测方法：
 - GET  /detection-methods/list          检测方法列表
 - GET  /detection-methods/{id}          检测方法详情
+- POST /detection-methods/sop-upload      上传 SOP 附件（返回 url）
 - POST /detection-methods/create        创建检测方法
 - PUT  /detection-methods/{id}          更新检测方法
 - POST /detection-methods/{id}/resources/add      添加资源需求
@@ -57,8 +59,16 @@ from ninja import Router, Schema, Query, File
 from ninja.files import UploadedFile
 from typing import Optional, List
 from pydantic import ConfigDict
+from pathlib import Path
+import os
+import uuid
+from django.conf import settings
 
-from apps.identity.decorators import _get_account_from_request, require_permission
+from apps.identity.decorators import (
+    _get_account_from_request,
+    require_permission,
+    require_any_permission,
+)
 
 router = Router()
 
@@ -279,8 +289,11 @@ class MethodCreateIn(Schema):
     code: str
     name: str
     name_en: Optional[str] = ''
+    equipment_name_classification: Optional[str] = ''
     category: str
     description: Optional[str] = ''
+    qc_requirements: Optional[str] = ''
+    sop_attachment_url: Optional[str] = ''
     estimated_duration_minutes: Optional[int] = 30
     preparation_time_minutes: Optional[int] = 10
     temperature_min: Optional[float] = None
@@ -296,8 +309,11 @@ class MethodCreateIn(Schema):
 class MethodUpdateIn(Schema):
     name: Optional[str] = None
     name_en: Optional[str] = None
+    equipment_name_classification: Optional[str] = None
     category: Optional[str] = None
     description: Optional[str] = None
+    qc_requirements: Optional[str] = None
+    sop_attachment_url: Optional[str] = None
     estimated_duration_minutes: Optional[int] = None
     preparation_time_minutes: Optional[int] = None
     temperature_min: Optional[float] = None
@@ -345,6 +361,21 @@ def dashboard(request):
 @require_permission('resource.equipment.read')
 def list_ledger(request, params: Query[LedgerQueryIn]):
     """设备列表（增强筛选+统计），支持 lims_only 过滤 LIMS 导入数据"""
+    from .services.equipment_service import list_equipment
+    data = list_equipment(
+        keyword=params.keyword, category_id=params.category_id,
+        status=params.status, calibration_status=params.calibration_status,
+        location=params.location, page=params.page,
+        page_size=params.page_size, sort_by=params.sort_by,
+        lims_only=params.lims_only,
+    )
+    return {'code': 0, 'msg': 'ok', 'data': data}
+
+
+@router.get('/index', summary='设备列表（别名，同 GET /ledger）')
+@require_permission('resource.equipment.read')
+def list_equipment_index_alias(request, params: Query[LedgerQueryIn]):
+    """与 list_ledger 一致，兼容请求 /equipment/index 的客户端"""
     from .services.equipment_service import list_equipment
     data = list_equipment(
         keyword=params.keyword, category_id=params.category_id,
@@ -937,7 +968,7 @@ def cancel_maintenance_api(request, maintenance_id: int, payload: MaintenanceCan
 # 使用记录
 # ============================================================================
 @router.get('/usage/list', summary='使用记录列表')
-@require_permission('resource.usage.read')
+@require_any_permission(['resource.equipment.read', 'resource.usage.read'])
 def list_usage_api(request, params: Query[UsageQueryIn]):
     """使用记录列表（分页+筛选）"""
     from .services.equipment_service import list_usage
@@ -951,7 +982,7 @@ def list_usage_api(request, params: Query[UsageQueryIn]):
 
 
 @router.get('/usage/stats', summary='使用统计')
-@require_permission('resource.usage.read')
+@require_any_permission(['resource.equipment.read', 'resource.usage.read'])
 def usage_stats_api(request):
     """设备使用统计（30天）"""
     from .services.equipment_service import get_usage_stats
@@ -959,7 +990,7 @@ def usage_stats_api(request):
 
 
 @router.post('/usage/register', summary='登记使用')
-@require_permission('resource.usage.write')
+@require_any_permission(['resource.equipment.write', 'resource.usage.write'])
 def register_usage_api(request, payload: UsageRegisterIn):
     """手动登记设备使用（开始使用）"""
     account = _get_account_from_request(request)
@@ -977,7 +1008,7 @@ def register_usage_api(request, payload: UsageRegisterIn):
 
 
 @router.post('/usage/{usage_id}/end', summary='结束使用')
-@require_permission('resource.usage.write')
+@require_any_permission(['resource.equipment.write', 'resource.usage.write'])
 def end_usage_api(request, usage_id: int):
     """结束设备使用"""
     from .services.equipment_service import end_usage
@@ -1061,6 +1092,35 @@ def list_methods_api(request, params: Query[MethodQueryIn]):
         keyword=params.keyword, page=params.page, page_size=params.page_size,
     )
     return {'code': 0, 'msg': 'ok', 'data': data}
+
+
+@router.post('/detection-methods/sop-upload', summary='上传检测方法 SOP 附件')
+@require_permission('resource.method.write')
+def upload_detection_method_sop(request, file: File[UploadedFile] = File(...)):
+    """保存到 MEDIA_ROOT/detection_methods/sop/，返回可访问的 url（相对站点根路径）"""
+    suffix = Path(file.name or '').suffix.lower()
+    allowed = ('.pdf', '.doc', '.docx', '.xlsx', '.xls', '.ppt', '.pptx', '.png', '.jpg', '.jpeg', '.zip')
+    if suffix not in allowed:
+        return {'code': 400, 'msg': f'不支持的文件类型，允许: {", ".join(allowed)}', 'data': None}
+    rel_dir = 'detection_methods/sop'
+    media_root = Path(str(settings.MEDIA_ROOT))
+    dest_dir = media_root / rel_dir
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    stored = f'{uuid.uuid4().hex}{suffix}'
+    dest = dest_dir / stored
+    with open(dest, 'wb') as out:
+        if hasattr(file, 'chunks'):
+            for chunk in file.chunks():
+                out.write(chunk)
+        else:
+            out.write(file.read())
+    media_url = (settings.MEDIA_URL or '/media/').rstrip('/') + '/'
+    url = f'{media_url}{rel_dir}/{stored}'
+    return {
+        'code': 0,
+        'msg': 'ok',
+        'data': {'url': url, 'original_filename': os.path.basename(file.name or '')},
+    }
 
 
 @router.get('/detection-methods/{method_id}', summary='检测方法详情')

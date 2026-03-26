@@ -6,8 +6,8 @@
 import logging
 from datetime import date, timedelta, datetime
 from typing import Optional
-from django.db.models import Q, Count, Avg, F, Value, CharField
-from django.db.models.functions import Coalesce
+from django.db.models import Q, Count, Avg, F, Value, CharField, TextField
+from django.db.models.functions import Coalesce, Cast
 from django.utils import timezone
 
 from ..models import (
@@ -216,6 +216,8 @@ def list_equipment(
         attrs = item.attributes or {}
         # 名称分类仅来自 LIMS 写入的 attributes，与 ResourceCategory（设备类别）无关
         name_cls = (attrs.get('name_classification') or attrs.get('lims_name_classification') or '')
+        lims_synced = attrs.get('_lims_synced_at') or ''
+        lims_batch = attrs.get('_lims_sync_batch_no') or ''
         result_items.append({
             'id': item.id,
             'name': item.name,
@@ -249,6 +251,8 @@ def list_equipment(
             'quantity': attrs.get('quantity'),
             'initial_value': attrs.get('initial_value'),
             'group': attrs.get('group', ''),
+            'lims_synced_at': str(lims_synced) if lims_synced else None,
+            'lims_sync_batch_no': str(lims_batch) if lims_batch else None,
         })
 
     return {'items': result_items, 'total': total, 'page': page, 'page_size': page_size}
@@ -312,6 +316,8 @@ def get_equipment_detail(equipment_id: int) -> Optional[dict]:
 
     attrs = item.attributes or {}
     name_cls = (attrs.get('name_classification') or attrs.get('lims_name_classification') or '')
+    lims_synced = attrs.get('_lims_synced_at') or ''
+    lims_batch = attrs.get('_lims_sync_batch_no') or ''
 
     return {
         'id': item.id,
@@ -346,6 +352,8 @@ def get_equipment_detail(equipment_id: int) -> Optional[dict]:
         'recent_maintenances': recent_maintenances,
         'recent_usages': recent_usages,
         'authorizations': authorizations,
+        'lims_synced_at': str(lims_synced) if lims_synced else None,
+        'lims_sync_batch_no': str(lims_batch) if lims_batch else None,
     }
 
 
@@ -1047,9 +1055,18 @@ def list_maintenance(
     if equipment_id:
         qs = qs.filter(equipment_id=equipment_id)
     if status:
-        qs = qs.filter(status=status)
+        # 支持 pending,in_progress 多选（与前端 listMaintenance 传参一致）
+        parts = [s.strip() for s in status.split(',') if s.strip()]
+        if len(parts) > 1:
+            qs = qs.filter(status__in=parts)
+        else:
+            qs = qs.filter(status=parts[0])
     if maintenance_type:
-        qs = qs.filter(maintenance_type=maintenance_type)
+        mtparts = [s.strip() for s in maintenance_type.split(',') if s.strip()]
+        if len(mtparts) > 1:
+            qs = qs.filter(maintenance_type__in=mtparts)
+        else:
+            qs = qs.filter(maintenance_type=mtparts[0])
     if date_from:
         qs = qs.filter(maintenance_date__gte=date_from)
     if date_to:
@@ -1598,12 +1615,21 @@ def list_detection_methods(
     if status:
         qs = qs.filter(status=status)
     if keyword:
-        qs = qs.filter(
-            Q(name__icontains=keyword) |
-            Q(name_en__icontains=keyword) |
-            Q(code__icontains=keyword) |
-            Q(keywords__contains=[keyword])
-        )
+        kw = (keyword or '').strip()
+        if kw:
+            # 关键词 JSON 数组用 contains 在部分数据形态下易报错；转为文本子串匹配更稳
+            qs = qs.annotate(_keywords_text=Cast('keywords', TextField()))
+            qs = qs.filter(
+                Q(name__icontains=kw) |
+                Q(name_en__icontains=kw) |
+                Q(code__icontains=kw) |
+                Q(_keywords_text__icontains=kw)
+            )
+
+    qs = qs.annotate(
+        _resource_count=Count('resource_requirements'),
+        _personnel_count=Count('personnel_requirements'),
+    )
 
     total = qs.count()
     offset = (page - 1) * page_size
@@ -1615,6 +1641,7 @@ def list_detection_methods(
             'code': m.code,
             'name': m.name,
             'name_en': m.name_en,
+            'equipment_name_classification': m.equipment_name_classification or '',
             'category': m.category,
             'category_display': m.get_category_display(),
             'description': m.description,
@@ -1626,8 +1653,8 @@ def list_detection_methods(
                 if m.humidity_min and m.humidity_max else None,
             'status': m.status,
             'status_display': m.get_status_display(),
-            'resource_count': m.resource_requirements.count(),
-            'personnel_count': m.personnel_requirements.count(),
+            'resource_count': getattr(m, '_resource_count', 0),
+            'personnel_count': getattr(m, '_personnel_count', 0),
         } for m in items],
         'total': total, 'page': page, 'page_size': page_size,
     }
@@ -1660,11 +1687,14 @@ def get_detection_method_detail(method_id: int) -> Optional[dict]:
         'code': m.code,
         'name': m.name,
         'name_en': m.name_en,
+        'equipment_name_classification': m.equipment_name_classification or '',
         'category': m.category,
         'category_display': m.get_category_display(),
         'description': m.description,
+        'qc_requirements': m.qc_requirements or '',
         'standard_procedure': m.standard_procedure,
         'sop_reference': m.sop_reference,
+        'sop_attachment_url': m.sop_attachment_url or '',
         'sop_id': m.sop_id,
         'estimated_duration_minutes': m.estimated_duration_minutes,
         'preparation_time_minutes': m.preparation_time_minutes,
