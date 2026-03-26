@@ -56,12 +56,14 @@ jobs:
               const chatId  = process.env.FEISHU_CHAT_ID;
               const appId   = process.env.FEISHU_APP_ID;
               const appSecret = process.env.FEISHU_APP_SECRET;
-              const payload = { msg_type: 'interactive', card: JSON.stringify(card) };
+              // Webhook API 用 card 字段（对象），Bot API 用 content 字段（JSON 字符串）
+              const webhookPayload = { msg_type: 'interactive', card };
+              const botContent     = JSON.stringify(card);
 
               if (webhook) {
                 const resp = await fetch(webhook, {
                   method: 'POST', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(payload),
+                  body: JSON.stringify(webhookPayload),
                 });
                 const r = await resp.json();
                 if (r.code === 0 || r.StatusCode === 0) core.info('飞书通知发送成功（Webhook）');
@@ -76,7 +78,7 @@ jobs:
                 const msgResp = await fetch('https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id', {
                   method: 'POST',
                   headers: { 'Authorization': `Bearer ${tokenData.tenant_access_token}`, 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ receive_id: chatId, ...payload }),
+                  body: JSON.stringify({ receive_id: chatId, msg_type: 'interactive', content: botContent }),
                 });
                 const msgData = await msgResp.json();
                 if (msgData.code === 0) core.info('飞书通知发送成功（App Bot）');
@@ -736,15 +738,14 @@ jobs:
               return;
             }
 
-            const payload = { msg_type: 'interactive', card: JSON.stringify(card) };
-
             // 判断是否需要同时发到审批群（PR opened / review_requested 才需要）
             const isPrApprovalEvent = (
               (ev === 'pull_request' && ['opened', 'ready_for_review', 'review_requested'].includes(context.payload.action))
             );
 
             // ── 发送函数（App Bot 模式）─────────────────────────────────────
-            async function sendToChat(targetChatId, cardPayload) {
+            // 注意：/im/v1/messages API 用 content 字段（JSON 字符串），不是 card
+            async function sendToChat(targetChatId, rawCard) {
               const tokenResp = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -759,7 +760,7 @@ jobs:
               const msgResp = await fetch('https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ receive_id: targetChatId, ...cardPayload }),
+                body: JSON.stringify({ receive_id: targetChatId, msg_type: 'interactive', content: JSON.stringify(rawCard) }),
               });
               const msgData = await msgResp.json();
               if (msgData.code === 0) {
@@ -770,11 +771,12 @@ jobs:
             }
 
             // ── 发送方式 1：自定义机器人 Webhook（推荐，最简单）────────────────
+            // 注意：Webhook API 用 card 字段（对象形式）
             if (webhook) {
               const resp = await fetch(webhook, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
+                body: JSON.stringify({ msg_type: 'interactive', card }),
               });
               const result = await resp.json();
               if (result.code === 0 || result.StatusCode === 0) {
@@ -786,9 +788,9 @@ jobs:
             // ── 发送方式 2：App Bot（需要 FEISHU_APP_ID + FEISHU_APP_SECRET + FEISHU_DEV_GROUP_CHAT_ID）
             else if (chatId && appId && appSecret) {
               // 发到开发群
-              await sendToChat(chatId, payload);
+              await sendToChat(chatId, card);
               // PR 审批事件同时发到审批群（带批准/拒绝按钮的那条）
               if (isPrApprovalEvent && approvalChatId && approvalChatId !== chatId) {
-                await sendToChat(approvalChatId, payload);
+                await sendToChat(approvalChatId, card);
               }
             }
