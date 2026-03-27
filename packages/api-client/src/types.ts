@@ -505,7 +505,7 @@ export interface Protocol {
   regulatory_standard?: string
   sponsor_id?: number | null
   team_members?: Array<{ id: number; name: string; role: string }>
-  /** 治理台账号 ID，全局角色 CRC / CRC主管 */
+  /** 治理台账号 ID，全局角色 QA质量管理（qa） */
   consent_config_account_id?: number | null
   created_by_id: number | null
   create_time: string
@@ -529,7 +529,7 @@ export interface ProtocolCreateIn {
   sample_size?: number
   /** 可选；创建时写入 parsed_data.consent_settings */
   screening_schedule?: ScreeningDay[]
-  /** 治理台账号，须具备全局角色 crc 或 crc_supervisor */
+  /** 治理台账号，须具备全局角色 qa（QA质量管理） */
   consent_config_account_id?: number
   /** 项目级知情签署工作人员姓名（须为双签名单中的姓名；创建后写入 consent_settings） */
   consent_signing_staff_name?: string

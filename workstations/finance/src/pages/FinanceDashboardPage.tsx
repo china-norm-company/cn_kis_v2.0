@@ -1,16 +1,13 @@
 import { useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api, clawRegistryApi, digitalWorkforcePortalApi } from '@cn-kis/api-client'
-import { getWorkstationUrl } from '@cn-kis/feishu-sdk'
-import type { SuggestionItem } from '@cn-kis/api-client'
+import { api, clawRegistryApi } from '@cn-kis/api-client'
 import { MaterialCostSummary } from '../components/MaterialCostSummary'
-import { StatCard, Badge, Empty, ClawQuickPanel, useClawQuickActions, DigitalWorkerSuggestionBar } from '@cn-kis/ui-kit'
-import type { QuickAction, SuggestionAction } from '@cn-kis/ui-kit'
+import { StatCard, Badge, Empty, ClawQuickPanel, useClawQuickActions } from '@cn-kis/ui-kit'
+import type { QuickAction } from '@cn-kis/ui-kit'
 import {
   Banknote, FileText, AlertTriangle, TrendingUp, TrendingDown,
   Receipt, Clock, Users, ShieldAlert, ArrowUp, ArrowDown,
   Percent, DollarSign, BarChart3, CheckCircle2, PieChart as PieIcon,
-  Bot, ExternalLink,
 } from 'lucide-react'
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
@@ -40,49 +37,6 @@ function TrendIndicator({ value, suffix = '' }: { value?: number | null; suffix?
 
 const clawFetcher = (key: string) => clawRegistryApi.getByWorkstation(key)
 
-/** 财务台·数字员工摘要卡：最近报价输入项，跳转中书回放 */
-function FinanceDigitalWorkforceCard() {
-  const { data: runsRes } = useQuery({
-    queryKey: ['digital-workforce', 'replay-runs', 'finance'],
-    queryFn: () => digitalWorkforcePortalApi.getReplayRuns({ workstation_key: 'finance', limit: 1 }),
-  })
-  const run = runsRes?.data?.data?.items?.[0]
-  const { data: replayRes } = useQuery({
-    queryKey: ['digital-workforce', 'replay', run?.task_id],
-    queryFn: () => digitalWorkforcePortalApi.getReplay(run!.task_id),
-    enabled: !!run?.task_id,
-  })
-  const replay = replayRes?.data?.data
-  const artifacts = (replay?.structured_artifacts ?? {}) as Record<string, unknown>
-  const quoteInputs = artifacts.quote_inputs as string[] | undefined
-
-  if (!run) return null
-  const replayHref = getWorkstationUrl('digital-workforce', `#/replay/${run.task_id}`)
-  return (
-    <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4" data-testid="finance-digital-workforce-card">
-      <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-        <DollarSign className="h-4 w-4 text-blue-600" />
-        报价拆解/草稿（数字员工）
-      </h3>
-      <div className="mt-2 text-xs text-slate-600">
-        {Array.isArray(quoteInputs) && quoteInputs.length > 0 ? (
-          <ul className="list-inside list-disc space-y-0.5">
-            {quoteInputs.slice(0, 4).map((item, i) => (
-              <li key={i}>{item}</li>
-            ))}
-            {quoteInputs.length > 4 && <li className="text-slate-400">等 {quoteInputs.length} 项</li>}
-          </ul>
-        ) : (
-          <p>最近一次编排结果，可进入回放查看详情</p>
-        )}
-      </div>
-      <a href={replayHref} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-blue-700 hover:underline">
-        进入回放 <ExternalLink className="h-3.5 w-3.5" />
-      </a>
-    </div>
-  )
-}
-
 export function FinanceDashboardPage() {
   const [period, setPeriod] = useState<Period>('month')
   const claw = useClawQuickActions('finance', clawFetcher)
@@ -92,21 +46,7 @@ export function FinanceDashboardPage() {
       ...(a.script && { script: a.script }),
       action: a.id,
     })
-    window.open(getWorkstationUrl('digital-workforce', `#/chat?${params.toString()}`), '_blank')
-  }, [])
-
-  const { data: suggestionsRes, isLoading: suggestionsLoading } = useQuery({
-    queryKey: ['digital-workforce', 'suggestions', 'finance'],
-    queryFn: () => digitalWorkforcePortalApi.getSuggestions('finance'),
-    staleTime: 60_000,
-  })
-  const suggestions = suggestionsRes?.data?.data?.items ?? []
-  const handleSuggestionAction = useCallback((item: SuggestionItem, action: SuggestionAction) => {
-    if (action.action_id === 'view') {
-      window.open(action.endpoint, '_blank')
-    } else {
-      window.location.href = action.endpoint
-    }
+    window.open(`/secretary/#/chat?${params.toString()}`, '_blank')
   }, [])
 
   const { data: dashRes, isLoading } = useQuery({
@@ -160,36 +100,7 @@ export function FinanceDashboardPage() {
         </div>
       </div>
 
-      <DigitalWorkerSuggestionBar
-        items={suggestions}
-        loading={suggestionsLoading}
-        onAction={handleSuggestionAction}
-      />
-
       <ClawQuickPanel workstationKey="finance" actions={claw.actions} loading={claw.loading} error={claw.error} onAction={handleClawAction} compact />
-
-      <FinanceDigitalWorkforceCard />
-
-      <div className="flex flex-wrap gap-2">
-        <a
-          href={getWorkstationUrl('digital-workforce', '#/portal')}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100"
-        >
-          <Bot className="h-4 w-4" />
-          进入中书·数字员工中心
-        </a>
-        <a
-          href={getWorkstationUrl('digital-workforce', '#/replay')}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          <DollarSign className="h-4 w-4" />
-          报价拆解（回放）
-        </a>
-      </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div />

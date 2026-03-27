@@ -116,7 +116,10 @@ class SubjectDiary(models.Model):
     mood = models.CharField('心情', max_length=20, blank=True, default='')
     symptoms = models.TextField('症状描述', blank=True, default='')
     medication_taken = models.BooleanField('是否用药', default=True)
-    notes = models.TextField('备注', blank=True, default='')
+    symptom_severity = models.TextField('症状程度', blank=True, default='')
+    symptom_onset = models.TextField('症状开始时间', blank=True, default='')
+    symptom_duration = models.TextField('症状持续时长', blank=True, default='')
+    notes = models.TextField('其它备注', blank=True, default='')
     is_deleted = models.BooleanField('是否删除', default=False)
 
     create_time = models.DateTimeField('创建时间', auto_now_add=True)

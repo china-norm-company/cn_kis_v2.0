@@ -24,6 +24,7 @@ import {
   ShieldCheck,
   Settings,
   Layers,
+  NotebookPen,
   Database,
   BarChart2,
   FileSpreadsheet,
@@ -122,6 +123,7 @@ const navSections: NavSection[] = [
     items: [
       { to: '/visits', icon: CalendarCheck, label: '我的访视', permissions: ['visit.plan.read'] },
       { to: '/subjects', icon: Users, label: '我的受试者', permissions: ['subject.subject.read'] },
+      { to: '/diary', icon: NotebookPen, label: '日记管理', permissions: ['subject.subject.read'] },
       { to: '/data-collection-monitor', icon: Database, label: '数据采集监察', permissions: ['subject.subject.read'] },
     ],
   },
@@ -169,6 +171,7 @@ const MENU_KEY_TO_PATH: Record<string, string> = {
   'tasks': '/tasks',
   'visits': '/visits',
   'subjects': '/subjects',
+  'diary': '/diary',
   'data-collection-monitor': '/data-collection-monitor',
   'proposal-design': '/proposal-design',
   'team': '/team',

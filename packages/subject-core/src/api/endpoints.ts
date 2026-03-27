@@ -117,7 +117,20 @@ export function buildSubjectEndpoints(api: ApiClient) {
     registerForPlan: (data: Record<string, unknown>) => api.post(SUBJECT_ENDPOINTS.register, data),
     getMyUpcomingVisits: () => api.get(SUBJECT_ENDPOINTS.upcomingVisits),
     getMySchedule: () => api.get(SUBJECT_ENDPOINTS.schedule),
-    getMyDiary: () => api.get(SUBJECT_ENDPOINTS.diary),
+    /** page_size 放大：避免长周期日记在前端只拉到前 30 天以外的记录；可选 project_id 与列表同源裁剪 diary_period */
+    getMyDiary: (projectId?: number) =>
+      api.get(SUBJECT_ENDPOINTS.diary, {
+        page: 1,
+        page_size: 400,
+        ...(projectId != null && projectId > 0 ? { project_id: projectId } : {}),
+      }),
+    /** 日记 2.0：按全链路 project_id 拉取已发布且研究员已确认的配置；不传 project_id 时由后端按入组/项目编号自动匹配 */
+    getMyDiaryConfig: (projectId?: number) =>
+      api.get(
+        `${SUBJECT_ENDPOINTS.diary}/config`,
+        projectId != null && projectId > 0 ? { project_id: projectId } : {},
+        { silent: true },
+      ),
     createMyDiary: (data: Record<string, unknown>) => api.post(SUBJECT_ENDPOINTS.diary, data),
     submitMyNps: (data: Record<string, unknown>) => api.post(SUBJECT_ENDPOINTS.nps, data),
     getMyProducts: (status = 'all') => api.get(`${SUBJECT_ENDPOINTS.products}?status=${status}`),

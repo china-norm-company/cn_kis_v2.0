@@ -24,7 +24,8 @@ export const financeNavGroups: FinanceNavGroup[] = [
   {
     label: '总览',
     items: [
-      { path: '/dashboard', label: '财务仪表板', icon: LayoutDashboard, permissions: ['finance.quote.read'] },
+      // 须与 backend GET /finance/dashboard 的 @require_permission('finance.report.read') 一致，否则仅报价权限用户会被导到仪表板后 403，甚至触发全局登出
+      { path: '/dashboard', label: '财务仪表板', icon: LayoutDashboard, permissions: ['finance.report.read'] },
     ],
   },
   {
@@ -95,5 +96,6 @@ export function getDefaultFinanceLandingPath(
       if (visible) return item.path
     }
   }
-  return '/dashboard'
+  // 无任何菜单命中时勿默认 /dashboard（易与报表权限不一致）；发票页更常见且权限独立
+  return '/invoices'
 }

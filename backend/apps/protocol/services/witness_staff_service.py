@@ -1,7 +1,7 @@
 """
 双签工作人员档案与邮件身份验证
 
-名单主要与鹿鸣·治理台（3008）账号关联（admin / crc / crc_supervisor）；
+名单主要与鹿鸣·治理台（3008）账号关联（全局角色 qa：QA质量管理）；
 亦支持**无治理台账号**建档（account 为空，手工维护姓名/联系方式）。
 """
 import html
@@ -67,7 +67,7 @@ def build_witness_mail_from_address() -> str:
 
 
 # 可出现在双签名单中的治理台全局角色（与 seed_roles 中 name 一致）
-WITNESS_STAFF_ROLE_NAMES = ('admin', 'crc', 'crc_supervisor')
+WITNESS_STAFF_ROLE_NAMES = ('qa',)
 
 
 def _eligible_account_ids() -> set[int]:
@@ -82,8 +82,8 @@ def _eligible_account_ids() -> set[int]:
 def witness_staff_allowed_name_set() -> set[str]:
     """治理台「双签工作人员」档案（t_witness_staff）全部非删除姓名，供知情签署人员校验。
 
-    与 list_witness_staff 列表一致：凡已在治理台建档的人员均可作为知情签署工作人员，
-    不再仅限 admin/CRC/CRC主管 角色子集（避免大量治理台人员无法被选）。
+    与 list_witness_staff 列表一致：凡已在双签档案中的人员均可作为知情签署工作人员，
+    不再仅限 QA 等单一角色子集（避免大量人员无法被选）。
     """
     return {
         (n or '').strip()
@@ -97,7 +97,7 @@ def _account_has_witness_eligible_role(account_id: int) -> bool:
 
 
 def is_witness_staff_row_eligible(ws: WitnessStaff) -> bool:
-    """双签发信等操作前校验：须关联治理台账号且具备 admin/CRC/CRC主管 全局角色。"""
+    """双签发信等操作前校验：须关联治理台账号且具备 qa（QA质量管理）全局角色。"""
     if not ws.account_id:
         return False
     return _account_has_witness_eligible_role(ws.account_id)
@@ -268,7 +268,7 @@ def witness_staff_to_dict(ws: WitnessStaff, role_labels: Optional[list[str]] = N
 
 
 def sync_witness_staff_from_accounts() -> dict:
-    """为具备可见证角色的治理台账号 upsert 双签档案（姓名、邮箱与治理台账号一致；手机号不在治理台维护，不同步）。"""
+    """为具备 QA质量管理（qa）全局角色的治理台账号 upsert 双签档案（姓名、邮箱与治理台账号一致；手机号不在治理台维护，不同步）。"""
     from apps.identity.models import Account
 
     eligible = _eligible_account_ids()
@@ -311,7 +311,7 @@ def create_witness_staff_from_account(account_id: int) -> WitnessStaff:
     if not acc:
         raise ValueError('账号不存在')
     if not _account_has_witness_eligible_role(account_id):
-        raise ValueError('该账号不具备管理员 / CRC / CRC主管 全局角色，无法加入双签名单')
+        raise ValueError('该账号不具备 QA质量管理 全局角色，无法加入双签名单')
     email = (acc.email or '').strip()
     if not email:
         raise ValueError('请先在鹿鸣·治理台为该账号填写工作邮箱')
