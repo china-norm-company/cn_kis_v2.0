@@ -5,7 +5,7 @@
 """
 import logging
 from typing import Optional
-from datetime import date, timedelta
+from datetime import date
 
 from apps.lab_personnel.models import StaffCertificate, CertificateStatus
 

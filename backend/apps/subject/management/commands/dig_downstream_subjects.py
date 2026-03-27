@@ -14,7 +14,6 @@ import os
 import re
 import logging
 from collections import defaultdict
-from decimal import Decimal
 
 from django.core.management.base import BaseCommand
 from django.db import connection
@@ -103,7 +102,6 @@ class Command(BaseCommand):
     # ==================================================================
     def phase_parse_attachments(self):
         import openpyxl
-        from apps.secretary.models import PersonalContext
 
         # 找顾晶及相关人员的已下载Excel附件
         c = connection.cursor()
@@ -372,7 +370,6 @@ class Command(BaseCommand):
         from apps.subject.models import Subject, Enrollment
         from apps.subject.models_domain import SkinProfile
         from apps.protocol.models import Protocol
-        from apps.knowledge.models import KnowledgeEntry
         from django.utils import timezone
 
         proto_cache = {}
@@ -650,9 +647,7 @@ class Command(BaseCommand):
     # 生成知识档案
     # ==================================================================
     def phase_build_profiles(self):
-        from apps.subject.models import Subject, Enrollment
-        from apps.subject.models_timeseries import SkinMeasurementRecord
-        from apps.subject.models_execution import SubjectQuestionnaire, ComplianceRecord
+        from apps.subject.models import Subject
         from apps.knowledge.models import KnowledgeEntry
 
         subjects = Subject.objects.filter(is_deleted=False)

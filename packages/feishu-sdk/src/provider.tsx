@@ -303,6 +303,7 @@ export function FeishuAuthProvider({
       canSeeMenuFromProfile(authProfile, workbench, menuKey, permissions),
   }
 
+  // 仅在 profile 加载成功后再渲染主内容，避免 ClawQuickPanel 等组件在 token 尚未被 /auth/profile 验证前抢跑请求导致 401 级联（同事登录后闪退）
   let content: ReactNode
   if (auth.loading) {
     content = loadingFallback || <DefaultLoading />
@@ -310,6 +311,12 @@ export function FeishuAuthProvider({
     content = <ErrorFallback error={auth.error} errorType={auth.errorType} onRetry={auth.login} />
   } else if (!auth.isAuthenticated && loginFallback) {
     content = loginFallback
+  } else if (authProfile.authRequired) {
+    content = loadingFallback || <DefaultLoading />
+  } else if (auth.isAuthenticated && (!authProfile.profile) && authProfile.loading) {
+    content = loadingFallback || <DefaultLoading />
+  } else if (auth.isAuthenticated && auth.token && !authProfile.profile && !authProfile.loading) {
+    content = loadingFallback || <DefaultLoading />
   } else {
     content = children
   }

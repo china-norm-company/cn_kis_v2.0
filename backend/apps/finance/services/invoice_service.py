@@ -9,7 +9,6 @@ from decimal import Decimal
 
 from apps.finance.models import (
     Invoice, InvoiceStatus, InvoiceItem,
-    Contract,
 )
 
 logger = logging.getLogger(__name__)

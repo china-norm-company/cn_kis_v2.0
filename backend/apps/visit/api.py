@@ -12,7 +12,7 @@
 - POST /visit/nodes/create       创建访视节点
 """
 from ninja import Router, Schema, Query
-from typing import Optional, List
+from typing import Optional
 from datetime import datetime
 from . import services
 from .models import VisitPlan
@@ -324,10 +324,9 @@ def visit_execution_list(
     """
     执行视角的访视节点列表，关联排程状态和工单完成率。
     """
-    from apps.visit.models import VisitNode, VisitPlan
+    from apps.visit.models import VisitNode
     from apps.scheduling.models import ScheduleSlot
     from apps.workorder.models import WorkOrder
-    from django.db.models import Count, Q
 
     qs = VisitNode.objects.select_related('plan', 'plan__protocol').order_by('plan__protocol__title', 'order')
     if protocol_id:

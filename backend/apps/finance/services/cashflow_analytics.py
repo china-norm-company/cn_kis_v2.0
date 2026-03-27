@@ -5,7 +5,7 @@ import logging
 from decimal import Decimal
 from datetime import date
 from dateutil.relativedelta import relativedelta
-from django.db.models import Sum, Avg, DecimalField
+from django.db.models import Sum, DecimalField
 from django.db.models.functions import TruncMonth, Coalesce
 
 from apps.finance.models import (

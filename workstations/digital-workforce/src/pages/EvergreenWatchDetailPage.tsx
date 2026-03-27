@@ -53,7 +53,7 @@ export default function EvergreenWatchDetailPage() {
           <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-700">{report.status as string}</span>
         </div>
 
-        {report.source_url && (
+        {!!report.source_url && (
           <a
             href={report.source_url as string}
             target="_blank"

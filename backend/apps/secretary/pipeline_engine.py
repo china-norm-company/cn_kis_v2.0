@@ -26,7 +26,6 @@
         depends_on: [screen]
         params: {protocol: "$parse.output", subjects: "$screen.output.passed"}
 """
-import copy
 import logging
 import re
 import time

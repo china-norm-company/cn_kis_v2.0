@@ -2446,7 +2446,7 @@ def _build_suggestions_for_workstation(workstation_key: str) -> list:
                         'role_code': 'sample_tracker',
                         'actions': [
                             {'action_id': 'view', 'label': '查看工单', 'endpoint': f'/execution/#/workorders/{wo.id}'},
-                            {'action_id': 'view_samples', 'label': '查看样品', 'endpoint': f'/material/#/samples'},
+                            {'action_id': 'view_samples', 'label': '查看样品', 'endpoint': '/material/#/samples'},
                         ],
                     })
                     if len([i for i in items if i.get('type') == 'workorder_sample_gap']) >= 3:

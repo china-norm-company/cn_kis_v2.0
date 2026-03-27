@@ -3,7 +3,7 @@
 
 S4-9
 """
-from ninja import Router, Schema, Query
+from ninja import Router, Schema
 from typing import Optional, List
 from apps.identity.decorators import require_permission, _get_account_from_request
 
@@ -159,7 +159,6 @@ def create_change(request, data: ChangeCreateIn):
     # 触发飞书审批 + 站内通知
     try:
         from libs.feishu_approval import create_change_request_approval
-        from apps.notification.services import send_notification
 
         change_type_labels = {
             'protocol_amendment': '方案修正',

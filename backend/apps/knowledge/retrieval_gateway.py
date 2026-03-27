@@ -25,7 +25,7 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from django.db import connection
-from django.db.models import Q, Case, When, Value, IntegerField, F
+from django.db.models import Q, Case, When, Value, IntegerField
 
 from .models import KnowledgeEntry, KnowledgeEntity, KnowledgeRelation
 from libs.db_utils import paginate_queryset
@@ -1213,20 +1213,16 @@ def _rrf_fusion(
 
 def _get_embedding(text: str) -> Optional[list]:
     """
-    多级向量嵌入策略（优先级从高到低）：
-    1. 本地 Qwen3 Embedding（内网 GPU，1024维）—— 主通道
-    2. 本地 jinaai/jina-embeddings-v3（1024维，零延迟）—— 降级
-    3. 火山云 ARK ep- 端点 —— 云端备用
-
-    设计原则：向量检索必须始终可用，不允许因外部服务不可达导致系统降级。
+    向量嵌入（唯一授权通道）：内网 GPU Qwen3-embedding（1024 维）。
+    失败时返回 None，调用方负责记录错误，不允许降级到其他模型。
+    检索路径失败时返回空结果，不使用不兼容向量空间的 fallback。
     """
-    # 通道 1：本地 Qwen3 Embedding（GPU 服务器，最优质量）
     try:
         import requests as _req
         import os
         from django.conf import settings as _s
         qwen3_url = getattr(_s, 'QWEN3_EMBEDDING_URL',
-                            os.getenv('QWEN3_EMBEDDING_URL', 'http://10.0.12.30:18099/Embedding/v1/embeddings'))
+                            os.getenv('QWEN3_EMBEDDING_URL', 'http://11nzxz3591157.vicp.fun:49846/Embedding/v1/embeddings'))
         qwen3_key = getattr(_s, 'QWEN3_EMBEDDING_KEY',
                             os.getenv('QWEN3_EMBEDDING_KEY', '7ed12a89-fe21-4ed1-9616-1f6f27e64637'))
         resp = _req.post(
@@ -1241,30 +1237,11 @@ def _get_embedding(text: str) -> Optional[list]:
             emb = data['data'][0]['embedding']
             logger.debug('Qwen3 retrieval embedding 成功 dim=%d', len(emb))
             return emb
+        logger.error('Qwen3 retrieval embedding 返回无效响应: %s', data)
+        return None
     except Exception as e:
-        logger.debug('Qwen3 retrieval embedding 失败: %s', e)
-
-    # 通道 2：本地 jina-embeddings-v3（主力，零依赖）
-    try:
-        from apps.agent_gateway.services import get_local_embedding
-        embedding = get_local_embedding(text)
-        if embedding:
-            return embedding
-    except Exception as e:
-        logger.debug('本地 embedding 失败: %s', e)
-
-    # 通道 3：火山云 ARK（有网络时提供备用通道）
-    try:
-        from apps.agent_gateway.services import get_ark_embedding
-        embedding, trace = get_ark_embedding(text[:8000])
-        if embedding:
-            logger.debug('ARK embedding 成功作为备用通道')
-            return embedding
-        logger.debug('ARK retrieval embedding 未成功，trace=%s', trace)
-    except Exception as e:
-        logger.debug('ARK embedding failed: %s', e)
-
-    return None
+        logger.error('Qwen3 retrieval embedding 失败: %s', e)
+        return None
 
 
 def _compute_confidence(

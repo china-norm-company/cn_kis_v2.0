@@ -30,11 +30,12 @@ else
 fi
 
 # 2. 不得使用生产飞书主 App ID
+# 旧版生产应用 ID（若测试环境仍误用需报错；当前统一应用见 FEISHU_PRIMARY_APP_ID）
 if grep -q "cli_a98b0babd020500e" "$ENV_FILE"; then
-    echo "❌ 检测到生产飞书 App ID（cli_a98b0babd020500e）！测试环境禁止使用生产凭证！"
+    echo "❌ 检测到已废弃/旧版飞书 App ID（cli_a98b0babd020500e）！请改用统一应用 cli_a907f21f0723dbce 或测试专用应用。"
     ERRORS=$((ERRORS + 1))
 else
-    echo "✅ 未使用生产飞书 App ID"
+    echo "✅ 未检测到旧版飞书 App ID（cli_a98b0babd020500e）"
 fi
 
 # 3. 不得连接生产服务器 IP

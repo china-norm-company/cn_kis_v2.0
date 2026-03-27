@@ -6,11 +6,9 @@ Token 有效期约 2 小时，自动刷新。
 
 API 基础文档：https://docs.ekuaibao.com/docs/open-api/getting-started
 """
-import hashlib
-import json
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import requests
@@ -271,7 +269,7 @@ class EkbClient:
     def iter_roles(self) -> Iterator[List[dict]]:
         """遍历角色定义（roledefs 405，此接口不可用，返回空）"""
         return
-        yield  # noqa: unreachable
+        yield  # noqa: F704
 
     def iter_fee_types(self) -> Iterator[List[dict]]:
         """遍历费用类型（231 个，响应直接含 items 列表，无 count）"""
@@ -424,7 +422,7 @@ class EkbClient:
 
     def get_flow_attachments(self, flow_id: str) -> List[dict]:
         """获取单据附件列表"""
-        data = self._get(f'/api/openapi/v1/attachments', params={'flowId': flow_id})
+        data = self._get('/api/openapi/v1/attachments', params={'flowId': flow_id})
         return data.get('value', {}).get('items', data.get('items', []))
 
     def download_attachment(self, attachment_id: str, save_path: str) -> bool:

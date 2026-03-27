@@ -13,11 +13,11 @@ from django.db import transaction
 from apps.protocol.models import Protocol
 from apps.visit.models import (
     VisitPlan, VisitNode, VisitActivity,
-    ResourceDemand, ResourceDemandStatus,
+    ResourceDemand,
 )
 from apps.visit.services.generation_service import VisitGenerationService
 from apps.visit.services.resource_demand_service import ResourceDemandService
-from apps.scheduling.models import SchedulePlan, ScheduleSlot, SchedulePlanStatus
+from apps.scheduling.models import SchedulePlan, SchedulePlanStatus
 from apps.scheduling.services import IntelligentSchedulingService
 
 logger = logging.getLogger(__name__)

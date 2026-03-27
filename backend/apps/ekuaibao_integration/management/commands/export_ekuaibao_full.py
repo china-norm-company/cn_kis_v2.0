@@ -52,7 +52,8 @@ PHASE_MODULES = {
         'specifications', 'dimensions', 'dimension_items',
     ],
     'phase2': [
-        'flows',  # expense + loan + requisition，共 36,218 条
+        'flows',          # expense + loan + requisition
+        'invoice_flows',  # 发票流水 → 应付记录（PayableRecord）
     ],
     'phase3': [
         'budgets',
@@ -381,6 +382,10 @@ class Command(BaseCommand):
             for page in client.iter_all_flows():
                 records.extend(page)
 
+        elif module == 'invoice_flows':
+            for page in client.iter_invoices():
+                records.extend(page)
+
         elif module == 'budgets':
             for page in client.iter_budgets():
                 records.extend(page)
@@ -485,7 +490,25 @@ class Command(BaseCommand):
 
         self.stdout.write(f'批次 {batch_no} 有 {len(pending)} 条待审核冲突\n')
 
+        # 支持非交互批量处理模式
+        auto_mode = options.get('resolve_conflicts_mode', 'pending')
+        auto_resolution_map = {
+            'upsert': 'use_ekb',
+            'skip': 'skip',
+        }
+        auto_resolution = auto_resolution_map.get(auto_mode)
+
+        processed = 0
         for i, conflict in enumerate(pending):
+            if auto_resolution:
+                # 非交互模式：直接按策略处理
+                report.resolve_conflict(conflict['id'], resolution=auto_resolution, note=f'auto:{auto_mode}')
+                processed += 1
+                if processed % 1000 == 0 or processed == len(pending):
+                    self.stdout.write(f'  [{auto_mode}] 已处理 {processed}/{len(pending)} 条')
+                continue
+
+            # 交互模式
             self.stdout.write(f'\n--- 冲突 {i+1}/{len(pending)} ---')
             self.stdout.write(f'模块: {conflict["module"]}  ID: {conflict["ekb_id"]}')
             self.stdout.write(f'冲突类型: {conflict["conflict_type"]}  '
@@ -520,5 +543,6 @@ class Command(BaseCommand):
             note = input('备注（可选）: ').strip()
             report.resolve_conflict(conflict['id'], resolution=resolution, note=note)
             self.stdout.write(self.style.SUCCESS(f'  ✓ 已处理: {resolution}'))
+            processed += 1
 
-        self.stdout.write(self.style.SUCCESS('\n冲突处理完成'))
+        self.stdout.write(self.style.SUCCESS(f'\n冲突处理完成，共处理 {processed} 条'))

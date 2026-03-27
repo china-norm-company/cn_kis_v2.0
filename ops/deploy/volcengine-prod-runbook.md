@@ -75,8 +75,8 @@ sudo systemctl restart cn-kis-v2-celery-beat
 ### 8. 生产健康检查
 
 ```bash
-curl -f http://118.196.64.48/api/v1/health
-# 或通过域名
+curl -f http://118.196.64.48:8080/api/v1/health
+# 注：V2 系统在 8080 端口；80 端口是 V1 历史系统（保留兼容）
 curl -f https://your-prod-domain.com/api/v1/health
 ```
 

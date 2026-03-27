@@ -13,10 +13,9 @@ import inspect
 import logging
 import signal
 import time
-import traceback
 from typing import Any, Dict, List, Optional
 
-from .tool_registry import get_handler, get_tool_schemas
+from .tool_registry import get_handler
 
 logger = logging.getLogger(__name__)
 

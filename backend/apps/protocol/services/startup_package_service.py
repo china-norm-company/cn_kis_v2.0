@@ -386,7 +386,7 @@ def check_document_gaps(protocol_id: int) -> Dict[str, Any]:
     try:
         from apps.document.models import DocumentCategory
         cat_prefix = f'TMF-PROTOCOL-P{protocol_id}'
-        etmf_cats = DocumentCategory.objects.filter(code__startswith=f'TMF-')
+        etmf_cats = DocumentCategory.objects.filter(code__startswith='TMF-')
         protocol_cats = [c for c in etmf_cats if f'P{protocol_id}' in c.code]
         if protocol_cats:
             result['complete'].append({

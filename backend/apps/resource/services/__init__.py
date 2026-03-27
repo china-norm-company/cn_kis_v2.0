@@ -7,8 +7,8 @@
 import logging
 from typing import Optional
 from ..models import (
-    ResourceCategory, ResourceItem, ActivityTemplate, ActivityBOM,
-    ResourceType, ResourceStatus,
+    ResourceCategory, ResourceItem, ActivityTemplate, ActivityBOM,  # noqa: F401
+    ResourceType, ResourceStatus,  # noqa: F401
 )
 
 logger = logging.getLogger(__name__)
@@ -311,7 +311,7 @@ def remove_bom_item(bom_id: int) -> bool:
 # ============================================================================
 # S3-1：设备全生命周期服务
 # ============================================================================
-from ..models import EquipmentCalibration, EquipmentMaintenance, EquipmentUsage
+from ..models import EquipmentCalibration, EquipmentMaintenance, EquipmentUsage  # noqa: F401
 
 
 def add_calibration(

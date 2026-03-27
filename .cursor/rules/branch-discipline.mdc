@@ -1,0 +1,92 @@
+---
+description: 分支纪律：AI 每次任务开始前必须检查分支状态，拒绝在非法分支上开发
+alwaysApply: true
+---
+
+# 分支纪律（强制）
+
+## AI 每次开始任务时必须执行的三步检查
+
+### Step 1：确认当前分支
+
+AI 在接到任何开发类任务时，**第一件事**必须运行：
+
+```bash
+git branch --show-current
+```
+
+并将结果告知用户。
+
+### Step 2：判断分支是否合法
+
+合法分支格式：
+
+```
+feature/<workstation>/<issue-id>-<slug>
+fix/<workstation>/<issue-id>-<slug>
+chore/common/<issue-id>-<slug>
+hotfix/<workstation>/<issue-id>-<slug>
+wave/<wave-number>/<issue-id>-<slug>
+```
+
+合法 workstation：`secretary | finance | research | execution | quality | hr | crm | recruitment | equipment | material | facility | evaluator | lab-personnel | ethics | reception | control-plane | admin | digital-workforce | data-platform | common`
+
+> **注意**：`governance`（旧名）和 `iam`（已合并入 admin）均不再是合法工作台标识。AI 如遇到这两个词作为工作台使用，必须纠正为 `admin`。
+
+### Step 3：按情况处理
+
+| 当前分支状态 | AI 必须采取的行动 |
+|------------|----------------|
+| 在 `main` 上 | **拒绝开发**，引导用户运行 `./ops/scripts/dev-task.sh start-task <工作台> <issue-id> <slug>` |
+| 在 `staging` 上 | **拒绝直接开发**，说明 staging 是测试集成分支，需从 main 创建任务分支 |
+| 分支命名不合规 | **警告**，询问用户是否切换到规范分支再继续 |
+| 分支合法 | 正常继续，显示当前分支名确认 |
+
+## 代码解释/问题分析类请求（只读场景）
+
+以下类型的请求**不涉及代码修改**，AI 可在任何分支下执行，无需强制切换分支：
+
+- 「解释这段代码是什么意思」
+- 「分析这个错误的原因」
+- 「帮我看看日志/截图」
+- 「告诉我这个功能是怎么实现的」
+- 「帮我写一份 PR 描述」（只生成文字，不写代码）
+- 「检查这个文件有什么问题」（只读，不修改）
+
+**规则**：若用户请求**只读不写**，AI 可跳过分支检查，直接回答。
+若请求**涉及修改代码/文件**，则必须完成上述三步检查。
+
+**判断原则**：用户说"帮我改""加一个""删掉""修复"等动词 → 写操作，必须检查分支。
+用户说"解释""看看""是什么""为什么""怎么" → 只读操作，无需检查分支。
+
+## 跨工作台改动规则
+
+- 改动只能触及当前分支所属工作台
+- 例如：`feature/quality/231-rule-editor` 只能改质量台（`quality`）相关代码
+- 若改动跨工作台，必须告知用户拆分为独立分支，不得混合提交
+
+## 示例
+
+```
+用户说：「帮我在研究台加一个搜索功能」
+AI 先执行：git branch --show-current
+→ 若当前是 main：
+  「当前在 main 分支，不能直接开发。请先运行：
+   ./ops/scripts/dev-task.sh start-task research <issue-id> <功能简述>
+   创建任务分支后再继续。」
+
+→ 若当前是 feature/research/231-search-filter：
+  「当前在 feature/research/231-search-filter，归属工作台：research，可以开始开发。」
+
+→ 若当前是 feature/secretary/230-inbox：
+  「当前分支 feature/secretary/230-inbox 属于秘书台，
+   不应在此分支修改研究台代码。
+   请先运行 start-task 为研究台需求创建独立分支。」
+```
+
+## 禁止的行为
+
+- ❌ 不检查分支直接开始写代码
+- ❌ 在 main / staging 上直接修改文件
+- ❌ 将不同工作台的改动混入同一分支
+- ❌ 允许用户"临时在 main 改一下，回头再说"

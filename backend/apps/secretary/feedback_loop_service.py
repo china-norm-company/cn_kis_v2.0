@@ -9,13 +9,11 @@
 3. 行为调整：根据采纳率/评分自动调整推荐优先级与策略
 4. 周期性摘要：定期生成学习报告推动持续优化
 """
-import json
 import logging
 from collections import defaultdict
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
-from django.db import models
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)

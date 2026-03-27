@@ -14,7 +14,6 @@ Gate 6: 访视活动一致性     — 工单活动在 visit_node 定义的活动
 """
 import logging
 from datetime import date, timedelta
-from typing import Optional
 
 from django.utils import timezone
 

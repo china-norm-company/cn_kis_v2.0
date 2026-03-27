@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EDC BI Dashboard</title>
+
+  <!-- Bootstrap 5 (BootCDN 国内镜像) -->
+  <link rel="stylesheet"
+    href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.3.3/css/bootstrap.min.css" />
+  <!-- Bootstrap Icons (BootCDN 国内镜像) -->
+  <link rel="stylesheet"
+    href="https://cdn.bootcdn.net/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" />
+
+  <style>
+    /* ── 设计令牌 ─────────────────────────────────── */
+    :root {
+      --brand:       #4f46e5;
+      --brand-2:     #7c3aed;
+      --brand-light: #eef2ff;
+      --brand-grad:  linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+      --bg:          #f3f4f8;
+      --surface:     #ffffff;
+      --border:      #e5e7eb;
+      --text:        #1e293b;
+      --text-2:      #64748b;
+      --text-3:      #94a3b8;
+      --radius:      14px;
+      --shadow:      0 1px 4px rgba(0,0,0,.06), 0 6px 20px rgba(79,70,229,.07);
+      --shadow-md:   0 2px 8px rgba(0,0,0,.08), 0 10px 30px rgba(79,70,229,.1);
+    }
+
+    /* ── 基础 ─────────────────────────────────────── */
+    * { box-sizing: border-box; }
+    body {
+      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC",
+                   "Microsoft YaHei UI", "Segoe UI", sans-serif;
+      font-size: .875rem; color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* 细滚动条 */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 9px; }
+    ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+    /* ── 导航栏 ───────────────────────────────────── */
+    .app-navbar {
+      background: var(--brand-grad);
+      padding: 0 24px;
+      height: 56px;
+      display: flex; align-items: center; justify-content: space-between;
+      box-shadow: 0 2px 12px rgba(79,70,229,.3);
+      position: sticky; top: 0; z-index: 1000;
+    }
+    .nav-logo-wrap {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .nav-icon-box {
+      width: 34px; height: 34px; border-radius: 9px;
+      background: rgba(255,255,255,.18);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem; color: #fff;
+      backdrop-filter: blur(4px);
+    }
+    .nav-title {
+      font-size: .95rem; font-weight: 700; color: #fff; letter-spacing: .3px;
+    }
+    .nav-subtitle {
+      font-size: .7rem; color: rgba(255,255,255,.65); margin-top: -1px;
+    }
+    .db-pill {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 12px; border-radius: 20px;
+      background: rgba(255,255,255,.15);
+      color: #fff; font-size: .75rem; font-weight: 500;
+      backdrop-filter: blur(4px);
+      transition: background .2s;
+    }
+    .db-pill.ok  { background: rgba(16,185,129,.25); }
+    .db-pill.err { background: rgba(239,68,68,.25); }
+    .db-pill .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: rgba(255,255,255,.6);
+      animation: pulse 2s infinite;
+    }
+    .db-pill.ok  .dot { background: #34d399; }
+    .db-pill.err .dot { background: #f87171; animation: none; }
+    @keyframes pulse {
+      0%,100% { opacity: 1; } 50% { opacity: .4; }
+    }
+
+    /* ── 主容器 ───────────────────────────────────── */
+    .main-wrap { padding: 20px 24px 32px; max-width: 1800px; margin: 0 auto; }
+
+    /* ── 通用卡片 ─────────────────────────────────── */
+    .panel {
+      background: var(--surface); border-radius: var(--radius);
+      box-shadow: var(--shadow); border: 1px solid rgba(255,255,255,.8);
+    }
+
+    /* ── 筛选面板 ─────────────────────────────────── */
+    .filter-panel {
+      border-top: 3px solid var(--brand);
+      border-radius: var(--radius);
+    }
+    .filter-panel-header {
+      padding: 11px 18px; border-bottom: 1px solid var(--border);
+      font-weight: 600; font-size: .82rem; color: var(--brand);
+      display: flex; align-items: center; gap: 7px;
+      background: var(--brand-light); border-radius: calc(var(--radius) - 3px) calc(var(--radius) - 3px) 0 0;
+    }
+    .filter-panel-body { padding: 14px 18px 10px; }
+    .form-label {
+      font-weight: 500; font-size: .78rem; color: var(--text-2);
+      margin-bottom: 4px; display: block;
+    }
+    .form-control, .form-select {
+      border: 1.5px solid var(--border); border-radius: 8px;
+      font-size: .825rem; color: var(--text);
+      background: #fafafa; transition: border-color .15s, box-shadow .15s;
+    }
+    .form-control:focus, .form-select:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(79,70,229,.12);
+      background: #fff;
+    }
+    .form-check-input:checked {
+      background-color: var(--brand); border-color: var(--brand);
+    }
+
+    /* 版本单选行 */
+    .version-label {
+      font-size: .78rem; font-weight: 600; color: var(--text-2); white-space: nowrap;
+    }
+    .form-check-label { font-size: .8rem; }
+
+    /* ── 按钮 ─────────────────────────────────────── */
+    .btn-query {
+      background: var(--brand-grad); color: #fff;
+      border: none; border-radius: 8px;
+      padding: 6px 20px; font-size: .825rem; font-weight: 600;
+      box-shadow: 0 2px 8px rgba(79,70,229,.35);
+      transition: opacity .15s, transform .1s, box-shadow .15s;
+    }
+    .btn-query:hover { opacity: .9; box-shadow: 0 4px 14px rgba(79,70,229,.45); color: #fff; }
+    .btn-query:active { transform: scale(.97); }
+    .btn-reset {
+      background: transparent; color: var(--text-2);
+      border: 1.5px solid var(--border); border-radius: 8px;
+      padding: 5px 14px; font-size: .825rem; font-weight: 500;
+      transition: border-color .15s, color .15s, background .15s;
+    }
+    .btn-reset:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-light); }
+
+    /* ── 多选下拉 ─────────────────────────────────── */
+    .tp-dropdown { position: relative; }
+    .tp-toggle {
+      width: 100%; text-align: left; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap;
+      background: #fafafa; border: 1.5px solid var(--border);
+      border-radius: 8px; color: var(--text);
+      font-size: .825rem; padding: 4px 10px;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .tp-toggle:hover { border-color: #a5b4fc; }
+    .tp-toggle:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(79,70,229,.12); outline: none; }
+    .tp-panel {
+      display: none; position: absolute; z-index: 1050;
+      top: calc(100% + 4px); left: 0;
+      min-width: 220px; width: max-content; max-width: 300px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; box-shadow: var(--shadow-md);
+      overflow: hidden;
+    }
+    .tp-search-wrap { padding: 8px 8px 4px; }
+    .tp-actions {
+      padding: 3px 10px 5px; font-size: .75rem;
+      display: flex; align-items: center; gap: 6px; color: var(--text-3);
+    }
+    .tp-actions a { color: var(--brand); text-decoration: none; font-weight: 500; }
+    .tp-actions a:hover { text-decoration: underline; }
+    .tp-list {
+      max-height: 220px; overflow-y: auto;
+      border-top: 1px solid #f1f5f9; padding: 3px 0;
+    }
+    .tp-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 5px 12px; cursor: pointer; font-size: .825rem;
+      transition: background .1s; user-select: none; color: var(--text);
+    }
+    .tp-item:hover { background: var(--brand-light); }
+    .tp-item input[type=checkbox] { flex-shrink: 0; cursor: pointer; accent-color: var(--brand); }
+    .tp-item.tp-hidden { display: none; }
+
+    /* ── 项目编号单选 ─────────────────────────────── */
+    #study-dropdown { position: relative; }
+    #f-study { border-radius: 8px; font-size: .825rem; }
+    .study-item { display: flex; align-items: center; gap: 5px; }
+    .study-item.study-selected { background: var(--brand-light); color: var(--brand); font-weight: 600; }
+
+    /* ── 汇总横栏 ─────────────────────────────────── */
+    .summary-bar {
+      display: flex; align-items: stretch;
+      border-radius: var(--radius); overflow: hidden;
+      box-shadow: var(--shadow); border: 1px solid rgba(255,255,255,.8);
+    }
+    .summary-item {
+      flex: 1; display: flex; align-items: center; gap: 14px;
+      padding: 16px 20px; background: var(--surface);
+      transition: background .15s;
+    }
+    .summary-item:hover { background: #fafbff; }
+    .summary-icon {
+      width: 44px; height: 44px; border-radius: 11px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; font-size: 1.2rem;
+    }
+    .summary-val {
+      font-size: 1.55rem; font-weight: 700; line-height: 1.1; color: var(--text);
+    }
+    .summary-lbl {
+      font-size: .7rem; color: var(--text-3);
+      text-transform: uppercase; letter-spacing: .5px; margin-top: 2px;
+    }
+    .summary-divider { width: 1px; background: var(--border); flex-shrink: 0; }
+
+    /* ── 图表卡片 ─────────────────────────────────── */
+    #charts-container { min-height: 60px; }
+    .chart-card {
+      border-radius: var(--radius); box-shadow: var(--shadow);
+      background: var(--surface); overflow: hidden;
+      border: 1px solid rgba(255,255,255,.8);
+      transition: box-shadow .2s, transform .2s;
+    }
+    .chart-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+    .chart-card-header {
+      background: linear-gradient(135deg, #f8f7ff 0%, #f0f0ff 100%);
+      padding: 10px 16px; border-bottom: 1px solid #e8e7f8;
+      display: flex; align-items: center; gap: 7px;
+      font-size: .82rem; font-weight: 600; color: var(--brand);
+    }
+    .badge-probe {
+      background: var(--brand-grad); color: #fff;
+      border-radius: 6px; padding: 2px 9px; font-size: .73rem; font-weight: 600;
+    }
+    .badge-attr {
+      background: #fef3c7; color: #92400e;
+      border-radius: 6px; padding: 2px 9px; font-size: .73rem; font-weight: 600;
+    }
+    .chart-inner { width: 100%; height: 310px; }
+    #charts-placeholder {
+      background: var(--surface); border-radius: var(--radius);
+      box-shadow: var(--shadow); border: 2px dashed var(--border);
+      padding: 60px 0; text-align: center; color: var(--text-3); font-size: .9rem;
+    }
+
+    /* ── 数据表格 ─────────────────────────────────── */
+    .table-card {
+      border-radius: var(--radius); box-shadow: var(--shadow);
+      border: 1px solid rgba(255,255,255,.8); overflow: hidden;
+    }
+    .table-card-header {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 11px 18px; font-weight: 600; font-size: .84rem; color: var(--text);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .table { margin: 0; }
+    .table thead th {
+      background: linear-gradient(135deg, #f8f7ff 0%, #f0f0ff 100%);
+      color: var(--brand); font-weight: 600; font-size: .78rem;
+      white-space: nowrap; border-bottom: 2px solid #e8e7f8;
+      padding: 10px 12px;
+    }
+    .table tbody tr { transition: background .1s; }
+    .table tbody tr:hover td { background: #fafbff; }
+    .table tbody td { padding: 9px 12px; color: var(--text); font-size: .825rem; border-color: #f1f5f9; }
+    .badge-current { background: #d1fae5; color: #065f46; border-radius: 5px; padding: 2px 8px; font-size: .73rem; font-weight: 600; }
+    .badge-outdated { background: #fee2e2; color: #991b1b; border-radius: 5px; padding: 2px 8px; font-size: .73rem; font-weight: 600; }
+
+    /* 分页 */
+    .pagination .page-link {
+      border-color: var(--border); color: var(--text-2); font-size: .8rem;
+      padding: 4px 9px; border-radius: 6px !important; margin: 0 2px;
+    }
+    .pagination .page-item.active .page-link {
+      background: var(--brand-grad); border-color: transparent; color: #fff;
+      box-shadow: 0 2px 6px rgba(79,70,229,.35);
+    }
+    .pagination .page-link:hover { background: var(--brand-light); border-color: var(--brand); color: var(--brand); }
+    .table-footer { background: var(--surface); border-top: 1px solid var(--border); padding: 10px 18px; }
+
+    /* ── 加载遮罩 ─────────────────────────────────── */
+    #loading-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(248,249,252,.75); backdrop-filter: blur(4px);
+      z-index: 9999; align-items: center; justify-content: center;
+    }
+    #loading-overlay.show { display: flex; }
+    .loading-box {
+      background: var(--surface); border-radius: 16px;
+      padding: 28px 36px; text-align: center;
+      box-shadow: 0 8px 40px rgba(79,70,229,.18);
+    }
+    .loading-box .spinner {
+      width: 2.4rem; height: 2.4rem; border-width: 3px;
+      border-color: #e0e7ff; border-top-color: var(--brand);
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- ── 导航栏 ──────────────────────────────────────────────────────────────── -->
+<nav class="app-navbar">
+  <div class="nav-logo-wrap">
+    <div class="nav-icon-box">
+      <i class="bi bi-activity"></i>
+    </div>
+    <div>
+      <div class="nav-title">EDC BI Dashboard</div>
+      <div class="nav-subtitle">临床试验数据分析平台</div>
+    </div>
+  </div>
+  <div id="db-status" class="db-pill">
+    <div class="dot"></div>
+    <i class="bi bi-database"></i>
+    <span>检查中…</span>
+  </div>
+</nav>
+
+<!-- ── 主体内容 ─────────────────────────────────────────────────────────────── -->
+<div class="main-wrap">
+
+  <!-- 筛选面板 -->
+  <div class="panel filter-panel mb-3">
+    <div class="filter-panel-header">
+      <i class="bi bi-sliders2"></i>筛选条件
+    </div>
+    <div class="filter-panel-body">
+      <div class="row g-2">
+
+        <!-- study_code 模糊单选 -->
+        <div class="col-md-2">
+          <label class="form-label">项目编号 <span class="text-danger">*</span></label>
+          <div class="tp-dropdown" id="study-dropdown">
+            <input type="text" id="f-study" class="form-control form-control-sm"
+              placeholder="搜索项目编号…" autocomplete="off" />
+            <div class="tp-panel" id="study-panel">
+              <div class="tp-list" id="study-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- probe 多选 -->
+        <div class="col-md-2">
+          <label class="form-label">设备 <small class="text-muted">(留空=全选)</small></label>
+          <div class="tp-dropdown" id="pr-dropdown">
+            <button type="button" class="btn btn-outline-secondary btn-sm tp-toggle" id="pr-toggle">
+              <span id="pr-label">— 全选（留空）—</span>
+              <i class="bi bi-chevron-down float-end mt-1"></i>
+            </button>
+            <div class="tp-panel" id="pr-panel">
+              <div class="tp-search-wrap">
+                <input type="text" id="pr-search" class="form-control form-control-sm"
+                  placeholder="搜索设备…" autocomplete="off" />
+              </div>
+              <div class="tp-actions">
+                <a href="#" id="pr-select-all">全选</a><span>|</span>
+                <a href="#" id="pr-clear-all">清空</a>
+                <span id="pr-count" class="ms-auto"></span>
+              </div>
+              <div class="tp-list" id="pr-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- position_code 多选 -->
+        <div class="col-md-2">
+          <label class="form-label">部位 <small class="text-muted">(留空=全选)</small></label>
+          <div class="tp-dropdown" id="pos-dropdown">
+            <button type="button" class="btn btn-outline-secondary btn-sm tp-toggle" id="pos-toggle">
+              <span id="pos-label">— 全选（留空）—</span>
+              <i class="bi bi-chevron-down float-end mt-1"></i>
+            </button>
+            <div class="tp-panel" id="pos-panel">
+              <div class="tp-search-wrap">
+                <input type="text" id="pos-search" class="form-control form-control-sm"
+                  placeholder="搜索部位…" autocomplete="off" />
+              </div>
+              <div class="tp-actions">
+                <a href="#" id="pos-select-all">全选</a><span>|</span>
+                <a href="#" id="pos-clear-all">清空</a>
+                <span id="pos-count" class="ms-auto"></span>
+              </div>
+              <div class="tp-list" id="pos-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- attribute_name 多选 -->
+        <div class="col-md-2">
+          <label class="form-label">指标名称 <small class="text-muted">(留空=全选)</small></label>
+          <div class="tp-dropdown" id="at-dropdown">
+            <button type="button" class="btn btn-outline-secondary btn-sm tp-toggle" id="at-toggle">
+              <span id="at-label">— 全选（留空）—</span>
+              <i class="bi bi-chevron-down float-end mt-1"></i>
+            </button>
+            <div class="tp-panel" id="at-panel">
+              <div class="tp-search-wrap">
+                <input type="text" id="at-search" class="form-control form-control-sm"
+                  placeholder="搜索指标…" autocomplete="off" />
+              </div>
+              <div class="tp-actions">
+                <a href="#" id="at-select-all">全选</a><span>|</span>
+                <a href="#" id="at-clear-all">清空</a>
+                <span id="at-count" class="ms-auto"></span>
+              </div>
+              <div class="tp-list" id="at-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- subject_code 可搜索多选下拉 -->
+        <div class="col-md-2">
+          <label class="form-label">受试者 <small class="text-muted">(留空=全选)</small></label>
+          <div class="tp-dropdown" id="sc-dropdown">
+            <button type="button" class="btn btn-outline-secondary btn-sm tp-toggle" id="sc-toggle">
+              <span id="sc-label">— 全选（留空）—</span>
+              <i class="bi bi-chevron-down float-end mt-1"></i>
+            </button>
+            <div class="tp-panel" id="sc-panel">
+              <div class="tp-search-wrap">
+                <input type="text" id="sc-search" class="form-control form-control-sm"
+                  placeholder="搜索受试者…" autocomplete="off" />
+              </div>
+              <div class="tp-actions">
+                <a href="#" id="sc-select-all">全选</a>
+                <span>|</span>
+                <a href="#" id="sc-clear-all">清空</a>
+                <span id="sc-count" class="ms-auto"></span>
+              </div>
+              <div class="tp-list" id="sc-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- time_point 可搜索多选下拉 -->
+        <div class="col-md-2">
+          <label class="form-label">时间点 <small class="text-muted">(留空=全选)</small></label>
+          <div class="tp-dropdown" id="tp-dropdown">
+            <button type="button" class="btn btn-outline-secondary btn-sm tp-toggle" id="tp-toggle">
+              <span id="tp-label">— 全选（留空）—</span>
+              <i class="bi bi-chevron-down float-end mt-1"></i>
+            </button>
+            <div class="tp-panel" id="tp-panel">
+              <div class="tp-search-wrap">
+                <input type="text" id="tp-search" class="form-control form-control-sm"
+                  placeholder="搜索时间点…" autocomplete="off" />
+              </div>
+              <div class="tp-actions">
+                <a href="#" id="tp-select-all">全选</a>
+                <span>|</span>
+                <a href="#" id="tp-clear-all">清空</a>
+                <span id="tp-count" class="ms-auto"></span>
+              </div>
+              <div class="tp-list" id="tp-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- is_current -->
+        <div class="col-md-3 d-flex align-items-end gap-3 pt-1">
+          <span class="version-label">版本：</span>
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="is_current"
+              id="ic-1" value="1" checked />
+            <label class="form-check-label" for="ic-1">最新 (1)</label>
+          </div>
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="is_current"
+              id="ic-0" value="0" />
+            <label class="form-check-label" for="ic-0">历史 (0)</label>
+          </div>
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="is_current"
+              id="ic-all" value="all" />
+            <label class="form-check-label" for="ic-all">全部</label>
+          </div>
+        </div>
+
+        <!-- 查询按钮 -->
+        <div class="col-md-3 d-flex align-items-end gap-2">
+          <button id="btn-query" class="btn-query">
+            <i class="bi bi-search me-1"></i>查询
+          </button>
+          <button id="btn-reset" class="btn-reset">
+            <i class="bi bi-arrow-counterclockwise me-1"></i>重置
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- 汇总横栏 -->
+  <div class="summary-bar mb-3">
+    <div class="summary-item">
+      <div class="summary-icon" style="background:linear-gradient(135deg,#eef2ff,#e0e7ff);color:var(--brand)">
+        <i class="bi bi-clipboard-data"></i>
+      </div>
+      <div>
+        <div class="summary-val" id="s-count">—</div>
+        <div class="summary-lbl">总记录数</div>
+      </div>
+    </div>
+    <div class="summary-divider"></div>
+    <div class="summary-item">
+      <div class="summary-icon" style="background:linear-gradient(135deg,#ede9fe,#ddd6fe);color:#7c3aed">
+        <i class="bi bi-cpu"></i>
+      </div>
+      <div>
+        <div class="summary-val" id="s-device">—</div>
+        <div class="summary-lbl">设备数量</div>
+      </div>
+    </div>
+    <div class="summary-divider"></div>
+    <div class="summary-item">
+      <div class="summary-icon" style="background:linear-gradient(135deg,#fef3c7,#fde68a);color:#d97706">
+        <i class="bi bi-bar-chart-line"></i>
+      </div>
+      <div>
+        <div class="summary-val" id="s-attr">—</div>
+        <div class="summary-lbl">指标数量</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 图表区（动态多图） -->
+  <div id="charts-container" class="mb-3">
+    <div id="charts-placeholder">
+      <i class="bi bi-graph-up" style="font-size:2.4rem;color:var(--text-3);"></i>
+      <div class="mt-3" style="color:var(--text-2);font-weight:500;">请设置筛选条件后点击查询</div>
+      <div style="color:var(--text-3);font-size:.8rem;margin-top:4px;">选择项目编号后可查看各指标趋势图</div>
+    </div>
+    <div id="charts-grid" class="row g-3" style="display:none;"></div>
+  </div>
+
+  <!-- 数据表格 -->
+  <div class="table-card">
+    <div class="table-card-header">
+      <span><i class="bi bi-table me-2" style="color:var(--brand);"></i>详细数据</span>
+      <small id="page-info" style="color:var(--text-3);font-size:.75rem;"></small>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 align-middle">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>受试者编号</th>
+            <th>时间点</th>
+            <th>观测时间</th>
+            <th>设备</th>
+            <th>部位</th>
+            <th>指标名称</th>
+            <th>数值</th>
+            <th>最新版本</th>
+          </tr>
+        </thead>
+        <tbody id="table-body">
+          <tr><td colspan="9" class="text-center py-5" style="color:var(--text-3);">请设置筛选条件后点击查询</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- 分页控件 -->
+    <div class="table-footer">
+      <nav>
+        <ul class="pagination pagination-sm justify-content-center mb-0" id="pagination"></ul>
+      </nav>
+    </div>
+  </div>
+
+</div><!-- /main-wrap -->
+
+<!-- 加载遮罩 -->
+<div id="loading-overlay">
+  <div class="loading-box">
+    <div class="spinner-border spinner" role="status"></div>
+    <div class="mt-3" style="font-weight:600;color:var(--brand);font-size:.875rem;">数据加载中…</div>
+    <div style="color:var(--text-3);font-size:.75rem;margin-top:2px;">请稍候</div>
+  </div>
+</div>
+
+<!-- ── JS 依赖 ──────────────────────────────────────────────────────────────── -->
+<script src="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.bootcdn.net/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+<script src="/static/js/echarts.min.js"></script>
+
+<script>
+
+/* ── 通用多选下拉组件 ─────────────────────────────────────────────────────── */
+const MULTI_PREFIXES = ['pr', 'pos', 'at', 'sc', 'tp'];
+
+function initMultiDropdown(prefix, items) {
+  const $list = $(`#${prefix}-list`);
+  $list.empty();
+  (items || []).forEach(v => {
+    const safeId = `${prefix}_` + v.replace(/[^a-zA-Z0-9]/g, '_');
+    $list.append(
+      `<label class="tp-item" data-val="${v}">` +
+        `<input type="checkbox" id="${safeId}" value="${v}" />` +
+        `<span>${v}</span>` +
+      `</label>`
+    );
+  });
+  updateDropdownLabel(prefix);
+}
+
+function getSelectedVals(prefix) {
+  return $(`#${prefix}-list input[type=checkbox]:checked`).map((_, el) => el.value).get();
+}
+
+function updateDropdownLabel(prefix) {
+  const sel   = getSelectedVals(prefix);
+  const total = $(`#${prefix}-list input[type=checkbox]`).length;
+  if (sel.length === 0) {
+    $(`#${prefix}-label`).text('— 全选（留空）—');
+    $(`#${prefix}-count`).text('');
+  } else {
+    $(`#${prefix}-label`).text('已选 ' + sel.length + ' 个');
+    $(`#${prefix}-count`).text(sel.length + '/' + total);
+  }
+}
+
+/* ── 项目编号模糊单选 ─────────────────────────────────────────────────────── */
+let allStudyCodes = [];
+
+function initStudyOptions(codes) {
+  allStudyCodes = codes || [];
+}
+
+function renderStudyList(q) {
+  const $list = $('#study-list');
+  $list.empty();
+  const filtered = q
+    ? allStudyCodes.filter(c => c.toLowerCase().includes(q.toLowerCase()))
+    : allStudyCodes;
+  if (filtered.length === 0) {
+    $list.append('<div class="tp-item" style="color:#aaa;cursor:default;pointer-events:none">无匹配结果</div>');
+  } else {
+    const cur = $('#f-study').val().trim();
+    filtered.forEach(code => {
+      const isSel = code === cur;
+      $list.append(
+        `<div class="tp-item study-item${isSel ? ' study-selected' : ''}" data-val="${code}">` +
+          (isSel ? '<i class="bi bi-check2 me-1" style="color:var(--brand)"></i>' :
+                   '<span style="display:inline-block;width:18px"></span>') +
+          `<span>${code}</span>` +
+        `</div>`
+      );
+    });
+  }
+}
+
+/* ── ECharts 实例列表 ────────────────────────────────────────────────────── */
+let chartInstances = [];
+
+function destroyAllCharts() {
+  chartInstances.forEach(c => c && c.dispose());
+  chartInstances = [];
+  $('#charts-grid').empty().hide();
+  $('#charts-placeholder').show();
+}
+
+/* ── 分页状态 ────────────────────────────────────────────────────────────── */
+let currentPage = 1;
+const PAGE_SIZE = 20;
+
+/* ── 工具函数 ────────────────────────────────────────────────────────────── */
+function fmtNum(v) {
+  if (v === null || v === undefined) return '—';
+  return Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 4 });
+}
+
+function fmtTime(iso) {
+  if (!iso) return '—';
+  // 只显示到秒
+  return iso.replace('T', ' ').replace(/\.\d+.*$/, '');
+}
+
+/* ── API 基础路径（兼容 Nginx 子路径代理） ─────────────────────────────── */
+const API_BASE = (() => {
+  // 取当前页面路径中 /api 之前的部分作为前缀
+  // 直接访问 Flask: pathname = "/"  → API_BASE = ""
+  // 通过 Nginx:     pathname = "/edc-dashboard/" → API_BASE = "/edc-dashboard"
+  const p = window.location.pathname.replace(/\/+$/, ''); // 去尾部斜线
+  return p || '';
+})();
+
+/* ── DB 健康检查 ─────────────────────────────────────────────────────────── */
+function checkHealth() {
+  $.get(API_BASE + '/api/health')
+    .done(data => {
+      const el = $('#db-status');
+      if (data.status === 'ok') {
+        el.removeClass('err').addClass('ok')
+          .html('<div class="dot"></div><i class="bi bi-database-check"></i><span>已连接</span>');
+      } else {
+        el.removeClass('ok').addClass('err')
+          .html('<div class="dot"></div><i class="bi bi-database-x"></i><span>连接失败</span>');
+      }
+    })
+    .fail(() => {
+      $('#db-status').removeClass('ok').addClass('err')
+        .html('<div class="dot"></div><i class="bi bi-database-x"></i><span>服务异常</span>');
+    });
+}
+
+/* ── 填充下拉选项 ────────────────────────────────────────────────────────── */
+function loadOptions() {
+  const study = $('#f-study').val().trim();
+  if (!study) return;
+  $.get(API_BASE + '/api/options', { study_code: study })
+    .done(data => {
+      initMultiDropdown('pr',  data.probes          || []);
+      initMultiDropdown('pos', data.position_codes  || []);
+      initMultiDropdown('at',  data.attribute_names || []);
+      initMultiDropdown('sc',  data.subject_codes   || []);
+      initMultiDropdown('tp',  data.time_points     || []);
+    });
+}
+
+/* ── 主查询函数 ──────────────────────────────────────────────────────────── */
+function fetchData(page) {
+  currentPage = page || 1;
+
+  const params = {
+    study_code:    $('#f-study').val().trim(),
+    probe:         getSelectedVals('pr').join(','),
+    position_code: getSelectedVals('pos').join(','),
+    attribute_name:getSelectedVals('at').join(','),
+    subject_code:  getSelectedVals('sc').join(','),
+    time_point:    getSelectedVals('tp').join(','),
+    is_current:    $('input[name="is_current"]:checked').val(),
+    page:          currentPage,
+    page_size:     PAGE_SIZE,
+  };
+
+  $('#loading-overlay').addClass('show');
+
+  $.get(API_BASE + '/api/data', params)
+    .done(res => {
+      if (res.error) {
+        alert('查询失败：' + res.error);
+        return;
+      }
+      renderStats(res.stats);
+      renderCharts(res.chart_groups || []);
+      renderTable(res.table_data, res.pagination);
+    })
+    .fail((xhr) => {
+      const msg = xhr.responseJSON?.error || '网络或服务器错误';
+      alert('请求失败：' + msg);
+    })
+    .always(() => $('#loading-overlay').removeClass('show'));
+}
+
+/* ── 渲染统计卡片 ────────────────────────────────────────────────────────── */
+function renderStats(stats) {
+  $('#s-count').text(stats.count ?? '—');
+  $('#s-device').text(stats.device_count ?? '—');
+  $('#s-attr').text(stats.attribute_count ?? '—');
+}
+
+/* ── 渲染单个 ECharts 折线图 ──────────────────────────────────────────────── */
+function buildEchartsOption(seriesList) {
+  const categories  = seriesList[0].data.map(pt => pt.x);
+  const nPerPoint   = seriesList[0].data.map(pt => pt.n ?? null);  // 每时间点唯一受试者数
+  const totalPoints = categories.length;
+  const labelInterval = totalPoints > 40 ? Math.ceil(totalPoints / 20) - 1
+                      : totalPoints > 20 ? 1 : 0;
+
+  const echartsSeries = seriesList.map(s => ({
+    name: s.name,
+    type: 'line',
+    smooth: false,
+    symbol: 'circle',
+    symbolSize: totalPoints > 30 ? 4 : 7,
+    data: s.data.map(pt => ({ value: pt.y, n: pt.n ?? null })),
+    lineStyle: { width: 2.5 },
+    itemStyle: { borderWidth: 2 },
+    emphasis: { focus: 'series', scale: 1.4 },
+    label: {
+      show: totalPoints <= 15,
+      position: 'top',
+      fontSize: 10,
+      formatter: p => fmtNum(p.value),
+    },
+  }));
+
+  return {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      backgroundColor: 'rgba(255,255,255,.95)',
+      borderColor: '#ddd',
+      borderWidth: 1,
+      textStyle: { color: '#333', fontSize: 12 },
+      formatter(params) {
+        const tp = params[0].axisValue;
+        const n  = params[0].data?.n;
+        let html = `<div style="font-weight:600;margin-bottom:4px">${tp}</div>`;
+        if (n != null) {
+          html += `<div style="color:#7c3aed;font-size:11px;margin-bottom:3px">样本量 N = ${n}</div>`;
+        }
+        params.forEach(p => {
+          html += `${p.marker} ${p.seriesName}：<b>${fmtNum(p.value)}</b><br/>`;
+        });
+        return html;
+      },
+    },
+    legend: { bottom: 4, type: 'scroll', textStyle: { fontSize: 12 } },
+    grid: { top: 16, left: 64, right: 20, bottom: totalPoints > 20 ? 100 : 75 },
+    xAxis: {
+      type: 'category',
+      data: categories,
+      axisLabel: {
+        rotate: totalPoints > 10 ? 40 : 0,
+        fontSize: 11,
+        interval: labelInterval,
+        color: '#555',
+        rich: {
+          n: { color: '#9d77e0', fontSize: 10, lineHeight: 16 },
+        },
+        formatter: (val, i) => {
+          if (i % (labelInterval + 1) !== 0) return val;
+          const nVal = nPerPoint[i];
+          return nVal != null ? `${val}\n{n|n=${nVal}}` : val;
+        },
+      },
+      axisLine: { lineStyle: { color: '#ccc' } },
+      axisTick: { alignWithLabel: true },
+    },
+    yAxis: {
+      type: 'value',
+      name: '均值',
+      nameTextStyle: { fontSize: 11, color: '#888' },
+      axisLabel: { fontSize: 11, color: '#555' },
+      splitLine: { lineStyle: { type: 'dashed', color: '#eee' } },
+    },
+    series: echartsSeries,
+    color: ['#3b6fd4', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6',
+            '#06b6d4', '#84cc16', '#ec4899', '#f97316', '#6366f1'],
+  };
+}
+
+/* ── 渲染多张 ECharts 图表 ───────────────────────────────────────────────── */
+function renderCharts(groups) {
+  destroyAllCharts();
+
+  if (!groups || groups.length === 0) {
+    $('#charts-placeholder')
+      .html('<i class="bi bi-graph-up" style="font-size:2rem;opacity:.3;"></i><div class="mt-2">暂无图表数据</div>')
+      .show();
+    return;
+  }
+
+  $('#charts-placeholder').hide();
+  const $grid = $('#charts-grid').show();
+
+  // 1列 or 2列布局
+  const colClass = groups.length === 1 ? 'col-12' : 'col-md-6';
+
+  groups.forEach((group, idx) => {
+    const chartId     = `chart-${idx}`;
+    const probeLabel  = group.probe           || '—';
+    const attrLabel   = group.attribute_name  || '—';
+    const totalPoints = group.series[0]?.data?.length ?? 0;
+    const N           = group.subject_count   ?? '—';
+
+    $grid.append(`
+      <div class="${colClass}">
+        <div class="chart-card">
+          <div class="chart-card-header">
+            <i class="bi bi-graph-up me-1"></i>
+            <span class="badge-probe">${probeLabel}</span>
+            <span style="color:#bbb;margin:0 2px">|</span>
+            <span class="badge-attr">${attrLabel}</span>
+            <span class="ms-auto d-flex align-items-center gap-2">
+              <span style="font-size:.73rem;color:var(--text-3);font-weight:400">共 ${totalPoints} 个时间点</span>
+              <span style="background:linear-gradient(135deg,#ede9fe,#ddd6fe);color:#7c3aed;border-radius:6px;padding:2px 9px;font-size:.73rem;font-weight:600;letter-spacing:.2px">N = ${N}</span>
+            </span>
+          </div>
+          <div style="padding:10px 14px 8px;">
+            <div id="${chartId}" class="chart-inner"></div>
+          </div>
+        </div>
+      </div>`);
+
+    try {
+      const instance = echarts.init(document.getElementById(chartId), null, { renderer: 'canvas' });
+      instance.setOption(buildEchartsOption(group.series));
+      chartInstances.push(instance);
+    } catch (e) {
+      console.warn('ECharts 初始化失败:', e);
+    }
+  });
+}
+
+/* ── 渲染数据表格 ────────────────────────────────────────────────────────── */
+function renderTable(rows, pag) {
+  const $tbody = $('#table-body');
+  $tbody.empty();
+
+  if (!rows || rows.length === 0) {
+    $tbody.append('<tr><td colspan="9" class="text-center text-muted py-4">未找到匹配数据</td></tr>');
+    $('#page-info').text('');
+    $('#pagination').empty();
+    return;
+  }
+
+  const offset = (pag.page - 1) * pag.page_size;
+  rows.forEach((r, i) => {
+    const isCurrent = r.is_current === 1 || r.is_current === '1';
+    $tbody.append(`
+      <tr>
+        <td class="text-muted">${offset + i + 1}</td>
+        <td>${r.subject_code ?? '—'}</td>
+        <td>${r.time_point ?? '—'}</td>
+        <td style="white-space:nowrap">${fmtTime(r.observation_time)}</td>
+        <td>${r.probe ?? '—'}</td>
+        <td>${r.position_code ?? '—'}</td>
+        <td>${r.attribute_name ?? '—'}</td>
+        <td class="text-end fw-semibold">${fmtNum(r.attribute_value)}</td>
+        <td class="text-center">
+          <span class="badge ${isCurrent ? 'badge-current' : 'badge-outdated'}">
+            ${isCurrent ? '是' : '否'}
+          </span>
+        </td>
+      </tr>`);
+  });
+
+  $('#page-info').text(
+    `第 ${pag.page} / ${pag.total_pages} 页，共 ${pag.total} 条`
+  );
+  renderPagination(pag);
+}
+
+/* ── 渲染分页控件 ────────────────────────────────────────────────────────── */
+function renderPagination(pag) {
+  const $ul = $('#pagination');
+  $ul.empty();
+  if (pag.total_pages <= 1) return;
+
+  const addBtn = (label, page, disabled, active) => {
+    $ul.append(`
+      <li class="page-item ${disabled ? 'disabled' : ''} ${active ? 'active' : ''}">
+        <a class="page-link" href="#" data-page="${page}">${label}</a>
+      </li>`);
+  };
+
+  addBtn('«', 1, pag.page === 1);
+  addBtn('‹', pag.page - 1, pag.page === 1);
+
+  // 显示前后 2 页
+  const start = Math.max(1, pag.page - 2);
+  const end = Math.min(pag.total_pages, pag.page + 2);
+  if (start > 1) addBtn('…', start - 1, true);
+  for (let p = start; p <= end; p++) addBtn(p, p, false, p === pag.page);
+  if (end < pag.total_pages) addBtn('…', end + 1, true);
+
+  addBtn('›', pag.page + 1, pag.page === pag.total_pages);
+  addBtn('»', pag.total_pages, pag.page === pag.total_pages);
+}
+
+/* ── 事件绑定 ────────────────────────────────────────────────────────────── */
+$(function () {
+  window.addEventListener('resize', () => { chartInstances.forEach(c => c && c.resize()); });
+
+  checkHealth();
+
+  // 页面初始化时加载所有项目编号
+  $.get(API_BASE + '/api/study_codes').done(data => initStudyOptions(data.study_codes || []));
+
+  // ── 通用多选下拉事件（pr / pos / at / sc / tp）──────────────────────────
+  MULTI_PREFIXES.forEach(prefix => {
+    $(`#${prefix}-toggle`).on('click', function (e) {
+      e.stopPropagation();
+      $(`#${prefix}-panel`).toggle();
+    });
+    $(`#${prefix}-search`).on('input', function () {
+      const q = $(this).val().toLowerCase().trim();
+      $(`#${prefix}-list .tp-item`).each(function () {
+        $(this).toggleClass('tp-hidden', q.length > 0 &&
+          !$(this).data('val').toLowerCase().includes(q));
+      });
+    });
+    $(`#${prefix}-select-all`).on('click', function (e) {
+      e.preventDefault();
+      $(`#${prefix}-list .tp-item:not(.tp-hidden) input[type=checkbox]`).prop('checked', true);
+      updateDropdownLabel(prefix);
+    });
+    $(`#${prefix}-clear-all`).on('click', function (e) {
+      e.preventDefault();
+      $(`#${prefix}-list input[type=checkbox]`).prop('checked', false);
+      updateDropdownLabel(prefix);
+    });
+    $(document).on('change', `#${prefix}-list input[type=checkbox]`,
+      () => updateDropdownLabel(prefix));
+  });
+
+  // ── 项目编号模糊单选交互 ─────────────────────────────────────────────────
+  $('#f-study').on('focus input', function () {
+    renderStudyList($(this).val().trim());
+    $('#study-panel').show();
+  });
+  $(document).on('click', '.study-item', function () {
+    $('#f-study').val($(this).data('val'));
+    $('#study-panel').hide();
+    MULTI_PREFIXES.forEach(p => {
+      $(`#${p}-list`).empty();
+      $(`#${p}-search`).val('');
+      $(`#${p}-panel`).hide();
+      updateDropdownLabel(p);
+    });
+    loadOptions();
+  });
+
+  // ── 点击外部关闭所有面板 ─────────────────────────────────────────────────
+  $(document).on('click', function (e) {
+    if (!$(e.target).closest('#study-dropdown').length) $('#study-panel').hide();
+    MULTI_PREFIXES.forEach(p => {
+      if (!$(e.target).closest(`#${p}-dropdown`).length) $(`#${p}-panel`).hide();
+    });
+  });
+
+  // 查询按钮
+  $('#btn-query').on('click', () => fetchData(1));
+
+  // 回车触发查询（各搜索框除外）
+  const searchSel = MULTI_PREFIXES.map(p => `#${p}-search`).concat(['#f-study']).join(',');
+  $(document).on('keydown', `input:not(${searchSel})`,
+    e => { if (e.key === 'Enter') fetchData(1); });
+  $('#f-study').on('keydown', e => { if (e.key === 'Enter') { $('#study-panel').hide(); fetchData(1); }});
+
+  // 重置
+  $('#btn-reset').on('click', () => {
+    $('#f-study').val('');
+    $('#study-panel').hide();
+    $('#ic-1').prop('checked', true);
+    MULTI_PREFIXES.forEach(p => {
+      $(`#${p}-list`).empty();
+      $(`#${p}-search`).val('');
+      $(`#${p}-panel`).hide();
+      updateDropdownLabel(p);
+    });
+    $('#s-count,#s-device,#s-attr').text('—');
+    $('#table-body').html('<tr><td colspan="9" class="text-center text-muted py-4">请设置筛选条件后点击查询</td></tr>');
+    $('#pagination,#page-info').empty();
+    destroyAllCharts();
+    $('#charts-placeholder')
+      .html('<i class="bi bi-graph-up" style="font-size:2rem;opacity:.3;"></i><div class="mt-2">请设置筛选条件后点击查询</div>')
+      .show();
+  });
+
+  // 分页点击
+  $(document).on('click', '#pagination .page-link', function (e) {
+    e.preventDefault();
+    const p = parseInt($(this).data('page'));
+    if (p) fetchData(p);
+  });
+});
+</script>
+
+</body>
+</html>

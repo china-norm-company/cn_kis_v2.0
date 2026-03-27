@@ -40,14 +40,15 @@ const LIVE_TOKEN =
   process.env.AI_LIVE_AUTH_TOKEN ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJ1c2VybmFtZSI6ImZlaXNodV9vdV9lODIwNDdmYjE4ZGUyIiwiYWNjb3VudF90eXBlIjoiaW50ZXJuYWwiLCJyb2xlcyI6WyJhZG1pbiIsInZpZXdlciJdLCJleHAiOjE4MDQ5MjQwNzUsImlhdCI6MTc3MzM4ODA3NX0.JwkQFesL9TyVh4nPUA-X_tVRY1aqISNE_6ax6bMiV54'
 
-const PRIMARY_APP_ID = 'cli_a98b0babd020500e'
+const PRIMARY_APP_ID = 'cli_a907f21f0723dbce'
 
+/** 全工作台统一子衿应用 OAuth（与后端 FEISHU_PRIMARY_APP_ID 一致） */
 const FEISHU_WORKSTATIONS = [
-  { name: '秘书台', ws: 'secretary', appId: 'cli_a98b0babd020500e' },
-  { name: '财务台', ws: 'finance', appId: 'cli_a907cf1b70395bc8' },
-  { name: '人事台', ws: 'hr', appId: 'cli_a91b3db342b89bef' },
-  { name: '质量台', ws: 'quality', appId: 'cli_a91b3c828cf85cb0' },
-  { name: '客户台', ws: 'crm', appId: 'cli_a91b3fd427b89cd1' },
+  { name: '秘书台', ws: 'secretary', appId: PRIMARY_APP_ID },
+  { name: '财务台', ws: 'finance', appId: PRIMARY_APP_ID },
+  { name: '人事台', ws: 'hr', appId: PRIMARY_APP_ID },
+  { name: '质量台', ws: 'quality', appId: PRIMARY_APP_ID },
+  { name: '客户台', ws: 'crm', appId: PRIMARY_APP_ID },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────

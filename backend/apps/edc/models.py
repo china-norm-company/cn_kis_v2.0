@@ -31,11 +31,11 @@ class CRFTemplate(models.Model):
     schema = models.JSONField('表单结构', help_text='JSON Schema格式的表单定义')
     description = models.TextField('描述', blank=True, default='')
     is_active = models.BooleanField('是否生效', default=True)
-    
+
     # 时间
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)
-    
+
     # 软删除
     is_deleted = models.BooleanField('已删除', default=False)
 
@@ -73,13 +73,13 @@ class CRFRecord(models.Model):
         '来源检测记录ID', null=True, blank=True,
         help_text='关联的 InstrumentDetection.id（数据来源为仪器时）',
     )
-    
+
     # 审核信息
     submitted_by = models.IntegerField('提交人ID', null=True, blank=True)
     submitted_at = models.DateTimeField('提交时间', null=True, blank=True)
     verified_by = models.IntegerField('核实人ID', null=True, blank=True)
     verified_at = models.DateTimeField('核实时间', null=True, blank=True)
-    
+
     # 时间
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)
@@ -180,11 +180,11 @@ class InstrumentInterface(models.Model):
     config = models.JSONField('接口配置', help_text='连接参数、认证信息等')
     mapping = models.JSONField('数据映射', null=True, blank=True, help_text='仪器数据到CRF字段的映射规则')
     is_active = models.BooleanField('是否启用', default=True)
-    
+
     # 时间
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)
-    
+
     # 软删除
     is_deleted = models.BooleanField('已删除', default=False)
 

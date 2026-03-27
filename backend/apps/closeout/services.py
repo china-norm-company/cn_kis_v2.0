@@ -4,13 +4,13 @@
 封装项目结项、检查清单、复盘、归档的业务逻辑。
 """
 import logging
-from typing import Optional, List
+from typing import Optional
 from django.db import transaction
 from django.utils import timezone
 
 from .models import (
     ProjectCloseout, CloseoutChecklist, ProjectRetrospective,
-    ClientAcceptance, CloseoutStatus, ChecklistGroup, AcceptanceStatus,
+    ClientAcceptance, CloseoutStatus, ChecklistGroup,
 )
 
 logger = logging.getLogger(__name__)

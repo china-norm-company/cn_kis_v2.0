@@ -5,10 +5,8 @@
 """
 from ninja import Router, Schema
 from typing import Optional
-from django.utils import timezone
-from datetime import timedelta
 
-from apps.identity.decorators import require_permission, _get_account_from_request
+from apps.identity.decorators import require_permission
 from .models_loyalty import SubjectLoyaltyScore, SubjectReferral, RiskLevel
 
 router = Router()
@@ -182,7 +180,7 @@ def create_dropout_intervention(request, subject_id: int):
 @require_permission('subject.subject.read')
 def nps_stats(request, plan_id: Optional[int] = None):
     from .models_loyalty import SubjectNPS
-    from django.db.models import Avg, Count
+    from django.db.models import Avg
     qs = SubjectNPS.objects.all()
     if plan_id:
         qs = qs.filter(plan_id=plan_id)

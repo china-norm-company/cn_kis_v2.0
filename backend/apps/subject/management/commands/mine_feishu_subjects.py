@@ -29,11 +29,10 @@ import os
 import re
 import hashlib
 import logging
-from datetime import datetime, date
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand
-from django.db import transaction, connection
+from django.db import connection
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -758,10 +757,7 @@ class Command(BaseCommand):
     # Profile: 生成全景档案知识条目
     # ==================================================================
     def phase_profile(self):
-        from apps.subject.models import Subject, Enrollment
-        from apps.subject.models_timeseries import SkinMeasurementRecord
-        from apps.subject.models_execution import SubjectQuestionnaire, ComplianceRecord
-        from apps.subject.models_domain import SkinProfile
+        from apps.subject.models import Subject
         from apps.knowledge.models import KnowledgeEntry
 
         subjects = Subject.objects.filter(is_deleted=False)
@@ -865,7 +861,7 @@ class Command(BaseCommand):
     # KG: 知识图谱 — 受试者全生命周期
     # ==================================================================
     def phase_kg(self):
-        from apps.subject.models import Subject, Enrollment
+        from apps.subject.models import Enrollment
         from apps.knowledge.models import KnowledgeEntity, KnowledgeRelation
 
         self.stdout.write('构建受试者全生命周期知识图谱...')

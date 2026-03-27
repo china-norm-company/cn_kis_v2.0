@@ -12,9 +12,7 @@ CRC可预览、编辑并通过飞书消息卡片发送给PM。
 """
 import logging
 from datetime import date, timedelta
-from typing import Optional
 
-from django.db.models import Count, Q
 from django.utils import timezone
 
 from apps.workorder.models import WorkOrder, WorkOrderStatus

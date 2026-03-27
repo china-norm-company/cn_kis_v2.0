@@ -84,6 +84,7 @@ INSTALLED_APPS = [
     # Wave 3: 知识与数据平面
     'apps.secretary',
     'apps.knowledge',
+    'apps.data_intake',
     'apps.ekuaibao_integration',
     'apps.lims_integration',
     # Wave 4: 企业扩展域
@@ -110,6 +111,8 @@ INSTALLED_APPS = [
     'apps.project_full_link',
     'apps.weekly_report',
     'apps.product_distribution',
+    # 图像分析工具（研究台：唇部脱屑等）
+    'apps.image_analysis',
 ]
 
 MIDDLEWARE = [
@@ -313,7 +316,7 @@ FEISHU_APP_CREDENTIALS = _build_feishu_credentials()
 
 # ★ 主授权配置（V2 迁移章程红线）
 _primary_from_env = os.getenv('FEISHU_PRIMARY_APP_ID', '')
-FEISHU_PRIMARY_APP_ID = _primary_from_env or FEISHU_APP_ID or 'cli_a98b0babd020500e'
+FEISHU_PRIMARY_APP_ID = _primary_from_env or FEISHU_APP_ID or 'cli_a907f21f0723dbce'
 if not _primary_from_env:
     import logging as _logging
     _logging.getLogger(__name__).warning(

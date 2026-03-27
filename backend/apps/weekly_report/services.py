@@ -20,7 +20,6 @@ from .models import (
     WeeklyReportLeader,
     WeeklyReportNotes,
     WeeklyReportProject,
-    WeeklyReportProjectMember,
     WeeklyReportTask,
 )
 

@@ -34,7 +34,6 @@ class WorkOrderDispatchService:
         4. 选择最优执行人
         5. 创建飞书任务 + 发送交互卡片
         """
-        from apps.workorder import services as wo_services
 
         wo = WorkOrder.objects.filter(id=work_order_id, is_deleted=False).first()
         if not wo:

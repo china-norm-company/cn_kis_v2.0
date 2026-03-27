@@ -10,7 +10,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.ethics.models import (
-    EthicsCommittee, EthicsApplication, ApprovalDocument,
+    EthicsCommittee, EthicsApplication, ApprovalDocument,  # noqa: F401
     EthicsApplicationStatus,
 )
 

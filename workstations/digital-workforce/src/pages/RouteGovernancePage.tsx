@@ -24,7 +24,7 @@ export default function RouteGovernancePage() {
     queryFn: () => assistantGovernanceApi.getThresholds(),
   })
 
-  const data = (overviewRes as { data?: Record<string, unknown> })?.data
+  const data = ((overviewRes as unknown) as { data?: Record<string, unknown> } | undefined)?.data
   const coverage = data?.route_governance_preset_coverage as
     | { total_accounts?: number; enabled_accounts?: number; coverage_rate?: number; approval_modes?: { graded?: number; direct?: number } }
     | undefined
@@ -35,7 +35,7 @@ export default function RouteGovernancePage() {
     | { enabled?: boolean; level?: string; message?: string; thresholds?: { coverage_rate_min?: number; applied_7d_min?: number } }
     | undefined
   const presets = (presetsRes as { data?: { items?: Array<{ preset_id: string; label: string; recommended: boolean }> } })?.data?.items ?? []
-  const thresholds = (thresholdsRes as { data?: { thresholds?: Record<string, unknown> } })?.data?.thresholds ?? {}
+  const thresholds = ((thresholdsRes as unknown) as { data?: { thresholds?: Record<string, unknown> } } | undefined)?.data?.thresholds ?? {}
 
   return (
     <div data-testid="route-governance-page" className="space-y-6">

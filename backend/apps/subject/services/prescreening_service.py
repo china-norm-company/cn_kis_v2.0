@@ -18,7 +18,6 @@ from ..models_domain import SkinProfile
 from ..models_recruitment import (
     SubjectRegistration, RegistrationStatus,
     PreScreeningRecord, PreScreeningResult,
-    EligibilityCriteria,
 )
 from .prescreening_appointment_sync import sync_after_prescreening_state_change
 
