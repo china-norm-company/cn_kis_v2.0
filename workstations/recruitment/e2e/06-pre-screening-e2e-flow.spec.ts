@@ -1,8 +1,8 @@
 /**
- * 粗筛完整业务闭环 E2E 测试 — 场景 P7
+ * 初筛完整业务闭环 E2E 测试 — 场景 P7
  *
- * 验证从报名 → 粗筛 → 通过 → 正式筛选 → 入组的全链路数据一致性
- * 包括招募漏斗中粗筛环节的数据准确性验证
+ * 验证从报名 → 初筛 → 通过 → 正式筛选 → 入组的全链路数据一致性
+ * 包括招募漏斗中初筛环节的数据准确性验证
  */
 import { test, expect, type Page } from '@playwright/test'
 import { injectAuth, setupApiMocks, navigateTo } from './helpers/setup'
@@ -79,7 +79,7 @@ async function setupFullFlowMocks(page: Page) {
 }
 
 
-test.describe('场景 P7: 粗筛完整业务闭环', () => {
+test.describe('场景 P7: 初筛完整业务闭环', () => {
   test.describe.configure({ mode: 'serial' })
 
   let page: Page
@@ -93,9 +93,9 @@ test.describe('场景 P7: 粗筛完整业务闭环', () => {
 
   test.afterAll(async () => { await page?.context().close() })
 
-  test('P7.1 粗筛列表页可访问', async () => {
-    await navigateTo(page, '/recruitment/pre-screening', '粗筛管理')
-    await expect(page.getByRole('heading', { name: '粗筛管理' })).toBeVisible()
+  test('P7.1 初筛列表页可访问', async () => {
+    await navigateTo(page, '/recruitment/pre-screening', '初筛管理')
+    await expect(page.getByRole('heading', { name: '初筛管理' })).toBeVisible()
   })
 
   test('P7.2 闭环测试记录在列表中可见', async () => {
@@ -107,7 +107,7 @@ test.describe('场景 P7: 粗筛完整业务闭环', () => {
     await expect(page.getByText('通过').first()).toBeVisible()
   })
 
-  test('P7.4 粗筛详情页加载完整数据', async () => {
+  test('P7.4 初筛详情页加载完整数据', async () => {
     await navigateTo(page, '/recruitment/pre-screening/100', '受试者确认')
     await expect(page.locator('[data-section="pre-screening-detail"]')).toBeVisible({ timeout: 8000 })
   })
@@ -117,13 +117,13 @@ test.describe('场景 P7: 粗筛完整业务闭环', () => {
     await expect(page.locator('text=SUB-202602-E2E1').first()).toBeVisible()
   })
 
-  test('P7.6 招募看板粗筛统计可见', async () => {
+  test('P7.6 招募看板初筛统计可见', async () => {
     await navigateTo(page, '/recruitment/dashboard', '招募看板')
     await page.waitForLoadState('networkidle')
-    await expect(page.getByText('今日粗筛')).toBeVisible({ timeout: 8000 })
+    await expect(page.getByText('今日初筛')).toBeVisible({ timeout: 8000 })
   })
 
-  test('P7.7 招募漏斗包含粗筛环节', async () => {
-    await expect(page.getByText('粗筛').first()).toBeVisible()
+  test('P7.7 招募漏斗包含初筛环节', async () => {
+    await expect(page.getByText('初筛').first()).toBeVisible()
   })
 })

@@ -13,8 +13,9 @@ import uuid
 import logging
 import ipaddress
 from threading import Lock
-from datetime import timedelta
-from typing import Optional, Dict, Any
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any, Set
+from urllib.parse import quote, urlparse
 import jwt
 import httpx
 from django.db import IntegrityError
@@ -113,6 +114,90 @@ def _b64url_encode(raw: str) -> str:
 def _b64url_decode(raw: str) -> str:
     pad = '=' * (-len(raw) % 4)
     return base64.urlsafe_b64decode((raw + pad).encode('utf-8')).decode('utf-8')
+
+
+# 与 packages/feishu-sdk/src/auth.ts DEFAULT_USER_SCOPES 保持一致（浏览器 OAuth 授权页 scope）
+FEISHU_BROWSER_OAUTH_SCOPES = (
+    'offline_access '
+    'contact:user.base:readonly contact:user.email:readonly '
+    'im:chat:readonly im:message:readonly '
+    'calendar:calendar:readonly calendar:calendar '
+    'mail:user_mailbox mail:user_mailbox.message:readonly '
+    'task:task:read approval:approval:readonly drive:drive:readonly'
+)
+
+RE_FEISHU_RELAY_TICKET_PREFIX = 'auth:feishu:relay:'
+
+
+def feishu_relay_public_callback_url(request) -> str:
+    """飞书中转回调的绝对 URL，须与 authorize 参数完全一致。"""
+    base = getattr(settings, 'FEISHU_OAUTH_RELAY_PUBLIC_BASE', '') or ''
+    path = '/api/v1/auth/feishu/relay/callback'
+    if base:
+        return f'{base}{path}'
+    return request.build_absolute_uri(path)
+
+
+def feishu_relay_validate_return_to(url: str) -> bool:
+    if not url or len(url) > 4096:
+        return False
+    try:
+        p = urlparse(url)
+        if p.scheme not in ('http', 'https') or not p.netloc:
+            return False
+        origin = f'{p.scheme}://{p.netloc}'.rstrip('/')
+        norm_url = url.split('#', 1)[0].rstrip('/')
+        allowed = getattr(settings, 'FEISHU_OAUTH_RELAY_RETURN_ALLOWLIST', []) or []
+        for prefix in allowed:
+            px = prefix.rstrip('/')
+            if norm_url.startswith(px) or origin == px:
+                return True
+        return False
+    except Exception:
+        return False
+
+
+def feishu_relay_append_ticket(return_to: str, relay_id: str) -> str:
+    if not relay_id or len(relay_id) > 200:
+        raise ValueError('AUTH_RELAY_TICKET_INVALID')
+    fragment = ''
+    base = return_to
+    if '#' in return_to:
+        base, frag = return_to.split('#', 1)
+        fragment = '#' + frag
+    joiner = '&' if ('?' in base) else '?'
+    return f'{base}{joiner}cnkis_oauth_relay={quote(relay_id, safe="")}{fragment}'
+
+
+def build_feishu_relay_auth_state(workstation: str, return_to: str, relay_redirect_uri: str) -> str:
+    app_id = getattr(settings, 'FEISHU_PRIMARY_APP_ID', '') or settings.FEISHU_APP_ID
+    payload = {
+        'ws': workstation,
+        'app_id': app_id,
+        'redirect_uri': relay_redirect_uri,
+        'trace_id': str(uuid.uuid4()),
+        'nonce': secrets.token_urlsafe(12),
+        'ts': int(time.time()),
+        'ver': 'relay_v1',
+        'return_to': return_to,
+    }
+    return _b64url_encode(json.dumps(payload, ensure_ascii=False, separators=(',', ':')))
+
+
+def feishu_relay_store_ticket(relay_id: str, bundle: Dict[str, Any], ttl: int) -> None:
+    cache.set(f'{RE_FEISHU_RELAY_TICKET_PREFIX}{relay_id}', json.dumps(bundle, ensure_ascii=False), timeout=ttl)
+
+
+def feishu_relay_pop_ticket(relay_id: str) -> Optional[Dict[str, Any]]:
+    key = f'{RE_FEISHU_RELAY_TICKET_PREFIX}{relay_id}'
+    raw = cache.get(key)
+    if not raw:
+        return None
+    cache.delete(key)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
 
 
 def build_auth_state(workstation: str, app_id: str, trace_id: Optional[str] = None) -> str:
@@ -270,10 +355,10 @@ def _normalize_oauth_code(code: str) -> str:
 
 def _resolve_redirect_uri(state_payload: Optional[Dict[str, Any]] = None) -> str:
     """
-    根据 workstation 推导 redirect_uri（与前端 packages/feishu-sdk/src/config.ts 对齐）。
+    根据 workstation 推导 redirect_uri（与 packages/feishu-sdk/src/config.ts 一致）。
 
     规则：
-    - secretary → {base}/secretary/login（与秘书台 Vite base=/secretary/ 一致）
+    - secretary → {base}/login（与生产 nginx location = /login 一致；本地 Vite 联调时前端会传 {base}/secretary/login）
     - 其他工作台 → {base}/{workstation}/
     - base：FEISHU_REDIRECT_BASE；未设置时生产默认 IP；DEBUG 下按工作台常见本地端口回退（与 vite 默认端口一致）
     """
@@ -282,19 +367,96 @@ def _resolve_redirect_uri(state_payload: Optional[Dict[str, Any]] = None) -> str
         or os.environ.get('FEISHU_REDIRECT_BASE', '')
     ).strip()
     ws = (state_payload or {}).get('ws', 'secretary')
-    if raw:
-        base = raw.rstrip('/')
-    elif getattr(settings, 'DEBUG', False):
-        _debug_origin = {
-            'secretary': 'http://localhost:3001',
-            'research': 'http://localhost:3002',
-        }
-        base = _debug_origin.get(ws, 'http://localhost:3001')
-    else:
-        base = 'http://118.196.64.48'
-    if ws == 'secretary':
-        return f'{base}/secretary/login'
     return f'{base}/{ws}/'
+
+
+def _oauth_redirect_allowed_hosts() -> Set[str]:
+    hosts: Set[str] = {'localhost', '127.0.0.1', '::1'}
+    base = (getattr(settings, 'FEISHU_REDIRECT_BASE', '') or os.environ.get('FEISHU_REDIRECT_BASE', '') or '').strip()
+    if base:
+        try:
+            h = urlparse(base).hostname
+            if h:
+                hosts.add(h.lower())
+        except Exception:
+            pass
+    for origin in getattr(settings, 'CORS_ALLOWED_ORIGINS', None) or []:
+        try:
+            h = urlparse(origin).hostname
+            if h:
+                hosts.add(h.lower())
+        except Exception:
+            continue
+    return hosts
+
+
+def _oauth_redirect_uri_path_matches_workstation(uri: str, ws: str) -> bool:
+    try:
+        path = (urlparse(uri).path or '').rstrip('/')
+        if ws == 'secretary':
+            return path.endswith('/login') or path == 'login'
+        return path.endswith(f'/{ws}')
+    except Exception:
+        return False
+
+
+def _oauth_redirect_uri_is_allowed(uri: str, ws: str) -> bool:
+    try:
+        p = urlparse(uri)
+        if p.scheme not in ('http', 'https') or not p.hostname:
+            return False
+        if p.username or p.password:
+            return False
+        host = p.hostname.lower()
+        if host not in _oauth_redirect_allowed_hosts():
+            return False
+        return _oauth_redirect_uri_path_matches_workstation(uri, ws)
+    except Exception:
+        return False
+
+
+def _pick_feishu_oauth_redirect_uri(
+    request_redirect_uri: Optional[str],
+    state_payload: Optional[Dict[str, Any]],
+) -> str:
+    """
+    换票 redirect_uri 必须与 authorize 一致。优先请求体，其次 state 内嵌（跨域回访后 sessionStorage 可能丢）。
+    若请求体与已校验的 state 中 redirect_uri 完全一致，则直接采用（避免局域网 IP、::1 等未进 allowlist 时误用 FEISHU_REDIRECT_BASE 兜底）。
+    """
+    req = str(request_redirect_uri or '').strip()
+    state_ru = str((state_payload or {}).get('redirect_uri') or '').strip()
+    if req and state_ru and req == state_ru:
+        auth_logger.info(
+            'feishu_oauth_using_redirect_uri trusted_state_body_match host=%s path=%s',
+            urlparse(req).hostname or '-',
+            urlparse(req).path or '-',
+        )
+        return req
+
+    ws = str((state_payload or {}).get('ws', '') or 'secretary')
+    candidates = []
+    if request_redirect_uri and str(request_redirect_uri).strip():
+        candidates.append(str(request_redirect_uri).strip())
+    if state_payload and state_payload.get('redirect_uri'):
+        ru = str(state_payload.get('redirect_uri') or '').strip()
+        if ru and ru not in candidates:
+            candidates.append(ru)
+    fallback = _resolve_redirect_uri(state_payload)
+    for u in candidates:
+        if _oauth_redirect_uri_is_allowed(u, ws):
+            auth_logger.info(
+                'feishu_oauth_using_redirect_uri ws=%s host=%s path=%s',
+                ws,
+                urlparse(u).hostname or '-',
+                urlparse(u).path or '-',
+            )
+            return u
+        auth_logger.warning(
+            'oauth redirect_uri rejected by allowlist ws=%s uri_prefix=%s',
+            ws,
+            (u[:120] + '…') if len(u) > 120 else u,
+        )
+    return fallback
 
 
 def feishu_oauth_login(
@@ -308,25 +470,10 @@ def feishu_oauth_login(
     code = _normalize_oauth_code(code)
 
     # 使用 v2 OAuth token 端点换取 user_access_token
-    # redirect_uri 规则：
-    #   - 浏览器 OAuth：前端传入实际使用的 redirect_uri（window.location.origin + /login），后端直接使用
-    #   - 飞书内 JSSDK：前端不传 redirect_uri，code 由 requestAuthCode 获取，exchange 时不能带 redirect_uri
-    # 不在后端自行推断 redirect_uri，避免 http vs https、IP vs 域名 不一致导致 20071
+    # redirect_uri 必须与授权 URL 中的完全一致（飞书 20024/20071）
     _app_id = app_id or settings.FEISHU_APP_ID
     _app_secret = app_secret or settings.FEISHU_APP_SECRET
-
-    # 直接使用前端传来的 redirect_uri；JSSDK 换 token 时前端须不传/空，此处为 None，不可强行推断
-    _redirect_uri = (redirect_uri or '').strip() or None
-
-    body = {
-        'grant_type': 'authorization_code',
-        'client_id': _app_id,
-        'client_secret': _app_secret,
-        'code': code,
-    }
-    if _redirect_uri:
-        body['redirect_uri'] = _redirect_uri
-
+    _redirect_uri = _pick_feishu_oauth_redirect_uri(redirect_uri, state_payload)
     try:
         resp = httpx.post(
             'https://open.feishu.cn/open-apis/authen/v2/oauth/token',

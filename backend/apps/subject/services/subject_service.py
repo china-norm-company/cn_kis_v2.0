@@ -205,6 +205,7 @@ def create_subject(
     risk_level: str = SubjectRiskLevel.LOW,
     source_channel: str = '',
     account=None,
+    explicit_subject_no: Optional[str] = None,
 ) -> Subject:
     """创建受试者（自动生成 subject_no）。11 位手机号会规范化存储并禁止与同号未删档案重复。"""
     raw_phone = (phone or '').strip()
@@ -214,7 +215,13 @@ def create_subject(
         raise ValueError(
             '该手机号已有受试者档案，请从列表搜索后选择已有受试者再建预约；若存在重复建档请联系管理员合并。'
         )
-    subject_no = generate_subject_no()
+    if explicit_subject_no is not None and str(explicit_subject_no).strip():
+        sn = str(explicit_subject_no).strip()[:20]
+        if Subject.objects.filter(subject_no=sn, is_deleted=False).exists():
+            raise ValueError('该受试者编号已存在，请更换后再试')
+        subject_no = sn
+    else:
+        subject_no = generate_subject_no()
     kw = dict(
         subject_no=subject_no,
         name=name,

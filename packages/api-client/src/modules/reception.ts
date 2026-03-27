@@ -8,6 +8,7 @@ import type { Subject, SubjectCreateIn } from '../types'
 
 export interface QueueItem {
   appointment_id: number | null
+  appointment_date?: string
   subject_id: number
   subject_name: string
   subject_no: string
@@ -48,6 +49,15 @@ export interface TodayQueue {
   page_size?: number
 }
 
+export interface QueueList {
+  items: QueueItem[]
+  total?: number
+  page?: number
+  page_size?: number
+  date_from?: string
+  date_to?: string
+}
+
 export interface AppointmentCalendarDay {
   date: string
   total: number
@@ -74,6 +84,23 @@ export interface TodayStats {
   enrollment_status_counts?: Record<string, number>
   /** 当日队列中出现的项目（与 today-stats 内队列聚合一致，供项目筛选，避免额外拉大包） */
   project_options?: Array<{ code: string; name: string }>
+}
+
+export interface TodayQueueProjectSummaryItem {
+  project_code: string
+  project_name: string
+  appointment_count: number
+  status_counts: Record<'waiting' | 'checked_in' | 'in_progress' | 'checked_out' | 'no_show', number>
+  enrollment_status_counts: Record<string, number>
+}
+
+export interface TodayQueueProjectSummary {
+  date: string
+  total_projects: number
+  total?: number
+  page?: number
+  page_size?: number
+  items: TodayQueueProjectSummaryItem[]
 }
 
 export interface CheckinResult {
@@ -162,7 +189,15 @@ export const receptionApi = {
   todayQueue(
     dateOrParams?:
       | string
-      | { target_date?: string; page?: number; page_size?: number; project_code?: string; source?: 'execution' | 'board' },
+      | {
+          target_date?: string
+          page?: number
+          page_size?: number
+          project_code?: string
+          /** 访视点精确匹配，如 V1 */
+          visit_point?: string
+          source?: 'execution' | 'board'
+        },
   ) {
     const params = typeof dateOrParams === 'string' ? { target_date: dateOrParams } : dateOrParams
     const p: Record<string, string | number | undefined> = {}
@@ -170,15 +205,60 @@ export const receptionApi = {
     if (params?.page != null) p.page = params.page
     if (params?.page_size != null) p.page_size = params.page_size
     if (params?.project_code != null && params.project_code !== '') p.project_code = params.project_code
+    if (params?.visit_point != null && params.visit_point !== '') p.visit_point = params.visit_point
     if (params?.source === 'board' || params?.source === 'execution') p.source = params.source
     return api.get<TodayQueue>('/reception/today-queue', { params: Object.keys(p).length ? p : undefined })
   },
 
+  /** 受试者队列明细（历史可查，日期为空=全部日期） */
+  queueList(params?: {
+    date_from?: string
+    date_to?: string
+    page?: number
+    page_size?: number
+    project_code?: string
+    /** 为 true 时 project_code 精确匹配解析后的项目编号（下拉选项） */
+    project_code_exact?: boolean
+    visit_point?: string
+    status?: string
+    enrollment_status?: string
+  }) {
+    const p: Record<string, string | number | boolean | undefined> = {}
+    if (params?.date_from) p.date_from = params.date_from
+    if (params?.date_to) p.date_to = params.date_to
+    if (params?.page != null) p.page = params.page
+    if (params?.page_size != null) p.page_size = params.page_size
+    if (params?.project_code) p.project_code = params.project_code
+    if (params?.project_code_exact === true) p.project_code_exact = true
+    if (params?.visit_point) p.visit_point = params.visit_point
+    if (params?.status) p.status = params.status
+    if (params?.enrollment_status) p.enrollment_status = params.enrollment_status
+    return api.get<QueueList>('/reception/queue-list', { params: Object.keys(p).length ? p : undefined })
+  },
+
+  /** 当前日期范围（及访视点）下队列中出现的去重项目编号，供历史队列下拉 */
+  queueListProjectOptions(params?: { date_from?: string; date_to?: string; visit_point?: string }) {
+    const p: Record<string, string> = {}
+    if (params?.date_from) p.date_from = params.date_from
+    if (params?.date_to) p.date_to = params.date_to
+    if (params?.visit_point) p.visit_point = params.visit_point
+    return api.get<{ project_codes: string[] }>('/reception/queue-list/project-options', {
+      params: Object.keys(p).length ? p : undefined,
+    })
+  },
+
   /** 今日队列导出数据（按日期/项目/状态筛选；含手机号等字段由前端生成 Excel）；source 同上 */
-  todayQueueExport(params?: { target_date?: string; project_code?: string; status?: string; source?: 'execution' | 'board' }) {
+  todayQueueExport(params?: {
+    target_date?: string
+    project_code?: string
+    visit_point?: string
+    status?: string
+    source?: 'execution' | 'board'
+  }) {
     const p: Record<string, string | undefined> = {}
     if (params?.target_date) p.target_date = params.target_date
     if (params?.project_code != null && params.project_code !== '') p.project_code = params.project_code
+    if (params?.visit_point != null && params.visit_point !== '') p.visit_point = params.visit_point
     if (params?.status != null && params.status !== '') p.status = params.status
     if (params?.source === 'board' || params?.source === 'execution') p.source = params.source
     return api.get<{ items: QueueItem[]; date: string; total: number }>(
@@ -217,6 +297,35 @@ export const receptionApi = {
     if (projectCode) params.project_code = projectCode
     if (source === 'board' || source === 'execution') params.source = source
     return api.get<TodayStats>('/reception/today-stats', { params: Object.keys(params).length ? params : undefined })
+  },
+
+  /** 今日队列按项目汇总（项目编号 / 预约人数 / 状态 / 入组情况） */
+  todayQueueProjectSummary(params?: {
+    target_date?: string
+    date_from?: string
+    date_to?: string
+    visit_point?: string
+    project_code?: string
+    page?: number
+    page_size?: number
+    source?: 'execution' | 'board'
+    status?: string
+    enrollment_status?: string
+  }) {
+    const p: Record<string, string | number> = {}
+    if (params?.target_date) p.target_date = params.target_date
+    if (params?.date_from) p.date_from = params.date_from
+    if (params?.date_to) p.date_to = params.date_to
+    if (params?.visit_point) p.visit_point = params.visit_point
+    if (params?.project_code) p.project_code = params.project_code
+    if (params?.page != null) p.page = params.page
+    if (params?.page_size != null) p.page_size = params.page_size
+    if (params?.source === 'board' || params?.source === 'execution') p.source = params.source
+    if (params?.status) p.status = params.status
+    if (params?.enrollment_status) p.enrollment_status = params.enrollment_status
+    return api.get<TodayQueueProjectSummary>('/reception/today-queue/project-summary', {
+      params: Object.keys(p).length ? p : undefined,
+    })
   },
 
   /** 快速签到，project_code 可选，同天多项目时用于为该项目分配 SC 号 */

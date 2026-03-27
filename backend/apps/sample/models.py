@@ -37,6 +37,21 @@ class Product(models.Model):
     protocol_id = models.IntegerField('关联项目ID', null=True, blank=True)
     protocol_name = models.CharField('关联项目名称', max_length=200, blank=True, default='')
 
+    STUDY_PROJECT_TYPE_CHOICES = [
+        ('clinical', '临床测试'),
+        ('consumer_clt', '消费者测试-CLT'),
+        ('consumer_hut', '消费者测试-HUT'),
+    ]
+    study_project_type = models.CharField(
+        '项目类型',
+        max_length=32,
+        blank=True,
+        null=True,
+        default=None,
+        choices=STUDY_PROJECT_TYPE_CHOICES,
+        db_index=True,
+    )
+
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)
     is_deleted = models.BooleanField('已删除', default=False)
@@ -44,6 +59,14 @@ class Product(models.Model):
     @property
     def product_type_display(self):
         return dict(self.PRODUCT_TYPE_CHOICES).get(self.product_type, self.product_type)
+
+    @property
+    def study_project_type_display(self):
+        if not self.study_project_type:
+            return ''
+        return dict(self.STUDY_PROJECT_TYPE_CHOICES).get(
+            self.study_project_type, self.study_project_type,
+        )
 
     @property
     def status(self):

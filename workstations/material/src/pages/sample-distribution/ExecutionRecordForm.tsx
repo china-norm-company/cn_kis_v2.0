@@ -312,8 +312,8 @@ export function ExecutionRecordForm({
     setHasTriedSubmit(true)
     const e: Record<string, string> = {}
     if (!workOrderId || !relatedProjectNo) e.work_order = '请选择工单/项目'
-    if (!subjectRd.trim()) e.subject_rd = '请填写受试者RD号'
     if (!subjectInitials.trim()) e.subject_initials = '请填写姓名首字母'
+    if (!screeningNo.trim()) e.screening_no = '请填写受试者SC号'
     const selected = products.filter((p) => p.is_selected === 1)
     selected.forEach((p) => {
       if (!p.product_code?.trim() || !p.product_name?.trim()) e[`selected_${p.id}_product`] = '请选择产品'
@@ -335,9 +335,9 @@ export function ExecutionRecordForm({
     const payload: ExecutionRecordCreate = {
       work_order_id: workOrderId!,
       related_project_no: relatedProjectNo!,
-      subject_rd: subjectRd.trim(),
+      subject_rd: subjectRd.trim() || '',
       subject_initials: subjectInitials.trim(),
-      screening_no: screeningNo.trim() || null,
+      screening_no: screeningNo.trim(),
       execution_date: executionDate || null,
       exception_type: exceptionType || null,
       exception_description: exceptionDescription.trim() || null,
@@ -385,19 +385,25 @@ export function ExecutionRecordForm({
             <label className="text-xs text-slate-500">项目名称</label>
             <input className={`${inputCls} bg-slate-100`} value={projectName ?? ''} readOnly placeholder="选择项目后自动带出" />
           </div>
-          <div data-field="subject_rd">
-            <label className="text-xs text-slate-500">受试者RD号 <span className="text-red-500">*</span></label>
-            <input className={`${inputCls} ${errors.subject_rd ? errCls : ''}`} value={subjectRd} onChange={(e) => setSubjectRd(e.target.value)} placeholder="输入受试者RD号" />
-            {errors.subject_rd && <p className="text-sm text-red-600">{errors.subject_rd}</p>}
+          <div data-field="screening_no">
+            <label className="text-xs text-slate-500">受试者SC号 <span className="text-red-500">*</span></label>
+            <input
+              className={`${inputCls} ${errors.screening_no ? errCls : ''}`}
+              value={screeningNo}
+              onChange={(e) => setScreeningNo(e.target.value)}
+              placeholder="请输入受试者SC号"
+            />
+            {errors.screening_no && <p className="text-sm text-red-600">{errors.screening_no}</p>}
           </div>
           <div data-field="subject_initials">
             <label className="text-xs text-slate-500">姓名首字母 <span className="text-red-500">*</span></label>
             <input className={`${inputCls} ${errors.subject_initials ? errCls : ''}`} value={subjectInitials} onChange={(e) => setSubjectInitials(e.target.value.toUpperCase().slice(0, 10))} placeholder="姓名首字母" />
             {errors.subject_initials && <p className="text-sm text-red-600">{errors.subject_initials}</p>}
           </div>
-          <div>
-            <label className="text-xs text-slate-500">筛选编号</label>
-            <input className={inputCls} value={screeningNo} onChange={(e) => setScreeningNo(e.target.value)} placeholder="选填" />
+          <div data-field="subject_rd">
+            <label className="text-xs text-slate-500">受试者RD号（选填）</label>
+            <input className={`${inputCls} ${errors.subject_rd ? errCls : ''}`} value={subjectRd} onChange={(e) => setSubjectRd(e.target.value)} placeholder="无则可不填" />
+            {errors.subject_rd && <p className="text-sm text-red-600">{errors.subject_rd}</p>}
           </div>
           <div>
             <label className="text-xs text-slate-500">操作日期</label>

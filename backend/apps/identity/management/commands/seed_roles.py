@@ -561,6 +561,8 @@ ROLE_PERMISSION_MAP = {
         'dashboard.overview.read', 'dashboard.stats.read', 'dashboard.activities.read',
         'subject.subject.read', 'subject.subject.create', 'subject.subject.update',
         'subject.recruitment.read', 'subject.recruitment.create', 'subject.recruitment.update',
+        # 招募台物料：模板/预约文档「通过、驳回」与计划审批等（与业务约定：专员可处理待办审批）
+        'subject.recruitment.approve',
         'agent.chat.use', 'agent.session.read',
         'system.notification.read',
     ],

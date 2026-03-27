@@ -4,7 +4,7 @@
  * 主要导出：apiClient、ApiResponse。被 request.ts、各 features 下 api 使用。
  * 依赖：@/shared/config/env（getApiBaseUrl）。被 shared/lib/request、features 下 api 引用。
  * 涉及后端接口：所有真实请求的底层；路径由调用方传入，如 /crm/orders、/work-orders、/workbench/orders 等。
- * 联调注意点：鉴权头取自 auth_token（与 Feishu 登录后存储的 key 一致），登录前或 token 失效会 401；错误从 response body 的 message/error/detail 取；开发时 /api 经 Vite 代理到 127.0.0.1:8000。
+ * 联调注意点：鉴权头取自 auth_token（与 Feishu 登录后存储的 key 一致），登录前或 token 失效会 401；错误从 response body 的 message/error/detail 取；开发时 /api 经 Vite 代理到 127.0.0.1:8001（与 vite.config.ts 一致）。
  */
 import { envConfig, getApiBaseUrl } from "@/shared/config/env";
 

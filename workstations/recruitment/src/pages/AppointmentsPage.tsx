@@ -1,13 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { executionApi, subjectApi, receptionApi } from '@cn-kis/api-client'
+import { executionApi, subjectApi } from '@cn-kis/api-client'
 import type { Subject } from '@cn-kis/api-client'
-import { Plus, Upload, FileSpreadsheet, Search, CalendarCheck, ChevronLeft, ChevronRight } from 'lucide-react'
+import { AppointmentQueuePanel } from '../components/AppointmentQueuePanel'
+import { Plus, Upload, FileSpreadsheet, Search } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 const VISIT_POINT_OPTIONS = ['初筛', '复筛', '基线', 'V1', 'V2', 'V3', 'V4', '其他']
 const PURPOSE_OPTIONS = ['初筛', '复筛', '常规访视', '其他']
-const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
 function notify(msg: string) {
   window.alert(msg)
@@ -28,59 +28,6 @@ function subjectPhonesMatch(stored: string | undefined, input: string | undefine
   const nInput = normalizeSubjectPhone11(input || '')
   if (nStored && nInput) return nStored === nInput
   return (stored || '').trim() === (input || '').trim()
-}
-
-function pad2(value: number) {
-  return String(value).padStart(2, '0')
-}
-
-function parseDateKey(dateKey: string) {
-  const [year, month, day] = dateKey.split('-').map((part) => parseInt(part, 10))
-  return { year, month, day }
-}
-
-function formatMonthKey(year: number, month: number) {
-  return `${year}-${pad2(month)}`
-}
-
-function formatMonthLabel(monthKey: string) {
-  const { year, month } = parseDateKey(`${monthKey}-01`)
-  return `${year}年${pad2(month)}月`
-}
-
-function firstDayOfMonth(monthKey: string) {
-  return `${monthKey}-01`
-}
-
-function shiftMonth(monthKey: string, offset: number) {
-  const { year, month } = parseDateKey(`${monthKey}-01`)
-  const next = new Date(year, month - 1 + offset, 1)
-  return formatMonthKey(next.getFullYear(), next.getMonth() + 1)
-}
-
-function buildMonthCells(monthKey: string) {
-  const { year, month } = parseDateKey(`${monthKey}-01`)
-  const firstDay = new Date(year, month - 1, 1)
-  const weekdayOffset = (firstDay.getDay() + 6) % 7
-  const daysInMonth = new Date(year, month, 0).getDate()
-  const cells: Array<{ date: string; day: number } | null> = []
-
-  for (let i = 0; i < weekdayOffset; i += 1) cells.push(null)
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    cells.push({ date: `${monthKey}-${pad2(day)}`, day })
-  }
-  while (cells.length % 7 !== 0) cells.push(null)
-
-  return cells
-}
-
-function formatDetailTime(value?: string | null) {
-  if (!value) return '—'
-  const raw = String(value).trim()
-  if (/^\d{2}:\d{2}(:\d{2})?$/.test(raw)) return raw.slice(0, 5)
-  const dt = new Date(raw)
-  if (!Number.isNaN(dt.getTime())) return `${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`
-  return raw
 }
 
 /**
@@ -120,12 +67,6 @@ export default function AppointmentsPage() {
   const [importPreview, setImportPreview] = useState<Record<string, unknown>[]>([])
   const [importMeta, setImportMeta] = useState<{ projectCode: string; projectName: string; appointmentDate: string; visitPoint: string } | null>(null)
 
-  const todayStr = new Date().toISOString().slice(0, 10)
-  const [queueDate, setQueueDate] = useState(todayStr)
-  const [queueListPage, setQueueListPage] = useState(1)
-  const queueListPageSize = 10
-  const [queueProjectFilter, setQueueProjectFilter] = useState('')
-  const [visibleMonth, setVisibleMonth] = useState(todayStr.slice(0, 7))
   const subjectsQuery = useQuery({
     queryKey: ['subjects', 'appointments'],
     queryFn: async () => {
@@ -135,21 +76,6 @@ export default function AppointmentsPage() {
     },
     enabled: showCreate,
     staleTime: 2 * 60 * 1000,
-  })
-  const todayQueueQuery = useQuery({
-    queryKey: ['reception', 'today-queue', queueDate, queueListPage, queueProjectFilter.trim()],
-    queryFn: () =>
-      receptionApi.todayQueue({
-        target_date: queueDate,
-        page: queueListPage,
-        page_size: queueListPageSize,
-        source: 'execution',
-        ...(queueProjectFilter.trim() ? { project_code: queueProjectFilter.trim() } : {}),
-      }),
-  })
-  const appointmentCalendarQuery = useQuery({
-    queryKey: ['reception', 'appointment-calendar', visibleMonth],
-    queryFn: () => receptionApi.appointmentCalendar(visibleMonth),
   })
 
   const createMutation = useMutation({
@@ -369,11 +295,6 @@ export default function AppointmentsPage() {
   })
 
   const allSubjects: Subject[] = subjectsQuery.data?.data?.items ?? []
-  const monthCells = useMemo(() => buildMonthCells(visibleMonth), [visibleMonth])
-  const appointmentCountMap = useMemo(() => {
-    const items = appointmentCalendarQuery.data?.data?.items ?? []
-    return new Map(items.map((item) => [item.date, item.total]))
-  }, [appointmentCalendarQuery.data])
   const subjects = searchInput
     ? allSubjects.filter((s) => {
         const q = searchInput.trim()
@@ -391,19 +312,6 @@ export default function AppointmentsPage() {
         )
       })
     : allSubjects
-
-  const handleSelectQueueDate = (dateKey: string) => {
-    setQueueDate(dateKey)
-    setQueueListPage(1)
-    setVisibleMonth(dateKey.slice(0, 7))
-  }
-
-  const handleChangeMonth = (offset: number) => {
-    const nextMonth = shiftMonth(visibleMonth, offset)
-    setVisibleMonth(nextMonth)
-    setQueueDate(firstDayOfMonth(nextMonth))
-    setQueueListPage(1)
-  }
 
   const HEADER_MARKERS = ['序号', '时间段', '受访者姓名', '联系方式', '手机号码', '测试日期', '研究机构方案编号', '研究名称', '访视点']
 
@@ -834,230 +742,7 @@ export default function AppointmentsPage() {
         </div>
       )}
 
-      {/* 预约列表：默认显示当天，可切换月份并点击任意日期查看 */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-200">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="font-semibold text-slate-800">预约列表</h3>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => handleSelectQueueDate(todayStr)}
-                className="text-sm text-slate-600 hover:text-slate-800"
-              >
-                今天
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  void Promise.all([
-                    todayQueueQuery.refetch(),
-                    appointmentCalendarQuery.refetch(),
-                  ])
-                }}
-                className="text-sm text-emerald-600 hover:underline"
-              >
-                刷新
-              </button>
-            </div>
-          </div>
-          <div className="mt-3 rounded-xl bg-slate-50 p-3">
-            <div className="flex items-center justify-between mb-3">
-              <button
-                type="button"
-                onClick={() => handleChangeMonth(-1)}
-                className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-100"
-                aria-label="上个月"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <div className="text-base font-semibold text-slate-800">{formatMonthLabel(visibleMonth)}</div>
-              <button
-                type="button"
-                onClick={() => handleChangeMonth(1)}
-                className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-100"
-                aria-label="下个月"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="grid grid-cols-7 gap-1.5 mb-1.5">
-              {WEEKDAY_LABELS.map((label) => (
-                <div key={label} className="px-1 py-0.5 text-center text-[11px] font-medium text-slate-500">
-                  {label}
-                </div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 gap-1.5">
-              {monthCells.map((cell, idx) => {
-                if (!cell) {
-                  return <div key={`empty-${idx}`} className="min-h-14 rounded-lg bg-transparent" />
-                }
-
-                const isSelected = cell.date === queueDate
-                const isToday = cell.date === todayStr
-                const total = appointmentCountMap.get(cell.date) ?? 0
-
-                return (
-                  <button
-                    key={cell.date}
-                    type="button"
-                    onClick={() => handleSelectQueueDate(cell.date)}
-                    className={`min-h-14 rounded-lg border px-2 py-1.5 text-left transition ${
-                      isSelected
-                        ? 'border-blue-300 bg-blue-100 text-blue-900'
-                        : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-100'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-1">
-                      <span className={`text-sm font-semibold leading-none ${isSelected ? 'text-blue-900' : 'text-slate-800'}`}>
-                        {cell.day}
-                      </span>
-                      <div className="flex items-center gap-1">
-                        <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[11px] font-medium leading-none ${
-                        total > 0
-                          ? isSelected
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-blue-500 text-white'
-                          : 'bg-slate-200 text-slate-500'
-                        }`}>
-                          {total}项
-                        </span>
-                        {isToday && (
-                          <span className={`text-[10px] leading-none ${isSelected ? 'text-blue-700' : 'text-emerald-600'}`}>
-                            今
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-        <div className="px-4 py-3 border-b border-slate-200 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <div className="text-sm text-slate-600 shrink-0">
-            当前日期：{queueDate}
-          </div>
-          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2 sm:min-w-0 sm:flex-1 sm:max-w-md sm:justify-end">
-            <label htmlFor="queue-project-filter" className="text-xs font-medium text-slate-600 sm:shrink-0">
-              项目编号
-            </label>
-            <div className="relative w-full sm:max-w-xs">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              <input
-                id="queue-project-filter"
-                type="text"
-                value={queueProjectFilter}
-                onChange={(e) => {
-                  setQueueProjectFilter(e.target.value)
-                  setQueueListPage(1)
-                }}
-                placeholder="筛选，留空为全部"
-                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
-                autoComplete="off"
-              />
-            </div>
-          </div>
-        </div>
-        {todayQueueQuery.data?.data?.items?.length ? (
-          <>
-            <div className="overflow-x-auto max-h-[min(70vh,36rem)] min-h-[20rem] overflow-y-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 sticky top-0">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-medium text-slate-600 whitespace-nowrap">项目编号</th>
-                    <th
-                      className="px-3 py-2 text-left font-medium text-slate-600 whitespace-nowrap"
-                      title="接待台工单执行今日队列签到后按项目生成（如 V1 首次分配 SC）"
-                    >
-                      SC号
-                    </th>
-                    <th
-                      className="px-3 py-2 text-left font-medium text-slate-600 whitespace-nowrap"
-                      title="接待台工单执行侧维护，与入组情况关联"
-                    >
-                      RD号
-                    </th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-600">受试者姓名</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-600">拼音首字母</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-600">姓名</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-600">年龄</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-600">性别</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-600 whitespace-nowrap">手机号</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-600">联络员</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-600 min-w-[6rem]">备注</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-600">访视点</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-600">时间信息</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-600">状态</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-600 whitespace-nowrap">入组情况</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {todayQueueQuery.data.data.items.map((item, idx) => (
-                    <tr key={item.appointment_id ?? `subj-${item.subject_id}-${item.checkin_id ?? idx}`} className="border-t border-slate-100">
-                      <td className="px-3 py-2 whitespace-nowrap">{item.project_code?.trim() ? item.project_code : '—'}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">{item.sc_number?.trim() ? item.sc_number : '—'}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">{item.rd_number?.trim() ? item.rd_number : '—'}</td>
-                      <td className="px-3 py-2">{item.subject_name || '—'}</td>
-                      <td className="px-3 py-2">{item.name_pinyin_initials?.trim() ? item.name_pinyin_initials : '—'}</td>
-                      <td className="px-3 py-2">{item.subject_name || '—'}</td>
-                      <td className="px-3 py-2">{item.age != null ? item.age : '—'}</td>
-                      <td className="px-3 py-2">{formatGenderCell(item.gender)}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">{item.phone?.trim() ? item.phone : '—'}</td>
-                      <td className="px-3 py-2 max-w-[8rem] break-words">{item.liaison?.trim() ? item.liaison : '—'}</td>
-                      <td className="px-3 py-2 max-w-[10rem] text-xs text-slate-600 break-words">{item.notes?.trim() ? item.notes : '—'}</td>
-                      <td className="px-3 py-2">{item.visit_point || '—'}</td>
-                      <td className="px-3 py-2">
-                        <div className="space-y-1 text-xs text-slate-600 min-w-28">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-slate-400">预约</span>
-                            <span>{formatDetailTime(item.appointment_time)}</span>
-                          </div>
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-slate-400">签入</span>
-                            <span>{formatDetailTime(item.checkin_time)}</span>
-                          </div>
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-slate-400">签出</span>
-                            <span>{formatDetailTime(item.checkout_time)}</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2">{item.status === 'waiting' ? '待签到' : item.status === 'checked_in' ? '已签到' : item.status === 'in_progress' ? '执行中' : item.status === 'checked_out' ? '已签出' : item.status === 'no_show' ? '缺席' : item.status}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">{item.enrollment_status?.trim() ? item.enrollment_status : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {(() => {
-              const total = todayQueueQuery.data?.data?.total ?? 0
-              const totalPages = Math.max(1, Math.ceil(total / queueListPageSize))
-              return (
-                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-t border-slate-200 text-sm text-slate-600">
-                  <span>
-                    共 {total} 条，每页 {queueListPageSize} 条
-                    {totalPages > 1 ? `，第 ${queueListPage}/${totalPages} 页` : ''}
-                  </span>
-                  {totalPages > 1 ? (
-                    <div className="flex gap-2">
-                      <button type="button" disabled={queueListPage <= 1} onClick={() => setQueueListPage((p) => Math.max(1, p - 1))} className="px-3 py-1 rounded border border-slate-200 disabled:opacity-50 hover:bg-slate-50">上一页</button>
-                      <button type="button" disabled={queueListPage >= totalPages} onClick={() => setQueueListPage((p) => Math.min(totalPages, p + 1))} className="px-3 py-1 rounded border border-slate-200 disabled:opacity-50 hover:bg-slate-50">下一页</button>
-                    </div>
-                  ) : null}
-                </div>
-              )
-            })()}
-          </>
-        ) : (
-          <div className="p-6 text-center text-slate-500">
-            <CalendarCheck className="w-10 h-10 mx-auto mb-2 opacity-50" />
-            <p>{queueDate} 暂无预约，新建或导入后将在此显示</p>
-          </div>
-        )}
-      </div>
+      <AppointmentQueuePanel />
     </div>
   )
 }

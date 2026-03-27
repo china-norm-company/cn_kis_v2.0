@@ -20,9 +20,11 @@
 - 趋势: /crm/trends/... /crm/bulletins/... (P3)
 - AI洞察: /crm/clients/{id}/insight   (已有增强)
 """
+import logging
+
 from ninja import Router, Schema, Query
-from typing import Optional
-from datetime import date
+from typing import Optional, List
+from datetime import date, datetime
 from decimal import Decimal
 
 from . import services
@@ -34,8 +36,10 @@ from .models import (
     SatisfactionSurvey, ClientSuccessMilestone,
     ClaimTrend, MarketTrendBulletin,
 )
-from apps.identity.decorators import _get_account_from_request, require_permission
+from apps.identity.decorators import _get_account_from_request, require_permission, require_any_permission
 from apps.identity.filters import get_visible_object
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -156,23 +160,62 @@ class OpportunityQueryParams(Schema):
     page_size: int = 20
 
 
+class ProjectDetailIn(Schema):
+    """项目要素结构化字段（与前端「项目要素」分区一致）"""
+    product_type: str = ''
+    product_stage: str = ''
+    project_initiator: str = ''
+    experiment_purpose: str = ''
+    experiment_type: str = ''
+    has_sample: str = ''  # yes | no
+    sample_name: str = ''
+    sample_type: str = ''
+    sample_info: str = ''
+    test_info: str = ''
+    follow_up_period: str = ''
+    test_location: str = ''
+    ethics_required: str = ''  # yes | no
+    human_genetic_resource_required: str = ''  # yes | no
+
+
 class OpportunityCreateIn(Schema):
-    title: str
+    """新建商机：商机编号由服务端生成；销售阶段为取消/输单时仅需原因，其余字段可空。"""
+    title: Optional[str] = None
     client_id: int
     stage: Optional[str] = 'lead'
+    demand_name: Optional[str] = ''
     estimated_amount: Optional[Decimal] = None
+    sales_amount_total: Optional[Decimal] = None
+    sales_amount_current_year: Optional[Decimal] = None
+    sales_amount_next_year: Optional[Decimal] = None
     probability: Optional[int] = 0
     owner: Optional[str] = ''
     expected_close_date: Optional[date] = None
+    planned_start_date: Optional[date] = None
     description: Optional[str] = ''
+    remark: Optional[str] = ''
+    cancel_reason: Optional[str] = ''
+    lost_reason: Optional[str] = ''
+    commercial_owner_id: int
+    research_group: Optional[str] = ''
+    business_segment: Optional[str] = ''
+    key_opportunity: bool = False
+    client_pm: Optional[str] = ''
+    client_contact_info: Optional[str] = ''
+    client_department_line: Optional[str] = ''
+    is_decision_maker: Optional[str] = ''
+    actual_decision_maker: Optional[str] = ''
+    actual_decision_maker_department_line: Optional[str] = ''
+    actual_decision_maker_level: Optional[str] = ''
+    demand_stages: Optional[List[str]] = []
+    project_detail: Optional[ProjectDetailIn] = None
+    necessity_pct: Optional[int] = None
+    urgency_pct: Optional[int] = None
+    uniqueness_pct: Optional[int] = None
 
 
-class OpportunityUpdateIn(Schema):
-    title: Optional[str] = None
-    stage: Optional[str] = None
-    estimated_amount: Optional[Decimal] = None
-    probability: Optional[int] = None
-    expected_close_date: Optional[date] = None
+class OpportunityUpdateIn(OpportunityCreateIn):
+    """与创建相同字段；商机编号由服务端固定不可改，由 URL 指定记录。"""
 
 
 # Schema — 工单（保留原有）
@@ -480,15 +523,43 @@ def _contact_to_dict(c) -> dict:
 
 def _opportunity_to_dict(o) -> dict:
     return {
-        'id': o.id, 'title': o.title,
+        'id': o.id,
+        'code': o.code or '',
+        'title': o.title,
         'client_id': o.client_id,
         'client_name': o.client.name if o.client else '',
         'stage': o.stage,
         'estimated_amount': str(o.estimated_amount) if o.estimated_amount else '',
         'probability': o.probability,
         'owner': o.owner,
+        'owner_id': o.owner_id,
+        'commercial_owner_name': getattr(o, 'commercial_owner_name', '') or '',
+        'research_group': getattr(o, 'research_group', '') or '',
+        'business_segment': getattr(o, 'business_segment', '') or '',
+        'client_pm': getattr(o, 'client_pm', '') or '',
+        'client_contact_info': getattr(o, 'client_contact_info', '') or '',
+        'client_department_line': getattr(o, 'client_department_line', '') or '',
+        'is_decision_maker': getattr(o, 'is_decision_maker', '') or '',
+        'actual_decision_maker': getattr(o, 'actual_decision_maker', '') or '',
+        'actual_decision_maker_department_line': getattr(o, 'actual_decision_maker_department_line', '') or '',
+        'actual_decision_maker_level': getattr(o, 'actual_decision_maker_level', '') or '',
+        'demand_stages': getattr(o, 'demand_stages', None) or [],
+        'project_elements': getattr(o, 'project_elements', '') or '',
+        'project_detail': getattr(o, 'project_detail', None) or {},
+        'necessity_pct': getattr(o, 'necessity_pct', None),
+        'urgency_pct': getattr(o, 'urgency_pct', None),
+        'uniqueness_pct': getattr(o, 'uniqueness_pct', None),
         'expected_close_date': o.expected_close_date.isoformat() if o.expected_close_date else '',
+        'planned_start_date': o.planned_start_date.isoformat() if getattr(o, 'planned_start_date', None) else '',
+        'demand_name': getattr(o, 'demand_name', '') or '',
+        'sales_amount_total': str(o.sales_amount_total) if getattr(o, 'sales_amount_total', None) else '',
+        'sales_by_year': getattr(o, 'sales_by_year', None) or {},
+        'sales_amount_change': str(o.sales_amount_change) if getattr(o, 'sales_amount_change', None) is not None else '',
+        'key_opportunity': bool(getattr(o, 'key_opportunity', False)),
         'description': o.description,
+        'remark': getattr(o, 'remark', '') or '',
+        'cancel_reason': getattr(o, 'cancel_reason', '') or '',
+        'lost_reason': getattr(o, 'lost_reason', '') or '',
         'create_time': o.create_time.isoformat(),
     }
 
@@ -1055,17 +1126,196 @@ def opportunity_stats(request):
         return 500, {'code': 500, 'msg': f'商机统计加载失败: {e!s}', 'data': None}
 
 
+@router.get('/opportunities/form-meta', summary='新建商机表单元数据（编号预览、下拉选项）')
+@require_any_permission(['crm.opportunity.create', 'crm.opportunity.update'])
+def opportunity_form_meta(request):
+    try:
+        return {'code': 200, 'msg': 'OK', 'data': services.get_opportunity_form_meta()}
+    except Exception as e:
+        logger.exception('CRM opportunity_form_meta failed')
+        return 500, {
+            'code': 500,
+            'msg': (
+                '商机表单元数据加载失败（常见原因：数据库未执行迁移，t_opportunity 缺少 code 等字段）。'
+                '请在 backend 目录执行 python manage.py migrate；若有迁移冲突需先 makemigrations --merge。'
+                f' 技术详情：{e!s}'
+            ),
+            'data': None,
+        }
+
+
+@router.get('/opportunities/owner-candidates', summary='商务负责人候选（可搜索）')
+@require_any_permission(['crm.opportunity.create', 'crm.opportunity.update'])
+def opportunity_owner_candidates(request, q: str = '', limit: int = 80):
+    return {
+        'code': 200,
+        'msg': 'OK',
+        'data': {'items': services.list_opportunity_owner_candidates(q=q, limit=limit)},
+    }
+
+
+def _prepare_opportunity_fields_for_write(data: OpportunityCreateIn) -> dict:
+    """与创建/更新共用的校验与字段展开；失败时 raise ValueError。"""
+
+    def _clamp_pct(v: Optional[int]) -> Optional[int]:
+        if v is None:
+            return None
+        return max(0, min(100, int(v)))
+
+    def _yn_flag(s: str) -> str:
+        x = (s or '').strip().lower()
+        if x in ('yes', 'y', 'true', '1', '是'):
+            return 'yes'
+        if x in ('no', 'n', 'false', '0', '否'):
+            return 'no'
+        return ''
+
+    stage_raw = (data.stage or 'lead').strip().lower()
+    allowed_sale = {'lead', 'deal', 'won', 'cancelled', 'lost'}
+    if stage_raw not in allowed_sale:
+        raise ValueError(f'无效的销售阶段: {stage_raw}')
+
+    is_terminal = stage_raw in ('cancelled', 'lost')
+    ds = data.demand_stages or []
+    dm = (data.is_decision_maker or '').strip().lower()
+    sales_by_year_for_create: dict = {}
+    sales_total_for_create = None
+
+    if is_terminal:
+        if stage_raw == 'cancelled' and not (data.cancel_reason or '').strip():
+            raise ValueError('选择「取消」时必须填写取消原因')
+        if stage_raw == 'lost' and not (data.lost_reason or '').strip():
+            raise ValueError('选择「输单」时必须填写输单原因')
+        pd_dict: dict = {}
+        est = data.estimated_amount if data.estimated_amount is not None else Decimal('0')
+    else:
+        pd = data.project_detail or ProjectDetailIn()
+        if not (pd.product_type or '').strip():
+            raise ValueError('项目要素：产品类型为必填')
+        if data.estimated_amount is None:
+            raise ValueError('请填写预估金额')
+        if not (data.research_group or '').strip():
+            raise ValueError('请填写研究组')
+        if not (data.business_segment or '').strip():
+            raise ValueError('请填写业务板块')
+        hs = (pd.has_sample or '').strip().lower()
+        if hs in ('yes', 'y', 'true', '1', '是'):
+            hs_norm = 'yes'
+        elif hs in ('no', 'n', 'false', '0', '否'):
+            hs_norm = 'no'
+        else:
+            hs_norm = ''
+        if hs_norm == 'yes':
+            if not (pd.sample_name or '').strip() or not (pd.sample_type or '').strip():
+                raise ValueError('已有样品为「是」时，请填写样品名称与样品类型')
+        if dm == 'no':
+            if not (data.actual_decision_maker or '').strip():
+                raise ValueError('选择「是否为决策人」为否时，请填写实际决策人')
+            if not (data.actual_decision_maker_department_line or '').strip():
+                raise ValueError('选择「是否为决策人」为否时，请填写实际决策人-部门/条线')
+            if not (data.actual_decision_maker_level or '').strip():
+                raise ValueError('选择「是否为决策人」为否时，请填写实际决策人-职级')
+        if not (data.demand_name or '').strip():
+            raise ValueError('请填写需求名称')
+        if stage_raw == 'won':
+            if data.sales_amount_total is None or data.sales_amount_current_year is None or data.sales_amount_next_year is None:
+                raise ValueError('赢单时须填写销售额、本年销售额、跨年销售额')
+            d_tot = Decimal(str(data.sales_amount_total)).quantize(Decimal('0.01'))
+            d_cy = Decimal(str(data.sales_amount_current_year)).quantize(Decimal('0.01'))
+            d_ny = Decimal(str(data.sales_amount_next_year)).quantize(Decimal('0.01'))
+            if d_tot != (d_cy + d_ny).quantize(Decimal('0.01')):
+                raise ValueError('销售额须等于本年销售额与跨年销售额之和')
+            y_now = datetime.now().year
+            sales_by_year_for_create = {
+                str(y_now): format(d_cy, 'f'),
+                str(y_now + 1): format(d_ny, 'f'),
+            }
+            sales_total_for_create = d_tot
+        pd_dict = {
+            'product_type': (pd.product_type or '').strip(),
+            'product_stage': (pd.product_stage or '').strip(),
+            'project_initiator': (pd.project_initiator or '').strip(),
+            'experiment_purpose': (pd.experiment_purpose or '').strip(),
+            'experiment_type': (pd.experiment_type or '').strip(),
+            'has_sample': hs_norm,
+            'sample_name': (pd.sample_name or '').strip() if hs_norm == 'yes' else '',
+            'sample_type': (pd.sample_type or '').strip() if hs_norm == 'yes' else '',
+            'sample_info': (pd.sample_info or '').strip(),
+            'test_info': (pd.test_info or '').strip(),
+            'follow_up_period': (pd.follow_up_period or '').strip(),
+            'test_location': (pd.test_location or '').strip(),
+            'ethics_required': _yn_flag(pd.ethics_required),
+            'human_genetic_resource_required': _yn_flag(pd.human_genetic_resource_required),
+        }
+        est = data.estimated_amount
+
+    return {
+        'title': data.title,
+        'client_id': data.client_id,
+        'stage': stage_raw,
+        'estimated_amount': est,
+        'demand_name': '' if is_terminal else (data.demand_name or '').strip(),
+        'sales_amount_total': None if is_terminal else sales_total_for_create,
+        'sales_by_year': {} if is_terminal else sales_by_year_for_create,
+        'probability': data.probability or 0,
+        'owner': data.owner or '',
+        'expected_close_date': None if is_terminal else data.expected_close_date,
+        'planned_start_date': None if is_terminal else data.planned_start_date,
+        'description': data.description or '',
+        'remark': '' if is_terminal else (data.remark or ''),
+        'cancel_reason': (data.cancel_reason or '').strip() if stage_raw == 'cancelled' else '',
+        'lost_reason': (data.lost_reason or '').strip() if stage_raw == 'lost' else '',
+        'commercial_owner_id': data.commercial_owner_id,
+        'research_group': '' if is_terminal else (data.research_group or ''),
+        'business_segment': '' if is_terminal else (data.business_segment or ''),
+        'key_opportunity': False if is_terminal else bool(data.key_opportunity),
+        'client_pm': '' if is_terminal else (data.client_pm or ''),
+        'client_contact_info': '' if is_terminal else (data.client_contact_info or ''),
+        'client_department_line': '' if is_terminal else (data.client_department_line or ''),
+        'is_decision_maker': (
+            ''
+            if is_terminal
+            else (dm if dm in ('yes', 'no', 'unknown') else '')
+        ),
+        'actual_decision_maker': (
+            (data.actual_decision_maker or '').strip()
+            if (not is_terminal and dm == 'no')
+            else ''
+        ),
+        'actual_decision_maker_department_line': (
+            (data.actual_decision_maker_department_line or '').strip()
+            if (not is_terminal and dm == 'no')
+            else ''
+        ),
+        'actual_decision_maker_level': (
+            (data.actual_decision_maker_level or '').strip()
+            if (not is_terminal and dm == 'no')
+            else ''
+        ),
+        'demand_stages': [] if is_terminal else list(ds),
+        'project_elements': '',
+        'project_detail': pd_dict,
+        'necessity_pct': None if is_terminal else _clamp_pct(data.necessity_pct),
+        'urgency_pct': None if is_terminal else _clamp_pct(data.urgency_pct),
+        'uniqueness_pct': None if is_terminal else _clamp_pct(data.uniqueness_pct),
+    }
+
+
 @router.post('/opportunities/create', summary='创建商机')
 @require_permission('crm.opportunity.create')
 def create_opportunity(request, data: OpportunityCreateIn):
-    o = services.create_opportunity(
-        title=data.title, client_id=data.client_id,
-        stage=data.stage or 'lead',
-        estimated_amount=data.estimated_amount,
-        probability=data.probability or 0, owner=data.owner or '',
-        expected_close_date=data.expected_close_date,
-        description=data.description or '',
-    )
+    try:
+        kwargs = _prepare_opportunity_fields_for_write(data)
+        o = services.create_opportunity(**kwargs)
+    except ValueError as e:
+        return 400, {'code': 400, 'msg': str(e), 'data': None}
+    except Exception:
+        logger.exception('CRM create_opportunity failed')
+        return 500, {
+            'code': 500,
+            'msg': '创建商机失败，请稍后重试。若持续出现，请联系管理员检查数据库迁移与服务日志。',
+            'data': None,
+        }
     return {'code': 200, 'msg': 'OK', 'data': _opportunity_to_dict(o)}
 
 
@@ -1085,7 +1335,17 @@ def update_opportunity(request, opp_id: int, data: OpportunityUpdateIn):
     account = _get_account_from_request(request)
     if not get_visible_object(Opportunity.objects.filter(id=opp_id), account):
         return 404, {'code': 404, 'msg': '商机不存在'}
-    o = services.update_opportunity(opp_id, **data.dict(exclude_unset=True))
+    try:
+        kwargs = _prepare_opportunity_fields_for_write(data)
+    except ValueError as e:
+        return 400, {'code': 400, 'msg': str(e), 'data': None}
+    # 创建接口可不传商机名称；更新时若未传则保留数据库原标题
+    if kwargs.get('title') is None:
+        kwargs.pop('title', None)
+    try:
+        o = services.update_opportunity(opp_id, **kwargs)
+    except ValueError as e:
+        return 400, {'code': 400, 'msg': str(e), 'data': None}
     if not o:
         return 404, {'code': 404, 'msg': '商机不存在'}
     return {'code': 200, 'msg': 'OK', 'data': _opportunity_to_dict(o)}

@@ -110,6 +110,61 @@ def call_next(station_id: str = 'default', project_code: Optional[str] = None) -
     叫号：按项目内叫号序取下一名 checked_in，更新为 in_progress。
     若传 project_code 则仅在该项目内取；否则全局按叫号序（项目+SC+过号顺延）。
     """
+    from ..models_execution import SubjectCheckin
+
+    checkins = list(
+        SubjectCheckin.objects.filter(
+            checkin_date=today,
+            status='checked_in',
+        ).select_related('subject', 'enrollment', 'enrollment__protocol')
+    )
+    if not checkins:
+        return []
+
+    # 为每条签到解析 project_code
+    rows = []
+    for c in checkins:
+        pc = _get_project_code_for_checkin(c, today) or '_'
+        rows.append((c, pc))
+
+    # 按项目分组，同项目内按 subject_id 赋 SC 序号（与 get_today_queue 一致）
+    by_project = defaultdict(list)
+    for c, pc in rows:
+        by_project[pc].append(c)
+
+    sid_to_sc_rank = {}
+    for pc, group in by_project.items():
+        unique_sids = sorted({c.subject_id for c in group})
+        for r, sid in enumerate(unique_sids, start=1):
+            sid_to_sc_rank[(pc, sid)] = r
+
+    # 计算 call_order：未过号 = sc_rank；过号 = missed_after_sc_rank + MISSED_CALL_DELAY_SLOTS
+    result = []
+    for c, pc in rows:
+        sc_rank = sid_to_sc_rank.get((pc, c.subject_id), 999)
+        if getattr(c, 'missed_after_sc_rank', None) is not None:
+            call_order = (c.missed_after_sc_rank or 0) + MISSED_CALL_DELAY_SLOTS
+            missed_at = getattr(c, 'missed_call_at', None)
+            result.append((c, pc, sc_rank, call_order, missed_at))
+        else:
+            result.append((c, pc, sc_rank, sc_rank, None))
+
+    # 筛选项目
+    if project_code_filter and str(project_code_filter).strip():
+        pc_lower = str(project_code_filter).strip().lower()
+        result = [(c, pc, sr, co, ma) for c, pc, sr, co, ma in result if (pc or '_').strip().lower() == pc_lower]
+
+    # 排序：call_order 升序，同序时过号者按 missed_call_at 升序，再按 checkin_time
+    result.sort(key=lambda x: (x[3], x[4] or timezone.now(), x[0].checkin_time or timezone.now()))
+
+    return result
+
+
+def call_next(station_id: str = 'default', project_code: Optional[str] = None) -> dict:
+    """
+    叫号：按项目内叫号序取下一名 checked_in，更新为 in_progress。
+    若传 project_code 则仅在该项目内取；否则全局按叫号序（项目+SC+过号顺延）。
+    """
 
     today = timezone.now().date()
     ordered = _build_call_order_list(today, project_code_filter=project_code)

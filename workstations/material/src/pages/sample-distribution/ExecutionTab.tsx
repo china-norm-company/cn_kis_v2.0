@@ -257,7 +257,7 @@ export function ExecutionTab() {
           for (let opIndex = 0; opIndex < 3; opIndex++) colIndex.push({ cycle, product, opIndex })
         }
       }
-      const headerRow0: (string | number)[] = ['受试者筛选编号', '受试者入组编号', '测试组别', '产品组别']
+      const headerRow0: (string | number)[] = ['受试者SC号', '受试者入组编号', '测试组别', '产品组别']
       const headerRow1: (string | number)[] = ['', '', '', '']
       const headerRow2: (string | number)[] = ['', '', '', '']
       const headerRow3: (string | number)[] = ['', '', '', '']
@@ -586,9 +586,9 @@ export function ExecutionTab() {
                     <th className="text-left px-2 py-1.5 font-medium">研究员</th>
                     <th className="text-left px-2 py-1.5 font-medium">督导</th>
                     <th className="text-left px-2 py-1.5 font-medium">进展</th>
-                    <th className="text-left px-2 py-1.5 font-medium">受试者RD号</th>
+                    <th className="text-left px-2 py-1.5 font-medium">受试者SC号</th>
                     <th className="text-left px-2 py-1.5 font-medium">姓名首字母</th>
-                    <th className="text-left px-2 py-1.5 font-medium">筛选编号</th>
+                    <th className="text-left px-2 py-1.5 font-medium">受试者RD号</th>
                     <th className="text-right px-2 py-1.5 w-[60px] font-medium">操作</th>
                   </tr>
                 </thead>
@@ -606,9 +606,9 @@ export function ExecutionTab() {
                         <td className="px-2 py-1.5">{wo?.researcher ?? '—'}</td>
                         <td className="px-2 py-1.5">{wo?.supervisor ?? '—'}</td>
                         <td className="px-2 py-1.5"><ProgressBadge progress={wo?.execution_progress ?? ''} /></td>
-                        <td className="px-2 py-1.5 font-medium">{rec.subject_rd}</td>
+                        <td className="px-2 py-1.5 font-medium">{rec.screening_no?.trim() || '—'}</td>
                         <td className="px-2 py-1.5">{rec.subject_initials}</td>
-                        <td className="px-2 py-1.5">{rec.screening_no?.trim() || '—'}</td>
+                        <td className="px-2 py-1.5">{(rec.subject_rd || '').trim() || '—'}</td>
                         <td className="px-2 py-1.5 text-right">
                           <div className="flex justify-end gap-1">
                             <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => openEdit(rec)}>
@@ -663,7 +663,7 @@ export function ExecutionTab() {
         {detailForView && (
           <div className="space-y-4">
             <p className="text-sm text-slate-500">
-              {detailForView.subject_rd} / {detailForView.subject_initials}
+              {detailForView.screening_no?.trim() || '—'} / {(detailForView.subject_rd || '').trim() || '—'} / {detailForView.subject_initials}
             </p>
             <Card variant="elevated" className="p-4 border border-slate-200">
               <h3 className="text-base font-semibold text-slate-800 mb-3">基本信息</h3>
@@ -681,16 +681,16 @@ export function ExecutionTab() {
                   <span>{(detailForView as any).operator_name ?? '—'}</span>
                 </div>
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-xs text-slate-500">受试者RD号</span>
-                  <span className="font-medium">{detailForView.subject_rd}</span>
+                  <span className="text-xs text-slate-500">受试者SC号</span>
+                  <span className="font-medium">{detailForView.screening_no?.trim() || '—'}</span>
                 </div>
                 <div className="flex flex-col gap-0.5">
                   <span className="text-xs text-slate-500">姓名首字母</span>
                   <span>{detailForView.subject_initials}</span>
                 </div>
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-xs text-slate-500">筛选编号</span>
-                  <span>{detailForView.screening_no?.trim() || '—'}</span>
+                  <span className="text-xs text-slate-500">受试者RD号</span>
+                  <span>{(detailForView.subject_rd || '').trim() || '—'}</span>
                 </div>
               </div>
             </Card>

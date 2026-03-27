@@ -31,6 +31,16 @@ _LAB_SCHEDULE_READ_PERMS = [
     'visit.plan.read',
 ]
 
+# 实验室排期只读：与执行台上传数据同源。scheduling.lab_schedule.read 赋予除受试者自助外全员（见 seed_roles）；其余为历史/岗位兼容
+_LAB_SCHEDULE_READ_PERMS = [
+    'scheduling.lab_schedule.read',
+    'scheduling.plan.read',
+    'evaluator.schedule.read',
+    'visit.plan.read',
+]
+
+
+logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 
@@ -1703,7 +1713,7 @@ def get_schedule_core(request, order_id: int):
 @require_permission_or_anon_in_debug('scheduling.plan.create')
 def update_schedule_core(request, order_id: int, payload: TimelineScheduleUpdateIn):
     """更新时间线排程或 payload（草稿或时间线已发布时可更新 payload 中的行政/评估/技术）。"""
-    from .models import ExecutionOrderUpload, TimelineSchedule
+    from .models import ExecutionOrderUpload, TimelineSchedule, TimelineScheduleStatus
     order = ExecutionOrderUpload.objects.filter(id=order_id).first()
     if not order:
         return {'code': 404, 'msg': '未找到该执行订单', 'data': None}

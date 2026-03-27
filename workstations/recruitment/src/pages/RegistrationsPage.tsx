@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { recruitmentApi } from '@cn-kis/api-client'
+import type { RecruitmentPlan } from '@cn-kis/api-client'
 import { toast } from '../hooks/useToast'
+import { useActiveRecruitmentPlans } from '../hooks/useActiveRecruitmentPlans'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ErrorAlert } from '../components/ErrorAlert'
 import { Pagination } from '../components/Pagination'
@@ -378,13 +380,7 @@ function CreateRegistrationModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient()
   const [form, setForm] = useState({ plan_id: 0, name: '', phone: '', gender: '', age: undefined as number | undefined, email: '' })
 
-  const plansQuery = useQuery({
-    queryKey: ['recruitment', 'plans', 'select'],
-    queryFn: async () => {
-      const res = await recruitmentApi.listPlans({ status: 'active', page_size: 100 })
-      return res?.data?.items ?? []
-    },
-  })
+  const plansQuery = useActiveRecruitmentPlans()
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -413,7 +409,11 @@ function CreateRegistrationModal({ onClose }: { onClose: () => void }) {
             <label className="block text-sm font-medium text-slate-600 mb-1">招募计划</label>
             <select value={form.plan_id} onChange={(e) => setForm({ ...form, plan_id: Number(e.target.value) })} className="w-full min-h-11 px-3 py-2 border border-slate-200 rounded-lg text-sm" title="选择招募计划">
               <option value={0}>请选择计划</option>
-              {plans.map((p: { id: number; plan_no: string; title: string }) => <option key={p.id} value={p.id}>{p.plan_no} - {p.title}</option>)}
+              {plans.map((p: RecruitmentPlan) => {
+                const code = (p.protocol_code || '').trim()
+                const label = code ? `${p.plan_no} · ${p.title} · ${code}` : `${p.plan_no} · ${p.title} · （未配置协议编号）`
+                return <option key={p.id} value={p.id}>{label}</option>
+              })}
             </select>
           </div>
           <div><label className="block text-sm font-medium text-slate-600 mb-1">姓名 *</label><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full min-h-11 px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="受试者姓名" title="受试者姓名" /></div>

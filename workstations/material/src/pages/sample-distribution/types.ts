@@ -188,10 +188,12 @@ export interface ProductOperationItemCreate {
 export interface ExecutionRecordCreate {
   work_order_id: number | string
   related_project_no: string
+  /** 选填；空字符串表示未填 */
   subject_rd: string
   subject_initials: string
   operator_name?: string | null
-  screening_no?: string | null
+  /** 受试者SC号（必填） */
+  screening_no: string
   execution_date?: string | null
   exception_type?: ExceptionType | string | null
   exception_description?: string | null

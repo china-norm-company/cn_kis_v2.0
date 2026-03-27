@@ -55,6 +55,7 @@ export default defineAppConfig({
     navigationBarBackgroundColor: '#2B6CB0',
     navigationBarTitleText: 'UTest',
     navigationBarTextStyle: 'white',
+    backgroundColor: '#f7fafc',
   },
   tabBar: {
     color: '#999999',

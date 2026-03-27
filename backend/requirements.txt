@@ -23,6 +23,9 @@ django-cors-headers>=4.3.0
 requests>=2.31.0
 httpx>=0.25.0
 
+# LIMS 采集登录解密（fetch_lims_data）
+pycryptodome>=3.20.0
+
 # 日志
 loguru>=0.7.0
 python-json-logger>=2.0.0
