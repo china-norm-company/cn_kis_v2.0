@@ -7,9 +7,11 @@
 - 商机创建/阶段变更时同步到飞书多维表格看板（替代原飞书项目工作项）
 """
 import logging
-from typing import Optional
+from typing import Optional, List
 from datetime import date
 from decimal import Decimal
+from django.db import IntegrityError
+
 from apps.crm.models import Client, Opportunity, Ticket
 
 logger = logging.getLogger(__name__)
@@ -164,6 +166,90 @@ def _sync_opportunity_to_bitable(opp: Opportunity) -> None:
 _ORCHESTRATION_TRIGGER_STAGES = {'evaluation', 'proposal'}
 
 
+def _max_opportunity_seq_for_year(year: int) -> int:
+    """解析商机编号 商机YYYY#### 中的年度序号最大值。"""
+    prefix = f'商机{year}'
+    best = 0
+    qs = Opportunity.objects.filter(code__startswith=prefix).exclude(code__isnull=True).exclude(code='').only('code')
+    for o in qs:
+        c = o.code or ''
+        if len(c) < 10 or not c.startswith('商机'):
+            continue
+        try:
+            y = int(c[2:6])
+            s = int(c[6:10])
+        except ValueError:
+            continue
+        if y == year and s > best:
+            best = s
+    return best
+
+
+def peek_next_opportunity_code() -> str:
+    """预览下一个商机编号（并发下可能与实际落库差 1）。"""
+    from django.utils import timezone
+
+    year = timezone.now().year
+    nxt = _max_opportunity_seq_for_year(year) + 1
+    if nxt > 9999:
+        nxt = 9999
+    return f'商机{year}{nxt:04d}'
+
+
+def allocate_opportunity_code() -> str:
+    """生成下一个商机编号；并发冲突由调用方重试。"""
+    from django.utils import timezone
+
+    year = timezone.now().year
+    nxt = _max_opportunity_seq_for_year(year) + 1
+    if nxt > 9999:
+        raise ValueError('本年度商机编号序号已满（9999）')
+    return f'商机{year}{nxt:04d}'
+
+
+def list_opportunity_owner_candidates(q: str = '', limit: int = 80) -> List[dict]:
+    """商务负责人下拉：活跃账号，按显示名搜索。"""
+    from django.db.models import Q
+    from apps.identity.models import Account
+
+    qs = Account.objects.filter(is_deleted=False, status='active').order_by('display_name', 'username')
+    if q and q.strip():
+        kw = q.strip()
+        qs = qs.filter(
+            Q(display_name__icontains=kw)
+            | Q(username__icontains=kw)
+            | Q(email__icontains=kw)
+        )
+    items = list(qs[: max(1, min(limit, 200))])
+    return [
+        {
+            'id': a.id,
+            'display_name': a.display_name or a.username,
+            'username': a.username,
+        }
+        for a in items
+    ]
+
+
+def get_opportunity_form_meta() -> dict:
+    from django.utils import timezone
+    from apps.crm.opportunity_constants import (
+        RESEARCH_GROUPS,
+        BUSINESS_SEGMENTS,
+        DEMAND_STAGE_OPTIONS,
+        SALES_STAGE_OPTIONS,
+    )
+
+    return {
+        'next_code_preview': peek_next_opportunity_code(),
+        'sales_stage_options': SALES_STAGE_OPTIONS,
+        'research_groups': RESEARCH_GROUPS,
+        'business_segments': BUSINESS_SEGMENTS,
+        'demand_stage_options': DEMAND_STAGE_OPTIONS,
+        'server_time': timezone.now().isoformat(),
+    }
+
+
 def _trigger_orchestration_if_needed(opp: Opportunity, stage: str) -> None:
     """当商机进入 evaluation 或 proposal 阶段时，自动触发数字员工编排。"""
     if stage not in _ORCHESTRATION_TRIGGER_STAGES:
@@ -186,34 +272,159 @@ def _trigger_orchestration_if_needed(opp: Opportunity, stage: str) -> None:
         logger.warning('Orchestration trigger failed for opportunity #%s: %s', opp.id, e)
 
 
-def create_opportunity(title: str, client_id: int, stage: str = 'lead',
-                       estimated_amount: Decimal = None, probability: int = 0,
-                       owner: str = '', expected_close_date: date = None,
-                       description: str = '',
-                       demand_version: str = '',
-                       source_mail_signal_id: int = None) -> Opportunity:
-    """创建商机并同步到飞书多维表格，evaluation/proposal 阶段自动触发编排"""
-    opp = Opportunity.objects.create(
-        title=title, client_id=client_id, stage=stage,
-        estimated_amount=estimated_amount, probability=probability,
-        owner=owner, expected_close_date=expected_close_date,
-        description=description, demand_version=demand_version,
-        source_mail_signal_id=source_mail_signal_id,
-    )
-    _sync_opportunity_to_bitable(opp)
-    _trigger_orchestration_if_needed(opp, stage)
-    return opp
+def create_opportunity(
+    title: str = None,
+    client_id: int = None,
+    stage: str = 'lead',
+    estimated_amount: Decimal = None,
+    probability: int = 0,
+    owner: str = '',
+    owner_id: int = None,
+    expected_close_date: date = None,
+    planned_start_date: date = None,
+    demand_name: str = '',
+    sales_amount_total: Decimal = None,
+    sales_by_year: dict = None,
+    description: str = '',
+    remark: str = '',
+    demand_version: str = '',
+    source_mail_signal_id: int = None,
+    commercial_owner_id: int = None,
+    commercial_owner_name: str = '',
+    research_group: str = '',
+    business_segment: str = '',
+    key_opportunity: bool = False,
+    client_pm: str = '',
+    client_contact_info: str = '',
+    client_department_line: str = '',
+    is_decision_maker: str = '',
+    actual_decision_maker: str = '',
+    actual_decision_maker_department_line: str = '',
+    actual_decision_maker_level: str = '',
+    demand_stages: List[str] = None,
+    project_elements: str = '',
+    project_detail: dict = None,
+    necessity_pct: int = None,
+    urgency_pct: int = None,
+    uniqueness_pct: int = None,
+    cancel_reason: str = '',
+    lost_reason: str = '',
+) -> Opportunity:
+    """创建商机（自动生成商机编号），并同步飞书多维表格 / 编排。"""
+    from apps.identity.models import Account
+
+    client = Client.objects.filter(id=client_id, is_deleted=False).first()
+    if not client:
+        raise ValueError('客户不存在')
+
+    resolved_owner = owner or ''
+    resolved_owner_id = owner_id
+    resolved_commercial_name = commercial_owner_name or ''
+
+    if commercial_owner_id is not None:
+        acc = Account.objects.filter(id=commercial_owner_id, is_deleted=False).first()
+        if not acc:
+            raise ValueError('商务负责人不存在')
+        resolved_owner = acc.display_name or acc.username
+        resolved_owner_id = acc.id
+        resolved_commercial_name = resolved_commercial_name or resolved_owner
+
+    demand_stages = demand_stages if demand_stages is not None else []
+
+    last_err: Optional[Exception] = None
+    for _ in range(25):
+        code = allocate_opportunity_code()
+        effective_title = (title and str(title).strip()) or f'{code} · {client.name}'
+        try:
+            opp = Opportunity.objects.create(
+                code=code,
+                title=effective_title,
+                client_id=client_id,
+                stage=stage,
+                estimated_amount=estimated_amount,
+                probability=probability,
+                owner=resolved_owner,
+                owner_id=resolved_owner_id,
+                commercial_owner_name=resolved_commercial_name,
+                research_group=research_group or '',
+                business_segment=business_segment or '',
+                key_opportunity=key_opportunity,
+                client_pm=client_pm or '',
+                client_contact_info=client_contact_info or '',
+                client_department_line=client_department_line or '',
+                is_decision_maker=is_decision_maker or '',
+                actual_decision_maker=actual_decision_maker or '',
+                actual_decision_maker_department_line=actual_decision_maker_department_line or '',
+                actual_decision_maker_level=actual_decision_maker_level or '',
+                demand_stages=list(demand_stages),
+                project_elements=project_elements or '',
+                project_detail=dict(project_detail or {}),
+                necessity_pct=necessity_pct,
+                urgency_pct=urgency_pct,
+                uniqueness_pct=uniqueness_pct,
+                expected_close_date=expected_close_date,
+                planned_start_date=planned_start_date,
+                demand_name=demand_name or '',
+                sales_amount_total=sales_amount_total,
+                sales_by_year=dict(sales_by_year or {}),
+                description=description or '',
+                remark=remark or '',
+                cancel_reason=cancel_reason or '',
+                lost_reason=lost_reason or '',
+                demand_version=demand_version or '',
+                source_mail_signal_id=source_mail_signal_id,
+            )
+            _sync_opportunity_to_bitable(opp)
+            _trigger_orchestration_if_needed(opp, stage)
+            return opp
+        except IntegrityError as e:
+            last_err = e
+            continue
+    if last_err:
+        raise ValueError('商机编号占用冲突，请重试一次') from last_err
+    raise RuntimeError('商机编号分配失败，请重试')
 
 
 def update_opportunity(opp_id: int, **kwargs) -> Optional[Opportunity]:
     """更新商机并同步飞书多维表格，阶段变为 evaluation/proposal 时触发编排"""
+    from apps.identity.models import Account
+
     o = get_opportunity(opp_id)
     if not o:
         return None
     old_stage = o.stage
+
+    if 'client_id' in kwargs:
+        cid = kwargs.get('client_id')
+        if cid is not None:
+            client = Client.objects.filter(id=cid, is_deleted=False).first()
+            if not client:
+                raise ValueError('客户不存在')
+
+    if 'commercial_owner_id' in kwargs:
+        cid_owner = kwargs.pop('commercial_owner_id', None)
+        if cid_owner is not None:
+            acc = Account.objects.filter(id=cid_owner, is_deleted=False).first()
+            if not acc:
+                raise ValueError('商务负责人不存在')
+            resolved = acc.display_name or acc.username
+            kwargs['owner'] = resolved
+            kwargs['owner_id'] = acc.id
+            kwargs['commercial_owner_name'] = resolved
+
+    if 'sales_amount_total' in kwargs and kwargs.get('sales_amount_total') is not None:
+        from decimal import Decimal as D
+        old_v = o.sales_amount_total
+        new_v = kwargs['sales_amount_total']
+        d_new = D(str(new_v))
+        d_old = D(str(old_v)) if old_v is not None else D('0')
+        kwargs['sales_amount_change'] = d_new - d_old
+
+    field_names = {f.name for f in Opportunity._meta.concrete_fields}
     for k, v in kwargs.items():
-        if v is not None and hasattr(o, k):
-            setattr(o, k, v)
+        if k not in field_names:
+            continue
+        setattr(o, k, v)
     o.save()
     new_stage = kwargs.get('stage')
     if new_stage:
@@ -236,7 +447,7 @@ def get_opportunity_stats() -> dict:
     from django.db.models import Count, Sum
     qs = Opportunity.objects.filter(is_deleted=False)
     by_stage = qs.values('stage').annotate(count=Count('id'))
-    pipeline_value = qs.exclude(stage__in=['won', 'lost']).aggregate(total=Sum('estimated_amount'))['total'] or 0
+    pipeline_value = qs.exclude(stage__in=['won', 'lost', 'cancelled']).aggregate(total=Sum('estimated_amount'))['total'] or 0
     return {
         'by_stage': {item['stage']: item['count'] for item in by_stage},
         'total': qs.count(),
