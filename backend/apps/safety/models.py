@@ -149,3 +149,51 @@ class AEFollowUp(models.Model):
 
     def __str__(self):
         return f'AE#{self.adverse_event_id} 第{self.sequence}次随访'
+
+
+class MiniAEReportStatus(models.TextChoices):
+    REPORTED = 'reported', '已上报'
+    UNDER_REVIEW = 'under_review', '审核中'
+    CLOSED = 'closed', '已关闭'
+
+
+class MiniAdverseEventReport(models.Model):
+    """
+    小程序受试者自助上报不良反应
+
+    数据来源：微信小程序「情况反馈 > 不良反应上报」页面。
+    关联项目通过 project_code 直接对应接待台看板侧 ReceptionBoardProjectSc，
+    不依赖 EDC 入组表 t_enrollment / t_protocol。
+    """
+
+    class Meta:
+        db_table = 't_mini_adverse_event_report'
+        verbose_name = '小程序不良反应上报'
+        ordering = ['-create_time']
+        indexes = [
+            models.Index(fields=['subject', 'project_code']),
+            models.Index(fields=['status']),
+            models.Index(fields=['create_time']),
+        ]
+
+    subject = models.ForeignKey(
+        'subject.Subject', on_delete=models.PROTECT,
+        related_name='mini_ae_reports', verbose_name='受试者',
+    )
+    project_code = models.CharField('项目编号', max_length=100, db_index=True)
+    project_name = models.CharField('项目名称', max_length=200, blank=True, default='')
+    description = models.TextField('症状描述')
+    severity = models.CharField('严重程度', max_length=20, choices=AESeverity.choices)
+    occur_date = models.DateField('发生日期')
+    status = models.CharField(
+        '处理状态', max_length=20,
+        choices=MiniAEReportStatus.choices,
+        default=MiniAEReportStatus.REPORTED, db_index=True,
+    )
+    photo_urls = models.JSONField('照片', default=list, blank=True)
+
+    create_time = models.DateTimeField('创建时间', auto_now_add=True)
+    update_time = models.DateTimeField('更新时间', auto_now=True)
+
+    def __str__(self):
+        return f'MiniAE#{self.id} {self.project_code} - {self.description[:30]}'

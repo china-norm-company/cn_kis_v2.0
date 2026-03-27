@@ -4,21 +4,19 @@ import Taro from '@tarojs/taro'
 import { taroApiClient } from '@/adapters/subject-core'
 import './index.scss'
 
-interface EnrolledRow {
-  id: number
-  protocol_title?: string
-  project_code?: string
-  status?: string
+interface AEProject {
+  project_code: string
+  project_name: string
+  sc_number?: string
 }
 
-function formatEnrollmentLabel(e: EnrolledRow): string {
-  const code = (e.project_code || '').trim()
-  const title = (e.protocol_title || '').trim()
-  if (code && title) return `${code} · ${title}`
-  return code || title || `入组 #${e.id}`
+function formatProjectLabel(p: AEProject): string {
+  const code = (p.project_code || '').trim()
+  const name = (p.project_name || '').trim()
+  if (code && name && name !== code) return `${code} · ${name}`
+  return code || name || '未知项目'
 }
 
-/** 与线下《不良事件报告表》症状严重程度一致 */
 const SEVERITY_OPTIONS = [
   { label: '轻微', value: 'mild', desc: '不影响日常活动' },
   { label: '中度', value: 'moderate', desc: '部分影响日常活动' },
@@ -34,36 +32,36 @@ export default function ReportPage() {
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
 
-  const [enrollLoading, setEnrollLoading] = useState(true)
-  const [enrolledRows, setEnrolledRows] = useState<EnrolledRow[]>([])
-  const [enrollPickerIndex, setEnrollPickerIndex] = useState(0)
-  const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<number | null>(null)
+  const [projectsLoading, setProjectsLoading] = useState(true)
+  const [projects, setProjects] = useState<AEProject[]>([])
+  const [pickerIndex, setPickerIndex] = useState(0)
+  const [selectedProjectCode, setSelectedProjectCode] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    setEnrollLoading(true)
+    setProjectsLoading(true)
     taroApiClient
-      .get('/my/enrollments', undefined, { silent: true })
+      .get('/my/ae-projects', undefined, { silent: true })
       .then((res) => {
         if (cancelled) return
         if (res.code !== 200 || !res.data) {
-          setEnrolledRows([])
+          setProjects([])
           return
         }
-        const payload = res.data as { items?: EnrolledRow[] }
-        const rows = (payload.items || []).filter((i) => i.status === 'enrolled')
-        setEnrolledRows(rows)
+        const payload = res.data as { items?: AEProject[] }
+        const rows = payload.items || []
+        setProjects(rows)
         if (rows.length === 1) {
-          setSelectedEnrollmentId(rows[0].id)
+          setSelectedProjectCode(rows[0].project_code)
         } else if (rows.length > 1) {
-          setEnrollPickerIndex(0)
-          setSelectedEnrollmentId(rows[0].id)
+          setPickerIndex(0)
+          setSelectedProjectCode(rows[0].project_code)
         } else {
-          setSelectedEnrollmentId(null)
+          setSelectedProjectCode(null)
         }
       })
       .finally(() => {
-        if (!cancelled) setEnrollLoading(false)
+        if (!cancelled) setProjectsLoading(false)
       })
     return () => {
       cancelled = true
@@ -90,7 +88,6 @@ export default function ReportPage() {
   }
 
   const handleSubmit = async () => {
-    // 表单校验
     if (!symptom.trim()) {
       Taro.showToast({ title: '请描述症状', icon: 'none' })
       return
@@ -103,7 +100,7 @@ export default function ReportPage() {
       Taro.showToast({ title: '请选择发生时间', icon: 'none' })
       return
     }
-    if (!enrollLoading && enrolledRows.length === 0) {
+    if (!projectsLoading && projects.length === 0) {
       Taro.showToast({
         title: '暂无已入组项目，请完成入组后再上报',
         icon: 'none',
@@ -111,14 +108,10 @@ export default function ReportPage() {
       })
       return
     }
-    if (enrolledRows.length > 1 && selectedEnrollmentId == null) {
+    const projectCode =
+      selectedProjectCode ?? (projects.length === 1 ? projects[0].project_code : null)
+    if (!projectCode) {
       Taro.showToast({ title: '请选择所属项目', icon: 'none' })
-      return
-    }
-    const enrollmentId =
-      selectedEnrollmentId ?? (enrolledRows.length === 1 ? enrolledRows[0].id : null)
-    if (enrollmentId == null) {
-      Taro.showToast({ title: '无法确定所属项目，请稍后重试', icon: 'none' })
       return
     }
 
@@ -130,7 +123,7 @@ export default function ReportPage() {
           symptom_description: symptom.trim(),
           severity,
           occur_date: occurDate,
-          enrollment_id: enrollmentId,
+          project_code: projectCode,
         },
         { silent: true },
       )
@@ -182,34 +175,34 @@ export default function ReportPage() {
 
       <View className='form-card'>
         <Text className='field-label'>关联项目</Text>
-        {enrollLoading ? (
-          <Text className='report-enroll-hint'>正在加载您的入组信息…</Text>
-        ) : enrolledRows.length === 0 ? (
+        {projectsLoading ? (
+          <Text className='report-enroll-hint'>正在加载您的项目信息…</Text>
+        ) : projects.length === 0 ? (
           <View className='report-enroll-warning'>
             <Text className='report-enroll-warning__text'>
-              您当前没有「已入组」记录（可能仍在审批中）。不良反应将记入具体项目，请待入组完成后再试，或联系研究中心。
+              您当前没有「正式入组」的项目记录。不良反应将记入具体项目，请待入组完成后再试，或联系研究中心。
             </Text>
           </View>
-        ) : enrolledRows.length === 1 ? (
-          <Text className='report-enroll-hint'>{formatEnrollmentLabel(enrolledRows[0])}</Text>
+        ) : projects.length === 1 ? (
+          <Text className='report-enroll-hint'>{formatProjectLabel(projects[0])}</Text>
         ) : (
           <>
             <Text className='report-enroll-hint'>您参与多个项目，请选择本次不良反应所属项目</Text>
             <Picker
               mode='selector'
-              range={enrolledRows.map(formatEnrollmentLabel)}
-              value={enrollPickerIndex}
+              range={projects.map(formatProjectLabel)}
+              value={pickerIndex}
               onChange={(e) => {
                 const idx = Number(e.detail.value)
-                if (Number.isFinite(idx) && enrolledRows[idx]) {
-                  setEnrollPickerIndex(idx)
-                  setSelectedEnrollmentId(enrolledRows[idx].id)
+                if (Number.isFinite(idx) && projects[idx]) {
+                  setPickerIndex(idx)
+                  setSelectedProjectCode(projects[idx].project_code)
                 }
               }}
             >
               <View className='date-picker'>
                 <Text className='date-text'>
-                  {formatEnrollmentLabel(enrolledRows[enrollPickerIndex] || enrolledRows[0])}
+                  {formatProjectLabel(projects[pickerIndex] || projects[0])}
                 </Text>
                 <Text className='date-arrow'>›</Text>
               </View>
@@ -321,7 +314,7 @@ export default function ReportPage() {
         <Button
           className='btn-primary'
           onClick={handleSubmit}
-          disabled={submitting || enrollLoading || enrolledRows.length === 0}
+          disabled={submitting || projectsLoading || projects.length === 0}
         >
           {submitting ? '提交中...' : '提交上报'}
         </Button>

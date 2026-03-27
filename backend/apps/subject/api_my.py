@@ -1026,28 +1026,59 @@ def register_for_plan(request, data: MyRegistrationIn):
 
 
 # ============================================================================
-# AE 上报记录
+# AE 上报记录（V2：改用接待台看板侧数据 + t_mini_adverse_event_report）
 # ============================================================================
-@router.get('/adverse-events', summary='我的AE上报记录')
+
+
+@router.get('/ae-projects', summary='可上报AE的关联项目列表')
 @require_permission('my.profile.read')
-def get_my_adverse_events(request):
-    """受试者查看自己的 AE 上报记录"""
+def get_my_ae_projects(request):
+    """查询当前受试者在接待看板侧「正式入组」的项目列表，供 AE 上报页选择。"""
     subject = _get_subject_from_request(request)
     if not subject:
         return 404, {'code': 404, 'msg': '未找到受试者信息'}
-    from apps.safety.models import AdverseEvent
-    aes = AdverseEvent.objects.filter(
-        enrollment__subject=subject
-    ).order_by('-report_date')
+    from .models_execution import ReceptionBoardProjectSc, SubjectAppointment
+    sc_rows = ReceptionBoardProjectSc.objects.filter(
+        subject_id=subject.id,
+        enrollment_status='正式入组',
+    ).order_by('project_code')
+    items = []
+    for sc in sc_rows:
+        pc = (sc.project_code or '').strip()
+        if not pc:
+            continue
+        appt = SubjectAppointment.objects.filter(
+            subject_id=subject.id,
+            project_code=pc,
+        ).exclude(project_name='').order_by('-appointment_date').first()
+        items.append({
+            'project_code': pc,
+            'project_name': (appt.project_name or '').strip() if appt else pc,
+            'sc_number': (sc.sc_number or '').strip(),
+        })
+    return {'code': 200, 'msg': 'OK', 'data': {'items': items}}
+
+
+@router.get('/adverse-events', summary='我的AE上报记录')
+@require_permission('my.profile.read')
+def get_my_adverse_events(request):
+    """受试者查看自己的 AE 上报记录（读 t_mini_adverse_event_report）"""
+    subject = _get_subject_from_request(request)
+    if not subject:
+        return 404, {'code': 404, 'msg': '未找到受试者信息'}
+    from apps.safety.models import MiniAdverseEventReport
+    aes = MiniAdverseEventReport.objects.filter(
+        subject=subject
+    ).order_by('-create_time')
     items = [{
         'id': ae.id,
         'description': ae.description,
         'severity': ae.severity,
         'status': ae.status,
-        'is_sae': ae.is_sae,
-        'start_date': str(ae.start_date),
-        'report_date': str(ae.report_date) if ae.report_date else '',
-        'outcome': ae.outcome,
+        'project_code': ae.project_code,
+        'project_name': ae.project_name,
+        'occur_date': str(ae.occur_date),
+        'create_time': ae.create_time.isoformat() if ae.create_time else '',
     } for ae in aes]
     return {'code': 200, 'msg': 'OK', 'data': {'items': items, 'total': len(items)}}
 
@@ -1055,43 +1086,37 @@ def get_my_adverse_events(request):
 @router.get('/adverse-events/{ae_id}', summary='我的AE详情')
 @require_permission('my.profile.read')
 def get_my_adverse_event_detail(request, ae_id: int):
-    """受试者查看自己的 AE 详情（含随访记录）"""
+    """受试者查看自己的 AE 详情"""
     subject = _get_subject_from_request(request)
     if not subject:
         return 404, {'code': 404, 'msg': '未找到受试者信息'}
-    from apps.safety.models import AdverseEvent
-    ae = AdverseEvent.objects.filter(
-        id=ae_id, enrollment__subject=subject
+    from apps.safety.models import MiniAdverseEventReport
+    ae = MiniAdverseEventReport.objects.filter(
+        id=ae_id, subject=subject
     ).first()
     if not ae:
         return 404, {'code': 404, 'msg': 'AE不存在'}
-    follow_ups = [{
-        'id': f.id, 'sequence': f.sequence,
-        'followup_date': str(f.followup_date),
-        'current_status': f.current_status,
-        'outcome_update': f.outcome_update,
-        'requires_further_followup': f.requires_further_followup,
-        'next_followup_date': str(f.next_followup_date) if f.next_followup_date else None,
-    } for f in ae.follow_ups.all()]
     return {'code': 200, 'msg': 'OK', 'data': {
-        'id': ae.id, 'description': ae.description,
-        'severity': ae.severity, 'status': ae.status,
-        'is_sae': ae.is_sae, 'start_date': str(ae.start_date),
-        'report_date': str(ae.report_date) if ae.report_date else '',
-        'action_taken': ae.action_taken, 'outcome': ae.outcome,
-        'follow_ups': follow_ups,
+        'id': ae.id,
+        'description': ae.description,
+        'severity': ae.severity,
+        'status': ae.status,
+        'project_code': ae.project_code,
+        'project_name': ae.project_name,
+        'occur_date': str(ae.occur_date),
+        'photo_urls': ae.photo_urls or [],
+        'create_time': ae.create_time.isoformat() if ae.create_time else '',
     }}
 
 
 # ============================================================================
-# 受试者自助 AE 上报
+# 受试者自助 AE 上报（V2：写入 t_mini_adverse_event_report）
 # ============================================================================
-class MyAEReportIn(Schema):
+class MiniAEReportIn(Schema):
     symptom_description: str
     severity: str = 'mild'
     occur_date: Optional[str] = None
-    # 多项目并存时由小程序传入；不传则取最近一条「已入组」记录
-    enrollment_id: Optional[int] = None
+    project_code: str
 
 
 @router.post(
@@ -1100,43 +1125,64 @@ class MyAEReportIn(Schema):
     response={200: dict, 400: dict, 404: dict},
 )
 @require_permission('my.profile.update')
-def report_adverse_event(request, data: MyAEReportIn):
-    """受试者通过小程序直接上报 AE，自动创建 safety.AdverseEvent 记录"""
+def report_adverse_event(request, data: MiniAEReportIn):
+    """受试者通过小程序上报 AE，写入 t_mini_adverse_event_report。
+    关联项目通过 project_code 校验接待看板侧「正式入组」记录。
+    """
     subject = _get_subject_from_request(request)
     if not subject:
         return 404, {'code': 404, 'msg': '未找到受试者信息'}
 
-    from apps.subject.models import Enrollment
-    qs = Enrollment.objects.filter(subject=subject, status='enrolled')
-    if data.enrollment_id is not None:
-        enrollment = qs.filter(id=data.enrollment_id).first()
-        if not enrollment:
-            return 400, {
-                'code': 400,
-                'msg': '无效的入组记录或该项目尚未完成入组，请重新选择项目后再试',
-            }
-    else:
-        enrollment = qs.order_by('-enrolled_at', '-id').first()
-    if not enrollment:
+    from .models_execution import ReceptionBoardProjectSc, SubjectAppointment
+    pc = (data.project_code or '').strip()
+    if not pc:
+        return 400, {'code': 400, 'msg': '请选择关联项目'}
+
+    sc = ReceptionBoardProjectSc.objects.filter(
+        subject_id=subject.id,
+        project_code=pc,
+        enrollment_status='正式入组',
+    ).first()
+    if not sc:
         return 400, {
             'code': 400,
-            'msg': '未找到有效入组记录：您可能仍处于「待入组审批」或未入组，完成后即可上报',
+            'msg': '该项目未找到「正式入组」记录，请确认入组状态后再试',
         }
 
-    from apps.safety.services import create_adverse_event
+    appt = SubjectAppointment.objects.filter(
+        subject_id=subject.id,
+        project_code=pc,
+    ).exclude(project_name='').order_by('-appointment_date').first()
+    project_name = (appt.project_name or '').strip() if appt else pc
+
+    from apps.safety.models import MiniAdverseEventReport
     from datetime import date as date_type
-    start_date = data.occur_date or str(date_type.today())
-    ae = create_adverse_event(
-        enrollment_id=enrollment.id,
+    occur_date = data.occur_date or str(date_type.today())
+    ae = MiniAdverseEventReport.objects.create(
+        subject=subject,
+        project_code=pc,
+        project_name=project_name,
         description=data.symptom_description,
         severity=data.severity,
-        start_date=start_date,
-        relation='possible',
-        is_sae=(data.severity in ('severe', 'very_severe')),
+        occur_date=occur_date,
     )
     return {'code': 200, 'msg': '上报成功', 'data': {
         'id': ae.id, 'severity': ae.severity, 'status': ae.status,
     }}
+
+
+# --- 旧版 AE 接口（依赖 t_enrollment，已停用）---
+# class MyAEReportIn(Schema):
+#     symptom_description: str
+#     severity: str = 'mild'
+#     occur_date: Optional[str] = None
+#     enrollment_id: Optional[int] = None
+#
+# @router.post('/report-ae-legacy', ...)
+# def report_adverse_event_legacy(request, data: MyAEReportIn):
+#     """旧版：依赖 Enrollment 表，当前 t_enrollment 无数据故停用。"""
+#     ...
+# --- end 旧版 ---
 
 
 # ============================================================================

@@ -12,17 +12,17 @@ const SEVERITY_LABELS: Record<string, string> = {
   very_severe: '非常严重',
 }
 const STATUS_LABELS: Record<string, string> = {
-  reported: '已上报', under_review: '审核中', approved: '已确认', following: '随访中', closed: '已关闭',
+  reported: '已上报', under_review: '审核中', closed: '已关闭',
 }
 interface AERecord {
   id: number
   description: string
   severity: string
   status: string
-  is_sae: boolean
-  start_date: string
-  report_date: string
-  outcome: string
+  project_code: string
+  project_name: string
+  occur_date: string
+  create_time: string
 }
 
 interface AEHistoryResponse {
@@ -75,14 +75,16 @@ export default function AEHistoryPage() {
             <View className='report-history-row'>
               <View className='report-history-main'>
                 <View className='report-history-meta'>
-                  {r.is_sae && (
-                    <Text className='report-history-sae'>SAE</Text>
-                  )}
                   <Text className={`report-history-status report-history-status--${r.status}`}>
                     {STATUS_LABELS[r.status] || r.status}
                   </Text>
-                  <Text className='report-history-date'>{r.report_date}</Text>
+                  <Text className='report-history-date'>
+                    {r.create_time ? r.create_time.split('T')[0] : ''}
+                  </Text>
                 </View>
+                <Text className='report-history-project'>
+                  {r.project_code}{r.project_name && r.project_name !== r.project_code ? ` · ${r.project_name}` : ''}
+                </Text>
                 <Text className='report-history-desc'>
                   {r.description.length > 60 ? r.description.slice(0, 60) + '...' : r.description}
                 </Text>
@@ -91,7 +93,7 @@ export default function AEHistoryPage() {
                     严重程度: {SEVERITY_LABELS[r.severity] ?? r.severity}
                   </Text>
                   <Text className='report-history-extra-text'>
-                    发生日期: {r.start_date}
+                    发生日期: {r.occur_date}
                   </Text>
                 </View>
               </View>
