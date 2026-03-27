@@ -151,6 +151,10 @@ DATABASES = {
         'PORT': os.getenv('DB_PORT', '5432'),
     }
 }
+# 可选：libpq 参数（联火山云/隧道时常用 sslmode=require，见 backend/.env.example）
+_db_sslmode = os.getenv('DB_SSLMODE', '').strip()
+if _db_sslmode:
+    DATABASES['default'].setdefault('OPTIONS', {})['sslmode'] = _db_sslmode
 
 if os.getenv('DB_REPLICA_HOST', '').strip():
     DATABASES['replica'] = {
@@ -314,6 +318,9 @@ _auto_fallback = [FEISHU_PRIMARY_APP_ID, FEISHU_APP_ID_DEV_ASSISTANT, FEISHU_APP
 FEISHU_REFRESH_FALLBACK_APP_IDS = list(dict.fromkeys(filter(None, _env_fallback + _auto_fallback)))
 FEISHU_PRIMARY_AUTH_FORCE = os.getenv('FEISHU_PRIMARY_AUTH_FORCE', '1').strip().lower() in ('1', 'true', 'yes')
 FEISHU_PREFLIGHT_BLOCK_SCAN = os.getenv('FEISHU_PREFLIGHT_BLOCK_SCAN', '1').strip().lower() in ('1', 'true', 'yes')
+
+# OAuth 换 token 时 redirect_uri 推导用（须与前端授权 URL 完全一致）。本地开发示例：http://localhost:3010
+FEISHU_REDIRECT_BASE = (os.getenv('FEISHU_REDIRECT_BASE', '') or '').strip()
 
 # 工作台 → app_id 映射
 FEISHU_WORKSTATION_APP_IDS = {

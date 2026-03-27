@@ -177,7 +177,20 @@ FIELD_MAP: Dict[str, Dict[str, List[str]]] = {
         "status":                ["设备状态", "状态"],
         "location":              ["设备位置", "存放地点", "存放位置", "地点", "location"],
         "last_calibration_date": ["上次校准日期", "最近校准日期", "校准日期"],
-        "next_calibration_date": ["下次校准日期", "下次核查时间", "下次校准", "有效期至"],
+        "next_calibration_date": ["下次校准日期", "下次校准", "下次校准时间", "XCJZSJ", "有效期至"],
+        "next_verification_date": ["下次核查日期", "下次核查时间", "XCHCSJ"],
+        "next_maintenance_date": ["下次维护日期", "下次维护时间", "下次保养时间", "XCWHSJ"],
+        "calibration_cycle_days": ["校准周期", "校准周期(天)", "JZZQ"],
+        "verification_cycle_days": ["核查周期", "核查周期(天)", "HCZQ"],
+        "maintenance_cycle_days": ["维护周期", "维护周期(天)", "保养周期", "WHZQ"],
+        # 名称分类：同规格统一类型（电子天平、glossymeter），≠ 设备类别(ResourceCategory)
+        "name_classification": [
+            "名称分类", "设备名称分类", "MCFL", "标准设备名称", "统一名称", "TYMC",
+            "instrumentType", "instrumentTypeName", "typeName", "统一设备名称",
+            "standardInstrumentName", "unifiedName",
+        ],
+        # 设备类别（资源树）：实验室/管理维度，勿与 name_classification 混用
+        "_resource_category_hint": ["SBLB", "SBFL", "设备分类", "资源类别", "设备大类"],
         "_source":               "lims",
         "_source_batch":         "__batch_no__",
     },

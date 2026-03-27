@@ -33,6 +33,7 @@ function ensureInit() {
       if (DEV_BYPASS && !stored) return DEV_TOKEN
       return stored
     },
+    skipClearAuthStorageOnAuthError: DEV_BYPASS,
     onUnauthorized: () => {
       if (DEV_BYPASS) return
       localStorage.removeItem('auth_token')

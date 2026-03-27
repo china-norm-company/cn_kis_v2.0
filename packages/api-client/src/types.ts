@@ -29,6 +29,11 @@ export interface ApiClientConfig {
   timeout?: number
   getToken?: () => string | null
   onUnauthorized?: () => void
+  /**
+   * 为 true 时：401/403 鉴权失败不清理 localStorage 中的 token（用于 VITE_DEV_AUTH_BYPASS=1 且后端未开 DEBUG 时，
+   * 避免每次 API 报错都把旁路 token 清掉；真实登录请关闭开发旁路）。
+   */
+  skipClearAuthStorageOnAuthError?: boolean
 }
 
 // ============================================================================
