@@ -339,10 +339,10 @@ class ProductOperationItemIn(Schema):
 class ExecutionCreateIn(Schema):
     work_order_id: int
     related_project_no: str
-    subject_rd: str
+    subject_rd: Optional[str] = None  # 选填；空字符串表示未填
     subject_initials: str
     operator_name: Optional[str] = None  # 当前登录用户显示名，不传则用后端 account.name
-    screening_no: Optional[str] = None
+    screening_no: str  # 受试者SC号（必填）
     execution_date: Optional[str] = None
     exception_type: Optional[str] = None
     exception_description: Optional[str] = None

@@ -41,6 +41,8 @@ export function createWorkstationFeishuConfig(workstation: string): FeishuAuthCo
 
   const envBase = (import.meta.env.VITE_FEISHU_REDIRECT_BASE as string)?.trim()
   const isDev = Boolean(import.meta.env.DEV)
+  /** 仅 Vite dev server 为 true；Vitest/生产构建为 false。勿用 isDev 单独区分本地 /login，因 env.DEV 在测试里无法可靠 stub。 */
+  const isViteDevServer = Boolean(import.meta.hot)
   const useFixedRedirectOrigin =
     isDev && !!envBase && /^https?:\/\//i.test(envBase)
   const baseRaw =
@@ -60,7 +62,18 @@ export function createWorkstationFeishuConfig(workstation: string): FeishuAuthCo
     // 路径形式：与 base 拼接，便于本地开发配置（如 base=localhost:3001, uri=/secretary/）
     redirectUri = `${baseNorm}${redirectOverride.startsWith('/') ? '' : '/'}${redirectOverride}`
   } else if (normalized === 'secretary') {
-    redirectUri = `${baseNorm}/login`
+    // 生产：nginx 将域名根路径 /login 映射到秘书台 SPA（deploy/nginx.conf location = /login）。
+    // 本地 Vite：vite.config base 为 /secretary/，回调必须是 /secretary/login；若用 /login 会触发
+    // "The server is configured with a public base URL of /secretary/ …"
+    if (isViteDevServer) {
+      const pathFromBase = (import.meta.env.BASE_URL || '/secretary/')
+        .replace(/^\/+|\/+$/g, '')
+        .replace(/\/+/g, '/')
+      const seg = pathFromBase || 'secretary'
+      redirectUri = `${baseNorm}/${seg}/login`
+    } else {
+      redirectUri = `${baseNorm}/login`
+    }
   } else {
     // 须与 Vite `base`（如 /secretary/）及飞书开放平台「重定向 URL」完全一致，否则授权页报 20029
     redirectUri = `${baseNorm}/${normalized}/`

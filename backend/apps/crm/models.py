@@ -64,13 +64,16 @@ class RelationshipLevel(models.TextChoices):
 
 
 class OpportunityStage(models.TextChoices):
+    """销售阶段：新建表单使用前五项；其余为历史数据兼容。"""
     LEAD = 'lead', '线索'
+    DEAL = 'deal', '商机'
+    WON = 'won', '赢单'
+    CANCELLED = 'cancelled', '取消'
+    LOST = 'lost', '输单'
     CONTACT = 'contact', '接洽中'
     EVALUATION = 'evaluation', '需求评估'
     PROPOSAL = 'proposal', '方案提交'
     NEGOTIATION = 'negotiation', '商务谈判'
-    WON = 'won', '已成交'
-    LOST = 'lost', '已丢失'
 
 
 class TicketPriority(models.TextChoices):
@@ -376,14 +379,56 @@ class Opportunity(models.Model):
         ]
 
     title = models.CharField('商机名称', max_length=300)
+    code = models.CharField('商机编号', max_length=20, unique=True, null=True, blank=True, db_index=True)
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='opportunities', verbose_name='客户')
     stage = models.CharField('阶段', max_length=20, choices=OpportunityStage.choices, default=OpportunityStage.LEAD)
     estimated_amount = models.DecimalField('预估金额', max_digits=14, decimal_places=2, null=True, blank=True)
     probability = models.IntegerField('成交概率(%)', default=0)
     owner = models.CharField('负责人', max_length=100)
     owner_id = models.IntegerField('负责人ID', null=True, blank=True)
+    commercial_owner_name = models.CharField('商务负责人', max_length=100, blank=True, default='')
+    research_group = models.CharField('研究组', max_length=100, blank=True, default='')
+    business_segment = models.CharField('业务板块', max_length=100, blank=True, default='')
+    key_opportunity = models.BooleanField('重点商机', default=False)
+    client_pm = models.CharField('客户PM', max_length=200, blank=True, default='')
+    client_contact_info = models.CharField('客户联系方式', max_length=200, blank=True, default='')
+    client_department_line = models.CharField('部门/条线', max_length=200, blank=True, default='')
+    is_decision_maker = models.CharField(
+        '是否为决策人', max_length=20, blank=True, default='',
+        help_text='yes=是 no=否 unknown=未知',
+    )
+    actual_decision_maker = models.CharField('实际决策人', max_length=200, blank=True, default='')
+    actual_decision_maker_department_line = models.CharField(
+        '实际决策人-部门/条线', max_length=200, blank=True, default='',
+    )
+    actual_decision_maker_level = models.CharField('实际决策人-职级', max_length=100, blank=True, default='')
+    demand_stages = models.JSONField('需求阶段', default=list, blank=True)
+    project_elements = models.TextField('项目要素(兼容旧版文本)', blank=True, default='')
+    project_detail = models.JSONField('项目要素明细', default=dict, blank=True)
+    necessity_pct = models.IntegerField('必要性(%)', null=True, blank=True)
+    urgency_pct = models.IntegerField('紧迫性(%)', null=True, blank=True)
+    uniqueness_pct = models.IntegerField('唯一性(%)', null=True, blank=True)
     expected_close_date = models.DateField('预计成交日', null=True, blank=True)
+    planned_start_date = models.DateField('预计启动时间', null=True, blank=True)
+    demand_name = models.CharField('需求名称', max_length=300, blank=True, default='')
+    sales_amount_total = models.DecimalField(
+        '销售额', max_digits=14, decimal_places=2, null=True, blank=True,
+        help_text='赢单时填写，须等于分年度销售额之和',
+    )
+    sales_by_year = models.JSONField(
+        '分年度销售额',
+        default=dict,
+        blank=True,
+        help_text='键为年份字符串，如 {"2025":"100.00","2026":"50.00"}，用于导出列名',
+    )
+    sales_amount_change = models.DecimalField(
+        '销售额变化', max_digits=14, decimal_places=2, null=True, blank=True,
+        help_text='编辑时记录：最新销售额−原销售额，新建商机表单不展示',
+    )
     description = models.TextField('描述', blank=True, default='')
+    remark = models.TextField('备注', blank=True, default='')
+    cancel_reason = models.TextField('取消原因', blank=True, default='')
+    lost_reason = models.TextField('输单原因', blank=True, default='')
     demand_version = models.CharField('需求版本', max_length=50, blank=True, default='', help_text='需求规格版本号，如 v1.0')
     feishu_project_id = models.CharField('飞书项目ID(废弃)', max_length=100, blank=True, default='')
     source_mail_signal_id = models.IntegerField('来源邮件信号ID', null=True, blank=True, db_index=True)

@@ -8,6 +8,7 @@ import { ClientInsightPage } from './pages/ClientInsightPage'
 import { OpportunityListPage } from './pages/OpportunityListPage'
 import { OpportunityDetailPage } from './pages/OpportunityDetailPage'
 import { OpportunityKanbanPage } from './pages/OpportunityKanbanPage'
+import { OpportunityEditPage } from './pages/OpportunityEditPage'
 import { TicketListPage } from './pages/TicketListPage'
 import { TicketDetailPage } from './pages/TicketDetailPage'
 import { DashboardPage } from './pages/DashboardPage'
@@ -45,6 +46,7 @@ function App() {
             {/* 商机管理 */}
             <Route path="opportunities" element={<OpportunityListPage />} />
             <Route path="opportunities/kanban" element={<OpportunityKanbanPage />} />
+            <Route path="opportunities/:id/edit" element={<OpportunityEditPage />} />
             <Route path="opportunities/:id" element={<OpportunityDetailPage />} />
 
             {/* 客户赋能 */}
