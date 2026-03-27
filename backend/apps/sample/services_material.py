@@ -7,6 +7,8 @@ import logging
 from datetime import date, timedelta
 from typing import Optional
 
+from django.db.models import Count, Q as models_Q
+
 from .models import Product, SampleInstance, SampleTransaction, SampleStatus, TransactionType
 from .models_material import (
     Consumable, ConsumableTransaction, ConsumableTransactionType,
@@ -123,6 +125,9 @@ def get_product_stats() -> dict:
 def list_products(
     keyword: str = '', product_type: str = '',
     storage_condition: str = '', expiry_status: str = '',
+    protocol_bound: str = '',
+    stock_kind: str = '',
+    study_project_type: str = '',
     page: int = 1, page_size: int = 20,
 ) -> dict:
     today = date.today()
@@ -143,6 +148,37 @@ def list_products(
         qs = qs.filter(expiry_date__lt=today)
     elif expiry_status == 'active':
         qs = qs.exclude(expiry_date__lt=today)
+    elif expiry_status == 'expiring':
+        qs = qs.filter(
+            expiry_date__gte=today,
+            expiry_date__lte=today + timedelta(days=30),
+        )
+
+    if protocol_bound == 'yes':
+        qs = qs.filter(protocol_id__isnull=False)
+    elif protocol_bound == 'no':
+        qs = qs.filter(protocol_id__isnull=True)
+
+    if study_project_type:
+        qs = qs.filter(study_project_type=study_project_type)
+
+    if stock_kind == 'has_in_stock':
+        qs = qs.annotate(
+            _in_stock_n=Count(
+                'instances',
+                filter=models_Q(instances__status=SampleStatus.IN_STOCK),
+            ),
+        ).filter(_in_stock_n__gt=0)
+    elif stock_kind == 'no_instances':
+        qs = qs.annotate(_inst_n=Count('instances')).filter(_inst_n=0)
+    elif stock_kind == 'no_in_stock':
+        qs = qs.annotate(
+            _inst_n=Count('instances'),
+            _in_stock_n=Count(
+                'instances',
+                filter=models_Q(instances__status=SampleStatus.IN_STOCK),
+            ),
+        ).filter(_inst_n__gt=0, _in_stock_n=0)
 
     total = qs.count()
     offset = (page - 1) * page_size
@@ -507,5 +543,3 @@ def get_sample_stats() -> dict:
 # ============================================================================
 # 私有辅助
 # ============================================================================
-
-from django.db.models import Q as models_Q
