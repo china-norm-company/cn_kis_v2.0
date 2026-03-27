@@ -1,8 +1,14 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
+import * as XLSX from 'xlsx'
 import { preScreeningApi, receptionApi, recruitmentApi } from '@cn-kis/api-client'
-import type { PreScreeningRecord, RecruitmentPlan, TodayQueueProjectSummaryItem } from '@cn-kis/api-client'
+import type {
+  PreScreeningRecord,
+  QueueItem,
+  RecruitmentPlan,
+  TodayQueueProjectSummaryItem,
+} from '@cn-kis/api-client'
 import { useActiveRecruitmentPlans } from '../hooks/useActiveRecruitmentPlans'
 import { Badge, Button, Modal, Empty } from '@cn-kis/ui-kit'
 import { ErrorAlert } from '../components/ErrorAlert'
@@ -17,7 +23,34 @@ import {
   RefreshCw,
   ChevronRight,
   ChevronUp,
+  FileDown,
 } from 'lucide-react'
+
+const QUEUE_EXPORT_PAGE_SIZE = 99999
+
+function formatGenderForExport(value: unknown): string {
+  if (value === undefined || value === null) return '—'
+  const s = String(value).trim()
+  if (!s) return '—'
+  const lower = s.toLowerCase()
+  if (lower === 'male' || lower === 'm') return '男'
+  if (lower === 'female' || lower === 'f') return '女'
+  if (lower === 'other') return '其他'
+  return s
+}
+
+/** 导出列：项目编号、姓名、年龄、性别、手机、联络员、入组情况（与筛选列表 queueList 同源） */
+function queueItemToExportRow(item: QueueItem) {
+  return {
+    项目编号: item.project_code?.trim() ? item.project_code : '—',
+    姓名: item.subject_name || '—',
+    年龄: item.age != null ? item.age : '—',
+    性别: formatGenderForExport(item.gender),
+    手机: item.phone?.trim() ? item.phone : '—',
+    联络员: item.liaison?.trim() ? item.liaison : '—',
+    入组情况: item.enrollment_status?.trim() ? item.enrollment_status : '—',
+  }
+}
 
 /** 与到访队列筛选一致（初筛汇总同源） */
 const SUMMARY_QUEUE_STATUS_OPTIONS: { value: string; label: string }[] = [
@@ -130,6 +163,38 @@ export default function PreScreeningListPage() {
     onError: (e) => toast.error((e as Error).message || '同步失败'),
   })
 
+  const queueExportProjectCode = (sharedQueueProjectCodeFilter || selectedQueueProjectCode).trim()
+
+  const exportQueueListMutation = useMutation({
+    mutationFn: async () => {
+      const pc = (sharedQueueProjectCodeFilter || selectedQueueProjectCode).trim()
+      if (!pc) {
+        throw new Error('请先在下方筛选列表中选择项目编号')
+      }
+      const res = await receptionApi.queueList({
+        date_from: sharedQueueDateFrom || undefined,
+        date_to: sharedQueueDateTo || undefined,
+        page: 1,
+        page_size: QUEUE_EXPORT_PAGE_SIZE,
+        project_code: pc,
+        project_code_exact: true,
+        status: sharedQueueStatus || undefined,
+        enrollment_status: sharedQueueEnrollment || undefined,
+      })
+      const raw = res.data?.items ?? []
+      const rows = raw.map(queueItemToExportRow)
+      const ws = XLSX.utils.json_to_sheet(rows)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, '筛选名单')
+      const safe = pc.replace(/[\\/:*?"<>|]/g, '_')
+      const filename = `初筛筛选名单_${safe}_${new Date().toISOString().slice(0, 10)}.xlsx`
+      XLSX.writeFile(wb, filename)
+      return raw.length
+    },
+    onSuccess: (n) => toast.success(n > 0 ? `已导出 ${n} 条` : '已导出（当前筛选下无数据）'),
+    onError: (e) => toast.error((e as Error).message || '导出失败'),
+  })
+
   const queueProjectSummary = queueProjectSummaryQuery.data
   const items = listQuery.data?.items ?? []
   const total = listQuery.data?.total ?? 0
@@ -162,6 +227,29 @@ export default function PreScreeningListPage() {
           >
             从预约同步
           </Button>
+          {activeTab === 'list' ? (
+            <>
+              <Button
+                variant="secondary"
+                icon={<FileDown className="w-4 h-4" />}
+                loading={exportQueueListMutation.isPending}
+                disabled={exportQueueListMutation.isPending || !queueExportProjectCode}
+                onClick={() => exportQueueListMutation.mutate()}
+                title={
+                  queueExportProjectCode
+                    ? '按当前筛选列表的日期范围、状态、入组情况，导出所选项目下全部队列行（Excel）'
+                    : '请先在下方「到访队列」区域将「项目编号」选为具体项目（不能为「全部项目」）'
+                }
+              >
+                导出名单
+              </Button>
+              {!queueExportProjectCode ? (
+                <span className="text-xs text-slate-500 max-w-[14rem] leading-snug">
+                  灰色为未可选：请先在下方选择项目编号
+                </span>
+              ) : null}
+            </>
+          ) : null}
           <Button
             variant="success"
             icon={<Plus className="w-4 h-4" />}

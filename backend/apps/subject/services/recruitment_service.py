@@ -4,16 +4,23 @@
 覆盖：招募计划 CRUD、渠道管理、广告管理、报名管理、筛选、入组、进度追踪、问题管理、策略管理。
 """
 import logging
-from typing import Optional
+import os
+from typing import Optional, List, Dict, Tuple
+from decimal import Decimal
 from django.utils import timezone
 from django.db import models, transaction
+from django.db.models import Count, Q
+from django.db.models.functions import Trim
 
 from ..models_recruitment import (
     RecruitmentPlan, RecruitmentPlanStatus,
+    MaterialPrepStatus,
+    AppointmentDocsStatus,
     EligibilityCriteria,
     RecruitmentChannel,
     RecruitmentBudget,
     RecruitmentAd, AdStatus,
+    RecruitmentPlanAppointmentDoc,
     SubjectRegistration, RegistrationStatus,
     ScreeningRecord, ScreeningResult,
     EnrollmentRecord, EnrollmentRecordStatus,
@@ -33,11 +40,36 @@ from .recruitment_notify import (
 
 logger = logging.getLogger(__name__)
 
+PLACEHOLDER_PROTOCOL_CODE = '__RECRUIT_PLACEHOLDER__'
+
+RECRUIT_TEMPLATE_AD_TYPE = 'recruit_template'
+APPOINTMENT_DOC_TYPES = (
+    RecruitmentPlanAppointmentDoc.DocType.PHONE_APPOINTMENT_FLOW,
+    RecruitmentPlanAppointmentDoc.DocType.PHONE_SCREENING_QUESTIONNAIRE,
+    RecruitmentPlanAppointmentDoc.DocType.PHONE_APPOINTMENT_FORM,
+)
+_APPOINTMENT_DOC_MAX_BYTES = 20 * 1024 * 1024
+_APPOINTMENT_DOC_EXT = {'.doc', '.docx', '.xls', '.xlsx'}
+
+
+def _ensure_placeholder_protocol():
+    """无关联协议时使用的占位协议，满足外键与列表创建。"""
+    from apps.protocol.models import Protocol, ProtocolStatus
+    p = Protocol.objects.filter(code=PLACEHOLDER_PROTOCOL_CODE, is_deleted=False).first()
+    if p:
+        return p
+    return Protocol.objects.create(
+        title='招募计划占位协议（系统自动）',
+        code=PLACEHOLDER_PROTOCOL_CODE,
+        status=ProtocolStatus.DRAFT,
+    )
+
+
 PLAN_VALID_TRANSITIONS = {
     'draft': ['approved', 'cancelled'],
-    'approved': ['active', 'cancelled'],
+    'approved': ['active', 'cancelled', 'completed'],
     'active': ['paused', 'completed', 'cancelled'],
-    'paused': ['active', 'cancelled'],
+    'paused': ['active', 'cancelled', 'completed'],
 }
 
 
@@ -90,12 +122,57 @@ def _generate_enrollment_record_no() -> str:
 # ============================================================================
 # 招募计划
 # ============================================================================
-def create_plan(protocol_id: int, title: str, target_count: int,
-                start_date, end_date, description: str = '', account=None) -> RecruitmentPlan:
+def create_plan(
+    protocol_id: Optional[int],
+    title: str,
+    target_count: int,
+    start_date,
+    end_date,
+    description: str = '',
+    account=None,
+    *,
+    project_code: Optional[str] = None,
+    sample_requirement: str = '',
+    wei_visit_point: str = '',
+    wei_visit_date=None,
+    researcher_name: str = '',
+    supervisor_name: str = '',
+    recruit_start_date=None,
+    recruit_end_date=None,
+    planned_appointment_count: int = 0,
+    estimated_work_hours: Optional[Decimal] = None,
+    recruit_specialist_names: Optional[List[str]] = None,
+    channel_recruitment_needed: bool = False,
+    material_prep_status: str = 'draft',
+) -> RecruitmentPlan:
+    pid = protocol_id
+    if not pid:
+        pid = _ensure_placeholder_protocol().id
+    pc = (project_code or '').strip() or None
+    if pc:
+        if RecruitmentPlan.objects.filter(project_code=pc).exists():
+            raise ValueError(f'项目编号已存在: {pc}')
     kw = dict(
-        plan_no=_generate_plan_no(), protocol_id=protocol_id,
-        title=title, description=description,
-        target_count=target_count, start_date=start_date, end_date=end_date,
+        plan_no=_generate_plan_no(),
+        protocol_id=pid,
+        title=title,
+        description=description,
+        target_count=target_count,
+        start_date=start_date,
+        end_date=end_date,
+        project_code=pc,
+        sample_requirement=sample_requirement or '',
+        wei_visit_point=wei_visit_point or '',
+        wei_visit_date=wei_visit_date,
+        researcher_name=researcher_name or '',
+        supervisor_name=supervisor_name or '',
+        recruit_start_date=recruit_start_date,
+        recruit_end_date=recruit_end_date,
+        planned_appointment_count=planned_appointment_count or 0,
+        estimated_work_hours=estimated_work_hours,
+        recruit_specialist_names=list(recruit_specialist_names or []),
+        channel_recruitment_needed=bool(channel_recruitment_needed),
+        material_prep_status=material_prep_status or 'draft',
     )
     if account:
         kw['created_by_id'] = account.id
@@ -124,12 +201,64 @@ def update_plan(plan_id: int, **kwargs) -> Optional[RecruitmentPlan]:
     plan = get_plan(plan_id)
     if not plan:
         return None
-    allowed = {'title', 'description', 'target_count', 'start_date', 'end_date', 'notes', 'manager_id'}
+    allowed = {
+        'title', 'description', 'target_count', 'start_date', 'end_date', 'notes', 'manager_id',
+        'project_code', 'sample_requirement', 'wei_visit_point', 'wei_visit_date',
+        'researcher_name', 'supervisor_name',
+        'recruit_start_date', 'recruit_end_date',
+        'planned_appointment_count', 'estimated_work_hours', 'actual_work_hours',
+        'recruit_specialist_names', 'channel_recruitment_needed', 'material_prep_status',
+    }
     for k, v in kwargs.items():
-        if v is not None and k in allowed:
+        if k not in allowed:
+            continue
+        if k == 'project_code':
+            if v is not None:
+                v = (str(v) or '').strip() or None
+            if v and RecruitmentPlan.objects.exclude(id=plan_id).filter(project_code=v).exists():
+                raise ValueError(f'项目编号已存在: {v}')
             setattr(plan, k, v)
+            continue
+        if k == 'recruit_specialist_names':
+            setattr(plan, k, list(v) if isinstance(v, (list, tuple)) else [])
+            continue
+        if k == 'material_prep_status':
+            if v == MaterialPrepStatus.PUBLISHED and not _can_set_material_published(plan):
+                raise ValueError('招募模板与预约文档均需审批通过后，物料准备方可为「发布」')
+            setattr(plan, k, v)
+            continue
+        setattr(plan, k, v)
     plan.save()
     return plan
+
+
+def _ad_template_ready(ad: Optional[RecruitmentAd]) -> bool:
+    if not ad or ad.ad_type != RECRUIT_TEMPLATE_AD_TYPE:
+        return False
+    return ad.status in (AdStatus.APPROVED, AdStatus.PUBLISHED)
+
+
+def _can_set_material_published(plan: RecruitmentPlan) -> bool:
+    ad = RecruitmentAd.objects.filter(plan_id=plan.id, ad_type=RECRUIT_TEMPLATE_AD_TYPE).first()
+    docs_ok = plan.appointment_docs_status == AppointmentDocsStatus.APPROVED
+    return _ad_template_ready(ad) and docs_ok
+
+
+def _try_sync_material_prep_published(plan_id: int) -> None:
+    plan = RecruitmentPlan.objects.filter(id=plan_id).first()
+    if not plan:
+        return
+    ad = RecruitmentAd.objects.filter(plan_id=plan_id, ad_type=RECRUIT_TEMPLATE_AD_TYPE).first()
+    ad_ok = _ad_template_ready(ad)
+    docs_ok = plan.appointment_docs_status == AppointmentDocsStatus.APPROVED
+    if ad_ok and docs_ok:
+        if plan.material_prep_status != MaterialPrepStatus.PUBLISHED:
+            plan.material_prep_status = MaterialPrepStatus.PUBLISHED
+            plan.save(update_fields=['material_prep_status', 'update_time'])
+    else:
+        if plan.material_prep_status == MaterialPrepStatus.PUBLISHED:
+            plan.material_prep_status = MaterialPrepStatus.IN_PROGRESS
+            plan.save(update_fields=['material_prep_status', 'update_time'])
 
 
 def transition_plan_status(plan_id: int, new_status: str) -> Optional[RecruitmentPlan]:
@@ -202,12 +331,215 @@ def create_ad(plan_id: int, ad_type: str, title: str, content: str = '', account
 
 def publish_ad(ad_id: int) -> Optional[RecruitmentAd]:
     ad = RecruitmentAd.objects.filter(id=ad_id).first()
-    if not ad or ad.status not in (AdStatus.DRAFT, AdStatus.APPROVED):
+    if not ad:
         return None
+    if ad.ad_type == RECRUIT_TEMPLATE_AD_TYPE:
+        if ad.status != AdStatus.APPROVED:
+            return None
+    else:
+        if ad.status not in (AdStatus.DRAFT, AdStatus.APPROVED):
+            return None
     ad.status = AdStatus.PUBLISHED
     ad.published_at = timezone.now()
     ad.save(update_fields=['status', 'published_at', 'update_time'])
+    if ad.ad_type == RECRUIT_TEMPLATE_AD_TYPE:
+        _try_sync_material_prep_published(ad.plan_id)
     return ad
+
+
+def get_or_create_recruit_template_ad(plan_id: int, account=None) -> RecruitmentAd:
+    plan = get_plan(plan_id)
+    if not plan:
+        raise ValueError('计划不存在')
+    ad = RecruitmentAd.objects.filter(plan_id=plan_id, ad_type=RECRUIT_TEMPLATE_AD_TYPE).first()
+    if ad:
+        return ad
+    kw = dict(
+        plan_id=plan_id,
+        ad_type=RECRUIT_TEMPLATE_AD_TYPE,
+        title='招募模板',
+        content='',
+        status=AdStatus.DRAFT,
+    )
+    if account:
+        kw['created_by_id'] = account.id
+    return RecruitmentAd.objects.create(**kw)
+
+
+def update_recruit_template_ad(ad_id: int, **kwargs) -> Optional[RecruitmentAd]:
+    ad = RecruitmentAd.objects.filter(id=ad_id).first()
+    if not ad or ad.ad_type != RECRUIT_TEMPLATE_AD_TYPE:
+        return None
+    if ad.status != AdStatus.DRAFT:
+        raise ValueError('仅草稿状态可编辑模板')
+    if 'template_project_code' in kwargs:
+        ad.template_project_code = (kwargs['template_project_code'] or '').strip()[:128]
+    if 'template_project_name' in kwargs:
+        ad.template_project_name = (kwargs['template_project_name'] or '').strip()[:200]
+    if 'template_sample_requirement' in kwargs:
+        ad.template_sample_requirement = kwargs['template_sample_requirement'] or ''
+    if 'template_visit_date' in kwargs:
+        ad.template_visit_date = kwargs['template_visit_date']
+    if 'template_honorarium' in kwargs:
+        ad.template_honorarium = kwargs['template_honorarium']
+    if 'template_liaison_fee' in kwargs:
+        v = kwargs['template_liaison_fee']
+        ad.template_liaison_fee = (str(v).strip()[:200] if v is not None else '')
+    if 'title' in kwargs and kwargs['title'] is not None:
+        ad.title = (kwargs['title'] or '').strip()[:200] or '招募模板'
+    if 'content' in kwargs:
+        ad.content = kwargs['content'] or ''
+    ad.save()
+    return ad
+
+
+def submit_recruit_template_ad(ad_id: int, account=None) -> RecruitmentAd:
+    ad = RecruitmentAd.objects.filter(id=ad_id).first()
+    if not ad or ad.ad_type != RECRUIT_TEMPLATE_AD_TYPE:
+        raise ValueError('广告不存在或不是招募模板')
+    if ad.status != AdStatus.DRAFT:
+        raise ValueError('当前状态不可提交审批')
+    if not (ad.template_project_name or '').strip():
+        raise ValueError('请填写项目名称')
+    if not (ad.template_sample_requirement or '').strip():
+        raise ValueError('请填写样本要求')
+    if ad.template_visit_date is None:
+        raise ValueError('请填写具体访视日期')
+    if ad.template_honorarium is None:
+        raise ValueError('请填写礼金（金额，元）')
+    if not (str(getattr(ad, 'template_liaison_fee', '') or '').strip()):
+        raise ValueError('请填写联络费（金额或说明）')
+    ad.status = AdStatus.PENDING
+    ad.submitted_at = timezone.now()
+    ad.submitted_by_id = account.id if account else None
+    ad.reject_reason = ''
+    ad.save(
+        update_fields=[
+            'status', 'submitted_at', 'submitted_by_id', 'reject_reason',
+            'update_time',
+        ],
+    )
+    return ad
+
+
+def approve_recruit_template_ad(ad_id: int) -> RecruitmentAd:
+    ad = RecruitmentAd.objects.filter(id=ad_id).first()
+    if not ad or ad.ad_type != RECRUIT_TEMPLATE_AD_TYPE:
+        raise ValueError('广告不存在或不是招募模板')
+    if ad.status != AdStatus.PENDING:
+        raise ValueError('仅待审批状态可通过')
+    ad.status = AdStatus.APPROVED
+    ad.save(update_fields=['status', 'update_time'])
+    _try_sync_material_prep_published(ad.plan_id)
+    return ad
+
+
+def reject_recruit_template_ad(ad_id: int, reason: str = '') -> RecruitmentAd:
+    ad = RecruitmentAd.objects.filter(id=ad_id).first()
+    if not ad or ad.ad_type != RECRUIT_TEMPLATE_AD_TYPE:
+        raise ValueError('广告不存在或不是招募模板')
+    if ad.status != AdStatus.PENDING:
+        raise ValueError('仅待审批状态可驳回')
+    ad.status = AdStatus.DRAFT
+    ad.reject_reason = (reason or '').strip()[:2000]
+    ad.save(update_fields=['status', 'reject_reason', 'update_time'])
+    _try_sync_material_prep_published(ad.plan_id)
+    return ad
+
+
+def list_appointment_docs(plan_id: int) -> List[RecruitmentPlanAppointmentDoc]:
+    return list(
+        RecruitmentPlanAppointmentDoc.objects.filter(plan_id=plan_id).order_by('doc_type'),
+    )
+
+
+def upload_appointment_doc(plan_id: int, doc_type: str, file, account=None) -> RecruitmentPlanAppointmentDoc:
+    if doc_type not in APPOINTMENT_DOC_TYPES:
+        raise ValueError('无效的文档类型')
+    plan = get_plan(plan_id)
+    if not plan:
+        raise ValueError('计划不存在')
+    name = getattr(file, 'name', '') or 'file'
+    ext = os.path.splitext(name)[1].lower()
+    if ext not in _APPOINTMENT_DOC_EXT:
+        raise ValueError('仅支持 Word（.doc/.docx）或 Excel（.xls/.xlsx）')
+    size = int(getattr(file, 'size', 0) or 0)
+    if size > _APPOINTMENT_DOC_MAX_BYTES:
+        raise ValueError('文件大小不能超过 20MB')
+    obj = RecruitmentPlanAppointmentDoc.objects.filter(plan_id=plan_id, doc_type=doc_type).first()
+    if obj and obj.file:
+        try:
+            obj.file.delete(save=False)
+        except Exception:
+            pass
+    if not obj:
+        obj = RecruitmentPlanAppointmentDoc(plan_id=plan_id, doc_type=doc_type)
+    obj.uploaded_by_id = account.id if account else None
+    obj.original_filename = name[:255]
+    obj.file_size = size
+    obj.file.save(name, file, save=True)
+    if plan.appointment_docs_status == AppointmentDocsStatus.APPROVED:
+        plan.appointment_docs_status = AppointmentDocsStatus.PENDING_REVIEW
+        plan.appointment_docs_reject_reason = ''
+        plan.save(update_fields=['appointment_docs_status', 'appointment_docs_reject_reason', 'update_time'])
+    _try_sync_material_prep_published(plan_id)
+    return obj
+
+
+def submit_appointment_docs(plan_id: int) -> RecruitmentPlan:
+    plan = get_plan(plan_id)
+    if not plan:
+        raise ValueError('计划不存在')
+    for dt in APPOINTMENT_DOC_TYPES:
+        if not RecruitmentPlanAppointmentDoc.objects.filter(plan_id=plan_id, doc_type=dt).exists():
+            raise ValueError('请先上传三类预约文档')
+    plan.appointment_docs_status = AppointmentDocsStatus.PENDING_REVIEW
+    plan.appointment_docs_reject_reason = ''
+    plan.save(update_fields=['appointment_docs_status', 'appointment_docs_reject_reason', 'update_time'])
+    _try_sync_material_prep_published(plan_id)
+    return plan
+
+
+def approve_appointment_docs(plan_id: int) -> RecruitmentPlan:
+    plan = get_plan(plan_id)
+    if not plan:
+        raise ValueError('计划不存在')
+    if plan.appointment_docs_status != AppointmentDocsStatus.PENDING_REVIEW:
+        raise ValueError('仅待审批状态可通过')
+    plan.appointment_docs_status = AppointmentDocsStatus.APPROVED
+    plan.appointment_docs_reject_reason = ''
+    plan.save(update_fields=['appointment_docs_status', 'appointment_docs_reject_reason', 'update_time'])
+    _try_sync_material_prep_published(plan_id)
+    return plan
+
+
+def reject_appointment_docs(plan_id: int, reason: str = '') -> RecruitmentPlan:
+    plan = get_plan(plan_id)
+    if not plan:
+        raise ValueError('计划不存在')
+    if plan.appointment_docs_status != AppointmentDocsStatus.PENDING_REVIEW:
+        raise ValueError('仅待审批状态可驳回')
+    plan.appointment_docs_status = AppointmentDocsStatus.REJECTED
+    plan.appointment_docs_reject_reason = (reason or '').strip()[:2000]
+    plan.save(update_fields=['appointment_docs_status', 'appointment_docs_reject_reason', 'update_time'])
+    _try_sync_material_prep_published(plan_id)
+    return plan
+
+
+def get_plan_material_summary(plan_id: int) -> dict:
+    plan = RecruitmentPlan.objects.filter(id=plan_id).first()
+    if not plan:
+        return {}
+    ad = RecruitmentAd.objects.filter(plan_id=plan_id, ad_type=RECRUIT_TEMPLATE_AD_TYPE).first()
+    return {
+        'appointment_docs_status': plan.appointment_docs_status,
+        'appointment_docs_reject_reason': plan.appointment_docs_reject_reason or '',
+        'recruit_template_ad_id': ad.id if ad else None,
+        'recruit_template_ad_status': ad.status if ad else None,
+        'ad_template_ready': _ad_template_ready(ad),
+        'appointment_docs_ready': plan.appointment_docs_status == AppointmentDocsStatus.APPROVED,
+        'material_prep_can_publish': _can_set_material_published(plan),
+    }
 
 
 # ============================================================================
@@ -450,6 +782,12 @@ def confirm_enrollment(enrollment_record_id: int) -> Optional[EnrollmentRecord]:
                     logger.info('入组后工单自动生成: enrollment=%s, visit_plan=%s', enrollment.id, vp.id)
         except Exception as e:
             logger.warning("入组后工单自动生成失败: %s", e)
+
+    if reg.plan_id:
+        try:
+            try_auto_complete_plan_by_enrollment(reg.plan_id)
+        except Exception as e:
+            logger.warning("招募计划入组满员自动完结失败: %s", e)
 
     return record
 
@@ -882,6 +1220,145 @@ def generate_recruitment_candidate_list(project_id: int) -> list:
     candidates.sort(key=lambda x: -x['match_score'])
     logger.info(f'候选人列表生成: project={project_id}, candidates={len(candidates)}')
     return candidates
+
+
+def count_v1_appointments_for_project_code(display_project_code: str) -> int:
+    """预约管理 SubjectAppointment：与项目编号对齐、访视点 Trim 后为 V1（大小写不敏感）的条数（不去重）。"""
+    pc = (display_project_code or '').strip()
+    if not pc:
+        return 0
+    from ..models_execution import SubjectAppointment
+    return (
+        SubjectAppointment.objects.filter(project_code=pc)
+        .annotate(_vp_trim=Trim('visit_point'))
+        .filter(_vp_trim__iexact='V1')
+        .count()
+    )
+
+
+def count_v1_appointments_by_project_codes(project_codes: List[str]) -> Dict[str, int]:
+    """列表页批量：各 project_code 的 V1 预约条数（与 count_v1_appointments_for_project_code 口径一致）。"""
+    pcs = {(c or '').strip() for c in project_codes if (c or '').strip()}
+    if not pcs:
+        return {}
+    from ..models_execution import SubjectAppointment
+    rows = (
+        SubjectAppointment.objects.filter(project_code__in=pcs)
+        .annotate(_vp_trim=Trim('visit_point'))
+        .filter(_vp_trim__iexact='V1')
+        .values('project_code')
+        .annotate(c=Count('id'))
+    )
+    return {str(r['project_code']): int(r['c']) for r in rows}
+
+
+def get_plan_live_metrics(display_project_code: str) -> tuple[int, int]:
+    """
+    计划详情读时聚合（与 display_project_code 对齐）：
+    - 筛选：预约管理 SubjectAppointment 按 project_code 的条数（预约条数）
+    - 入组：初筛/今日队列 SubjectProjectSC 同 project_code 且入组情况为「正式入组」的人数
+    """
+    pc = (display_project_code or '').strip()
+    if not pc:
+        return 0, 0
+    from ..models_execution import SubjectAppointment, SubjectProjectSC, EnrollmentStatusSC
+    appt_n = SubjectAppointment.objects.filter(project_code=pc).count()
+    enr_n = SubjectProjectSC.objects.filter(
+        project_code=pc,
+        is_deleted=False,
+        enrollment_status=EnrollmentStatusSC.ENROLLED,
+    ).count()
+    return appt_n, enr_n
+
+
+def _display_project_code_for_plan(plan: RecruitmentPlan) -> str:
+    code = ''
+    pr = getattr(plan, 'protocol', None)
+    if pr is not None:
+        code = (pr.code or '').strip()
+    return (getattr(plan, 'project_code', None) or '') or code or ''
+
+
+def get_plan_display_enrolled_count(plan: RecruitmentPlan) -> int:
+    """与 api_recruitment._plan_dict 中入组展示 enrolled_display 一致（有 display 项目编号时用 SC 正式入组人数）。"""
+    pc = _display_project_code_for_plan(plan).strip()
+    if pc:
+        _, enr_live = get_plan_live_metrics(pc)
+        return int(enr_live)
+    return int(plan.enrolled_count or 0)
+
+
+def recruitment_plan_ids_for_project_code(pc: str) -> List[int]:
+    """按 display_project_code 对齐查找招募计划（手工 project_code 或仅协议编号）。"""
+    pc = (pc or '').strip()
+    if not pc:
+        return []
+    return list(
+        RecruitmentPlan.objects.filter(
+            Q(project_code=pc)
+            | (Q(protocol__code=pc) & (Q(project_code__isnull=True) | Q(project_code='')))
+        )
+        .values_list('id', flat=True)
+        .distinct()
+    )
+
+
+def try_auto_complete_plan_by_enrollment(plan_id: int) -> Optional[RecruitmentPlan]:
+    """
+    入组完成率（与计划列表展示口径一致）达到 100% 时，将状态设为「已完成」。
+    不自动从草稿/已取消变更；不自动回退已完成。
+    """
+    plan = RecruitmentPlan.objects.select_related('protocol').filter(id=plan_id).first()
+    if not plan:
+        return None
+    if plan.status in (RecruitmentPlanStatus.COMPLETED, RecruitmentPlanStatus.CANCELLED):
+        return None
+    if plan.status == RecruitmentPlanStatus.DRAFT:
+        return None
+    target = int(plan.target_count or 0)
+    if target <= 0:
+        return None
+    enrolled = get_plan_display_enrolled_count(plan)
+    if enrolled < target:
+        return None
+    try:
+        return transition_plan_status(plan_id, RecruitmentPlanStatus.COMPLETED.value)
+    except ValueError:
+        return None
+
+
+def count_screening_completed_for_plan(plan_id: int) -> int:
+    """筛选管理：已完成正式筛选的记录数（通过 + 不通过，不含 pending）。"""
+    return ScreeningRecord.objects.filter(
+        registration__plan_id=plan_id,
+        result__in=[ScreeningResult.PASS, ScreeningResult.FAIL],
+    ).count()
+
+
+def count_screening_completed_by_plan_ids(plan_ids: List[int]) -> Dict[int, int]:
+    """批量：各计划已完成筛选条数（计划列表用）。"""
+    if not plan_ids:
+        return {}
+    rows = (
+        ScreeningRecord.objects.filter(
+            registration__plan_id__in=plan_ids,
+            result__in=[ScreeningResult.PASS, ScreeningResult.FAIL],
+        )
+        .values('registration__plan_id')
+        .annotate(c=Count('id'))
+    )
+    return {int(r['registration__plan_id']): int(r['c']) for r in rows}
+
+
+def get_live_metrics_by_project_codes(project_codes: List[str]) -> Dict[str, Tuple[int, int]]:
+    """按唯一 project_code 缓存 get_plan_live_metrics，避免列表页重复查库。"""
+    out: Dict[str, Tuple[int, int]] = {}
+    for raw in set(project_codes):
+        pc = (raw or '').strip()
+        if not pc:
+            continue
+        out[pc] = get_plan_live_metrics(pc)
+    return out
 
 
 def get_channel_analytics() -> list:

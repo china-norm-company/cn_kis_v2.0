@@ -27,7 +27,9 @@ def generate_recruitment_prep_draft(
         if not plan:
             return _error_result(plan_id or protocol_id, '招募计划不存在')
         protocol = plan.protocol
-        protocol_id = protocol.id if protocol else None
+        if not protocol:
+            return _error_result(plan_id, '招募计划未关联协议，无法生成准备包')
+        protocol_id = protocol.id
     elif protocol_id:
         protocol = Protocol.objects.filter(id=protocol_id, is_deleted=False).first()
         if not protocol:

@@ -39,6 +39,8 @@ export type {
   // Recruitment
   RecruitmentPlan,
   RecruitmentPlanCreateIn,
+  RecruitTemplateAd,
+  RecruitmentAppointmentDocItem,
   EligibilityCriteria,
   RecruitmentChannel,
   ChannelEvaluation,

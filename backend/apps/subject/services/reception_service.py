@@ -28,6 +28,20 @@ from ..models_execution import (
 logger = logging.getLogger(__name__)
 
 
+def _recruitment_try_auto_complete_for_project_code(project_code: str) -> None:
+    """SubjectProjectSC 入组人数变化后，按项目编号尝试将招募计划标为「已完成」。"""
+    pc = (project_code or '').strip()
+    if not pc:
+        return
+    try:
+        from .recruitment_service import recruitment_plan_ids_for_project_code, try_auto_complete_plan_by_enrollment
+
+        for pid in recruitment_plan_ids_for_project_code(pc):
+            try_auto_complete_plan_by_enrollment(pid)
+    except Exception as e:
+        logger.warning('招募计划入组满员自动完结失败: %s', e, exc_info=True)
+
+
 def _visit_point_allocates_sc(visit_point: str) -> bool:
     """
     签到时是否应分配 SC 排队号（与接待台访视点选项对齐）。
@@ -1212,6 +1226,7 @@ def ensure_project_sc_from_import(
             update_fields.extend(['rd_number', 'enrollment_status'])
         rec.save(update_fields=update_fields)
     invalidate_execution_queue_cache_for_date(_local_today())
+    _recruitment_try_auto_complete_for_project_code(project_code)
 
 
 def _ensure_project_sc_on_checkin(
@@ -1519,6 +1534,7 @@ def update_project_sc(
     if update_fields:
         rec.save(update_fields=set(update_fields) | {'update_time'})
     invalidate_execution_queue_cache_for_date(_local_today())
+    _recruitment_try_auto_complete_for_project_code(project_code)
     return {
         'subject_id': rec.subject_id,
         'project_code': rec.project_code,

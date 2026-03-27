@@ -6,6 +6,7 @@ import { getWorkstationUrl } from '@cn-kis/feishu-sdk'
 import { ClawQuickPanel, useClawQuickActions, DigitalWorkerSuggestionBar, DigitalWorkerActionCard } from '@cn-kis/ui-kit'
 import type { QuickAction } from '@cn-kis/ui-kit'
 import type { RecruitmentPlan, SuggestionItem } from '@cn-kis/api-client'
+import { completionRatePercent } from '../utils/planDisplay'
 import { ErrorAlert } from '../components/ErrorAlert'
 import { RefreshCw, TrendingUp, Users, Filter, UserCheck, UserMinus, ArrowRight, PhoneCall, Stethoscope, ClipboardCheck, AlertTriangle, PhoneForwarded, Microscope } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
@@ -240,11 +241,16 @@ export default function DashboardPage() {
                 <div className="w-48 text-sm text-slate-600 truncate" title={plan.title}>{plan.title}</div>
                 <div className="flex-1">
                   <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${Math.min(plan.completion_rate * 100, 100)}%` }} />
+                    <div
+                      className="h-full bg-emerald-500 rounded-full transition-all"
+                      style={{ width: `${Math.min(completionRatePercent(plan.completion_rate), 100)}%` }}
+                    />
                   </div>
                 </div>
                 <div className="w-24 text-right text-xs text-slate-600">{plan.enrolled_count}/{plan.target_count}</div>
-                <div className="w-16 text-right text-sm font-medium text-slate-700">{(plan.completion_rate * 100).toFixed(0)}%</div>
+                <div className="w-16 text-right text-sm font-medium text-slate-700">
+                  {completionRatePercent(plan.completion_rate).toFixed(0)}%
+                </div>
                 <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusColors[plan.status] || 'bg-slate-100 text-slate-600'}`}>{statusLabels[plan.status] || plan.status}</span>
               </div>
             ))}
