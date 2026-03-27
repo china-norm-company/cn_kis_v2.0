@@ -1,5 +1,0 @@
-export { default as MiniPage } from './MiniPage'
-export { default as MiniCard } from './MiniCard'
-export { default as MiniEmpty } from './MiniEmpty'
-export { default as MiniButton } from './MiniButton'
-export { default as HeroBrandAnimation } from './HeroBrandAnimation'
