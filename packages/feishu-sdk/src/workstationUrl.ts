@@ -26,6 +26,7 @@ const WORKSTATION_DEV_PORTS: Record<string, number> = {
   'control-plane': 3017,
   admin: 3008,
   'digital-workforce': 3018,
+  'data-platform': 3020,
 }
 
 /** 工作台 path：本地与生产统一，admin 为 /admin/，与 Vite base、Nginx 一致 */
