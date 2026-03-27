@@ -8,11 +8,8 @@ CRC Dashboard 聚合服务（S5-1）
 """
 import logging
 from datetime import date, timedelta
-from collections import defaultdict
-from typing import Optional
 
-from django.db.models import Count, Q, Avg, F
-from django.db.models.functions import TruncDate
+from django.db.models import Count, Q
 
 from apps.workorder.models import WorkOrder, WorkOrderStatus
 from apps.workorder.query_utils import (

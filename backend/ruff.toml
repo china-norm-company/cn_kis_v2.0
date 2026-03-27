@@ -1,0 +1,24 @@
+# CN KIS V2.0 Backend Ruff 配置
+# ruff.toml 是唯一配置来源；CI 命令只需 `ruff check apps/ libs/`
+
+[lint]
+select = ["E", "W", "F"]
+ignore = [
+    "E501",   # line too long
+    "E402",   # module import not at top（Django 路由模式）
+    "F841",   # local variable assigned but never used（存量代码）
+    "E741",   # ambiguous variable name（存量代码）
+    "F601",   # multi-value repeated key literal（存量代码）
+    "E701",   # multiple statements on one line（存量代码）
+    "F821",   # undefined name（Django 动态属性）
+    "E731",   # lambda assignment（存量代码）
+    "E702",   # multiple statements on one line - semicolon（存量代码）
+    "E712",   # comparison to True/False（存量代码）
+    "F811",   # redefined while unused（条件导入模式）
+]
+
+exclude = [
+    "**/migrations/**",
+    "**/venv/**",
+    "**/__pycache__/**",
+]

@@ -6,7 +6,6 @@
 """
 import logging
 from datetime import date
-from decimal import Decimal
 from django.core.management.base import BaseCommand
 
 logger = logging.getLogger(__name__)

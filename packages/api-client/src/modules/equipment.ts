@@ -57,6 +57,8 @@ export interface EquipmentItem {
   code: string
   category_id: number
   category_name: string
+  /** LIMS「名称分类」：同规格统一类型（如 电子天平、glossymeter），与设备类别 ResourceCategory 无关 */
+  name_classification?: string
   status: string
   status_display: string
   location: string
@@ -65,6 +67,12 @@ export interface EquipmentItem {
   serial_number: string
   purchase_date: string | null
   warranty_expiry: string | null
+  next_calibration_date?: string | null
+  next_verification_date?: string | null
+  next_maintenance_date?: string | null
+  calibration_cycle_days?: number | null
+  verification_cycle_days?: number | null
+  maintenance_cycle_days?: number | null
   calibration_info: CalibrationInfo
   authorized_operators_count: number
   usage_count_30d: number
@@ -78,17 +86,39 @@ export interface EquipmentItem {
   quantity?: number
   initial_value?: number
   group?: string
+  /** LIMS 最后一次写入本设备台账字段的同步时间（ISO8601） */
+  lims_synced_at?: string | null
+  /** 对应 LIMS 导入批次号 */
+  lims_sync_batch_no?: string | null
 }
 
 /** 设备详情 */
 export interface EquipmentDetail extends EquipmentItem {
   category_path: string
   calibration_cycle_days: number | null
+  last_calibration_date?: string | null
+  last_verification_date?: string | null
+  last_maintenance_date?: string | null
   attributes: Record<string, unknown>
   recent_calibrations: CalibrationRecord[]
   recent_maintenances: MaintenanceOrder[]
   recent_usages: UsageRecord[]
   authorizations: Authorization[]
+}
+
+export interface EquipmentCategoryLedgerItem {
+  id: number
+  category_name: string
+  category_code: string
+  category_path: string
+  equipment_count: number
+}
+
+export interface EquipmentNameClassificationLedgerItem {
+  name_classification: string
+  category_id: number | null
+  category_name: string
+  equipment_count: number
 }
 
 /** 校准记录 */
@@ -317,6 +347,8 @@ export interface DetectionMethod {
   code: string
   name: string
   name_en: string
+  /** 设备名称分类（同规格统一类型） */
+  equipment_name_classification?: string
   category: string
   category_display: string
   description: string
@@ -332,8 +364,11 @@ export interface DetectionMethod {
 
 /** 检测方法详情 */
 export interface DetectionMethodDetail extends DetectionMethod {
+  qc_requirements?: string
   standard_procedure: string
   sop_reference: string
+  /** SOP 附件 URL（多为 /media/...） */
+  sop_attachment_url?: string
   sop_id: number | null
   temperature_min: number | null
   temperature_max: number | null
@@ -396,9 +431,36 @@ export const equipmentApi = {
     return api.get<Paginated<EquipmentItem>>('/equipment/ledger', { params })
   },
 
+  /** 设备列表（与 listLedger 相同，兼容调用 /equipment/index 的场景） */
+  listLedgerIndex(params?: {
+    keyword?: string; category_id?: number; status?: string;
+    calibration_status?: string; location?: string;
+    page?: number; page_size?: number; sort_by?: string; lims_only?: boolean
+  }) {
+    return api.get<Paginated<EquipmentItem>>('/equipment/index', { params })
+  },
+
   /** 设备详情 */
   getLedgerDetail(id: number) {
     return api.get<EquipmentDetail>(`/equipment/ledger/${id}`)
+  },
+
+  /** 设备类别台账 */
+  listCategoryLedger(params?: {
+    keyword?: string
+    page?: number
+    page_size?: number
+  }) {
+    return api.get<Paginated<EquipmentCategoryLedgerItem>>('/equipment/ledger-categories', { params })
+  },
+
+  /** 设备细分类别台账 */
+  listNameClassificationLedger(params?: {
+    keyword?: string
+    page?: number
+    page_size?: number
+  }) {
+    return api.get<Paginated<EquipmentNameClassificationLedgerItem>>('/equipment/ledger-name-classifications', { params })
   },
 
   /** 批量导入设备（Excel） */
@@ -418,20 +480,25 @@ export const equipmentApi = {
   /** 新增设备 */
   createEquipment(data: {
     name: string; code: string; category_id: number;
+    name_classification?: string;
     status?: string; location?: string; manufacturer?: string;
     model_number?: string; serial_number?: string;
     purchase_date?: string; warranty_expiry?: string;
-    calibration_cycle_days?: number; manager_id?: number
+    next_calibration_date?: string; next_verification_date?: string; next_maintenance_date?: string;
+    calibration_cycle_days?: number; verification_cycle_days?: number; maintenance_cycle_days?: number;
+    manager_id?: number
   }) {
     return api.post('/equipment/ledger/create', data)
   },
 
   /** 更新设备 */
   updateEquipment(id: number, data: {
-    name?: string; location?: string; manufacturer?: string;
+    name?: string; name_classification?: string; location?: string; manufacturer?: string;
     model_number?: string; serial_number?: string;
     purchase_date?: string; warranty_expiry?: string;
-    calibration_cycle_days?: number; manager_id?: number
+    next_calibration_date?: string; next_verification_date?: string; next_maintenance_date?: string;
+    calibration_cycle_days?: number; verification_cycle_days?: number; maintenance_cycle_days?: number;
+    manager_id?: number
   }) {
     return api.put(`/equipment/ledger/${id}`, data)
   },
@@ -779,10 +846,24 @@ export const equipmentApi = {
     return api.get<DetectionMethodDetail>(`/equipment/detection-methods/${id}`)
   },
 
+  /** 上传检测方法 SOP 附件，返回 url 供创建/更新时填入 sop_attachment_url */
+  uploadDetectionMethodSop(file: File) {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post<{ url: string; original_filename: string }>(
+      '/equipment/detection-methods/sop-upload',
+      form,
+    )
+  },
+
   /** 创建检测方法 */
   createDetectionMethod(data: {
     code: string; name: string; category: string;
-    name_en?: string; description?: string;
+    name_en?: string;
+    equipment_name_classification?: string;
+    description?: string;
+    qc_requirements?: string;
+    sop_attachment_url?: string;
     estimated_duration_minutes?: number; preparation_time_minutes?: number;
     temperature_min?: number; temperature_max?: number;
     humidity_min?: number; humidity_max?: number;

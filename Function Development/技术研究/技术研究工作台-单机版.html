@@ -1,0 +1,2266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>技术研究工作台</title>
+  <style>
+    :root {
+      --bg: #f4f5f7;
+      --card: #fff;
+      --text: #1a1d21;
+      --muted: #6b7280;
+      --border: #e8eaed;
+      --accent: #3b82f6;
+      --accent-soft: #e8f1fe;
+      --shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.04);
+      --radius: 10px;
+      --yellow: #fef3c7;
+      --blue: #dbeafe;
+      --green: #d1fae5;
+      --purple: #ede9fe;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .page {
+      max-width: none;
+      width: 100%;
+      margin: 0 auto;
+      padding: 28px max(20px, 3vw) 48px;
+      box-sizing: border-box;
+    }
+    .header-block {
+      margin-bottom: 22px;
+    }
+    .header-block h1 {
+      margin: 0 0 6px;
+      font-size: 1.65rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .header-block p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 900px) {
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 520px) {
+      .metrics { grid-template-columns: 1fr; }
+    }
+    .metric-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 18px 18px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .metric-card .label {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-bottom: 10px;
+    }
+    .metric-card .value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+    .metric-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      background: var(--accent-soft);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .metric-icon svg {
+      width: 22px;
+      height: 22px;
+      stroke: var(--accent);
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 20px 22px 22px;
+      margin-bottom: 20px;
+    }
+    .card-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .card-head-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: flex-start;
+      flex-shrink: 0;
+    }
+    .card-head h2 {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 600;
+    }
+    .table-drag-hint {
+      margin: 6px 0 0;
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.4;
+      max-width: 42em;
+    }
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      box-shadow: 0 1px 2px rgba(59, 130, 246, 0.35);
+    }
+    .btn-primary:hover {
+      filter: brightness(1.05);
+    }
+    .btn-primary svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2.5;
+    }
+    .table-wrap {
+      overflow-x: auto;
+      overflow-y: visible;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: grab;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-gutter: stable;
+    }
+    .table-wrap.is-dragging {
+      cursor: grabbing;
+      user-select: none;
+    }
+    .table-wrap.is-dragging * {
+      cursor: grabbing;
+    }
+    table {
+      width: max-content;
+      min-width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8125rem;
+      table-layout: auto;
+    }
+    th, td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+      word-break: break-word;
+    }
+    th {
+      background: #fafbfc;
+      color: var(--muted);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    thead tr:nth-child(2) th {
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .th-progress-merged {
+      background: #fafbfc;
+      color: var(--muted);
+      font-weight: 600;
+      text-align: left;
+    }
+    thead tr:nth-child(2) th.th-p-date {
+      width: 8.5rem;
+      min-width: 8.5rem;
+      max-width: 8.5rem;
+      box-sizing: border-box;
+    }
+    thead tr:nth-child(2) th.th-p-pct {
+      width: 5rem;
+      min-width: 5rem;
+      max-width: 5rem;
+      box-sizing: border-box;
+    }
+    thead tr:nth-child(2) th.th-p-note {
+      min-width: 18rem;
+      width: 18rem;
+      box-sizing: border-box;
+    }
+    td.progress-cell-wrap {
+      padding: 0;
+      vertical-align: middle;
+      width: 31.5rem;
+      min-width: 31.5rem;
+      max-width: 31.5rem;
+      box-sizing: border-box;
+    }
+    .progress-nested {
+      table-layout: fixed;
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8125rem;
+    }
+    .progress-nested td {
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      vertical-align: middle;
+      text-align: left;
+      word-break: break-word;
+      min-height: 2.25rem;
+      box-sizing: border-box;
+    }
+    .progress-nested td:empty::before {
+      content: "\00a0";
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafbfc; }
+    .backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.35);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .backdrop.open { display: flex; }
+    .modal {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+      width: 100%;
+      max-width: 520px;
+      max-height: 90vh;
+      overflow: auto;
+      padding: 22px 24px 20px;
+    }
+    .modal h3 {
+      margin: 0 0 16px;
+      font-size: 1.1rem;
+    }
+    .form-grid {
+      display: grid;
+      gap: 12px;
+    }
+    .field label {
+      display: block;
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .field input, .field textarea {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 0.875rem;
+    }
+    .field textarea { min-height: 56px; resize: vertical; }
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+    .btn-ghost {
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #fff;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.875rem;
+    }
+    .empty-hint {
+      text-align: center;
+      padding: 48px 20px;
+      color: var(--muted);
+    }
+    .btn-small {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 5px 10px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text);
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      margin-top: 6px;
+    }
+    .btn-small:hover {
+      background: #fafbfc;
+    }
+    .weekly-cell {
+      min-width: 120px;
+      max-width: 160px;
+      vertical-align: middle;
+      text-align: left;
+    }
+    .op-buttons {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: flex-start;
+      align-items: center;
+    }
+    .edit-log-list {
+      max-height: min(60vh, 420px);
+      overflow: auto;
+      text-align: left;
+      font-size: 0.8125rem;
+    }
+    .edit-log-item {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      background: #fafbfc;
+    }
+    .edit-log-meta {
+      color: var(--muted);
+      font-size: 0.75rem;
+      margin-bottom: 6px;
+    }
+    .edit-log-body {
+      line-height: 1.5;
+      word-break: break-word;
+    }
+    .empty-log {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+    .modal-wide {
+      max-width: 640px;
+    }
+    .week-block {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 14px 12px;
+      margin-bottom: 14px;
+      background: #fafbfc;
+    }
+    .week-block-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .week-block-head h4 {
+      margin: 0;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .btn-week-delete {
+      flex-shrink: 0;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+    }
+    .weekly-empty-hint {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+    .weekly-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .weekly-format-hint {
+      margin: 0 0 14px;
+      padding: 10px 12px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      background: #f3f4f6;
+      border-radius: 8px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="header-block">
+      <h1>技术研究工作台</h1>
+      <p>创新任务总览与进度</p>
+    </header>
+
+    <section class="metrics" aria-label="概览指标">
+      <div class="metric-card">
+        <div>
+          <div class="label">活跃任务</div>
+          <div class="value" id="m-active">0</div>
+        </div>
+        <div class="metric-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M9 3h6v2H9V3zm0 16h6v2H9v-2zM5 7h14v10H5V7z"/></svg>
+        </div>
+      </div>
+      <div class="metric-card">
+        <div>
+          <div class="label">分类数</div>
+          <div class="value" id="m-lines">0</div>
+        </div>
+        <div class="metric-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+      </div>
+      <div class="metric-card">
+        <div>
+          <div class="label">任务总数</div>
+          <div class="value" id="m-total">0</div>
+        </div>
+        <div class="metric-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        </div>
+      </div>
+      <div class="metric-card">
+        <div>
+          <div class="label">平均完成率</div>
+          <div class="value" id="m-rate">0%</div>
+        </div>
+        <div class="metric-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M23 6l-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/></svg>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="task-list-title">
+      <div class="card-head">
+        <div>
+          <h2 id="task-list-title">总任务列表</h2>
+          <p class="table-drag-hint">表格按内容变宽；在空白处按住拖动可左右平移，也可用触控板/Shift+滚轮横向滚动。</p>
+        </div>
+        <div class="card-head-actions">
+          <button type="button" class="btn-ghost" id="btn-export-progress">导出进度</button>
+          <button type="button" class="btn-ghost" id="btn-edit-log">修改记录</button>
+          <button type="button" class="btn-primary" id="btn-add">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            添加任务
+          </button>
+        </div>
+      </div>
+      <div class="table-wrap" id="task-table-wrap">
+        <table>
+          <thead id="thead"></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div class="empty-hint" id="empty" hidden>暂无任务</div>
+      </div>
+    </section>
+  </div>
+
+  <div class="backdrop" id="backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal">
+      <h3 id="modal-title">添加任务</h3>
+      <form id="form-add" class="form-grid"></form>
+      <div class="modal-actions">
+        <button type="button" class="btn-ghost" id="btn-cancel">取消</button>
+        <button type="submit" form="form-add" class="btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="backdrop" id="backdrop-weekly" role="dialog" aria-modal="true" aria-labelledby="weekly-modal-title">
+    <div class="modal modal-wide">
+      <h3 id="weekly-modal-title">填写进展</h3>
+      <p id="weekly-task-name" style="margin:0 0 10px;color:var(--muted);font-size:0.875rem;"></p>
+      <p class="weekly-format-hint">与表格「进展」区一致：每条记录包含<strong>日期</strong>、<strong>进度</strong>（可填 50% 或 0～1 小数）、<strong>进展情况</strong>。同一任务可添加多条，对应多行进展。</p>
+      <div class="weekly-toolbar">
+        <button type="button" class="btn-ghost" id="btn-add-week">＋ 添加一条进展</button>
+      </div>
+      <div id="weekly-form-host" class="form-grid"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-ghost" id="btn-weekly-cancel">取消</button>
+        <button type="button" class="btn-primary" id="btn-weekly-save">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="backdrop" id="backdrop-edit" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
+    <div class="modal">
+      <h3 id="edit-modal-title">修改任务</h3>
+      <p style="margin:0 0 12px;color:var(--muted);font-size:0.875rem;">仅修改左侧主表字段；进展请在「填写」中编辑。</p>
+      <form id="form-edit" class="form-grid"></form>
+      <div class="modal-actions">
+        <button type="button" class="btn-ghost" id="btn-edit-cancel">取消</button>
+        <button type="submit" form="form-edit" class="btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="backdrop" id="backdrop-log" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
+    <div class="modal modal-wide">
+      <h3 id="log-modal-title">修改记录</h3>
+      <p style="margin:0 0 12px;color:var(--muted);font-size:0.78rem;">保存主表「修改」时自动记录，最多保留 200 条。</p>
+      <div id="edit-log-list" class="edit-log-list"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-primary" id="btn-log-close">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 技术研究工作台 · 单机分发版：用浏览器打开本文件即可使用，无需服务器。数据保存在本机浏览器 localStorage，换电脑或清除站点数据会丢失，可用「导出进度」备份。 -->
+<script>
+// 由 scripts/import_excel.py 生成；本地 file:// 打开时可被 index.html 引用
+window.__TASKS_BOOTSTRAP__ = {
+  "columns": [
+    "分类",
+    "关键目标",
+    "项目目标负责人",
+    "关键结果（KR）",
+    "开始时间",
+    "完成时间",
+    "KR负责人"
+  ],
+  "defaultWeeklyTemplate": [
+    {
+      "weekLabel": "2026-03-23",
+      "percent": null,
+      "done": null,
+      "note": ""
+    },
+    {
+      "weekLabel": "2026-03-30",
+      "percent": null,
+      "done": null,
+      "note": ""
+    }
+  ],
+  "tasks": [
+    {
+      "id": "excel-3",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "Pores LLM",
+      "开始时间": "2025-10-10",
+      "完成时间": "2026-05-30",
+      "KR负责人": "仇雨晨 / 李佳欣",
+      "分类": "Skin",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.5,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-4",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "Radiance Model",
+      "开始时间": "2025-10-10",
+      "完成时间": "2026-04-30",
+      "KR负责人": "仇雨晨 / 李佳欣",
+      "分类": "Skin",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.25,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-5",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "Lip plumpness Model",
+      "开始时间": "2025-10-10",
+      "完成时间": "2026-04-30",
+      "KR负责人": "徐重谋、金刚 / 仇雨晨",
+      "分类": "Skin",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.0,
+          "done": 0,
+          "note": "等待设备完成更新"
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-6",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "IFSCC Foundation Paper",
+      "开始时间": "2025-11-30",
+      "完成时间": "2026-04-30",
+      "KR负责人": "仇雨晨",
+      "分类": "Makeup",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.25,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-7",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "IFSCC Scalp redness",
+      "开始时间": "2025-11-30",
+      "完成时间": "2026-04-30",
+      "KR负责人": "孙慧敏",
+      "分类": "Hair and Scalp",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.25,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-8",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "IFSCC Hair",
+      "开始时间": "2025-11-30",
+      "完成时间": "2026-04-30",
+      "KR负责人": "孙慧敏",
+      "分类": "Hair and Scalp",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.25,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-9",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "损伤模型内部项目",
+      "开始时间": "2026-01-20",
+      "完成时间": "2026-04-30",
+      "KR负责人": "仇雨晨 / 何先喆",
+      "分类": "Medical",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.25,
+          "done": 0,
+          "note": "项目开展ing"
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-10",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "双光子额头老化测试",
+      "开始时间": "2025-12-01",
+      "完成时间": "2026-04-30",
+      "KR负责人": "魏璧、高锡荣 / 仇雨晨",
+      "分类": "Skin",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.5,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-11",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "全方位Capture Frame 3D Demo update",
+      "开始时间": "2026-03-21",
+      "完成时间": "2026-03-31",
+      "KR负责人": "徐重谋、金刚 / 李佳欣",
+      "分类": "Equipment",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-12",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "Primos 分析阈值确认",
+      "开始时间": "2026-01-01",
+      "完成时间": "2026-04-30",
+      "KR负责人": "姚志成 / 魏璧",
+      "分类": "Equipment",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-13",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "Grading Validation",
+      "开始时间": "2026-01-01",
+      "完成时间": "2026-03-15",
+      "KR负责人": "梁梓洋 / 仇雨晨",
+      "分类": "Validation",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.75,
+          "done": 0,
+          "note": "自我一致性需要更新"
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-14",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "创新工作台",
+      "开始时间": "2026-03-01",
+      "完成时间": "2026-03-31",
+      "KR负责人": "仇雨晨",
+      "分类": "Workbench",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.5,
+          "done": 0,
+          "note": "思维导图已完成"
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-15",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "知识库平台搭建",
+      "开始时间": "2026-03-01",
+      "完成时间": "2026-03-31",
+      "KR负责人": "仇雨晨",
+      "分类": "Workbench",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.25,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-16",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "研究流程工作",
+      "开始时间": "2026-03-23",
+      "完成时间": "2026-03-31",
+      "KR负责人": "仇雨晨",
+      "分类": "Workbench",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-17",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "数据检查平台布置",
+      "开始时间": "2026-03-23",
+      "完成时间": "2026-03-31",
+      "KR负责人": "梁梓洋",
+      "分类": "Workbench",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-18",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "Raw Data模板更新",
+      "开始时间": "2026-03-23",
+      "完成时间": "2026-04-30",
+      "KR负责人": "梁梓洋",
+      "分类": "Workbench",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.5,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-19",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "Database的自助查询和下载功能",
+      "开始时间": "2026-03-23",
+      "完成时间": "2026-04-30",
+      "KR负责人": "梁梓洋",
+      "分类": "Workbench",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.5,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-20",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "实时数据查询",
+      "开始时间": "2026-03-23",
+      "完成时间": "2026-04-30",
+      "KR负责人": "梁梓洋",
+      "分类": "Workbench",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.75,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-21",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "毛发分析软件开发",
+      "开始时间": "",
+      "完成时间": "",
+      "KR负责人": "梁梓洋",
+      "分类": "Workbench",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-22",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "发束感官体系建立",
+      "开始时间": "",
+      "完成时间": "",
+      "KR负责人": "梁梓洋",
+      "分类": "Workbench",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-23",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "离体原始数据模板",
+      "开始时间": "",
+      "完成时间": "",
+      "KR负责人": "梁梓洋",
+      "分类": "Workbench",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-24",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "VISIA-CR照片自动分析",
+      "开始时间": "2026-03-23",
+      "完成时间": "2026-05-31",
+      "KR负责人": "梁梓洋",
+      "分类": "Workbench",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.5,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-25",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "双光子自动分析跟进",
+      "开始时间": "",
+      "完成时间": "",
+      "KR负责人": "梁梓洋",
+      "分类": "Workbench",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-26",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "Auto Protocol 开发",
+      "开始时间": "",
+      "完成时间": "",
+      "KR负责人": "梁梓洋",
+      "分类": "Workbench",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-27",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "照片命名工具",
+      "开始时间": "2026-03-23",
+      "完成时间": "2026-07-31",
+      "KR负责人": "梁梓洋",
+      "分类": "Workbench",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-28",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "Grading Scale",
+      "开始时间": "2025-09-01",
+      "完成时间": "2026-12-31",
+      "KR负责人": "李佳欣",
+      "分类": "Skin",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-29",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "DermGenius 分析阈值及Grading Link",
+      "开始时间": "",
+      "完成时间": "",
+      "KR负责人": "孙慧敏",
+      "分类": "Equipment",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": null,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": null,
+          "done": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-30",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "Consumer Make-up Questionnaire",
+      "开始时间": "2026-03-01",
+      "完成时间": "2026-04-30",
+      "KR负责人": "魏璧 / 仇雨晨",
+      "分类": "Makeup",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-31",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "相宜sting预测模型",
+      "开始时间": "2025-11-30",
+      "完成时间": "2026-05-31",
+      "KR负责人": "何先喆、单秋果",
+      "分类": "Sponsor",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.25,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-32",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "2025欧莱雅Database",
+      "开始时间": "2026-03-16",
+      "完成时间": "2026-06-30",
+      "KR负责人": "李佳欣",
+      "分类": "Sponsor",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-33",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "ELC Scale update",
+      "开始时间": "2025-09-30",
+      "完成时间": "2026-03-31",
+      "KR负责人": "李佳欣 / 仇雨晨",
+      "分类": "Sponsor",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.75,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-34",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "Dynamic lines pilot from shuting",
+      "开始时间": "2026-03-03",
+      "完成时间": "2026-03-31",
+      "KR负责人": "仇雨晨 / 何先喆",
+      "分类": "Sponsor",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 1.0,
+          "done": 1,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 1.0,
+          "done": 1,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-35",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "Anti-Yellowness pilot from BDF",
+      "开始时间": "2026-02-01",
+      "完成时间": "2026-04-30",
+      "KR负责人": "孙慧敏 / 仇雨晨",
+      "分类": "Sponsor",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.5,
+          "done": 0,
+          "note": "Study 2 待开展"
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-36",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "ELC 动态光泽分析",
+      "开始时间": "2026-03-10",
+      "完成时间": "TBD",
+      "KR负责人": "何先喆 / 仇雨晨",
+      "分类": "Sponsor",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.25,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "excel-37",
+      "关键目标": "",
+      "项目目标负责人": "",
+      "关键结果（KR）": "ELC 彩妆动态纹分析",
+      "开始时间": "2026-03-10",
+      "完成时间": "TBD",
+      "KR负责人": "何先喆 / 仇雨晨",
+      "分类": "Sponsor",
+      "weeklyProgress": [
+        {
+          "weekLabel": "2026-03-23",
+          "percent": 0.25,
+          "done": 0,
+          "note": ""
+        },
+        {
+          "weekLabel": "2026-03-30",
+          "percent": 0.0,
+          "done": 0,
+          "note": ""
+        }
+      ]
+    }
+  ]
+};
+</script>
+  <script>
+    (function () {
+      const STORAGE_KEY = "tech-research-workbench-tasks-v1";
+      const STORAGE_KEY_EDIT_LOG = "tech-research-workbench-edit-log-v1";
+      let columns = [];
+      let tasks = [];
+      let defaultWeeklyTemplate = [];
+      let currentWeeklyTaskId = null;
+      let weeklyModalSnapshot = null;
+      let currentEditTaskId = null;
+      let editLog = [];
+
+      function loadEditLogFromStorage() {
+        try {
+          var raw = localStorage.getItem(STORAGE_KEY_EDIT_LOG);
+          if (raw) {
+            var o = JSON.parse(raw);
+            if (o && Array.isArray(o.entries)) {
+              editLog = o.entries;
+              return;
+            }
+          }
+        } catch (e) {}
+        editLog = [];
+      }
+
+      function saveEditLogToStorage() {
+        try {
+          localStorage.setItem(
+            STORAGE_KEY_EDIT_LOG,
+            JSON.stringify({ entries: editLog.slice(0, 200) })
+          );
+        } catch (e) {}
+      }
+
+      function appendEditLog(entry) {
+        editLog.unshift(entry);
+        if (editLog.length > 200) {
+          editLog.length = 200;
+        }
+        saveEditLogToStorage();
+      }
+
+      /** 0～100，用于概览；按各列「完成进度」小数求平均（无则 null） */
+      function taskProgressFromWeekly(t) {
+        ensureWeekly(t);
+        var w = t.weeklyProgress || [];
+        var sum = 0;
+        var n = 0;
+        for (var i = 0; i < w.length; i++) {
+          var p = w[i].percent;
+          if (typeof p === "number" && !isNaN(p)) {
+            sum += p <= 1 ? p * 100 : p;
+            n++;
+          }
+        }
+        return n ? sum / n : null;
+      }
+
+      function normalizeWeeklyEntry(w) {
+        if (!w || typeof w !== "object") return;
+        var p = w.percent;
+        if (typeof p === "number") {
+          w.percent = isNaN(p) ? null : p;
+        } else if (typeof p === "string") {
+          var ts = p.trim();
+          if (ts === "") w.percent = null;
+          else if (ts.indexOf("%") >= 0) {
+            var pn = parseFloat(ts);
+            w.percent = isNaN(pn) ? null : Math.min(1, pn / 100);
+          } else {
+            var pf = parseFloat(ts);
+            if (!isNaN(pf)) w.percent = pf > 1 ? Math.min(1, pf / 100) : pf;
+            else w.percent = null;
+          }
+        } else if (p === "") w.percent = null;
+
+        var d = w.done;
+        if (d === "" || d === undefined) w.done = null;
+        else if (d === 0 || d === 1) w.done = d;
+        else if (d === "0") w.done = 0;
+        else if (d === "1") w.done = 1;
+        else if (typeof d === "string") {
+          var di = parseInt(d, 10);
+          w.done = di === 0 || di === 1 ? di : null;
+        }
+      }
+
+      function cloneDefaultWeeksEmpty() {
+        if (!defaultWeeklyTemplate.length) {
+          return [
+            { weekLabel: "第1周", percent: null, done: null, note: "" },
+            { weekLabel: "第2周", percent: null, done: null, note: "" }
+          ];
+        }
+        return defaultWeeklyTemplate.map(function (w) {
+          return {
+            weekLabel: w.weekLabel || "",
+            percent: null,
+            done: null,
+            note: ""
+          };
+        });
+      }
+
+      function ensureWeekly(t) {
+        if (!Array.isArray(t.weeklyProgress)) {
+          t.weeklyProgress = cloneDefaultWeeksEmpty();
+          return;
+        }
+        if (t.weeklyProgress.length === 0) {
+          return;
+        }
+        t.weeklyProgress.forEach(normalizeWeeklyEntry);
+      }
+
+      function migrateKrColumnName(t) {
+        var oldK = "关键结果（KR）| Q2";
+        var newK = "关键结果（KR）";
+        if (!Object.prototype.hasOwnProperty.call(t, oldK)) return;
+        if (t[newK] === undefined || t[newK] === "") {
+          t[newK] = t[oldK];
+        }
+        delete t[oldK];
+      }
+
+      function migrateMainColumnNames(t) {
+        if (Object.prototype.hasOwnProperty.call(t, "关键目标（O）")) {
+          if (t["关键目标"] === undefined || t["关键目标"] === "") {
+            t["关键目标"] = t["关键目标（O）"];
+          }
+          delete t["关键目标（O）"];
+        }
+        if (Object.prototype.hasOwnProperty.call(t, "专项目标负责人")) {
+          if (t["项目目标负责人"] === undefined || t["项目目标负责人"] === "") {
+            t["项目目标负责人"] = t["专项目标负责人"];
+          }
+          delete t["专项目标负责人"];
+        }
+      }
+
+      function loadBootstrap() {
+        const b = window.__TASKS_BOOTSTRAP__;
+        if (!b || !Array.isArray(b.columns)) {
+          console.error("缺少 data/tasks.js，请先运行 python3 scripts/import_excel.py");
+          return;
+        }
+        columns = b.columns;
+        defaultWeeklyTemplate = JSON.parse(JSON.stringify(b.defaultWeeklyTemplate || []));
+        if (!defaultWeeklyTemplate.length) {
+          defaultWeeklyTemplate = [
+            { weekLabel: "第1周", percent: "", done: "", note: "" },
+            { weekLabel: "第2周", percent: "", done: "", note: "" }
+          ];
+        }
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) {
+            const o = JSON.parse(raw);
+            if (o && Array.isArray(o.tasks)) {
+              tasks = o.tasks;
+              tasks.forEach(migrateKrColumnName);
+              tasks.forEach(migrateMainColumnNames);
+              tasks.forEach(ensureWeekly);
+              return;
+            }
+          }
+        } catch (e) {}
+        tasks = (b.tasks || []).map(function (t) {
+          return Object.assign({}, t);
+        });
+        tasks.forEach(migrateKrColumnName);
+        tasks.forEach(migrateMainColumnNames);
+        tasks.forEach(ensureWeekly);
+      }
+
+      function save() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ tasks: tasks }));
+      }
+
+      function uniqueLines() {
+        const s = new Set();
+        tasks.forEach(function (t) {
+          const v = (t["分类"] || "").trim();
+          if (v) s.add(v);
+        });
+        return s.size;
+      }
+
+      function metrics() {
+        const n = tasks.length;
+        let sum = 0;
+        let cnt = 0;
+        tasks.forEach(function (t) {
+          const p = taskProgressFromWeekly(t);
+          if (p === null) return;
+          sum += p;
+          cnt++;
+        });
+        const avg = cnt ? Math.round(sum / cnt) : 0;
+        document.getElementById("m-active").textContent = String(n);
+        document.getElementById("m-lines").textContent = String(uniqueLines());
+        document.getElementById("m-total").textContent = String(n);
+        document.getElementById("m-rate").textContent = avg + "%";
+      }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function escapeAttr(s) {
+        return String(s)
+          .replace(/&/g, "&amp;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function formatDateSlash(s) {
+        if (s == null || s === "") return "";
+        var str = String(s).trim();
+        var m = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+        if (m) {
+          return m[1] + "/" + parseInt(m[2], 10) + "/" + parseInt(m[3], 10);
+        }
+        return str;
+      }
+
+      function formatProgressCellDisplay(p) {
+        if (p === null || p === undefined || p === "") return "";
+        if (typeof p === "number" && !isNaN(p)) {
+          if (p >= 0 && p <= 1) {
+            return String(Math.round(p * 100)) + "%";
+          }
+          return String(p) + "%";
+        }
+        return String(p).trim();
+      }
+
+      function htmlCellBody(raw) {
+        var t = raw == null ? "" : String(raw).trim();
+        if (t === "") return "\u00a0";
+        return escapeHtml(t);
+      }
+
+      function buildProgressCellHtml(wk) {
+        var colg =
+          '<colgroup><col style="width:8.5rem" /><col style="width:5rem" /><col style="width:18rem" /></colgroup>';
+        if (!wk || !wk.length) {
+          return (
+            '<table class="progress-nested" role="presentation">' +
+            colg +
+            "<tbody><tr><td>\u00a0</td><td>\u00a0</td><td>\u00a0</td></tr></tbody></table>"
+          );
+        }
+        var rows = wk
+          .map(function (seg) {
+            var d = formatDateSlash(seg.weekLabel != null ? seg.weekLabel : "");
+            var p = formatProgressCellDisplay(seg.percent);
+            var n = seg.note != null ? String(seg.note) : "";
+            return (
+              "<tr><td>" +
+              htmlCellBody(d) +
+              "</td><td>" +
+              htmlCellBody(p) +
+              "</td><td>" +
+              htmlCellBody(n) +
+              "</td></tr>"
+            );
+          })
+          .join("");
+        return (
+          '<table class="progress-nested" role="presentation">' +
+          colg +
+          "<tbody>" +
+          rows +
+          "</tbody></table>"
+        );
+      }
+
+      function renderTable() {
+        const thead = document.getElementById("thead");
+        const tbody = document.getElementById("tbody");
+        const empty = document.getElementById("empty");
+
+        const mainThs = columns
+          .map(function (c) {
+            return '<th rowspan="2" class="th-main">' + escapeHtml(c) + "</th>";
+          })
+          .join("");
+
+        thead.innerHTML =
+          "<tr>" +
+          mainThs +
+          '<th colspan="3" class="th-progress-merged">进展</th>' +
+          '<th rowspan="2" class="weekly-cell">操作</th></tr>' +
+          "<tr>" +
+          '<th class="th-p-date">日期</th><th class="th-p-pct">进度</th><th class="th-p-note">进展情况</th>' +
+          "</tr>";
+
+        if (!tasks.length) {
+          tbody.innerHTML = "";
+          empty.hidden = false;
+          return;
+        }
+        empty.hidden = true;
+        tbody.innerHTML = tasks.map(function (row) {
+          ensureWeekly(row);
+          const cells = columns
+            .map(function (c) {
+              return (
+                '<td class="td-main">' +
+                escapeHtml(row[c] != null ? row[c] : "") +
+                "</td>"
+              );
+            })
+            .join("");
+          const wk = row.weeklyProgress || [];
+          const progressTd =
+            '<td colspan="3" class="progress-cell-wrap">' +
+            buildProgressCellHtml(wk) +
+            "</td>";
+          const opTd =
+            '<td class="weekly-cell">' +
+            '<div class="op-buttons">' +
+            '<button type="button" class="btn-small" data-edit-task-id="' +
+            escapeAttr(row.id) +
+            '">修改</button>' +
+            '<button type="button" class="btn-small" data-weekly-task-id="' +
+            escapeAttr(row.id) +
+            '">填写</button>' +
+            "</div></td>";
+          return "<tr>" + cells + progressTd + opTd + "</tr>";
+        }).join("");
+      }
+
+      function findTaskById(id) {
+        for (let i = 0; i < tasks.length; i++) {
+          if (tasks[i].id === id) return tasks[i];
+        }
+        return null;
+      }
+
+      function formatProgressForInput(p) {
+        if (p === null || p === undefined || p === "") return "";
+        if (typeof p === "number" && !isNaN(p)) {
+          if (p >= 0 && p <= 1) {
+            return Math.round(p * 100) + "%";
+          }
+          return String(p);
+        }
+        return String(p);
+      }
+
+      function parsePercentFromInput(s) {
+        var t = String(s).trim();
+        if (t === "") return null;
+        if (t.indexOf("%") >= 0) {
+          var n = parseFloat(t);
+          return isNaN(n) ? null : Math.min(1, n / 100);
+        }
+        var f = parseFloat(t);
+        if (isNaN(f)) return null;
+        if (f > 1) return Math.min(1, f / 100);
+        return Math.min(1, Math.max(0, f));
+      }
+
+      function renderWeeklyForm(task) {
+        const host = document.getElementById("weekly-form-host");
+        const weeks = task.weeklyProgress || [];
+        host.innerHTML = "";
+        if (!weeks.length) {
+          host.innerHTML =
+            '<p class="weekly-empty-hint">暂无进展记录，可点击「添加一条进展」新增。</p>';
+          return;
+        }
+        weeks.forEach(function (w, i) {
+          const block = document.createElement("div");
+          block.className = "week-block";
+          block.dataset.weekIndex = String(i);
+          block.innerHTML =
+            '<div class="week-block-head">' +
+            "<h4>进展 " +
+            (i + 1) +
+            "</h4>" +
+            '<button type="button" class="btn-ghost btn-week-delete" data-week-delete-index="' +
+            i +
+            '">删除</button>' +
+            "</div>" +
+            '<div class="field"><label>日期</label>' +
+            '<input type="text" class="w-label" placeholder="如 2026-03-23 或 2026/3/23" autocomplete="off" />' +
+            "</div>" +
+            '<div class="field"><label>进度</label>' +
+            '<input type="text" class="w-percent" placeholder="如 50% 或 0.5" autocomplete="off" />' +
+            "</div>" +
+            '<div class="field"><label>进展情况</label>' +
+            '<textarea class="w-note" rows="3" placeholder="文字说明"></textarea>' +
+            "</div>";
+          block.querySelector(".w-label").value = w.weekLabel || "";
+          block.querySelector(".w-percent").value = formatProgressForInput(w.percent);
+          block.querySelector(".w-note").value = w.note || "";
+          host.appendChild(block);
+        });
+      }
+
+      function openWeeklyModal(taskId) {
+        const task = findTaskById(taskId);
+        if (!task) return;
+        ensureWeekly(task);
+        currentWeeklyTaskId = taskId;
+        try {
+          weeklyModalSnapshot = JSON.stringify(task.weeklyProgress || []);
+        } catch (e) {
+          weeklyModalSnapshot = null;
+        }
+        const nameEl = document.getElementById("weekly-task-name");
+        nameEl.textContent = "任务：" + (task["关键结果（KR）"] || task.id || "");
+        renderWeeklyForm(task);
+        document.getElementById("backdrop-weekly").classList.add("open");
+      }
+
+      function closeWeeklyModal(fromSave) {
+        if (!fromSave && weeklyModalSnapshot != null && currentWeeklyTaskId) {
+          const task = findTaskById(currentWeeklyTaskId);
+          if (task) {
+            try {
+              task.weeklyProgress = JSON.parse(weeklyModalSnapshot);
+            } catch (e) {}
+          }
+        }
+        weeklyModalSnapshot = null;
+        document.getElementById("backdrop-weekly").classList.remove("open");
+        currentWeeklyTaskId = null;
+      }
+
+      function saveWeeklyFromForm() {
+        if (!currentWeeklyTaskId) return;
+        const task = findTaskById(currentWeeklyTaskId);
+        if (!task) return;
+        const host = document.getElementById("weekly-form-host");
+        const blocks = host.querySelectorAll(".week-block");
+        const next = [];
+        blocks.forEach(function (block) {
+          const lab = block.querySelector(".w-label");
+          const pct = block.querySelector(".w-percent");
+          const nt = block.querySelector(".w-note");
+          next.push({
+            weekLabel: lab && lab.value ? lab.value.trim() : "",
+            percent: pct && pct.value !== undefined ? parsePercentFromInput(pct.value) : null,
+            done: null,
+            note: nt && nt.value ? nt.value.trim() : ""
+          });
+        });
+        task.weeklyProgress = next.length ? next : [];
+        save();
+        renderTable();
+        metrics();
+        closeWeeklyModal(true);
+      }
+
+      function openModal() {
+        const form = document.getElementById("form-add");
+        form.innerHTML = columns.map(function (c) {
+          return (
+            '<div class="field">' +
+            "<label>" + escapeHtml(c) + "</label>" +
+            '<input type="text" name="' + escapeHtml(c) + '" autocomplete="off" />' +
+            "</div>"
+          );
+        }).join("");
+        document.getElementById("backdrop").classList.add("open");
+        var first = form.querySelector("input");
+        if (first) first.focus();
+      }
+
+      function closeModal() {
+        document.getElementById("backdrop").classList.remove("open");
+      }
+
+      function openEditModal(taskId) {
+        const task = findTaskById(taskId);
+        if (!task) return;
+        currentEditTaskId = taskId;
+        const form = document.getElementById("form-edit");
+        form.innerHTML = columns
+          .map(function (c) {
+            var v = task[c] != null ? String(task[c]) : "";
+            return (
+              '<div class="field">' +
+              "<label>" + escapeHtml(c) + "</label>" +
+              '<input type="text" name="' +
+              escapeHtml(c) +
+              '" value="' +
+              escapeAttr(v) +
+              '" autocomplete="off" />' +
+              "</div>"
+            );
+          })
+          .join("");
+        document.getElementById("backdrop-edit").classList.add("open");
+        var fi = form.querySelector("input");
+        if (fi) fi.focus();
+      }
+
+      function closeEditModal() {
+        document.getElementById("backdrop-edit").classList.remove("open");
+        currentEditTaskId = null;
+      }
+
+      function renderEditLogPanel() {
+        var host = document.getElementById("edit-log-list");
+        if (!host) return;
+        if (!editLog.length) {
+          host.innerHTML = '<p class="empty-log">暂无修改记录</p>';
+          return;
+        }
+        host.innerHTML = editLog
+          .map(function (rec) {
+            var t = new Date(rec.at);
+            var timeStr = isNaN(t.getTime()) ? String(rec.at) : t.toLocaleString("zh-CN");
+            var ch = rec.changes || {};
+            var lines = Object.keys(ch)
+              .map(function (k) {
+                var x = ch[k];
+                var fromV = x && x.from != null ? String(x.from) : "";
+                var toV = x && x.to != null ? String(x.to) : "";
+                return escapeHtml(k) + "：" + escapeHtml(fromV) + " → " + escapeHtml(toV);
+              })
+              .join("<br/>");
+            return (
+              '<div class="edit-log-item">' +
+              '<div class="edit-log-meta">' +
+              escapeHtml(timeStr) +
+              " · " +
+              escapeHtml(rec.taskName || rec.taskId || "") +
+              "</div>" +
+              '<div class="edit-log-body">' +
+              (lines || escapeHtml("(无字段差异)")) +
+              "</div>" +
+              "</div>"
+            );
+          })
+          .join("");
+      }
+
+      function openEditLogModal() {
+        renderEditLogPanel();
+        document.getElementById("backdrop-log").classList.add("open");
+      }
+
+      function closeEditLogModal() {
+        document.getElementById("backdrop-log").classList.remove("open");
+      }
+
+      document.getElementById("btn-add").addEventListener("click", openModal);
+      document.getElementById("btn-cancel").addEventListener("click", closeModal);
+      document.getElementById("backdrop").addEventListener("click", function (e) {
+        if (e.target.id === "backdrop") closeModal();
+      });
+
+      document.getElementById("tbody").addEventListener("click", function (e) {
+        const editB = e.target.closest("[data-edit-task-id]");
+        if (editB) {
+          const eid = editB.getAttribute("data-edit-task-id");
+          if (eid) openEditModal(eid);
+          return;
+        }
+        const weeklyB = e.target.closest("[data-weekly-task-id]");
+        if (weeklyB) {
+          const wid = weeklyB.getAttribute("data-weekly-task-id");
+          if (wid) openWeeklyModal(wid);
+        }
+      });
+
+      document.getElementById("btn-weekly-cancel").addEventListener("click", function () {
+        closeWeeklyModal(false);
+      });
+      document.getElementById("backdrop-weekly").addEventListener("click", function (e) {
+        if (e.target.id === "backdrop-weekly") closeWeeklyModal(false);
+      });
+      document.getElementById("btn-weekly-save").addEventListener("click", saveWeeklyFromForm);
+
+      document.getElementById("btn-add-week").addEventListener("click", function () {
+        if (!currentWeeklyTaskId) return;
+        const task = findTaskById(currentWeeklyTaskId);
+        if (!task) return;
+        if (!Array.isArray(task.weeklyProgress)) {
+          task.weeklyProgress = [];
+        }
+        task.weeklyProgress.push({
+          weekLabel: "",
+          percent: null,
+          done: null,
+          note: ""
+        });
+        renderWeeklyForm(task);
+      });
+
+      document.getElementById("weekly-form-host").addEventListener("click", function (e) {
+        const del = e.target.closest("[data-week-delete-index]");
+        if (!del || !currentWeeklyTaskId) return;
+        var idx = parseInt(del.getAttribute("data-week-delete-index"), 10);
+        if (isNaN(idx)) return;
+        const task = findTaskById(currentWeeklyTaskId);
+        if (!task || !Array.isArray(task.weeklyProgress)) return;
+        if (idx < 0 || idx >= task.weeklyProgress.length) return;
+        task.weeklyProgress.splice(idx, 1);
+        renderWeeklyForm(task);
+      });
+
+      document.getElementById("form-add").addEventListener("submit", function (e) {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const row = { id: "local-" + Date.now() };
+        columns.forEach(function (c) {
+          row[c] = (fd.get(c) || "").toString().trim();
+        });
+        row.weeklyProgress = cloneDefaultWeeksEmpty();
+        tasks.push(row);
+        save();
+        renderTable();
+        metrics();
+        closeModal();
+      });
+
+      document.getElementById("form-edit").addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (!currentEditTaskId) return;
+        const task = findTaskById(currentEditTaskId);
+        if (!task) return;
+        const fd = new FormData(e.target);
+        const changes = {};
+        columns.forEach(function (c) {
+          var newV = (fd.get(c) || "").toString().trim();
+          var oldV = task[c] != null ? String(task[c]).trim() : "";
+          if (newV !== oldV) {
+            changes[c] = { from: oldV, to: newV };
+          }
+          task[c] = newV;
+        });
+        if (Object.keys(changes).length > 0) {
+          appendEditLog({
+            id: "log-" + Date.now(),
+            at: new Date().toISOString(),
+            taskId: task.id,
+            taskName: task["关键结果（KR）"] || task.id,
+            changes: changes
+          });
+        }
+        save();
+        renderTable();
+        metrics();
+        closeEditModal();
+      });
+
+      document.getElementById("btn-edit-cancel").addEventListener("click", closeEditModal);
+      document.getElementById("backdrop-edit").addEventListener("click", function (e) {
+        if (e.target.id === "backdrop-edit") closeEditModal();
+      });
+
+      function csvEscapeCell(val) {
+        var s = String(val == null ? "" : val);
+        if (/[",\n\r]/.test(s)) {
+          return '"' + s.replace(/"/g, '""') + '"';
+        }
+        return s;
+      }
+
+      function parseDateSortKey(s) {
+        if (s == null) return NaN;
+        var str = String(s).trim();
+        if (!str) return NaN;
+        var m = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+        if (m) {
+          var d = new Date(
+            parseInt(m[1], 10),
+            parseInt(m[2], 10) - 1,
+            parseInt(m[3], 10)
+          );
+          var t = d.getTime();
+          return isNaN(t) ? NaN : t;
+        }
+        var p = Date.parse(str);
+        return isNaN(p) ? NaN : p;
+      }
+
+      function exportProgressByDate() {
+        var flat = [];
+        tasks.forEach(function (task) {
+          var wk = task.weeklyProgress;
+          if (!Array.isArray(wk)) return;
+          wk.forEach(function (seg) {
+            var dateRaw =
+              seg.weekLabel != null ? String(seg.weekLabel).trim() : "";
+            flat.push({
+              sortKey: parseDateSortKey(dateRaw),
+              dateDisplay: dateRaw,
+              cat: task["分类"] != null ? String(task["分类"]) : "",
+              kr: task["关键结果（KR）"] != null ? String(task["关键结果（KR）"]) : "",
+              progress: formatProgressCellDisplay(seg.percent),
+              note: seg.note != null ? String(seg.note) : "",
+              krOwner: task["KR负责人"] != null ? String(task["KR负责人"]) : "",
+              start: task["开始时间"] != null ? String(task["开始时间"]) : "",
+              end: task["完成时间"] != null ? String(task["完成时间"]) : "",
+              taskId: task.id != null ? String(task.id) : ""
+            });
+          });
+        });
+        if (!flat.length) {
+          window.alert("当前没有可导出的进展记录，请先在「填写」中添加进展。");
+          return;
+        }
+        flat.sort(function (a, b) {
+          var ak = isNaN(a.sortKey) ? Number.POSITIVE_INFINITY : a.sortKey;
+          var bk = isNaN(b.sortKey) ? Number.POSITIVE_INFINITY : b.sortKey;
+          if (ak !== bk) return ak - bk;
+          var c = (a.kr || "").localeCompare(b.kr || "", "zh-CN");
+          if (c !== 0) return c;
+          return (a.dateDisplay || "").localeCompare(b.dateDisplay || "", "zh-CN");
+        });
+        var headers = [
+          "日期",
+          "分类",
+          "关键结果（KR）",
+          "进度",
+          "进展情况",
+          "KR负责人",
+          "开始时间",
+          "完成时间",
+          "任务ID"
+        ];
+        var lines = [headers.map(csvEscapeCell).join(",")];
+        flat.forEach(function (r) {
+          lines.push(
+            [
+              csvEscapeCell(r.dateDisplay),
+              csvEscapeCell(r.cat),
+              csvEscapeCell(r.kr),
+              csvEscapeCell(r.progress),
+              csvEscapeCell(r.note),
+              csvEscapeCell(r.krOwner),
+              csvEscapeCell(r.start),
+              csvEscapeCell(r.end),
+              csvEscapeCell(r.taskId)
+            ].join(",")
+          );
+        });
+        var bom = "\ufeff";
+        var blob = new Blob([bom + lines.join("\r\n")], {
+          type: "text/csv;charset=utf-8"
+        });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        var now = new Date();
+        var pad = function (n) {
+          return (n < 10 ? "0" : "") + n;
+        };
+        var fname =
+          "任务进度导出_" +
+          now.getFullYear() +
+          pad(now.getMonth() + 1) +
+          pad(now.getDate()) +
+          "_" +
+          pad(now.getHours()) +
+          pad(now.getMinutes()) +
+          ".csv";
+        a.href = url;
+        a.download = fname;
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      document.getElementById("btn-export-progress").addEventListener("click", exportProgressByDate);
+      document.getElementById("btn-edit-log").addEventListener("click", openEditLogModal);
+      document.getElementById("btn-log-close").addEventListener("click", closeEditLogModal);
+      document.getElementById("backdrop-log").addEventListener("click", function (e) {
+        if (e.target.id === "backdrop-log") closeEditLogModal();
+      });
+
+      function initTaskTableDragScroll() {
+        var el = document.getElementById("task-table-wrap");
+        if (!el) return;
+        var pid = null;
+        var startX = 0;
+        var startY = 0;
+        var startScroll = 0;
+        var dragging = false;
+        function canDragTarget(t) {
+          return !t.closest("button, a, input, select, textarea, label");
+        }
+        function endPointer(e) {
+          if (pid !== e.pointerId) return;
+          if (dragging) {
+            try {
+              el.releasePointerCapture(e.pointerId);
+            } catch (err) {}
+          }
+          pid = null;
+          dragging = false;
+          el.classList.remove("is-dragging");
+        }
+        el.addEventListener("pointerdown", function (e) {
+          if (e.button !== 0) return;
+          if (!canDragTarget(e.target)) return;
+          pid = e.pointerId;
+          startX = e.clientX;
+          startY = e.clientY;
+          startScroll = el.scrollLeft;
+          dragging = false;
+        });
+        el.addEventListener("pointermove", function (e) {
+          if (pid !== e.pointerId) return;
+          var dx = e.clientX - startX;
+          var dy = e.clientY - startY;
+          if (!dragging) {
+            if (Math.abs(dx) < 8) return;
+            if (Math.abs(dx) < Math.abs(dy) * 1.2) return;
+            dragging = true;
+            el.classList.add("is-dragging");
+            try {
+              el.setPointerCapture(e.pointerId);
+            } catch (err) {}
+          }
+          if (dragging) {
+            e.preventDefault();
+            el.scrollLeft = startScroll - dx;
+          }
+        });
+        el.addEventListener("pointerup", endPointer);
+        el.addEventListener("pointercancel", endPointer);
+      }
+
+      loadEditLogFromStorage();
+      loadBootstrap();
+      renderTable();
+      metrics();
+      initTaskTableDragScroll();
+    })();
+  </script>
+</body>
+</html>

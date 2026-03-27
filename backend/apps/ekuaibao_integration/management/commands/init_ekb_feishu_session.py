@@ -80,7 +80,7 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR('Token 刷新失败，请用 --code 重新初始化'))
 
     def _init_from_code(self, code: str):
-        self.stdout.write(f'使用 OAuth code 初始化...')
+        self.stdout.write('使用 OAuth code 初始化...')
         try:
             client = EkbFeishuClient.init_from_oauth_code(code)
             staff = client.get_staff_me()

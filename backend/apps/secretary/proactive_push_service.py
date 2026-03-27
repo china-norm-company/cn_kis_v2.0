@@ -10,7 +10,6 @@ Phase 6 主动洞察推送服务
 - medium: 站内通知
 - low: 仅写入列表
 """
-import json
 import logging
 from typing import Any, Dict, List, Optional
 

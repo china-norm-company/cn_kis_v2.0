@@ -42,21 +42,21 @@ class SyncConfig(models.Model):
     table_name = models.CharField('表名', max_length=100, db_index=True, help_text='Django模型表名，如：t_subject, t_protocol')
     bitable_app_token = models.CharField('飞书多维表格App Token', max_length=100)
     bitable_table_id = models.CharField('飞书多维表格Table ID', max_length=100)
-    
+
     # 同步方向
     direction = models.CharField('同步方向', max_length=20, choices=SyncDirection.choices, default=SyncDirection.BIDIRECTIONAL)
-    
+
     # 字段映射（JSON格式：{"db_field": "feishu_field_id"}）
     field_mapping = models.JSONField('字段映射', default=dict, help_text='数据库字段到飞书字段的映射关系')
     unique_key_fields = models.JSONField(
         '业务唯一键字段', default=list,
         help_text='用于 from_feishu 幂等入库的字段列表，如 [\"feishu_open_id\"]',
     )
-    
+
     # 状态
     enabled = models.BooleanField('是否启用', default=True)
     sync_interval_minutes = models.IntegerField('同步间隔（分钟）', default=60, help_text='自动同步间隔，0表示不自动同步')
-    
+
     # 时间
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)

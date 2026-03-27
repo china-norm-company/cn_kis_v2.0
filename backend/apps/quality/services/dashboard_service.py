@@ -5,12 +5,9 @@
 """
 import logging
 from datetime import date, timedelta
-from django.db.models import Count, Q
-from django.utils import timezone
 
 from ..models import (
-    Deviation, DeviationStatus, DeviationSeverity,
-    CAPA, CAPAStatus, CAPAActionItem, CAPAActionItemStatus,
+    Deviation, DeviationStatus, CAPA, CAPAStatus, CAPAActionItem, CAPAActionItemStatus,
     SOP, SOPStatus,
 )
 
@@ -101,7 +98,7 @@ def get_quality_dashboard() -> dict:
             'type': 'sop_review',
             'urgency': 'medium',
             'title': f'SOP 待审查: {s.code} - {s.title}',
-            'link': f'/sop',
+            'link': '/sop',
             'due_date': str(s.next_review),
         })
 
@@ -115,7 +112,7 @@ def get_quality_dashboard() -> dict:
                 'type': 'open_query',
                 'urgency': 'low',
                 'title': f'数据质疑待回复: {q.field_name}',
-                'link': f'/queries',
+                'link': '/queries',
                 'due_date': str(q.create_time.date()) if q.create_time else '',
             })
     except Exception:

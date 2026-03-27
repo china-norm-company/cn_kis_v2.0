@@ -33,6 +33,7 @@ export function createApiClient(config: ApiClientConfig = {}): AxiosInstance {
     timeout = 30000,
     getToken = () => localStorage.getItem('auth_token'),
     onUnauthorized,
+    skipClearAuthStorageOnAuthError = false,
   } = config
   const baseURL = rawBaseURL
 
@@ -122,7 +123,9 @@ export function createApiClient(config: ApiClientConfig = {}): AxiosInstance {
           ))
 
         if (authRequired) {
-          clearAuthStorage()
+          if (!skipClearAuthStorageOnAuthError) {
+            clearAuthStorage()
+          }
           onUnauthorized?.()
           const err = new Error(backendMsg || '未授权，请重新登录') as Error & { response: typeof error.response }
           err.response = error.response

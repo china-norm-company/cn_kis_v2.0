@@ -4,12 +4,26 @@
 编排器定时任务：
 - generate_morning_brief: 每日 7:30 生成晨报
 - generate_evening_summary: 每日 17:30 生成日报
+
+智能运营简报（Issue #4）：
+- send_morning_briefing: 每日 09:00 全域早报（总经理视角）
+- send_evening_briefing: 每日 18:00 全域晚报（总经理视角）
+- send_weekly_briefing: 每周一 08:30 战略周报
+- process_user_feedback_async: 用户反馈群消息异步处理
 """
 import logging
 
 from celery import shared_task
 
 logger = logging.getLogger(__name__)
+
+# ── 智能运营简报任务（从 briefing_tasks 模块注册）────────────────────────────
+from .briefing_tasks import (  # noqa: F401 - Celery 需要 import 来发现任务
+    send_morning_briefing,
+    send_evening_briefing,
+    send_weekly_briefing,
+    process_user_feedback_async,
+)
 
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=120)
@@ -82,7 +96,6 @@ def compute_weekly_learning_digest(self):
 
     active_accounts = Account.objects.filter(is_active=True).values_list('id', flat=True)
     from .feedback_loop_service import (
-        build_user_behavior_profile,
         get_user_feedback_summary,
         invalidate_profile_cache,
     )
@@ -676,10 +689,9 @@ def feishu_token_health_check(self):
     3. token 刷新成功后自动触发补采
     """
     import logging
-    from datetime import timedelta
     from django.utils import timezone
     from apps.identity.models import Account
-    from apps.secretary.models import FeishuUserToken, PersonalContext
+    from apps.secretary.models import FeishuUserToken
     from apps.secretary.feishu_fetcher import get_valid_user_token
     from libs.feishu_client import feishu_client
 
@@ -734,11 +746,16 @@ def _send_reauth_message(account, client, log):
     """向用户推送飞书消息引导重新授权（静默失败，不阻断流程）"""
     from django.conf import settings
     try:
+        from urllib.parse import quote
+
         app_id = getattr(settings, 'FEISHU_PRIMARY_APP_ID', '') or getattr(settings, 'FEISHU_APP_ID', '')
-        redirect_base = getattr(settings, 'FEISHU_REDIRECT_BASE', 'http://118.196.64.48')
+        redirect_base = str(
+            getattr(settings, 'FEISHU_REDIRECT_BASE', '') or 'http://118.196.64.48'
+        ).rstrip('/')
+        redirect_uri = f'{redirect_base}/secretary/'
         auth_url = (
             f'https://open.feishu.cn/open-apis/authen/v1/authorize'
-            f'?app_id={app_id}&redirect_uri={redirect_base}/login&response_type=code'
+            f'?app_id={app_id}&redirect_uri={quote(redirect_uri, safe="")}&response_type=code'
         )
         content = {
             'text': (
@@ -973,3 +990,130 @@ def feishu_knowledge_ingest(self):
     except Exception as e:
         log.error('知识入库失败: %s', e)
         raise self.retry(exc=e)
+
+
+@shared_task(
+    name='apps.secretary.tasks.feishu_token_expiry_morning_alert',
+    bind=True,
+    max_retries=1,
+)
+def feishu_token_expiry_morning_alert(self):
+    """
+    每天早上 8:30 执行：
+    1. 扫描所有 access_token 完全失效（refresh_token 也过期或不存在）的账号
+    2. 向「CN_KIS_PLATFORM开发小组」群发汇总消息（含过期用户名单）
+    3. 逐人发飞书私信，引导重新登录授权
+    """
+    import json
+    import logging
+    from django.utils import timezone
+    from apps.identity.models import Account
+    from apps.secretary.models import FeishuUserToken
+    from libs.feishu_client import feishu_client
+    from django.conf import settings
+
+    log = logging.getLogger('feishu_token_expiry_alert')
+    now = timezone.now()
+
+    DEV_GROUP_CHAT_ID = getattr(settings, 'FEISHU_DEV_GROUP_CHAT_ID', '')
+    app_id = getattr(settings, 'FEISHU_PRIMARY_APP_ID', '') or getattr(settings, 'FEISHU_APP_ID', '')
+    redirect_base = getattr(settings, 'FEISHU_REDIRECT_BASE', 'http://118.196.64.48')
+    auth_url = (
+        f'https://open.feishu.cn/open-apis/authen/v1/authorize'
+        f'?app_id={app_id}&redirect_uri={redirect_base}/login&response_type=code'
+    )
+
+    accounts = Account.objects.filter(
+        is_deleted=False,
+        feishu_open_id__isnull=False,
+    ).exclude(feishu_open_id='').order_by('display_name')
+
+    expired_users = []
+
+    for account in accounts:
+        token_record = FeishuUserToken.objects.filter(account_id=account.id).first()
+
+        if not token_record or not token_record.access_token:
+            expired_users.append(account)
+            continue
+
+        access_expired = token_record.token_expires_at and now >= token_record.token_expires_at
+        if not access_expired:
+            continue
+
+        refresh_expired = (
+            not token_record.refresh_token
+            or (token_record.refresh_expires_at and now >= token_record.refresh_expires_at)
+        )
+        if refresh_expired:
+            expired_users.append(account)
+
+    log.info('token 过期用户总数: %d', len(expired_users))
+
+    # ── 1. 向开发群发汇总消息 ──────────────────────────────────────
+    if DEV_GROUP_CHAT_ID and expired_users:
+        names = '、'.join(a.display_name for a in expired_users)
+        summary_text = (
+            f'【子衿知识库·Token 过期提醒】\n'
+            f'📅 {now.strftime("%Y-%m-%d")} 早报\n\n'
+            f'以下 {len(expired_users)} 位用户的飞书授权已完全失效，\n'
+            f'数据采集已中断，请督促本人重新登录系统完成授权：\n\n'
+            f'{names}\n\n'
+            f'🔗 授权链接：{auth_url}'
+        )
+        try:
+            feishu_client.send_message(
+                receive_id=DEV_GROUP_CHAT_ID,
+                msg_type='text',
+                content=json.dumps({'text': summary_text}),
+                receive_id_type='chat_id',
+            )
+            log.info('开发群汇总消息发送成功，过期用户数: %d', len(expired_users))
+        except Exception as e:
+            log.warning('开发群消息发送失败: %s', e)
+    elif not DEV_GROUP_CHAT_ID:
+        log.warning('FEISHU_DEV_GROUP_CHAT_ID 未配置，跳过开发群通知')
+    else:
+        log.info('无过期用户，不发开发群通知')
+        if DEV_GROUP_CHAT_ID:
+            try:
+                feishu_client.send_message(
+                    receive_id=DEV_GROUP_CHAT_ID,
+                    msg_type='text',
+                    content=json.dumps({'text': f'【子衿知识库·Token 状态】{now.strftime("%Y-%m-%d")} 所有用户授权正常 ✅'}),
+                    receive_id_type='chat_id',
+                )
+            except Exception:
+                pass
+
+    # ── 2. 逐人发私信引导重新授权 ────────────────────────────────
+    personal_notified = 0
+    personal_failed = 0
+    for account in expired_users:
+        try:
+            personal_text = (
+                f'您好 {account.display_name}，\n\n'
+                f'子衿知识库检测到您的飞书授权已失效，数据自动采集已暂停。\n'
+                f'请点击以下链接完成一次重新授权（约 5 秒）：\n\n'
+                f'{auth_url}\n\n'
+                f'授权后系统将自动恢复数据采集，感谢配合 🙏'
+            )
+            feishu_client.send_message(
+                receive_id=account.feishu_open_id,
+                msg_type='text',
+                content=json.dumps({'text': personal_text}),
+                receive_id_type='open_id',
+            )
+            personal_notified += 1
+            log.info('个人通知已发送: %s (%s)', account.display_name, account.feishu_open_id[:20])
+        except Exception as e:
+            personal_failed += 1
+            log.warning('个人通知发送失败 %s: %s', account.display_name, e)
+
+    result = {
+        'expired_count': len(expired_users),
+        'personal_notified': personal_notified,
+        'personal_failed': personal_failed,
+    }
+    log.info('token 过期晨报完成: %s', result)
+    return result

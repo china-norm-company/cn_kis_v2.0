@@ -12,7 +12,7 @@ import {
   type WorkstationBindingItem,
 } from '@cn-kis/api-client'
 import { PermissionGuard } from '@cn-kis/feishu-sdk'
-import { Wrench, Plus, Pencil, Trash2, Loader2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2 } from 'lucide-react'
 import { AdminNoPermission } from '../components/AdminNoPermission'
 
 function SkillTable({

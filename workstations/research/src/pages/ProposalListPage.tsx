@@ -19,6 +19,7 @@ interface Proposal {
   client_name: string
   product_category: string
   stage: string
+  status?: string
   estimated_amount: number | null
   version_count: number
   checklist_total: number

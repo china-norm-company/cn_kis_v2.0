@@ -521,7 +521,7 @@ def _merge_date_subject_map(*maps: dict) -> dict:
 
 
 def _subject_map_from_pre_screening(protocol_id: int) -> dict:
-    """粗筛到场日 -> 受试者集合（主数据源）。"""
+    """初筛到场日 -> 受试者集合（主数据源）。"""
     try:
         from apps.subject.models_recruitment import PreScreeningRecord
     except Exception:
@@ -724,7 +724,7 @@ def get_screening_batch_consent_stats(
     按「现场筛选相关日期」分批次统计知情签署进度。
 
     数据来源（依次合并同日受试者并集）：
-    1. 粗筛 PreScreeningRecord.pre_screening_date
+    1. 初筛 PreScreeningRecord.pre_screening_date
     2. 正式筛选 ScreeningRecord（到场日=screened_at/创建日）+ registration 关联受试者
     3. 若仍无任何日期：兜底为各受试者首条 SubjectConsent.create_time 所在日
 
@@ -750,7 +750,7 @@ def get_screening_batch_consent_stats(
     planned_date_strs = [x['date'] for x in sched]
     sched_by_date = {x['date']: x for x in sched}
 
-    # 无粗筛/正式筛选数据时跳过全表扫描，直接走兜底（知情首活日），显著降低列表页 N 协议成本。
+    # 无初筛/正式筛选数据时跳过全表扫描，直接走兜底（知情首活日），显著降低列表页 N 协议成本。
     from apps.subject.models_recruitment import PreScreeningRecord, ScreeningRecord
 
     pre_map: dict = {}

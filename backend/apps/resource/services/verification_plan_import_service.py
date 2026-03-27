@@ -11,7 +11,7 @@ from datetime import date, datetime
 from typing import Any, List, Optional
 import openpyxl
 
-from ..models import ResourceItem, ResourceCategory, ResourceType
+from ..models import ResourceItem, ResourceType
 
 logger = logging.getLogger(__name__)
 

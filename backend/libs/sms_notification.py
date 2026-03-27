@@ -86,6 +86,7 @@ SMS_TEMPLATES = {
     'screening_result': os.getenv('SMS_TPL_SCREENING_RESULT', 'TPL_SCREEN'),
     'payment': os.getenv('SMS_TPL_PAYMENT', 'TPL_PAY'),
     'enrollment': os.getenv('SMS_TPL_ENROLLMENT', 'TPL_ENROLL'),
+    'recruitment_invite': os.getenv('SMS_TPL_RECRUITMENT_INVITE', ''),
 }
 
 
@@ -110,4 +111,36 @@ def sms_payment_notification(phone: str, subject_name: str, amount: str) -> bool
 def sms_enrollment_welcome(phone: str, subject_name: str, project_name: str = '') -> bool:
     return send_sms(phone, SMS_TEMPLATES['enrollment'], {
         'name': subject_name, 'project': project_name,
+    })
+
+
+def sms_recruitment_invite(phone: str, subject_name: str, project_name: str, plan_id: int,
+                            miniprogram_path: str = '') -> bool:
+    """
+    向受试者库中的候选人发送招募邀请短信。
+
+    短信内容（需在火山引擎后台申请审核，模板变量：name/project/appname）：
+        【{sign}】{name}您好，我们正在招募"{project}"研究受试者，
+        您可能符合参与条件。请微信搜索"{appname}"小程序查看详情并报名。
+        如不需要请回复TD退订。
+
+    Args:
+        phone:          目标手机号
+        subject_name:   受试者姓名（脱敏：仅名字第一字 + "先生/女士" 也可）
+        project_name:   招募项目名称（不超过20字）
+        plan_id:        招募计划 ID（用于日志追踪，不发送到短信中）
+        miniprogram_path: 小程序内跳转路径（未来支持短链时使用，当前留空）
+
+    Returns:
+        True 发送成功
+    """
+    tpl = SMS_TEMPLATES.get('recruitment_invite', '')
+    if not tpl:
+        logger.warning('招募邀请短信跳过：SMS_TPL_RECRUITMENT_INVITE 未配置 (plan_id=%s)', plan_id)
+        return False
+
+    return send_sms(phone, tpl, {
+        'name': subject_name,
+        'project': project_name[:20],
+        'appname': 'UTest受试者',
     })

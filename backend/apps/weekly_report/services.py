@@ -20,7 +20,6 @@ from .models import (
     WeeklyReportLeader,
     WeeklyReportNotes,
     WeeklyReportProject,
-    WeeklyReportProjectMember,
     WeeklyReportTask,
 )
 
@@ -94,6 +93,64 @@ def _task_to_dict(t: WeeklyReportTask, project_name: str = "", is_overdue: bool 
     return d
 
 
+def _derive_task_status(raw_task: Optional[WeeklyReportTask], progress: int) -> str:
+    if int(progress) >= 100:
+        return TaskStatus.done
+    if raw_task is not None and raw_task.status == TaskStatus.blocked:
+        return TaskStatus.blocked
+    if int(progress) > 0:
+        return TaskStatus.doing
+    return TaskStatus.todo
+
+
+def _refresh_project_status(project_id: int) -> None:
+    project = WeeklyReportProject.objects.filter(id=project_id).first()
+    if project is None:
+        return
+    now = _now_utc()
+    tasks = list(WeeklyReportTask.objects.filter(project_id=project_id))
+    next_status = "completed" if tasks and all((t.status == TaskStatus.done or int(t.progress or 0) >= 100) for t in tasks) else "active"
+    next_risk = calc_project_risk(tasks, now)
+    update_fields = []
+    if project.status != next_status:
+        project.status = next_status
+        update_fields.append("status")
+    if project.risk_level != next_risk:
+        project.risk_level = next_risk
+        update_fields.append("risk_level")
+    if update_fields:
+        project.save(update_fields=update_fields)
+
+
+def _sync_report_items_to_tasks_and_projects(report: WeeklyReport) -> None:
+    project_ids: set[int] = set()
+    items = WeeklyReportItem.objects.filter(report_id=report.id)
+    for item in items:
+        task = WeeklyReportTask.objects.filter(id=item.task_id).first()
+        if task is None:
+            continue
+        next_progress = int(item.progress_after or 0)
+        next_status = _derive_task_status(task, next_progress)
+        update_fields = []
+        if int(task.progress or 0) != next_progress:
+            task.progress = next_progress
+            update_fields.append("progress")
+        if float(task.actual_hours or 0) != float(item.actual_hours or 0):
+            task.actual_hours = float(item.actual_hours or 0)
+            update_fields.append("actual_hours")
+        if task.status != next_status:
+            task.status = next_status
+            update_fields.append("status")
+        if next_status != TaskStatus.blocked and task.blocked_reason:
+            task.blocked_reason = ""
+            update_fields.append("blocked_reason")
+        if update_fields:
+            task.save(update_fields=update_fields)
+        project_ids.add(task.project_id)
+    for project_id in project_ids:
+        _refresh_project_status(project_id)
+
+
 def list_my_tasks(
     user_id: int,
     report_year: int,
@@ -128,9 +185,7 @@ def init_my_weekly_report(user_id: int, report_year: int, report_week: int) -> d
     start, end = get_week_period(report_year, report_week)
     report = _get_or_create_report(user_id=user_id, report_year=report_year, report_week=report_week, start=start, end=end)
     tasks = list_my_tasks(user_id, report_year, report_week, filter_changed=True)
-    selected_ids = [t["id"] for t in tasks]
-    tasks_by_id = {t["id"]: t for t in tasks}
-    _ensure_report_items(report.id, selected_ids, tasks_by_id=tasks_by_id)
+    # 不在 init 时预选任务写入 items；由用户在选任务步骤勾选后通过保存草稿落库
     notes, _ = WeeklyReportNotes.objects.get_or_create(
         report_id=report.id,
         defaults={"blockers": "", "support_needed": "", "next_week_focus": "", "ops_work": ""},
@@ -174,6 +229,7 @@ def save_draft(
     return _serialize_report(report)
 
 
+@transaction.atomic
 def submit_report(
     user_id: int, report_year: int, report_week: int, submitted_content: Optional[str] = None
 ) -> dict:
@@ -182,6 +238,7 @@ def submit_report(
         raise ValueError("Report not found, init first")
     if report.status == WeeklyReportStatus.submitted:
         return _serialize_report(report)
+    _sync_report_items_to_tasks_and_projects(report)
     report.status = WeeklyReportStatus.submitted
     report.submitted_at = _now_utc()
     update_fields = ["status", "submitted_at"]
@@ -651,6 +708,57 @@ def update_project(project_id: int, requester_id: int, requester_is_admin: bool,
             due_date=due,
             blocked_reason=row.get("blocked_reason"),
         )
+    return {
+        "id": p.id,
+        "name": p.name,
+        "owner_id": p.owner_id,
+        "created_by": p.created_by,
+        "start_date": p.start_date.isoformat() if p.start_date else None,
+        "end_date": p.end_date.isoformat() if p.end_date else None,
+        "status": p.status,
+        "risk_level": p.risk_level,
+    }
+
+
+@transaction.atomic
+def complete_project(project_id: int, requester_id: int, requester_is_admin: bool) -> dict:
+    p = WeeklyReportProject.objects.filter(id=project_id).first()
+    if p is None:
+        raise ValueError("Project not found")
+    if not _user_can_edit_project(project_id, requester_id, requester_is_admin):
+        raise ValueError("无权限编辑该项目")
+    WeeklyReportTask.objects.filter(project_id=project_id).exclude(
+        status=TaskStatus.done,
+        progress=100,
+    ).update(
+        status=TaskStatus.done,
+        progress=100,
+        blocked_reason="",
+    )
+    _refresh_project_status(project_id)
+    p.refresh_from_db(fields=["status", "risk_level"])
+    return {
+        "id": p.id,
+        "name": p.name,
+        "owner_id": p.owner_id,
+        "created_by": p.created_by,
+        "start_date": p.start_date.isoformat() if p.start_date else None,
+        "end_date": p.end_date.isoformat() if p.end_date else None,
+        "status": p.status,
+        "risk_level": p.risk_level,
+    }
+
+
+@transaction.atomic
+def activate_project(project_id: int, requester_id: int, requester_is_admin: bool) -> dict:
+    p = WeeklyReportProject.objects.filter(id=project_id).first()
+    if p is None:
+        raise ValueError("Project not found")
+    if not _user_can_edit_project(project_id, requester_id, requester_is_admin):
+        raise ValueError("无权限编辑该项目")
+    if p.status != "active":
+        p.status = "active"
+        p.save(update_fields=["status"])
     return {
         "id": p.id,
         "name": p.name,

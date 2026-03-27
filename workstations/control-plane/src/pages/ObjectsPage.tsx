@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Activity, Brain, Cloud, Database, Beaker, FlaskConical, GitBranch, Layers, MapPin, Printer, Search, Server, Shield, Users, Wifi } from 'lucide-react'
+import { Activity, Brain, Cloud, Database, FlaskConical, GitBranch, Layers, MapPin, Printer, Search, Server, Shield, Users, Wifi } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { controlPlaneApi } from '@/api/controlPlane'
@@ -48,17 +48,6 @@ export function ObjectsPage() {
       return matchesKeyword && matchesCategory && matchesStrategy && matchesOwner
     })
   }, [categoryFilter, data, keyword, strategyFilter, ownerFilter])
-
-  const categoryOptions = useMemo(() => {
-    if (!data) return []
-    const seen = new Map<string, string>()
-    data.forEach((item) => {
-      const id = String(item.extra?.management_category_id ?? '')
-      const label = String(item.extra?.management_category ?? '')
-      if (id && label && !seen.has(id)) seen.set(id, label)
-    })
-    return Array.from(seen.entries()).map(([id, label]) => ({ id, label }))
-  }, [data])
 
   const ownerOptions = useMemo(() => {
     if (!data) return []

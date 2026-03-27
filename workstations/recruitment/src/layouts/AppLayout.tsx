@@ -15,6 +15,8 @@ import {
   FileText,
   Heart,
   BarChart3,
+  FileSpreadsheet,
+  CreditCard,
 } from 'lucide-react'
 import { FeishuAuthProvider, useFeishuContext, LoginFallback, createWorkstationFeishuConfig } from '@cn-kis/feishu-sdk'
 import { MobileWorkstationLayout, type MobileWorkstationNavItem } from '@cn-kis/ui-kit'
@@ -25,7 +27,7 @@ const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: '招募看板', permissions: ['subject.recruitment.read'] },
   { to: '/plans', icon: ClipboardList, label: '计划管理', permissions: ['subject.recruitment.read'] },
   { to: '/registrations', icon: UserPlus, label: '报名管理', permissions: ['subject.recruitment.read'] },
-  { to: '/pre-screening', icon: Microscope, label: '粗筛管理', permissions: ['subject.recruitment.read'] },
+  { to: '/pre-screening', icon: Microscope, label: '初筛管理', permissions: ['subject.recruitment.read'] },
   { to: '/screening', icon: Filter, label: '筛选管理', permissions: ['subject.recruitment.read'] },
   { to: '/enrollment', icon: UserCheck, label: '入组确认', permissions: ['subject.recruitment.read'] },
   { to: '/subjects', icon: Users, label: '受试者管理', permissions: ['subject.subject.read'] },
@@ -37,6 +39,8 @@ const navItems = [
   { to: '/questionnaires', icon: FileText, label: '问卷管理', permissions: ['subject.recruitment.read'] },
   { to: '/loyalty', icon: Heart, label: '忠诚度', permissions: ['subject.subject.read'] },
   { to: '/channel-analytics', icon: BarChart3, label: '渠道分析', permissions: ['subject.recruitment.read'] },
+  { to: '/nas-review', icon: FileSpreadsheet, label: 'NAS待审核', permissions: ['subject.subject.read'] },
+  { to: '/nas-payments', icon: CreditCard, label: 'NAS礼金汇总', permissions: ['subject.subject.read'] },
 ]
 
 function useVisibleNavItems(): MobileWorkstationNavItem[] {

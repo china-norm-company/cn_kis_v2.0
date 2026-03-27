@@ -5,7 +5,7 @@
 """
 import logging
 from typing import Optional
-from django.db.models import Q, Count
+from django.db.models import Q
 
 from apps.hr.models import Staff
 from apps.lab_personnel.models import LabStaffProfile, StaffCertificate, MethodQualification

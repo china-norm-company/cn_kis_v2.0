@@ -30,7 +30,7 @@
 import logging
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, List, Optional
 
 from django.db import transaction
 from django.utils import timezone
@@ -338,11 +338,39 @@ class EkbInjector:
 
     def _inject_one(self, raw_rec):
         from apps.ekuaibao_integration.models import (
-            EkbConflict, EkbConflictType, EkbConflictResolution,
-            EkbInjectionLog, EkbInjectionAction,
+            EkbConflict, EkbConflictResolution,
+            EkbInjectionLog,
         )
         module = raw_rec.module
         raw_data = raw_rec.raw_data
+
+        if module == 'invoice_flows':
+            # 发票流水 → 应付记录
+            if self.dry_run:
+                self.stats['injected'] += 1
+                return
+            result = _inject_invoice_flow_as_payable(raw_data)
+            if result:
+                target_obj, action, before_data = result
+                with transaction.atomic():
+                    from apps.ekuaibao_integration.models import EkbInjectionLog
+                    EkbInjectionLog.objects.create(
+                        batch=self.batch, raw_record=raw_rec,
+                        module=module, ekb_id=raw_rec.ekb_id,
+                        target_table=target_obj.__class__._meta.db_table,
+                        target_id=target_obj.id,
+                        action=action, target_workstation='finance',
+                        before_data=before_data, after_data=raw_data,
+                    )
+                    raw_rec.injection_status = 'injected'
+                    raw_rec.save(update_fields=['injection_status'])
+                self.stats['injected'] += 1 if action == 'created' else 0
+                self.stats['updated'] += 1 if action == 'updated' else 0
+            else:
+                raw_rec.injection_status = 'skipped'
+                raw_rec.save(update_fields=['injection_status'])
+                self.stats['skipped'] += 1
+            return
 
         if module != 'flows':
             raw_rec.injection_status = 'skipped'
@@ -658,4 +686,131 @@ def _inject_requisition_as_budget(raw_data: dict):
 
     except Exception as ex:
         logger.error('预算注入失败: %s | code=%s', ex, raw_data.get('code', '?'))
+        return None
+
+
+# ============================================================================
+# 注入函数：invoice_flows → PayableRecord（发票流水 → 应付记录）
+# ============================================================================
+
+def _inject_invoice_flow_as_payable(raw_data: dict):
+    """
+    将易快报发票流水（invoice_flows）注入为应付记录（PayableRecord）。
+
+    invoice_flows 数据结构：
+      - invoiceId: 发票唯一 ID
+      - flowId: 关联的报销单 ID
+      - flowForm.code: 报销单编号（如 B23002017）
+      - invoiceForm.E_system_发票主体_销售方名称: 供应商名称
+      - invoiceForm.E_system_发票主体_价税合计.standard: 含税金额
+      - invoiceForm.E_system_发票主体_税额.standard: 税额
+      - invoiceForm.E_system_发票主体_发票代码 + 发票号码: 发票编号
+      - flowForm.payDate: 支付时间戳（毫秒）
+      - flowForm.state: 单据状态
+    """
+    try:
+        from apps.finance.models_payable import PayableRecord, PayableStatus
+
+        invoice_id = raw_data.get('invoiceId', '')
+        flow_form = raw_data.get('flowForm', {}) or {}
+        invoice_form = raw_data.get('invoiceForm', {}) or {}
+
+        # 发票编号 = 发票代码 + 发票号码（或 invoiceId）
+        inv_code = invoice_form.get('E_system_发票主体_发票代码', '')
+        inv_no = invoice_form.get('E_system_发票主体_发票号码', '')
+        invoice_no = f'{inv_code}-{inv_no}' if inv_code and inv_no else invoice_id[:50]
+
+        # 供应商名称
+        supplier_name = invoice_form.get('E_system_发票主体_销售方名称', '') or '（未知供应商）'
+
+        # 金额：取含税合计
+        total_amt = invoice_form.get('E_system_发票主体_价税合计', {})
+        if isinstance(total_amt, dict):
+            amount = _safe_decimal(total_amt.get('standard', 0))
+        else:
+            amount = _safe_decimal(total_amt)
+
+        # 税额
+        tax_raw = invoice_form.get('E_system_发票主体_税额', {})
+        if isinstance(tax_raw, dict):
+            tax_amount = _safe_decimal(tax_raw.get('standard', 0))
+        else:
+            tax_amount = _safe_decimal(tax_raw)
+
+        if amount <= Decimal('0'):
+            return None  # 跳过零金额发票
+
+        # 到期日：使用报销单支付日期，默认今天
+        due_date_str = _ts_to_date(flow_form.get('payDate')) or _ts_to_date(
+            flow_form.get('submitDate')
+        )
+        if due_date_str:
+            from datetime import date as date_type
+            due_date = date_type.fromisoformat(due_date_str)
+        else:
+            from datetime import date as date_type
+            due_date = date_type.today()
+
+        # 支付状态
+        flow_state = (flow_form.get('state', '') or '').lower()
+        if flow_state in ('paying', 'paid', 'archived'):
+            status = PayableStatus.PAID
+        elif flow_state in ('approving',):
+            status = PayableStatus.APPROVED
+        elif flow_state in ('rejected',):
+            status = PayableStatus.CANCELLED
+        else:
+            status = PayableStatus.PENDING
+
+        # 实付金额
+        pay_raw = flow_form.get('payMoney', {})
+        if isinstance(pay_raw, dict):
+            paid_amount = _safe_decimal(pay_raw.get('standard', 0))
+        else:
+            paid_amount = Decimal('0')
+        paid_date = due_date if status == PayableStatus.PAID and paid_amount > 0 else None
+
+        # 项目名称：从报销单标题或 flowForm 提取
+        project_name = flow_form.get('title', '') or ''
+
+        # 唯一记录号：使用 invoiceId 的后 20 位 + flowForm.code
+        flow_code = flow_form.get('code', '')
+        record_no = f'{flow_code}-{invoice_id[-12:]}' if flow_code else invoice_id[:50]
+
+        # 去重检查
+        existing = PayableRecord.objects.filter(record_no=record_no).first()
+        if existing:
+            before = _model_snapshot(existing)
+            # 更新供应商名称、金额等关键字段
+            existing.supplier_name = supplier_name
+            existing.amount = amount
+            existing.tax_amount = tax_amount
+            existing.invoice_no = invoice_no
+            existing.project_name = project_name
+            existing.payment_status = status
+            if paid_amount > 0:
+                existing.paid_amount = paid_amount
+            if paid_date:
+                existing.paid_date = paid_date
+            existing.save()
+            return existing, 'updated', before
+
+        obj = PayableRecord.objects.create(
+            record_no=record_no,
+            supplier_name=supplier_name,
+            invoice_no=invoice_no,
+            amount=amount,
+            tax_amount=tax_amount,
+            due_date=due_date,
+            payment_status=status,
+            paid_amount=paid_amount if paid_amount > 0 else Decimal('0'),
+            paid_date=paid_date,
+            project_name=project_name,
+            cost_type='project' if project_name else 'other',
+            notes=f'易快报发票流水 | 报销单: {flow_code} | 发票ID: {invoice_id}',
+        )
+        return obj, 'created', {}
+
+    except Exception as ex:
+        logger.error('发票流水注入失败: %s | invoice_id=%s', ex, raw_data.get('invoiceId', '?'))
         return None

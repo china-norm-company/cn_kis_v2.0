@@ -8,10 +8,10 @@ from typing import Optional
 from datetime import date, time, timedelta, datetime
 
 from django.utils import timezone
-from django.db.models import Q, Sum
+from django.db.models import Sum
 
 from apps.hr.models import Staff
-from apps.lab_personnel.models import LabStaffProfile, MethodQualification, MethodQualLevel
+from apps.lab_personnel.models import LabStaffProfile
 from apps.lab_personnel.models_scheduling import (
     ShiftSchedule, ShiftSlot, ShiftSwapRequest,
     ShiftStatus, SlotConfirmStatus,
@@ -207,7 +207,6 @@ def create_slot(
     st = time.fromisoformat(start_time)
     et = time.fromisoformat(end_time)
     if planned_hours is None:
-        from decimal import Decimal
         delta = datetime.combine(shift_date, et) - datetime.combine(shift_date, st)
         planned_hours = round(delta.seconds / 3600, 1)
 

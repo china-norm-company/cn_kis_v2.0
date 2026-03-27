@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 协作文档
+    url: https://github.com/china-norm-company/cn_kis_v2.0/blob/main/docs/CURSOR_COLLABORATION_ONBOARDING.md
+    about: 业务同事协作入门指南
+  - name: 团队工作流
+    url: https://github.com/china-norm-company/cn_kis_v2.0/blob/main/docs/TEAM_WORKFLOW.md
+    about: 团队协作标准流程

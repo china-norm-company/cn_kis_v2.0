@@ -5,7 +5,6 @@
 每道门禁返回通过/不通过 + 未满足条件列表。
 """
 import logging
-from datetime import date
 
 from ..models import Deviation, DeviationStatus, CAPA, CAPAStatus, SOP, SOPStatus
 

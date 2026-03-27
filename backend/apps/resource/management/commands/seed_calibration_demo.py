@@ -10,9 +10,8 @@ Usage:
 - 校准记录（EquipmentCalibration）
 - 校准工单（EquipmentMaintenance type=calibration）
 """
-from datetime import date, timedelta
+from datetime import date
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 
 from apps.resource.models import (
     ResourceCategory, ResourceItem, ResourceType, ResourceStatus,

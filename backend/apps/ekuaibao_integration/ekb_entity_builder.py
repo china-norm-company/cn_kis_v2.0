@@ -13,7 +13,7 @@
 """
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict
 
 logger = logging.getLogger('cn_kis.ekuaibao.entity_builder')
 
@@ -64,7 +64,7 @@ def build_staff_accounts(batch_no: str = '20260318_144803') -> dict:
     并通过审批流反向推导每人的系统角色。
     """
     from apps.ekuaibao_integration.models import EkbRawRecord
-    from apps.identity.models import Account, AccountRole, Role
+    from apps.identity.models import Account, AccountRole
     from apps.hr.models import Staff
 
     stats = {
@@ -839,7 +839,6 @@ def build_knowledge_entries() -> dict:
     触发 ingestion_pipeline 自动向量化。
     """
     from apps.knowledge.ingestion_pipeline import RawKnowledgeInput, run_pipeline
-    from apps.knowledge.models import KnowledgeEntity
 
     stats = {'entries_created': 0, 'entries_skipped': 0}
 
@@ -847,7 +846,7 @@ def build_knowledge_entries() -> dict:
     from apps.protocol.models import Protocol
     from apps.finance.models_expense import ExpenseRequest
     from apps.finance.models import ProjectBudget
-    from django.db.models import Sum, Count
+    from django.db.models import Sum
 
     for protocol in Protocol.objects.filter(is_deleted=False):
         expenses = ExpenseRequest.objects.filter(

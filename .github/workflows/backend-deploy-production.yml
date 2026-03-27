@@ -1,0 +1,192 @@
+# CN KIS V2.0 - 生产环境部署（火山云 118.196.64.48）
+# 触发：由飞书审批群「发布到生产」按钮 → 后端 Webhook → workflow_dispatch
+# 禁止：直接由 main push 自动触发（Tier-0 变更需人工确认）
+#
+# 所需 GitHub Secrets：
+#   VOLC_SSH_KEY       → ~/.ssh/openclaw1.1.pem 内容
+#   FEISHU_APP_ID      → 子衿 App ID
+#   FEISHU_APP_SECRET  → 子衿 App Secret
+#   FEISHU_APPROVAL_CHAT_ID → 审批群 chat_id
+
+name: Deploy V2 Backend to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR 编号'
+        required: true
+        default: ''
+      commit_sha:
+        description: '要部署的 commit SHA'
+        required: true
+        default: ''
+      approver_name:
+        description: '操作人姓名（来自飞书）'
+        required: true
+        default: ''
+      pr_title:
+        description: 'PR 标题（用于通知）'
+        required: false
+        default: ''
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code at commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.commit_sha }}
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VOLC_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H 118.196.64.48 >> ~/.ssh/known_hosts 2>/dev/null
+          echo "SSH 配置完成"
+
+      - name: Test SSH connection
+        run: |
+          ssh -o ConnectTimeout=10 -i ~/.ssh/deploy_key root@118.196.64.48 \
+            "echo '✅ SSH OK'; hostname"
+
+      - name: Sync backend code to production
+        run: |
+          echo "🔄 同步代码到生产服务器..."
+          rsync -avz --delete \
+            --exclude='.env' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='db.sqlite3' \
+            --exclude='media/' \
+            --exclude='staticfiles/' \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+            backend/ \
+            root@118.196.64.48:/opt/cn-kis-v2/backend/
+          echo "✅ 代码同步完成"
+
+      - name: Run migrations
+        run: |
+          ssh -i ~/.ssh/deploy_key root@118.196.64.48 \
+            "cd /opt/cn-kis-v2/backend && ./venv/bin/python manage.py migrate --noinput 2>&1 | tail -10"
+
+      - name: Reload Gunicorn
+        run: |
+          ssh -i ~/.ssh/deploy_key root@118.196.64.48 \
+            "MASTER_PID=\$(pgrep -f 'gunicorn wsgi' | head -1); kill -HUP \$MASTER_PID && echo '✅ Gunicorn reloaded (PID '\$MASTER_PID')'"
+
+      - name: Health check
+        id: health
+        run: |
+          sleep 5
+          STATUS=$(ssh -i ~/.ssh/deploy_key root@118.196.64.48 \
+            "curl -sf http://localhost:8002/api/v1/health 2>/dev/null || echo 'FAIL'")
+          if echo "$STATUS" | grep -q "healthy"; then
+            echo "✅ 健康检查通过"
+            echo "healthy=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ 健康检查失败: $STATUS"
+            echo "healthy=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Notify Feishu on success
+        if: success()
+        uses: actions/github-script@v7
+        env:
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_APPROVAL_CHAT_ID: ${{ secrets.FEISHU_APPROVAL_CHAT_ID }}
+        with:
+          script: |
+            const appId = process.env.FEISHU_APP_ID;
+            const appSecret = process.env.FEISHU_APP_SECRET;
+            const chatId = process.env.FEISHU_APPROVAL_CHAT_ID;
+            if (!appId || !appSecret || !chatId) { core.warning('飞书通知凭据未配置，跳过'); return; }
+
+            const tokenResp = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+            });
+            const { tenant_access_token: token } = await tokenResp.json();
+
+            const prNumber = '${{ github.event.inputs.pr_number }}';
+            const approver = '${{ github.event.inputs.approver_name }}';
+            const prTitle = '${{ github.event.inputs.pr_title }}' || `PR #${prNumber}`;
+            const sha = '${{ github.event.inputs.commit_sha }}'.slice(0, 8);
+
+            const card = {
+              header: { title: { content: `✅ 生产部署成功 · PR #${prNumber}`, tag: 'plain_text' }, template: 'green' },
+              elements: [
+                { tag: 'div', text: { tag: 'lark_md', content: `**${prTitle}**\n\n部署人：${approver}\nCommit：\`${sha}\`\n生产服务器：118.196.64.48 健康检查通过 ✅` }},
+                { tag: 'action', actions: [
+                  { tag: 'button', text: { content: '查看 PR', tag: 'plain_text' }, url: `https://github.com/china-norm-company/cn_kis_v2.0/pull/${prNumber}`, type: 'default' },
+                ]},
+                { tag: 'note', elements: [{ tag: 'plain_text', content: `自动部署 · ${new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})} | CN KIS V2.0` }] },
+              ],
+            };
+            await fetch('https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ receive_id: chatId, msg_type: 'interactive', content: JSON.stringify(card) }),
+            });
+            core.info('飞书部署成功通知已发送');
+
+      - name: Notify Feishu on failure
+        if: failure()
+        uses: actions/github-script@v7
+        env:
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_APPROVAL_CHAT_ID: ${{ secrets.FEISHU_APPROVAL_CHAT_ID }}
+        with:
+          script: |
+            const appId = process.env.FEISHU_APP_ID;
+            const appSecret = process.env.FEISHU_APP_SECRET;
+            const chatId = process.env.FEISHU_APPROVAL_CHAT_ID;
+            if (!appId || !appSecret || !chatId) return;
+
+            const tokenResp = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+            });
+            const { tenant_access_token: token } = await tokenResp.json();
+
+            const prNumber = '${{ github.event.inputs.pr_number }}';
+            const approver = '${{ github.event.inputs.approver_name }}';
+            const runUrl = `https://github.com/china-norm-company/cn_kis_v2.0/actions/runs/${{ github.run_id }}`;
+
+            const card = {
+              header: { title: { content: `⚠️ 生产部署失败 · PR #${prNumber}`, tag: 'plain_text' }, template: 'red' },
+              elements: [
+                { tag: 'div', text: { tag: 'lark_md', content: `部署人：${approver}\n\n**部署失败，服务器状态未知，请立即检查！**\n\n处理方式：在 Cursor 中说「生产部署失败，帮我查看日志」` }},
+                { tag: 'action', actions: [
+                  { tag: 'button', text: { content: '查看错误日志', tag: 'plain_text' }, url: runUrl, type: 'danger' },
+                ]},
+              ],
+            };
+            await fetch('https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ receive_id: chatId, msg_type: 'interactive', content: JSON.stringify(card) }),
+            });
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "## 生产部署结果" >> $GITHUB_STEP_SUMMARY
+          echo "| 项目 | 值 |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| PR | #${{ github.event.inputs.pr_number }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.event.inputs.commit_sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| 操作人 | ${{ github.event.inputs.approver_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 服务器 | 118.196.64.48 |" >> $GITHUB_STEP_SUMMARY
+          echo "| 状态 | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY

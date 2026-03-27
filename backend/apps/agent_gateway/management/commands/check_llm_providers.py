@@ -29,7 +29,6 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        from apps.agent_gateway.models import AgentProvider
         from apps.agent_gateway.services import (
             get_provider_catalog,
             quick_chat,

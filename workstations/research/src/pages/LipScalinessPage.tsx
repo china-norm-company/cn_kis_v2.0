@@ -123,8 +123,11 @@ function ImageEditor({ state, onClose, onSave }: EditorProps) {
   const canvasEditRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
 
+  type ToolMode = 'eraser' | 'brush'
   const [view, setView] = useState<ViewMode>('overlay')
+  const [toolMode, setToolMode] = useState<ToolMode>('eraser')
   const [eraserSize, setEraserSize] = useState(30)
+  const [brushSize, setBrushSize] = useState(20)
   const [scale, setScale] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 })
@@ -209,7 +212,7 @@ function ImageEditor({ state, onClose, onSave }: EditorProps) {
     const iw = w || imgSize.w
     const ih = h || imgSize.h
     if (!iw || !ih) return
-    const s = Math.min(bw / iw, bh / ih, 1)
+    const s = Math.min(bw / (iw * 2 + 12), bh / ih, 1)
     setScale(s)
     setPan({ x: 0, y: 0 })
   }
@@ -223,12 +226,31 @@ function ImageEditor({ state, onClose, onSave }: EditorProps) {
     const editCanvas = canvasEditRef.current
     if (!editCanvas) return
     const ctx = editCanvas.getContext('2d')!
+    const size = toolMode === 'eraser' ? eraserSize : brushSize
     ctx.save()
-    ctx.globalCompositeOperation = 'destination-out'
-    ctx.beginPath()
-    ctx.arc(cx, cy, eraserSize, 0, Math.PI * 2)
-    ctx.fillStyle = 'rgba(0,0,0,1)'
-    ctx.fill()
+    if (toolMode === 'eraser') {
+      ctx.globalCompositeOperation = 'destination-out'
+      ctx.beginPath()
+      ctx.arc(cx, cy, size, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(0,0,0,1)'
+      ctx.fill()
+    } else {
+      ctx.globalCompositeOperation = 'source-over'
+      ctx.fillStyle = 'rgba(0, 80, 255, 1)'
+      const numBlobs = Math.max(4, Math.floor((size * size) / 18))
+      for (let i = 0; i < numBlobs; i++) {
+        const angle = Math.random() * Math.PI * 2
+        const r = Math.sqrt(Math.random()) * size * 0.9
+        const bx = cx + Math.cos(angle) * r
+        const by = cy + Math.sin(angle) * r
+        const bw = 1.5 + Math.random() * 5
+        const bh = bw * (0.4 + Math.random() * 0.8)
+        const rot = Math.random() * Math.PI
+        ctx.beginPath()
+        ctx.ellipse(bx, by, bw, bh, rot, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
     ctx.restore()
   }
 
@@ -354,6 +376,8 @@ function ImageEditor({ state, onClose, onSave }: EditorProps) {
       if (e.code === 'Space') { setSpaceDown(true); e.preventDefault() }
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo() }
       if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo() }
+      if (!e.ctrlKey && !e.metaKey && e.key === 'e') setToolMode('eraser')
+      if (!e.ctrlKey && !e.metaKey && e.key === 'b') setToolMode('brush')
     }
     function onKeyUp(e: KeyboardEvent) { if (e.code === 'Space') setSpaceDown(false) }
     window.addEventListener('keydown', onKeyDown)
@@ -374,30 +398,37 @@ function ImageEditor({ state, onClose, onSave }: EditorProps) {
           <span className="text-slate-100 font-semibold text-sm truncate max-w-48">{state.filename}</span>
           <div className="w-px h-6 bg-slate-600 mx-1" />
 
-          {/* 视图 */}
-          {(['overlay', 'blue', 'original'] as ViewMode[]).map(v => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-                view === v ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
-            >
-              {v === 'overlay' && <><Layers className="w-3 h-3" />叠加</>}
-              {v === 'blue' && <><Image className="w-3 h-3" />蓝色标注</>}
-              {v === 'original' && <><Image className="w-3 h-3" />原图</>}
-            </button>
-          ))}
           <div className="w-px h-6 bg-slate-600 mx-1" />
 
-          {/* 橡皮擦大小 */}
-          <span className="text-slate-400 text-xs">橡皮擦</span>
+          {/* 工具切换 */}
+          <button
+            onClick={() => setToolMode('eraser')}
+            title="橡皮擦：清除误标注区域（快捷键 E）"
+            className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+              toolMode === 'eraser' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+            }`}
+          >
+            🧹 橡皮擦
+          </button>
+          <button
+            onClick={() => setToolMode('brush')}
+            title="画笔：手动增加脱屑标注（快捷键 B）"
+            className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+              toolMode === 'brush' ? 'bg-orange-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+            }`}
+          >
+            🖊 画笔
+          </button>
+          <span className="text-slate-400 text-xs">{toolMode === 'eraser' ? '橡皮擦' : '画笔'}大小</span>
           <input
-            type="range" min={5} max={120} value={eraserSize}
-            onChange={e => setEraserSize(+e.target.value)}
+            type="range" min={5} max={120}
+            value={toolMode === 'eraser' ? eraserSize : brushSize}
+            onChange={e => toolMode === 'eraser' ? setEraserSize(+e.target.value) : setBrushSize(+e.target.value)}
             className="w-20 accent-blue-500"
           />
-          <span className="text-slate-100 text-xs font-bold w-7">{eraserSize}px</span>
+          <span className="text-slate-100 text-xs font-bold w-7">
+            {toolMode === 'eraser' ? eraserSize : brushSize}px
+          </span>
           <div className="w-px h-6 bg-slate-600 mx-1" />
 
           {/* 撤销/重做/重置 */}
@@ -445,7 +476,7 @@ function ImageEditor({ state, onClose, onSave }: EditorProps) {
         {/* 画布区域 */}
         <div
           id="editor-body-inner"
-          className="flex-1 overflow-hidden relative flex items-center justify-center bg-slate-950"
+          className="flex-1 overflow-hidden relative bg-slate-950"
           onWheel={e => {
             e.preventDefault()
             setScale(s => Math.min(Math.max(s + (e.deltaY > 0 ? -0.12 : 0.12), 0.1), 8))
@@ -461,16 +492,50 @@ function ImageEditor({ state, onClose, onSave }: EditorProps) {
           <div
             ref={wrapRef}
             style={{
-              transform: `translate(${pan.x}px,${pan.y}px) scale(${scale})`,
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              marginLeft: imgSize.w ? -((imgSize.w * 2 + 12) / 2) : 0,
+              marginTop: imgSize.h ? -(imgSize.h / 2) : 0,
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
               transformOrigin: 'center center',
-              position: 'relative',
+              display: 'flex',
+              gap: 12,
+              alignItems: 'flex-start',
               userSelect: 'none',
             }}
           >
+            {/* 左侧：原图参考（只读） */}
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <div style={{
+                position: 'absolute', top: -22, left: 0,
+                color: '#94a3b8', fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap',
+                background: 'rgba(15,23,42,0.85)', padding: '2px 8px', borderRadius: 4,
+              }}>
+                原图（参考）
+              </div>
+              {state.origUrl && imgSize.w > 0 && (
+                <img
+                  src={state.origUrl}
+                  style={{ display: 'block', width: imgSize.w, height: imgSize.h, borderRadius: 4 }}
+                  draggable={false}
+                />
+              )}
+            </div>
+
+            {/* 右侧：蓝色叠加（可编辑） */}
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <div style={{
+                position: 'absolute', top: -22, left: 0,
+                color: '#60a5fa', fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap',
+                background: 'rgba(15,23,42,0.85)', padding: '2px 8px', borderRadius: 4,
+              }}>
+                蓝色叠加（可编辑）
+              </div>
             <canvas ref={canvasBgRef} style={{ display: 'block', borderRadius: 4 }} />
             <canvas
               ref={canvasEditRef}
-              style={{ position: 'absolute', top: 0, left: 0, borderRadius: 4, opacity: 0.85, cursor: spaceDown ? 'grab' : 'crosshair' }}
+              style={{ position: 'absolute', top: 0, left: 0, borderRadius: 4, opacity: 0.85, cursor: spaceDown ? 'grab' : toolMode === 'brush' ? 'cell' : 'crosshair' }}
               onMouseDown={e => {
                 if (spaceDown) return
                 e.preventDefault()
@@ -505,9 +570,10 @@ function ImageEditor({ state, onClose, onSave }: EditorProps) {
                 }
               }}
             />
+            </div>{/* 右侧面板结束 */}
           </div>
           <div className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-slate-800/90 text-slate-400 text-xs px-3 py-1.5 rounded pointer-events-none whitespace-nowrap">
-            🖱 滚轮缩放 · 按住空格拖动画布 · 橡皮擦涂抹清除标注
+            🖱 滚轮缩放 · 空格拖动 · {toolMode === 'eraser' ? '🧹 橡皮擦清除标注（E）' : '🖊 画笔新增蓝色标注（B）'}
           </div>
         </div>
 
@@ -515,7 +581,9 @@ function ImageEditor({ state, onClose, onSave }: EditorProps) {
         <div className="flex-shrink-0 h-8 bg-slate-950 border-t border-slate-800 flex items-center gap-4 px-4 text-xs text-slate-500">
           <span>脱屑占比：<span className="text-blue-400 font-semibold">{currentPct}%</span></span>
           {hasEdits && <span className="text-amber-500">⚠ 已手动编辑（未保存）</span>}
-          <span className="ml-auto">Ctrl+Z 撤销 · Ctrl+Y 重做 · 滚轮缩放</span>
+          <span className="text-slate-600">|</span>
+          <span>当前工具：<span className={toolMode === 'brush' ? 'text-orange-400 font-semibold' : 'text-slate-300 font-semibold'}>{toolMode === 'eraser' ? '🧹 橡皮擦' : '🖊 画笔'}</span></span>
+          <span className="ml-auto">E 橡皮擦 · B 画笔 · Ctrl+Z 撤销 · Ctrl+Y 重做 · 滚轮缩放</span>
         </div>
       </div>
 

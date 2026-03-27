@@ -66,7 +66,7 @@ if not is_registration_done():
     from apps.subject.api_prescreening import router as prescreening_router
     from apps.subject.api_reception import router as reception_router
     _safe_add_router(api, '/recruitment/', recruitment_router, tags=['招募管理'])
-    _safe_add_router(api, '/pre-screening/', prescreening_router, tags=['粗筛管理'])
+    _safe_add_router(api, '/pre-screening/', prescreening_router, tags=['初筛管理'])
     _safe_add_router(api, '/reception/', reception_router, tags=['前台接待'])
     _safe_add_router(api, '/execution/', execution_router, tags=['执行管理'])
     _safe_add_router(api, '/my/', my_router, tags=['受试者自助'])
@@ -108,6 +108,9 @@ if not is_registration_done():
     _safe_add_router(api, '/crm/', crm_router, tags=['客户服务'])
     _safe_add_router(api, '/resource/', resource_router, tags=['资源管理'])
     _safe_add_router(api, '/proposal/', proposal_router, tags=['方案准备'])
+
+    from apps.data_intake.api import router as data_intake_router
+    _safe_add_router(api, '/data-intake/', data_intake_router, tags=['外部数据入库'])
 
     from apps.resource.api_equipment import router as equipment_router
     _safe_add_router(api, '/equipment/', equipment_router, tags=['设备管理'])
@@ -190,15 +193,24 @@ if not is_registration_done():
     _safe_add_router(api, '/closeout/', closeout_router, tags=['结项管理'])
     _safe_add_router(api, '/knowledge/', knowledge_router, tags=['知识库'])
 
+    from apps.knowledge.api_system_pulse import router as system_pulse_router
+    _safe_add_router(api, '/internal/', system_pulse_router, tags=['系统脉搏'])
+
     from apps.secretary.api import router as secretary_router, mail_router as secretary_mail_router
     _safe_add_router(api, '/dashboard/', secretary_router, tags=['秘书工作台'])
     _safe_add_router(api, '/', secretary_mail_router, tags=['邮件信号'])
+    from apps.secretary.api_feedback import router as feedback_webhook_router
+    _safe_add_router(api, '/secretary/', feedback_webhook_router, tags=['用户反馈 Webhook'])
     from apps.secretary.digital_workforce_api import router as digital_workforce_router
     _safe_add_router(api, '/digital-workforce/', digital_workforce_router, tags=['中书·数字员工中心'])
     _safe_add_router(api, '/', secretary_mail_router, tags=['邮件信号'])
 
     from apps.claw.api import router as claw_router
     _safe_add_router(api, '/claw/', claw_router, tags=['Claw数据总线'])
+
+    # 图像分析（唇部脱屑等）
+    from apps.image_analysis.api import router as image_analysis_router
+    _safe_add_router(api, '/lip-scaliness/', image_analysis_router, tags=['图像分析'])
 
     set_registration_done()
 
@@ -301,9 +313,13 @@ from django.urls import path
 from django.conf.urls.static import static
 from apps.agent_gateway.views_sse import chat_stream
 
+from apps.notification.api_feishu_card_action import feishu_card_action_webhook
+
 urlpatterns = [
     path('api/v1/', api.urls),
     path('api/v1/agents/chat/stream', chat_stream),
+    # 飞书卡片交互回调（免认证，供飞书服务器直接 POST）
+    path('api/v1/webhooks/feishu/card-action/', feishu_card_action_webhook),
 ]
 
 if django_settings.DEBUG:

@@ -39,6 +39,8 @@ export type {
   // Recruitment
   RecruitmentPlan,
   RecruitmentPlanCreateIn,
+  RecruitTemplateAd,
+  RecruitmentAppointmentDocItem,
   EligibilityCriteria,
   RecruitmentChannel,
   ChannelEvaluation,
@@ -155,12 +157,16 @@ export type {
   PreScreeningDraftIn,
   PreScreeningSummary,
   PreScreeningFunnel,
+  PreScreeningSyncFromAppointmentsResult,
 } from './modules/prescreening'
 export { receptionApi } from './modules/reception'
 export type {
   QueueItem,
+  QueueList,
   TodayQueue,
   TodayStats,
+  TodayQueueProjectSummary,
+  TodayQueueProjectSummaryItem,
   CheckinResult,
   DisplayBoard,
   FlowcardData,

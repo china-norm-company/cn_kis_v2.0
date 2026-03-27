@@ -14,6 +14,22 @@ Closes #
 - 涉及接口：
 - 涉及数据库迁移：[ ] 是  [ ] 否
 
+### 工作台上线波次
+
+> 本 PR 所属工作台当前处于哪个上线波次？（参考 `docs/WORKSTATION_LAUNCH_WAVES.md`）
+
+[ ] **Wave A — 可推广**（secretary / research / recruitment / admin）
+[ ] **Wave B — 试点陪跑**（execution / quality / finance / digital-workforce）
+[ ] **Wave C — 继续建设**（其余工作台）
+[ ] **中枢台联动**（同时涉及 secretary + admin + digital-workforce + control-plane 中的 ≥2 个）
+[ ] **基础设施/公共**（CI/CD、配置、文档，不直接归属某个工作台）
+
+### 角色价值验证（Wave A/B 必填，Wave C 可选）
+
+- 本 PR 服务的第一角色：（如：项目经理、招募专员）
+- 该角色的受益场景：（如：30 秒内看到今日待跟进受试者清单）
+- 验证方式：（如：截图 / curl 输出 / Django shell 验证）
+
 ### V2 迁移波次
 
 [ ] Wave 0 — 治理底座  
@@ -43,6 +59,10 @@ Closes #
 - [ ] 本 PR 不向生产知识资产执行无保护写操作
 - [ ] content_hash 去重逻辑已保留
 
+### 工作台注册表（如本 PR 涉及 workstations.yaml / identity/api.py / seed_roles.py）
+
+- [ ] 已运行 `python3 ops/scripts/workstation_consistency_check.py` 并通过（19 个工作台全部一致）
+
 ---
 
 ## 测试步骤与结果
@@ -58,6 +78,17 @@ Closes #
 风险点：<描述可能的风险>
 
 回滚方案：<如何回滚，例如 `git revert` 或 migration rollback 命令>
+
+---
+
+### 学习循环影响（如本 PR 涉及数据导入、知识库或智能体）
+
+- [ ] 此 PR 改进了导入管线的学习能力（新增/改进 LearningReport 字段）
+- [ ] 此 PR 关闭了一个 `data-insight` Issue（请在"关联 Issue"中填写）
+- [ ] 此 PR 更新了 `docs/LEARNING_LOOP_STATUS.md` 中的 KPI 基线
+
+关闭的数据洞察 Issue：#  
+预期 KPI 变化（如适用）：
 
 ---
 

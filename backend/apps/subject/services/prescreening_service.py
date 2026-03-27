@@ -1,8 +1,8 @@
 """
-粗筛管理服务
+初筛管理服务
 
-覆盖：粗筛发起（受试者建档）、草稿保存、完成判定、PI 复核、漏斗统计。
-粗筛数据复用 Subject 模型体系（profile / domain / timeseries），
+覆盖：初筛发起（受试者建档）、草稿保存、完成判定、PI 复核、漏斗统计。
+初筛数据复用 Subject 模型体系（profile / domain / timeseries），
 本服务管理 PreScreeningRecord 及其与上下游模型的状态协调。
 """
 import logging
@@ -18,14 +18,14 @@ from ..models_domain import SkinProfile
 from ..models_recruitment import (
     SubjectRegistration, RegistrationStatus,
     PreScreeningRecord, PreScreeningResult,
-    EligibilityCriteria,
 )
+from .prescreening_appointment_sync import sync_after_prescreening_state_change
 
 logger = logging.getLogger(__name__)
 
 
 def _generate_pre_screening_no() -> str:
-    """生成粗筛编号 PS-YYYYMMDD-NNNN"""
+    """生成初筛编号 PS-YYYYMMDD-NNNN"""
     now = timezone.now()
     prefix = f'PS-{now.strftime("%Y%m%d")}-'
     last = (
@@ -48,15 +48,104 @@ def _generate_subject_no() -> str:
     return f'{prefix}{seq:04d}'
 
 
+def _find_registration_for_protocol(subject: Subject, protocol_id: int) -> Optional[SubjectRegistration]:
+    """按受试者手机号与协议匹配招募报名（同一协议下多计划时取最新一条）。"""
+    from .subject_service import normalize_subject_phone
+
+    mob = normalize_subject_phone(subject.phone)
+    qs = (
+        SubjectRegistration.objects.select_related('plan')
+        .filter(plan__protocol_id=protocol_id)
+        .order_by('-create_time')
+    )
+    for reg in qs:
+        if mob and normalize_subject_phone(reg.phone) == mob:
+            return reg
+        if not mob and (reg.phone or '').strip() == (subject.phone or '').strip():
+            return reg
+    return None
+
+
+IMPORT_SYNC_PROTOCOL_CODE = '__IMPORT_SYNC__'
+IMPORT_SYNC_PLAN_NO = 'PLAN-IMPORT-SYNC-001'
+
+
+def _ensure_import_sync_protocol_and_plan():
+    """
+    占位协议 + 占位招募计划：用于「从预约同步」且不校验真实 Protocol.code 时挂接初筛记录。
+    勿删；真实项目编号写在初筛备注 [导入同步] 中。
+    """
+    from apps.protocol.models import Protocol, ProtocolStatus
+    from ..models_recruitment import RecruitmentPlan, RecruitmentPlanStatus
+
+    proto, _ = Protocol.objects.get_or_create(
+        code=IMPORT_SYNC_PROTOCOL_CODE,
+        defaults={
+            'title': '预约导入同步（占位协议）',
+            'status': ProtocolStatus.ACTIVE,
+        },
+    )
+    plan, _ = RecruitmentPlan.objects.get_or_create(
+        plan_no=IMPORT_SYNC_PLAN_NO,
+        defaults={
+            'protocol': proto,
+            'title': '预约导入同步计划',
+            'description': '用于预约管理导入名单同步初筛，不绑定真实协议编号',
+            'target_count': 999999,
+            'start_date': date(2020, 1, 1),
+            'end_date': date(2099, 12, 31),
+            'status': RecruitmentPlanStatus.ACTIVE,
+        },
+    )
+    if plan.protocol_id != proto.id:
+        plan.protocol = proto
+        plan.save(update_fields=['protocol_id', 'update_time'])
+    return proto, plan
+
+
+def _pick_or_create_registration_for_import_sync(subject: Subject, plan: 'RecruitmentPlan') -> SubjectRegistration:
+    """在占位计划下，按手机号复用可发起初筛的报名；否则新建一条。"""
+    from .recruitment_service import _generate_registration_no
+    from .subject_service import normalize_subject_phone
+    from ..models_recruitment import RecruitmentPlan
+
+    mob = normalize_subject_phone(subject.phone)
+    qs = SubjectRegistration.objects.filter(plan_id=plan.id).order_by('-create_time')
+    regs = list(qs)
+    if mob:
+        regs = [r for r in regs if normalize_subject_phone(r.phone) == mob]
+    else:
+        regs = [r for r in regs if (r.phone or '').strip() == (subject.phone or '').strip()]
+
+    for reg in regs:
+        if PreScreeningRecord.objects.filter(
+            registration=reg, result=PreScreeningResult.PENDING,
+        ).exists():
+            continue
+        if reg.status in (RegistrationStatus.REGISTERED, RegistrationStatus.CONTACTED):
+            return reg
+
+    return SubjectRegistration.objects.create(
+        plan=plan,
+        registration_no=_generate_registration_no(),
+        name=(subject.name or '受试者').strip() or '受试者',
+        gender=subject.gender or '',
+        age=subject.age,
+        phone=subject.phone or '',
+        status=RegistrationStatus.CONTACTED,
+    )
+
+
 @transaction.atomic
 def start_pre_screening(
     registration_id: int,
     protocol_id: int,
     screener_id: int,
     created_by_id: Optional[int] = None,
+    pre_screening_date: Optional[date] = None,
 ) -> dict:
     """
-    发起粗筛：
+    发起初筛：
     1. 创建 Subject（如新受试者）+ SubjectProfile + SkinProfile
     2. 创建 PreScreeningRecord
     3. 更新 SubjectRegistration 状态
@@ -69,7 +158,7 @@ def start_pre_screening(
             ).first()
             if existing:
                 return _record_to_dict(existing)
-        raise ValueError(f'报名状态 [{reg.get_status_display()}] 不允许发起粗筛')
+        raise ValueError(f'报名状态 [{reg.get_status_display()}] 不允许发起初筛')
 
     subject = Subject.objects.filter(phone=reg.phone, is_deleted=False).first()
     if not subject:
@@ -89,12 +178,13 @@ def start_pre_screening(
         subject.status = SubjectStatus.PRE_SCREENING
         subject.save(update_fields=['status', 'update_time'])
 
+    ps_date = pre_screening_date or timezone.localdate()
     record = PreScreeningRecord.objects.create(
         registration=reg,
         subject=subject,
         protocol_id=protocol_id,
         pre_screening_no=_generate_pre_screening_no(),
-        pre_screening_date=timezone.localdate(),
+        pre_screening_date=ps_date,
         start_time=timezone.now(),
         screener_id=screener_id,
         created_by_id=created_by_id or screener_id,
@@ -103,25 +193,127 @@ def start_pre_screening(
     reg.status = RegistrationStatus.PRE_SCREENING
     reg.save(update_fields=['status', 'update_time'])
 
-    logger.info('粗筛发起: %s -> subject=%s', record.pre_screening_no, subject.subject_no)
+    logger.info('初筛发起: %s -> subject=%s', record.pre_screening_no, subject.subject_no)
     return _record_to_dict(record)
+
+
+def sync_prescreening_from_appointments(
+    *,
+    target_date: Optional[date] = None,
+    screener_id: int,
+    created_by_id: Optional[int] = None,
+) -> dict:
+    """
+    将预约管理中的预约（全部访视点），按受试者 + 项目编号对齐协议与报名后发起初筛记录。
+
+    - 仅处理 appointment_date = target_date（默认本地今日），不限定访视点；
+    - 排除已取消预约；
+    - 同一受试者 + 同一协议当日只发起一条；
+    - 需存在 SubjectRegistration（手机号与 Protocol.code 对应计划一致）且尚无待评估初筛记录。
+    """
+    from apps.protocol.models import Protocol
+    from ..models_execution import SubjectAppointment, AppointmentStatus
+
+    day = target_date or timezone.localdate()
+    created = 0
+    skipped = 0
+    errors: list[dict] = []
+
+    appts = (
+        SubjectAppointment.objects.filter(appointment_date=day)
+        .exclude(status=AppointmentStatus.CANCELLED)
+        .select_related('subject')
+        .order_by('id')
+    )
+
+    seen: set[tuple[int, int]] = set()
+
+    for appt in appts:
+        subject = appt.subject
+        if not subject:
+            continue
+        pc = (appt.project_code or '').strip()
+        if not pc:
+            errors.append({'appointment_id': appt.id, 'msg': '项目编号为空'})
+            continue
+
+        protocol = Protocol.objects.filter(code=pc, is_deleted=False).first()
+        if not protocol:
+            errors.append({'appointment_id': appt.id, 'msg': f'未找到协议编号「{pc}」'})
+            continue
+
+        key = (subject.id, protocol.id)
+        if key in seen:
+            skipped += 1
+            continue
+        seen.add(key)
+
+        reg = _find_registration_for_protocol(subject, protocol.id)
+        if not reg:
+            errors.append({
+                'appointment_id': appt.id,
+                'subject_id': subject.id,
+                'msg': '无对应招募报名（请确认手机号与该协议下报名一致）',
+            })
+            continue
+
+        if PreScreeningRecord.objects.filter(
+            registration=reg,
+            result=PreScreeningResult.PENDING,
+        ).exists():
+            skipped += 1
+            continue
+
+        try:
+            start_pre_screening(
+                registration_id=reg.id,
+                protocol_id=protocol.id,
+                screener_id=screener_id,
+                created_by_id=created_by_id,
+                pre_screening_date=day,
+            )
+            created += 1
+        except Exception as e:
+            errors.append({
+                'appointment_id': appt.id,
+                'subject_id': subject.id,
+                'msg': str(e),
+            })
+
+    logger.info(
+        '初筛同步(预约全访视点): date=%s created=%s skipped=%s errors=%s',
+        day, created, skipped, len(errors),
+    )
+    return {'target_date': str(day), 'created': created, 'skipped': skipped, 'errors': errors}
 
 
 def list_pre_screenings(
     *,
     pre_screening_date: Optional[date] = None,
+    pre_screening_date_from: Optional[date] = None,
+    pre_screening_date_to: Optional[date] = None,
     result: Optional[str] = None,
     plan_id: Optional[int] = None,
     screener_id: Optional[int] = None,
     page: int = 1,
     page_size: int = 20,
 ) -> dict:
-    """粗筛记录列表"""
+    """初筛记录列表"""
     qs = PreScreeningRecord.objects.select_related(
         'subject', 'registration', 'protocol',
     ).order_by('-create_time')
 
-    if pre_screening_date:
+    if pre_screening_date_from is not None or pre_screening_date_to is not None:
+        if pre_screening_date_from is not None and pre_screening_date_to is not None:
+            qs = qs.filter(
+                pre_screening_date__gte=pre_screening_date_from,
+                pre_screening_date__lte=pre_screening_date_to,
+            )
+        elif pre_screening_date_from is not None:
+            qs = qs.filter(pre_screening_date=pre_screening_date_from)
+        else:
+            qs = qs.filter(pre_screening_date__lte=pre_screening_date_to)
+    elif pre_screening_date:
         qs = qs.filter(pre_screening_date=pre_screening_date)
     if result:
         qs = qs.filter(result=result)
@@ -137,7 +329,7 @@ def list_pre_screenings(
 
 
 def get_pre_screening_detail(record_id: int) -> dict:
-    """粗筛记录详情"""
+    """初筛记录详情"""
     record = PreScreeningRecord.objects.select_related(
         'subject', 'registration', 'protocol',
     ).get(id=record_id)
@@ -146,10 +338,10 @@ def get_pre_screening_detail(record_id: int) -> dict:
 
 @transaction.atomic
 def save_pre_screening_draft(record_id: int, data: dict) -> dict:
-    """保存粗筛草稿（各检查模块的聚合数据）"""
+    """保存初筛草稿（各检查模块的聚合数据）"""
     record = PreScreeningRecord.objects.get(id=record_id)
     if record.result != PreScreeningResult.PENDING:
-        raise ValueError('粗筛已完成，不允许修改草稿')
+        raise ValueError('初筛已完成，不允许修改草稿')
 
     updatable_fields = [
         'hard_exclusion_checks', 'skin_visual_assessment',
@@ -177,7 +369,7 @@ def complete_pre_screening(
     notes: Optional[str] = None,
 ) -> dict:
     """
-    完成粗筛判定：
+    完成初筛判定：
     - pass: 更新 Registration → pre_screened_pass, Subject → pre_screened
     - fail: 更新 Registration → pre_screened_fail, Subject → disqualified
     - pending: 等待 PI 复核（状态暂不变）
@@ -188,13 +380,13 @@ def complete_pre_screening(
     ).get(id=record_id)
 
     if record.result != PreScreeningResult.PENDING:
-        raise ValueError('粗筛已完成，不允许重复提交')
+        raise ValueError('初筛已完成，不允许重复提交')
 
     if result not in [c[0] for c in PreScreeningResult.choices if c[0] != 'pending']:
-        raise ValueError(f'无效的粗筛结果: {result}')
+        raise ValueError(f'无效的初筛结果: {result}')
 
     if result in ('fail', 'refer') and not fail_reasons:
-        raise ValueError('粗筛不通过或推荐时必须填写原因')
+        raise ValueError('初筛不通过或推荐时必须填写原因')
 
     record.result = result
     record.end_time = timezone.now()
@@ -218,7 +410,7 @@ def complete_pre_screening(
             create_screening(registration_id=reg.id)
             reg.status = RegistrationStatus.SCREENING if hasattr(RegistrationStatus, 'SCREENING') else reg.status
             reg.save(update_fields=['status', 'update_time'])
-            logger.info('粗筛通过→自动创建筛选记录: reg=%s', reg.registration_no)
+            logger.info('初筛通过→自动创建筛选记录: reg=%s', reg.registration_no)
         except Exception:
             logger.warning('自动创建筛选记录失败', exc_info=True)
     elif result in (PreScreeningResult.FAIL, PreScreeningResult.REFER):
@@ -227,7 +419,7 @@ def complete_pre_screening(
         subject.status = SubjectStatus.DISQUALIFIED
         subject.save(update_fields=['status', 'update_time'])
 
-    # 粗筛补偿→自动创建支付记录
+    # 初筛补偿→自动创建支付记录
     compensation = getattr(record, 'compensation_amount', None)
     if compensation and float(compensation) > 0:
         try:
@@ -237,25 +429,26 @@ def complete_pre_screening(
                 payment_type='transportation',
                 amount=compensation,
                 status='pending',
-                notes=f'粗筛交通补贴 ({record.pre_screening_no})',
+                notes=f'初筛交通补贴 ({record.pre_screening_no})',
             )
-            logger.info('粗筛补偿→自动创建支付: subject=%s, amount=%s', subject.id, compensation)
+            logger.info('初筛补偿→自动创建支付: subject=%s, amount=%s', subject.id, compensation)
         except Exception:
-            logger.warning('自动创建粗筛补偿支付失败', exc_info=True)
+            logger.warning('自动创建初筛补偿支付失败', exc_info=True)
 
     try:
         from .recruitment_notify import notify_pre_screening_result
         notify_pre_screening_result(record)
     except Exception:
-        logger.warning('粗筛通知发送失败', exc_info=True)
+        logger.warning('初筛通知发送失败', exc_info=True)
 
     try:
         from libs.wechat_notification import notify_screening_result_to_subject
-        notify_screening_result_to_subject(reg, result, stage='粗筛')
+        notify_screening_result_to_subject(reg, result, stage='初筛')
     except Exception:
-        logger.warning('微信粗筛结果通知发送失败', exc_info=True)
+        logger.warning('微信初筛结果通知发送失败', exc_info=True)
 
-    logger.info('粗筛完成: %s result=%s', record.pre_screening_no, result)
+    logger.info('初筛完成: %s result=%s', record.pre_screening_no, result)
+    sync_after_prescreening_state_change(record, source='complete')
     return _record_to_dict(record)
 
 
@@ -266,13 +459,13 @@ def review_pre_screening(
     notes: str,
     reviewer_id: int,
 ) -> dict:
-    """PI 复核粗筛"""
+    """PI 复核初筛"""
     record = PreScreeningRecord.objects.select_related(
         'subject', 'registration',
     ).get(id=record_id)
 
     if record.result != PreScreeningResult.PENDING:
-        raise ValueError('仅待评估状态的粗筛可以复核')
+        raise ValueError('仅待评估状态的初筛可以复核')
 
     if decision not in ('pass', 'fail'):
         raise ValueError('复核结果必须为 pass 或 fail')
@@ -304,12 +497,13 @@ def review_pre_screening(
         'reviewer_id', 'reviewed_at', 'end_time', 'update_time',
     ])
 
-    logger.info('粗筛复核: %s decision=%s by %s', record.pre_screening_no, decision, reviewer_id)
+    logger.info('初筛复核: %s decision=%s by %s', record.pre_screening_no, decision, reviewer_id)
+    sync_after_prescreening_state_change(record, source='review')
     return _record_to_dict(record)
 
 
 def get_today_summary() -> dict:
-    """今日粗筛摘要统计"""
+    """今日初筛摘要统计"""
     today = timezone.localdate()
     qs = PreScreeningRecord.objects.filter(pre_screening_date=today)
     stats = qs.aggregate(
@@ -328,7 +522,7 @@ def get_today_summary() -> dict:
 
 
 def get_pre_screening_funnel(plan_id: Optional[int] = None) -> dict:
-    """获取包含粗筛环节的招募漏斗数据"""
+    """获取包含初筛环节的招募漏斗数据"""
     reg_qs = SubjectRegistration.objects.all()
     if plan_id:
         reg_qs = reg_qs.filter(plan_id=plan_id)

@@ -23,6 +23,9 @@ django-cors-headers>=4.3.0
 requests>=2.31.0
 httpx>=0.25.0
 
+# LIMS 采集登录解密（fetch_lims_data）
+pycryptodome>=3.20.0
+
 # 日志
 loguru>=0.7.0
 python-json-logger>=2.0.0
@@ -58,3 +61,10 @@ volcengine-python-sdk[ark]>=5.0.9
 
 # 监控（可选）
 sentry-sdk>=2.0.0
+
+# LIMS 数据采集
+playwright>=1.40.0       # 浏览器自动化，用于 JS 渲染的 LIMS 页面（需 playwright install chromium）
+pycryptodome>=3.19.0     # LIMS RSA 登录密码加密
+
+# 图像分析（研究台·唇部脱屑检测）
+opencv-python-headless>=4.8.0  # 无 GUI 版 OpenCV，用于图像处理（cv2）

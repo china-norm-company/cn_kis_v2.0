@@ -4,9 +4,7 @@
 包含：时序数据 CRUD、时间线聚合查询、RWE 数据脱敏导出。
 """
 import logging
-from typing import Optional
 from datetime import datetime, timedelta
-from itertools import chain
 from django.utils import timezone
 
 from ..models_timeseries import (
@@ -205,7 +203,7 @@ def get_subject_journey(subject_id: int, date_from: datetime = None, date_to: da
             events.append({
                 'stage': 'pre_screening',
                 'time': pre.create_time.isoformat(),
-                'title': '粗筛结果',
+                'title': '初筛结果',
                 'status': pre.result,
             })
         scr = ScreeningRecord.objects.filter(registration=reg).order_by('-create_time').first()

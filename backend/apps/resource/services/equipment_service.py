@@ -4,20 +4,19 @@
 覆盖设备台账、校准管理、维护工单、使用记录、操作授权、检测方法的完整业务逻辑。
 """
 import logging
-from datetime import date, timedelta, datetime
+from datetime import date, timedelta
 from typing import Optional
-from django.db.models import Q, Count, Avg, F, Value, CharField
-from django.db.models.functions import Coalesce
+from django.db.models import Q, Count, Avg, F, Value, CharField, TextField
+from django.db.models.functions import Coalesce, Cast
 from django.utils import timezone
 
 from ..models import (
-    ResourceItem, ResourceCategory, ResourceStatus, ResourceType,
+    ResourceItem, ResourceStatus, ResourceType,
     EquipmentCalibration, EquipmentVerification, EquipmentMaintenance, EquipmentUsage,
     EquipmentAuthorization,
 )
 from ..models_detection_method import (
     DetectionMethodTemplate, DetectionMethodResource, DetectionMethodPersonnel,
-    MethodStatus, MethodCategory,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,6 +31,29 @@ def _equipment_qs():
         is_deleted=False,
         category__resource_type=ResourceType.EQUIPMENT,
     ).select_related('category')
+
+
+def _get_name_classification(attrs: Optional[dict]) -> str:
+    """统一读取设备名称分类，避免各接口重复拼 key。"""
+    attrs = attrs or {}
+    return (
+        attrs.get('name_classification')
+        or attrs.get('lims_name_classification')
+        or ''
+    )
+
+
+def _paginate_items(items: list, page: int, page_size: int) -> dict:
+    total = len(items)
+    safe_page = max(page, 1)
+    safe_size = max(page_size, 1)
+    offset = (safe_page - 1) * safe_size
+    return {
+        'items': items[offset:offset + safe_size],
+        'total': total,
+        'page': safe_page,
+        'page_size': safe_size,
+    }
 
 
 # ============================================================================
@@ -177,11 +199,11 @@ def list_equipment(
         elif calibration_status == 'valid':
             qs = qs.filter(next_calibration_date__gt=today + timedelta(days=30))
 
-    # LIMS 来源过滤：通过 properties 字段的 _lims_source 标记
+    # LIMS 来源过滤：通过 attributes JSON 的 _lims_source 标记
     if lims_only is True:
-        qs = qs.filter(properties__contains={'_lims_source': True})
+        qs = qs.filter(attributes__contains={'_lims_source': True})
     elif lims_only is False:
-        qs = qs.exclude(properties__contains={'_lims_source': True})
+        qs = qs.exclude(attributes__contains={'_lims_source': True})
 
     # 排序
     allowed_sorts = {
@@ -214,12 +236,17 @@ def list_equipment(
     for item in items:
         cal_info = _get_calibration_info(item, today)
         attrs = item.attributes or {}
+        # 名称分类仅来自 LIMS 写入的 attributes，与 ResourceCategory（设备类别）无关
+        name_cls = _get_name_classification(attrs)
+        lims_synced = attrs.get('_lims_synced_at') or ''
+        lims_batch = attrs.get('_lims_sync_batch_no') or ''
         result_items.append({
             'id': item.id,
             'name': item.name,
             'code': item.code,
             'category_id': item.category_id,
             'category_name': item.category.name if item.category else '',
+            'name_classification': name_cls or '',
             'status': item.status,
             'status_display': item.get_status_display(),
             'location': item.location,
@@ -228,6 +255,12 @@ def list_equipment(
             'serial_number': item.serial_number,
             'purchase_date': str(item.purchase_date) if item.purchase_date else None,
             'warranty_expiry': str(item.warranty_expiry) if item.warranty_expiry else None,
+            'next_calibration_date': str(item.next_calibration_date) if item.next_calibration_date else None,
+            'next_verification_date': str(item.next_verification_date) if item.next_verification_date else None,
+            'next_maintenance_date': str(item.next_maintenance_date) if item.next_maintenance_date else None,
+            'calibration_cycle_days': item.calibration_cycle_days,
+            'verification_cycle_days': item.verification_cycle_days,
+            'maintenance_cycle_days': item.maintenance_cycle_days,
             'calibration_info': cal_info,
             'authorized_operators_count': auth_counts.get(item.id, 0),
             'usage_count_30d': usage_counts.get(item.id, 0),
@@ -240,9 +273,84 @@ def list_equipment(
             'quantity': attrs.get('quantity'),
             'initial_value': attrs.get('initial_value'),
             'group': attrs.get('group', ''),
+            'lims_synced_at': str(lims_synced) if lims_synced else None,
+            'lims_sync_batch_no': str(lims_batch) if lims_batch else None,
         })
 
     return {'items': result_items, 'total': total, 'page': page, 'page_size': page_size}
+
+
+def list_equipment_category_ledger(
+    keyword: str = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> dict:
+    """设备类别台账：展示设备类别及其下设备数量。"""
+    kw = (keyword or '').strip()
+    qs = ResourceCategory.objects.filter(
+        resource_type=ResourceType.EQUIPMENT,
+        is_active=True,
+    ).annotate(
+        equipment_count=Count('items', filter=Q(items__is_deleted=False)),
+    ).order_by('name', 'code')
+
+    if kw:
+        qs = qs.filter(
+            Q(name__icontains=kw) |
+            Q(code__icontains=kw) |
+            Q(description__icontains=kw)
+        )
+
+    items = [{
+        'id': c.id,
+        'category_name': c.name,
+        'category_code': c.code,
+        'category_path': c.full_path,
+        'equipment_count': c.equipment_count or 0,
+    } for c in qs]
+    return _paginate_items(items, page=page, page_size=page_size)
+
+
+def list_equipment_name_classification_ledger(
+    keyword: str = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> dict:
+    """
+    设备细分类别台账：按「名称分类 + 设备类别」聚合设备数量。
+
+    说明：
+    - 名称分类来自 ResourceItem.attributes.name_classification（LIMS 同步）。
+    - 设备类别来自 ResourceCategory。
+    """
+    kw = (keyword or '').strip().lower()
+    rows = {}
+    for item in _equipment_qs().only('id', 'name', 'category_id', 'attributes', 'category__name'):
+        name_cls = _get_name_classification(item.attributes) or '未分类'
+        category_name = item.category.name if item.category else ''
+        key = (name_cls, item.category_id or 0)
+        row = rows.get(key)
+        if not row:
+            row = {
+                'name_classification': name_cls,
+                'category_id': item.category_id,
+                'category_name': category_name,
+                'equipment_count': 0,
+            }
+            rows[key] = row
+        row['equipment_count'] += 1
+
+    items = sorted(
+        rows.values(),
+        key=lambda x: (x['category_name'] or '', x['name_classification'] or ''),
+    )
+    if kw:
+        items = [
+            item for item in items
+            if kw in (item['name_classification'] or '').lower()
+            or kw in (item['category_name'] or '').lower()
+        ]
+    return _paginate_items(items, page=page, page_size=page_size)
 
 
 def _get_calibration_info(item: ResourceItem, today: date) -> dict:
@@ -301,6 +409,11 @@ def get_equipment_detail(equipment_id: int) -> Optional[dict]:
         )
     )
 
+    attrs = item.attributes or {}
+    name_cls = _get_name_classification(attrs)
+    lims_synced = attrs.get('_lims_synced_at') or ''
+    lims_batch = attrs.get('_lims_sync_batch_no') or ''
+
     return {
         'id': item.id,
         'name': item.name,
@@ -308,6 +421,7 @@ def get_equipment_detail(equipment_id: int) -> Optional[dict]:
         'category_id': item.category_id,
         'category_name': item.category.name if item.category else '',
         'category_path': item.category.full_path if item.category else '',
+        'name_classification': name_cls or '',
         'status': item.status,
         'status_display': item.get_status_display(),
         'location': item.location,
@@ -316,7 +430,15 @@ def get_equipment_detail(equipment_id: int) -> Optional[dict]:
         'serial_number': item.serial_number,
         'purchase_date': str(item.purchase_date) if item.purchase_date else None,
         'warranty_expiry': str(item.warranty_expiry) if item.warranty_expiry else None,
+        'last_calibration_date': str(item.last_calibration_date) if item.last_calibration_date else None,
+        'last_verification_date': str(item.last_verification_date) if item.last_verification_date else None,
+        'last_maintenance_date': str(item.last_maintenance_date) if item.last_maintenance_date else None,
+        'next_calibration_date': str(item.next_calibration_date) if item.next_calibration_date else None,
+        'next_verification_date': str(item.next_verification_date) if item.next_verification_date else None,
+        'next_maintenance_date': str(item.next_maintenance_date) if item.next_maintenance_date else None,
         'calibration_cycle_days': item.calibration_cycle_days,
+        'verification_cycle_days': item.verification_cycle_days,
+        'maintenance_cycle_days': item.maintenance_cycle_days,
         'calibration_info': cal_info,
         'manager_id': item.manager_id,
         'attributes': item.attributes,
@@ -325,6 +447,8 @@ def get_equipment_detail(equipment_id: int) -> Optional[dict]:
         'recent_maintenances': recent_maintenances,
         'recent_usages': recent_usages,
         'authorizations': authorizations,
+        'lims_synced_at': str(lims_synced) if lims_synced else None,
+        'lims_sync_batch_no': str(lims_batch) if lims_batch else None,
     }
 
 
@@ -344,6 +468,8 @@ def update_equipment(equipment_id: int, **kwargs) -> Optional[ResourceItem]:
     item = _equipment_qs().filter(id=equipment_id).first()
     if not item:
         return None
+    if not kwargs:
+        return item
     for k, v in kwargs.items():
         if hasattr(item, k):
             setattr(item, k, v)
@@ -1026,9 +1152,18 @@ def list_maintenance(
     if equipment_id:
         qs = qs.filter(equipment_id=equipment_id)
     if status:
-        qs = qs.filter(status=status)
+        # 支持 pending,in_progress 多选（与前端 listMaintenance 传参一致）
+        parts = [s.strip() for s in status.split(',') if s.strip()]
+        if len(parts) > 1:
+            qs = qs.filter(status__in=parts)
+        else:
+            qs = qs.filter(status=parts[0])
     if maintenance_type:
-        qs = qs.filter(maintenance_type=maintenance_type)
+        mtparts = [s.strip() for s in maintenance_type.split(',') if s.strip()]
+        if len(mtparts) > 1:
+            qs = qs.filter(maintenance_type__in=mtparts)
+        else:
+            qs = qs.filter(maintenance_type=mtparts[0])
     if date_from:
         qs = qs.filter(maintenance_date__gte=date_from)
     if date_to:
@@ -1577,12 +1712,21 @@ def list_detection_methods(
     if status:
         qs = qs.filter(status=status)
     if keyword:
-        qs = qs.filter(
-            Q(name__icontains=keyword) |
-            Q(name_en__icontains=keyword) |
-            Q(code__icontains=keyword) |
-            Q(keywords__contains=[keyword])
-        )
+        kw = (keyword or '').strip()
+        if kw:
+            # 关键词 JSON 数组用 contains 在部分数据形态下易报错；转为文本子串匹配更稳
+            qs = qs.annotate(_keywords_text=Cast('keywords', TextField()))
+            qs = qs.filter(
+                Q(name__icontains=kw) |
+                Q(name_en__icontains=kw) |
+                Q(code__icontains=kw) |
+                Q(_keywords_text__icontains=kw)
+            )
+
+    qs = qs.annotate(
+        _resource_count=Count('resource_requirements'),
+        _personnel_count=Count('personnel_requirements'),
+    )
 
     total = qs.count()
     offset = (page - 1) * page_size
@@ -1594,6 +1738,7 @@ def list_detection_methods(
             'code': m.code,
             'name': m.name,
             'name_en': m.name_en,
+            'equipment_name_classification': m.equipment_name_classification or '',
             'category': m.category,
             'category_display': m.get_category_display(),
             'description': m.description,
@@ -1605,8 +1750,8 @@ def list_detection_methods(
                 if m.humidity_min and m.humidity_max else None,
             'status': m.status,
             'status_display': m.get_status_display(),
-            'resource_count': m.resource_requirements.count(),
-            'personnel_count': m.personnel_requirements.count(),
+            'resource_count': getattr(m, '_resource_count', 0),
+            'personnel_count': getattr(m, '_personnel_count', 0),
         } for m in items],
         'total': total, 'page': page, 'page_size': page_size,
     }
@@ -1639,11 +1784,14 @@ def get_detection_method_detail(method_id: int) -> Optional[dict]:
         'code': m.code,
         'name': m.name,
         'name_en': m.name_en,
+        'equipment_name_classification': m.equipment_name_classification or '',
         'category': m.category,
         'category_display': m.get_category_display(),
         'description': m.description,
+        'qc_requirements': m.qc_requirements or '',
         'standard_procedure': m.standard_procedure,
         'sop_reference': m.sop_reference,
+        'sop_attachment_url': m.sop_attachment_url or '',
         'sop_id': m.sop_id,
         'estimated_duration_minutes': m.estimated_duration_minutes,
         'preparation_time_minutes': m.preparation_time_minutes,

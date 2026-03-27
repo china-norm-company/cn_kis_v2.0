@@ -23,7 +23,6 @@ process_pending_contexts — 将 PersonalContext 原始数据批量过 ingestion
 import logging
 import time
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -120,8 +119,6 @@ class Command(BaseCommand):
         self.stdout.write('=' * 60)
 
         qs = self._build_queryset(source_types, batch_id, reprocess)
-        total_pending = qs.count()
-        self.stdout.write(f'\n待处理记录: {total_pending} 条')
 
         if dry_run:
             self.stdout.write('\n[DRY-RUN] 前 20 条预览:')
@@ -132,27 +129,27 @@ class Command(BaseCommand):
                 )
             return
 
-        # 批量处理
+        # 批量处理：使用游标分页（id__gt），避免大 OFFSET 的 O(n²) 问题
         stats = {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
-        processed_ids = []
         batch_num = 0
+        last_id = 0
 
-        offset = 0
+        self.stdout.write('\n开始批量处理（游标分页）...')
         while True:
-            chunk = list(qs[offset:offset + batch_size])
+            # 游标分页：每次从 last_id 之后取一批，避免重新扫描
+            chunk = list(qs.filter(id__gt=last_id).order_by('id')[:batch_size])
             if not chunk:
                 break
             batch_num += 1
-            self.stdout.write(f'\n批次 #{batch_num}: 处理 {len(chunk)} 条...')
+            self.stdout.write(f'\n批次 #{batch_num}: 处理 {len(chunk)} 条 (id>{last_id})...')
 
             for pc in chunk:
                 if limit and stats['processed'] >= limit:
                     break
-                result = self._process_one(pc, stats)
+                self._process_one(pc, stats)
                 stats['processed'] += 1
-                processed_ids.append(pc.id)
+                last_id = max(last_id, pc.id)
 
-            offset += batch_size
             self.stdout.write(
                 f'  本批: 已处理={stats["processed"]} 入库={stats["created"]} '
                 f'更新={stats["updated"]} 跳过={stats["skipped"]} 错误={stats["errors"]}'
@@ -162,7 +159,7 @@ class Command(BaseCommand):
                 self.stdout.write(f'\n已达到限制 {limit} 条，停止')
                 break
 
-            time.sleep(0.1)  # 给数据库和 LLM API 喘息
+            time.sleep(0.05)  # 给数据库喘息
 
         self.stdout.write('\n' + '=' * 60)
         self.stdout.write('入库完成报告')
@@ -178,7 +175,7 @@ class Command(BaseCommand):
         from apps.secretary.models import PersonalContext
         from apps.knowledge.models import KnowledgeEntry
 
-        qs = PersonalContext.objects.all().order_by('id')
+        qs = PersonalContext.objects.all()
 
         if source_types:
             qs = qs.filter(source_type__in=source_types)
@@ -186,27 +183,33 @@ class Command(BaseCommand):
             qs = qs.filter(batch_id=batch_id)
 
         if not reprocess:
-            # 排除已有对应 KnowledgeEntry 的记录（通过 source_key 匹配）
-            existing_source_keys = set(
-                KnowledgeEntry.objects.filter(
-                    source_type__startswith='feishu_',
-                    is_deleted=False,
-                ).values_list('source_key', flat=True)
+            # 排除已有对应 KnowledgeEntry 的记录（通过子查询，避免加载全量 source_key 到内存）
+            # source_key 格式：feishu_{source_type}_{source_id}
+            from django.db.models import Exists, OuterRef, Value
+            from django.db.models.functions import Concat
+            has_entry = KnowledgeEntry.objects.filter(
+                source_key=Concat(
+                    Value('feishu_'),
+                    OuterRef('source_type'),
+                    Value('_'),
+                    OuterRef('source_id'),
+                ),
+                is_deleted=False,
             )
-            # PersonalContext 对应的 source_key 格式：feishu_{source_type}_{source_id}
-            if existing_source_keys:
-                from django.db.models import Q
-                # 用 source_id 做排除（避免重复）
-                qs = qs.exclude(
-                    source_id__in=[
-                        sk.split('_', 2)[-1]
-                        for sk in existing_source_keys
-                        if sk.count('_') >= 2
-                    ]
-                )
+            qs = qs.exclude(Exists(has_entry))
 
-        # 过滤掉内容太短的
-        qs = qs.exclude(raw_content='').exclude(summary='')
+        # 过滤掉内容和摘要都为空的记录（注意：用 AND 条件，只要有一个非空就保留）
+        qs = qs.exclude(raw_content='', summary='')
+
+        # DB 层过滤内容过短的记录，避免大量短消息（IM/任务等）被取出后在 Python 里全部跳过
+        from django.db.models import Q
+        from django.db.models.functions import Length
+        qs = qs.annotate(
+            _rc_len=Length('raw_content'),
+            _sum_len=Length('summary'),
+        ).filter(
+            Q(_rc_len__gte=MIN_CONTENT_LENGTH) | Q(_sum_len__gte=MIN_CONTENT_LENGTH)
+        )
 
         return qs
 

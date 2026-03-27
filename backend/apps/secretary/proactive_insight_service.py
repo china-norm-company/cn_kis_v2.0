@@ -164,7 +164,7 @@ def expire_stale_insights() -> int:
 
 def get_insight_analytics() -> Dict[str, Any]:
     """洞察效果分析统计"""
-    from django.db.models import Avg, Count, Q
+    from django.db.models import Avg, Count
 
     total = ProactiveInsight.objects.count()
     by_status = dict(

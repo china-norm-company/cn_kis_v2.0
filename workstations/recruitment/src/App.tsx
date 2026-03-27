@@ -22,6 +22,8 @@ import SupportTicketsPage from './pages/SupportTicketsPage'
 import QuestionnairePage from './pages/QuestionnairePage'
 import LoyaltyPage from './pages/LoyaltyPage'
 import ChannelAnalyticsPage from './pages/ChannelAnalyticsPage'
+import NasImportReviewPage from './pages/NasImportReviewPage'
+import NasPaymentStatsPage from './pages/NasPaymentStatsPage'
 
 export default function App() {
   useApiInit()
@@ -55,6 +57,8 @@ export default function App() {
               <Route path="questionnaires" element={<QuestionnairePage />} />
               <Route path="loyalty" element={<LoyaltyPage />} />
               <Route path="channel-analytics" element={<ChannelAnalyticsPage />} />
+              <Route path="nas-review" element={<NasImportReviewPage />} />
+              <Route path="nas-payments" element={<NasPaymentStatsPage />} />
             </Route>
           </Routes>
         </BrowserRouter>

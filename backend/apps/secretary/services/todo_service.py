@@ -94,7 +94,7 @@ class UnifiedTodoService:
                         'title': f'待审批: {inst.business_type}',
                         'due_date': None,
                         'priority': 'high',
-                        'link': f'/secretary/#/dashboard',
+                        'link': '/secretary/#/dashboard',
                         'status': 'pending',
                     })
                 if len(result) >= 20:

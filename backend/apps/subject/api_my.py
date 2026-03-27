@@ -2439,7 +2439,7 @@ def get_upcoming_visits(request, days: int = 30):
 @router.get('/screening-status', summary='我的筛选状态')
 @require_permission('my.profile.read')
 def get_my_screening_status(request):
-    """受试者查看自己的报名→粗筛→筛选→入组状态"""
+    """受试者查看自己的报名→初筛→筛选→入组状态"""
     subject = _get_subject_from_request(request)
     if not subject:
         return 404, {'code': 404, 'msg': '未找到受试者信息'}
@@ -2767,7 +2767,7 @@ def mark_my_notification_read(request, nid: int):
 
 
 # ============================================================================
-# 阶段1/4: 项目详情 + 粗筛到场确认
+# 阶段1/4: 项目详情 + 初筛到场确认
 # ============================================================================
 def _serialize_available_plan_item(plan):
     start_date = plan.start_date.isoformat() if plan.start_date else None
@@ -2889,7 +2889,7 @@ def get_my_registration_status(request):
     }}
 
 
-@router.post('/confirm-arrival', summary='粗筛到场确认')
+@router.post('/confirm-arrival', summary='初筛到场确认')
 @require_permission('my.profile.update')
 def confirm_arrival(request):
     """受试者扫码确认到场，更新报名状态为已到场"""

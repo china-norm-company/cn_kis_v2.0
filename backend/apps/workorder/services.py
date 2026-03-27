@@ -15,7 +15,7 @@ from typing import Optional
 from datetime import datetime
 from django.conf import settings
 from django.utils import timezone
-from django.db import transaction, models
+from django.db import models
 
 from .models import WorkOrder, WorkOrderStatus
 from .query_utils import filter_by_assignee
@@ -532,9 +532,8 @@ def check_calibration_before_start(work_order_id: int) -> dict:
 
     返回：{'can_start': bool, 'issues': [...], 'warnings': [...]}
     """
-    from datetime import date, timedelta
+    from datetime import date
     from .models import WorkOrderResource
-    from apps.resource.models import ResourceItem
 
     today = date.today()
     issues = []

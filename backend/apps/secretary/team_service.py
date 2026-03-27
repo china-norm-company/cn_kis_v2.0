@@ -7,7 +7,7 @@ import logging
 from datetime import date, timedelta
 from typing import Dict, List, Any, Optional
 
-from django.db.models import Count, Q
+from django.db.models import Count
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ def get_team_overview(manager_account_id: int) -> List[Dict[str, Any]]:
         workload = get_member_workload(acc.id)
         members.append({
             'id': acc.id,
-            'name': acc.name or acc.email or f'用户#{acc.id}',
+            'name': getattr(acc, 'display_name', None) or getattr(acc, 'name', None) or acc.email or f'用户#{acc.id}',
             'avatar': getattr(acc, 'avatar', ''),
             'role': getattr(acc, 'position', '') or '团队成员',
             **workload,

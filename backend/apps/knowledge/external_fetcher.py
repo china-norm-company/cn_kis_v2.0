@@ -12,7 +12,6 @@
 6. 竞品情报 — 多源采集（当前降级：基于知识库读取）
 """
 import logging
-from datetime import date, timedelta
 from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger('cn_kis.knowledge.external_fetcher')
@@ -160,7 +159,6 @@ def _fetch_regulation_fulltext(url: str) -> str:
     """抓取法规公告正文"""
     try:
         import urllib.request
-        from html.parser import HTMLParser
 
         req = urllib.request.Request(
             url,

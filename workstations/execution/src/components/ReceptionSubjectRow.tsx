@@ -3,7 +3,7 @@ import { Badge, Button } from '@cn-kis/ui-kit'
 import { LogIn, LogOut, ClipboardCheck } from 'lucide-react'
 
 const TASK_TYPE_CONFIG: Record<QueueItem['task_type'], { label: string; border: string; variant: 'warning' | 'primary' | 'success' | 'info' | 'default' }> = {
-  pre_screening: { label: '粗筛', border: 'border-l-orange-400', variant: 'warning' },
+  pre_screening: { label: '初筛', border: 'border-l-orange-400', variant: 'warning' },
   screening:     { label: '筛选', border: 'border-l-blue-400', variant: 'primary' },
   visit:         { label: '访视', border: 'border-l-green-400', variant: 'success' },
   extra_visit:   { label: '加访', border: 'border-l-purple-400', variant: 'info' },
@@ -84,7 +84,7 @@ export default function ReceptionSubjectRow({ item, onCheckin, onCheckout }: Rec
                 data-action="pre-screening"
                 className="!border-orange-500 !text-orange-600 hover:!bg-orange-50"
               >
-                发起粗筛
+                发起初筛
               </Button>
             )}
             <Button

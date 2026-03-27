@@ -694,7 +694,7 @@ def _format_consent_signing_progress_export(
             return (
                 '暂无签署进度（待配置）。请先上传签署节点并完善规则；登记现场计划或产生到场数据后，将展示进度。'
             )
-        return '暂无安排。可在「配置」登记现场筛选计划（日期+目标量），或录入粗筛/接待到场日。'
+        return '暂无安排。可在「配置」登记现场筛选计划（日期+目标量），或录入初筛/接待到场日。'
 
     sorted_batches = sorted(blist, key=lambda x: str(x.get('screening_date', ''))[:10])
     formal_n = formal_d = formal_p = 0
