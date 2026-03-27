@@ -142,6 +142,18 @@ async function mockLifecycleApis(page: Page, audit: ApiAudit) {
     if (path === '/api/v1/signature/create' && method === 'POST') {
       return fulfill(route, { signature_id: 1 }, '签署成功')
     }
+    if (path === '/api/v1/my/home-dashboard') {
+      return fulfill(route, {
+        as_of_date: '2026-03-05',
+        display_name: USER_INFO.name,
+        display_name_source: 'mock',
+        primary_project: null,
+        other_projects: [],
+        projects_ordered: [
+          { project_code: 'PRJ-LIFE', project_name: USER_INFO.projectName, visit_point: '', queue_checkin_today: 'none', is_primary: true, enrollment_status: '正式入组', sc_number: '', sc_display: '', appointment_id: null, enrollment_id: USER_INFO.enrollmentId, protocol_id: USER_INFO.protocolId },
+        ],
+      })
+    }
     if (path === '/api/v1/my/scan-checkin' && method === 'POST') {
       return fulfill(route, { success: true }, '签到成功')
     }
@@ -290,7 +302,7 @@ test.describe('受试者全生命周期移动端 Headed 验收', () => {
     await expect(page.getByText(/确认签署|需要实名认证|暂无待签署/)).toBeVisible()
 
     await page.goto('/#/pages/checkin/index')
-    await expect(page.getByText('点击扫码签到')).toBeVisible()
+    await expect(page.getByText('扫码签到 / 签出').first()).toBeVisible()
     await page.goto('/#/pages/queue/index')
     await expect(page.getByText('排队等候中')).toBeVisible()
     await expect(page.getByText('当前排位')).toBeVisible()

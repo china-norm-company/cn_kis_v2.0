@@ -98,7 +98,7 @@ export default function CheckinPage() {
               if (location) setStationLabel(location)
               Taro.showToast({ title: '签到成功', icon: 'success' })
               setTimeout(() => {
-                Taro.navigateTo({ url: '/pages/queue/index' })
+                Taro.navigateTo({ url: '/subpackages/pkg/pages/queue/index' })
               }, 800)
             }
           } else {

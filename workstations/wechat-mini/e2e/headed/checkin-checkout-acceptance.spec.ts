@@ -167,14 +167,48 @@ test.describe('首页入组信息展示', () => {
 })
 
 test.describe('扫码签到/签出页面', () => {
-  test('C1 签到页面显示扫码按钮', async ({ page }) => {
+  async function mockDashboardWithProjects(page: Page) {
+    await page.route('**/api/v1/my/home-dashboard**', async (route) => {
+      await route.fulfill({
+        json: {
+          code: 200, msg: 'OK',
+          data: {
+            as_of_date: '2026-03-27',
+            display_name: '测试用户',
+            display_name_source: 'mock',
+            primary_project: null,
+            other_projects: [],
+            projects_ordered: [
+              { project_code: 'PROJ-001', project_name: '测试研究项目', visit_point: '筛选', queue_checkin_today: 'none', is_primary: true, enrollment_status: '正式入组', sc_number: '', sc_display: '', appointment_id: null, enrollment_id: 1, protocol_id: 10 },
+            ],
+          },
+        },
+      })
+    })
+  }
+
+  test('C1 签到页面显示项目选择和扫码按钮', async ({ page }) => {
+    await mockDashboardWithProjects(page)
     await page.goto(CHECKIN_PAGE_URL)
     await expect(page.getByText('扫码签到 / 签出').first()).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText('请扫描接待台当日签到码')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByTestId('project-picker')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('测试研究项目')).toBeVisible({ timeout: 10000 })
   })
 
   test('C2 扫码页面标题正确', async ({ page }) => {
+    await mockDashboardWithProjects(page)
     await page.goto(CHECKIN_PAGE_URL)
     await expect(page.getByText('扫码签到 / 签出').first()).toBeVisible({ timeout: 10000 })
+  })
+
+  test('C3 无项目时禁用扫码按钮', async ({ page }) => {
+    await page.route('**/api/v1/my/home-dashboard**', async (route) => {
+      await route.fulfill({
+        json: { code: 200, msg: 'OK', data: { as_of_date: '2026-03-27', display_name: '', display_name_source: '', primary_project: null, other_projects: [], projects_ordered: [] } },
+      })
+    })
+    await page.goto(CHECKIN_PAGE_URL)
+    await expect(page.getByText('暂无参与项目')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByTestId('scan-btn')).toBeDisabled()
   })
 })

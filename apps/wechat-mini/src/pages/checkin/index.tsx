@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { View, Text } from '@tarojs/components'
 import Taro from '@tarojs/taro'
-import { taroApiClient } from '@/adapters/subject-core'
-import { get } from '@/utils/api'
-import { MiniPage, MiniCard, MiniButton } from '@/components/ui'
+import { taroApiClient } from '../../adapters/subject-core'
+import { get } from '../../utils/api'
+import { MiniPage, MiniCard, MiniButton } from '../../components/ui'
 import './index.scss'
 
 type ScanAction = 'checkin' | 'checkout' | 'already_checked_out' | null

@@ -112,6 +112,7 @@ class MyWithdrawIn(Schema):
 class ScanCheckinIn(Schema):
     """扫码签到可选请求体，小程序传 qr_content 兼容"""
     qr_content: Optional[str] = None
+    project_code: Optional[str] = None
 
 
 class IdentityVerifyStartIn(Schema):
@@ -1687,8 +1688,9 @@ def my_scan_checkin(request, data: Optional[ScanCheckinIn] = Body(default=None))
         subject.id, today
     ):
         # 首次签到，或同日仍有待到访预约时再次签到：仅写接待看板链路。
-        appt_ctx = reception_svc.resolve_today_appointment_for_quick_checkin(subject.id, None, today)
-        project_code = (appt_ctx.project_code or '').strip() if appt_ctx else None
+        client_pc = ((data.project_code or '').strip() if data else '') or None
+        appt_ctx = reception_svc.resolve_today_appointment_for_quick_checkin(subject.id, client_pc, today)
+        project_code = client_pc or ((appt_ctx.project_code or '').strip() if appt_ctx else None)
         result = reception_svc.board_checkin(
             subject_id=subject.id,
             target_date=today,
