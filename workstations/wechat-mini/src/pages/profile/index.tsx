@@ -28,7 +28,7 @@ interface MenuItem {
 const MENU_ITEMS: MenuItem[] = [
   { id: 'identity', label: '实名认证', desc: '身份证+人脸核验，解锁签署与礼金', icon: '🔐', url: '/pages/identity-verify/index' },
   { id: 'myqrcode', label: '我的二维码', desc: '现场核验与签到', icon: '🔲', url: '/pages/myqrcode/index' },
-  { id: 'consent', label: '知情同意记录', desc: '查看签署状态', icon: '📋', url: '/pages/consent/index' },
+  { id: 'consent', label: '知情同意记录', desc: '查看签署状态', icon: '📋', url: '/pages/consent-records/index' },
   { id: 'visits', label: '访视记录', desc: '时间线与窗口期', icon: '📅', url: '/pages/visit/index' },
   { id: 'questionnaires', label: '问卷记录', desc: '填写与历史记录', icon: '📝', url: '/pages/questionnaire/index' },
   { id: 'appointment', label: '我的预约', desc: '预约与改期管理', icon: '📅', url: '/pages/appointment/index' },

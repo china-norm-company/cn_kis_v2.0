@@ -88,16 +88,17 @@ function formatConsentScanHttpError(e: unknown, fallback: string): string {
 const DEFAULT_EXECUTION_BROWSER_TITLE = '维周·执行台 - CN KIS'
 
 /**
- * 扫码知情测试：仅通过 document.title 设置顶栏文案。
- * 格式为「项目名称」+ 换行 +「项目编号」；部分 WebView 会拆成两行。微信第二行是否仍显示访问地址由客户端决定，H5 无法保证用编号覆盖 IP。
+ * 扫码知情同意测试：仅通过 document.title 设置顶栏文案。
+ * 格式为「知情同意测试」+ 换行 +「项目编号」；部分 WebView 会拆成两行。微信第二行是否仍显示访问地址由客户端决定，H5 无法保证用编号覆盖 IP。
  */
 function consentTestScanDocumentTitle(projectTitle: string, projectCode: string): string {
   const name = (projectTitle || '').trim()
   const code = (projectCode || '').trim()
-  if (!name && !code) return '知情测试'
-  if (!code) return name
-  if (!name) return code
-  return `${name}\n${code}`
+  const base = '知情同意测试'
+  if (!name && !code) return base
+  if (!code) return `${base}\n${name}`
+  if (!name) return `${base}\n${code}`
+  return `${base}\n${code}`
 }
 
 /** 与后端 `_consent_test_scan_receipt_download_basename` 规则一致：项目编号_SC号_签署节点名称.pdf */
@@ -418,7 +419,7 @@ export default function ConsentTestScanPage() {
 
   useEffect(() => {
     if (loading && !finishedAll) {
-      document.title = '知情测试'
+      document.title = '知情同意测试'
       return
     }
     if (finishedAll) {
@@ -839,7 +840,10 @@ export default function ConsentTestScanPage() {
             <BookOpen className="w-6 h-6 text-indigo-600" />
             <h1 className="text-lg font-semibold">认证基础信息</h1>
           </div>
-          <p className="text-sm text-slate-500 mb-4">{title}</p>
+          <p className="text-sm text-slate-500 mb-4">
+            {protocolCode ? `项目编号 ${protocolCode}` : ''}
+            {title ? `${protocolCode ? ' · ' : ''}项目名称 ${title}` : ''}
+          </p>
           <p className="text-[11px] text-slate-400 mb-3 leading-relaxed">
             为便于重复核验，本页填写会保存在本浏览器（按协议区分）；请勿在公共设备上留存真实受试者信息。
           </p>

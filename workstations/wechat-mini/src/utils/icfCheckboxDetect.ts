@@ -374,44 +374,6 @@ function buildCheckboxPreviewMarkerHtml(
   return wrapItem ? wrapCheckboxPreviewItem(core) : core
 }
 
-/** 审核/已签署：与 {@link buildCheckboxPreviewMarkerHtml} 同版式，将「请勾选」换为「已签署」并在对应方框内标 ✓ */
-export type SignedCheckboxSelection = 'yes' | 'no' | 'unknown'
-
-export function buildSignedCheckboxMarkerInnerHtml(selection: SignedCheckboxSelection): string {
-  const boxBase =
-    'display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;min-width:0.85em;min-height:0.85em;border-radius:2px;vertical-align:-0.12em;font-size:0.72em;line-height:1;font-weight:700;'
-  const mkBox = (on: boolean, kind: 'yes' | 'no') => {
-    if (selection === 'unknown') {
-      return `${boxBase}border:1px solid #94a3b8;background:#fff;color:transparent;`
-    }
-    if (kind === 'yes') {
-      const active = selection === 'yes'
-      return `${boxBase}border:1px solid ${active ? '#15803d' : '#64748b'};background:${active ? '#f0fdf4' : '#fff'};color:${active ? '#15803d' : 'transparent'};`
-    }
-    const active = selection === 'no'
-    return `${boxBase}border:1px solid ${active ? '#b91c1c' : '#64748b'};background:${active ? '#fef2f2' : '#fff'};color:${active ? '#b91c1c' : 'transparent'};`
-  }
-  const tick = (on: boolean) => (on ? '✓' : '')
-  const yesOn = selection === 'yes'
-  const noOn = selection === 'no'
-  return (
-    `<span style="color:#334155;font-weight:600;white-space:nowrap;">已签署</span>` +
-    `<span style="display:inline-flex;align-items:center;gap:0.35rem;flex-wrap:wrap;">` +
-    `<span style="display:inline-flex;align-items:center;gap:0.12rem;">` +
-    `<span style="${mkBox(yesOn, 'yes')}">${tick(yesOn)}</span>` +
-    `<span style="white-space:nowrap;">是</span>` +
-    `</span>` +
-    `<span style="display:inline-flex;align-items:center;gap:0.12rem;">` +
-    `<span style="${mkBox(noOn, 'no')}">${tick(noOn)}</span>` +
-    `<span style="white-space:nowrap;">否</span>` +
-    `</span>` +
-    `</span>` +
-    (selection === 'unknown'
-      ? `<span style="color:#64748b;font-weight:500;font-size:0.92em;margin-left:0.2rem;">（未识别）</span>`
-      : '')
-  )
-}
-
 /** 与配置预览一致：方形勾选框；同一组「是/否」互斥（checkbox + onchange） */
 const ICF_CB_MUTUAL_EXCL_ONCHANGE =
   `onchange="var p=this.closest('.icf-cb-preview');if(!p)return;var y=p.querySelector('.icf-cb-yes'),n=p.querySelector('.icf-cb-no');if(!y||!n)return;if(this.classList.contains('icf-cb-yes')){if(this.checked)n.checked=false}else{if(this.checked)y.checked=false}"`

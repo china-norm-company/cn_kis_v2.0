@@ -12,9 +12,11 @@ import {
 } from '@cn-kis/consent-placeholders'
 import {
   appendSupplementalCollectCheckboxPreviewRows,
+  buildSignedCheckboxMarkerInnerHtml,
   injectCheckboxPreviewMarkers,
   stripDocumentOtherInfoPlaceholderForCustomSupplemental,
   stripEmbeddedOtherInfoPlaceholderBlocks,
+  type SignedCheckboxSelection,
 } from '@/utils/icfCheckboxDetect'
 import { mediaUrlFromStorageKey as mediaUrlForStoredPath } from '@/utils/mediaUrl'
 
@@ -49,7 +51,7 @@ function answerIsNo(a: unknown): boolean {
 }
 
 /**
- * 将勾选预览块替换为「已选：是/否」展示（与 document 顺序、ordinal 一致）。
+ * 将勾选预览块更新为与配置页一致的「已签署」+ □是/□否 标 ✓（保留与 injectCheckboxPreviewMarkers 相同的版式结构）。
  */
 export function applySignedCheckboxAnswersToPreviewHtml(html: string, answers: unknown[]): string {
   if (!answers.length || typeof document === 'undefined') return html
@@ -63,25 +65,41 @@ export function applySignedCheckboxAnswersToPreviewHtml(html: string, answers: u
     const ord = ordAttr ? parseInt(ordAttr, 10) : idx + 1
     const ans = answers[ord - 1] ?? answers[idx]
     if (ans === undefined) return
-    const span = doc.createElement('span')
-    span.className = 'icf-cb-signed-result'
-    span.setAttribute('data-icf-cb-ord', String(ord))
     const yes = answerIsYes(ans)
     const no = answerIsNo(ans)
-    const color = yes ? '#15803d' : no ? '#b91c1c' : '#64748b'
-    const label = yes ? '已选：是（✓）' : no ? '已选：否（✓）' : '已选：未识别'
-    span.style.cssText = `display:inline-flex;align-items:center;gap:0.35rem;font-weight:600;color:${color};vertical-align:middle;`
-    span.textContent = label
-    el.replaceWith(span)
+    let selection: SignedCheckboxSelection = 'unknown'
+    if (yes) selection = 'yes'
+    else if (no) selection = 'no'
+    el.classList.add('icf-cb-preview-signed')
+    el.innerHTML = buildSignedCheckboxMarkerInnerHtml(selection)
   })
   return root.innerHTML
+}
+
+function stripPreviewBannerFromHtml(html: string): string {
+  let s = html || ''
+  s = s.replace(/<div[^>]*class="[^"]*\bbanner\b[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
+  s = s.replace(/<div[^>]*class="[^"]*lo-icf-banner[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
+  return s.trim()
+}
+
+/** 正文已含签署日/时刻占位替换值时，页脚不再重复「签署时间」 */
+function shouldSkipDuplicateSignedMeta(
+  body: string,
+  placeholderValues: Record<string, string>,
+  isSigned: boolean,
+): boolean {
+  if (!isSigned) return false
+  const sd = (placeholderValues['{{ICF_SIGNED_DATE}}'] || '').trim()
+  const si = (placeholderValues['{{ICF_SIGNED_AT_ISO}}'] || '').trim()
+  return Boolean((sd && body.includes(sd)) || (si && body.includes(si)))
 }
 
 function appendAuditMetaHtml(
   base: string,
   sig: Record<string, unknown>,
   signedAtIso: string | null | undefined,
-  options?: { skipSignatureImageFooter?: boolean },
+  options?: { skipSignatureImageFooter?: boolean; skipSignedTimeLine?: boolean },
 ): string {
   const lines: string[] = []
   const sa = sig.signed_at
@@ -91,7 +109,7 @@ function appendAuditMetaHtml(
       : signedAtIso && String(signedAtIso).trim()
         ? String(signedAtIso).trim()
         : ''
-  if (displayDate) {
+  if (displayDate && !options?.skipSignedTimeLine) {
     lines.push(`<p style="margin:0.5rem 0 0;font-size:13px;color:#334155"><strong>签署时间：</strong>${escapeHtmlLite(displayDate)}</p>`)
   }
   const oi = sig.other_information_text
@@ -152,7 +170,7 @@ export function buildStaffConsentAuditPreviewHtml(options: {
 }): string {
   const { baseHtml, isSigned, signedAt, signatureSummary } = options
   const rules = options.rules
-  const raw = (baseHtml || '').trim()
+  const raw = stripPreviewBannerFromHtml((baseHtml || '').trim())
   if (!raw) return '<p class="text-slate-400">暂无正文</p>'
 
   const sig = signatureSummary || {}
@@ -202,10 +220,17 @@ export function buildStaffConsentAuditPreviewHtml(options: {
     escapeValues: true,
     rawHtmlByToken: rawSig,
   })
+  const sigImageInBody = Object.values(rawSig).some((v) => typeof v === 'string' && /<img\s/i.test(v))
+  /** 预览 API 可能已替换 {{ICF_*}}，正文中已有签名图时不再页脚重复 */
+  const hasSigImgAlreadyInBody = isSigned && /<img[^>]/i.test(raw)
   const answersRaw = sig.icf_checkbox_answers ?? sig.checkbox_answers
   const answers = Array.isArray(answersRaw) ? answersRaw : []
 
-  const footerOpts = { skipSignatureImageFooter: hadInlineSigTokens && isSigned }
+  const footerOpts = {
+    skipSignatureImageFooter:
+      (hadInlineSigTokens || sigImageInBody || hasSigImgAlreadyInBody) && isSigned,
+    skipSignedTimeLine: shouldSkipDuplicateSignedMeta(withPlaceholders, placeholderValues, isSigned),
+  }
 
   if (rules?.enable_checkbox_recognition) {
     let stripped = stripEmbeddedOtherInfoPlaceholderBlocks(withPlaceholders)
@@ -226,7 +251,11 @@ export function buildStaffConsentAuditPreviewHtml(options: {
     } else if (isSigned && answers.length === 0) {
       html = `${html}<p style="margin:0.75rem 0 0;font-size:12px;color:#b45309">未采集到逐项勾选快照数据，上表为文书模板；若已通过小程序正式签署，请确认客户端已上报勾选结果。</p>`
     }
-    return appendAuditMetaHtml(html, sig as Record<string, unknown>, signedAt, footerOpts)
+    const cbFooter = {
+      ...footerOpts,
+      skipSignedTimeLine: shouldSkipDuplicateSignedMeta(html, placeholderValues, isSigned),
+    }
+    return appendAuditMetaHtml(html, sig as Record<string, unknown>, signedAt, cbFooter)
   }
 
   let out = withPlaceholders

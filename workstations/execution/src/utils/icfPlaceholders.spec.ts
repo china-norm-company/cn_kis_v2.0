@@ -90,4 +90,15 @@ describe('ICF placeholders', () => {
     const out = applyIcfPlaceholders(raw, v, { escapeValues: true })
     expect(out).toBe('ICF-RCP-1 李四 5678')
   })
+
+  it('splits signed date into year/month/day tokens', () => {
+    const v = buildIcfPlaceholderValues({
+      signedAt: '2026-03-27T10:30:20.450022+00:00',
+    })
+    expect(v['{{ICF_SIGNED_DATE}}']).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    const [yy, mm, dd] = v['{{ICF_SIGNED_DATE}}'].split('-')
+    expect(v['{{ICF_SIGNED_YEAR}}']).toBe(yy)
+    expect(v['{{ICF_SIGNED_MONTH}}']).toBe(mm)
+    expect(v['{{ICF_SIGNED_DAY}}']).toBe(dd)
+  })
 })

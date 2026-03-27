@@ -244,6 +244,15 @@ export function getCurrentApiBaseUrl(): string {
   return currentApiBaseUrl
 }
 
+/**
+ * 受试者知情回执 PDF（带 JWT，供 wx.downloadFile 下载；勿用直链 /media 以免无鉴权或返回非 PDF）。
+ */
+export function buildMyConsentReceiptPdfUrl(consentId: number): string {
+  const base = (getCurrentApiBaseUrl() || '').trim().replace(/\/+$/, '')
+  if (!base || !/^https?:\/\//i.test(base)) return ''
+  return `${base}/my/consents/${consentId}/receipt-pdf`
+}
+
 export function getCurrentChannel(): string {
   return cloudRunAvailable === true ? 'cloudrun' : 'https'
 }

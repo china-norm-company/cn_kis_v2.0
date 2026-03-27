@@ -121,7 +121,7 @@ def build_icf_placeholder_map_for_consent_record(
     icf: Any = None,
 ) -> Dict[str, str]:
     """
-    构造 {{ICF_*}} 替换表；手写签名位填入 img（供 HTML 摘要；PDF strip_tags 仍会去掉图，附录另附 RLImage）。
+    构造 {{ICF_*}} 替换表；手写签名位填入 img（HTML 预览/回执 HTML 转 PDF 页时保留；无 HTML 转 PDF 时附录另附 RLImage）。
     """
     sig = dict(signature_data or {})
     ident = sig.get('consent_test_scan_identity') if isinstance(sig.get('consent_test_scan_identity'), dict) else {}
@@ -146,6 +146,12 @@ def build_icf_placeholder_map_for_consent_record(
         except Exception:
             pass
 
+    sy, sm, sd = '', '', ''
+    if signed_date and len(signed_date) >= 10:
+        parts = signed_date.split('-')
+        if len(parts) >= 3:
+            sy, sm, sd = parts[0], parts[1], parts[2]
+
     out: Dict[str, str] = {
         '{{ICF_PROTOCOL_CODE}}': (protocol_code or '').strip(),
         '{{ICF_PROTOCOL_TITLE}}': (protocol_title or '').strip(),
@@ -160,6 +166,9 @@ def build_icf_placeholder_map_for_consent_record(
         '{{ICF_SCREENING_NUMBER}}': screening,
         '{{ICF_INITIALS}}': initials,
         '{{ICF_SIGNED_DATE}}': signed_date,
+        '{{ICF_SIGNED_YEAR}}': sy,
+        '{{ICF_SIGNED_MONTH}}': sm,
+        '{{ICF_SIGNED_DAY}}': sd,
         '{{ICF_SIGNED_AT_ISO}}': signed_iso,
         '{{ICF_RECEIPT_NO}}': (receipt_no or '').strip(),
     }

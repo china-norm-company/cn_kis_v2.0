@@ -308,6 +308,8 @@ export default function AppointmentsPage() {
         ).trim()
         const ageVal = row['年龄'] ?? row['age'] ?? row['年龄段'] ?? ''
         const ageNum = typeof ageVal === 'number' ? ageVal : parseInt(String(ageVal).trim(), 10)
+        const birthVal = row['出生年月'] ?? row['birth_date'] ?? row['出生日期'] ?? row['生日'] ?? ''
+        const birthDateStr = parseImportDate(birthVal)
         const dateVal = row['预约日期'] ?? row['appointment_date'] ?? row['日期'] ?? row['date'] ?? row['测试日期'] ?? row['出生年月'] ?? ''
         const dateStr = parseImportDate(dateVal) || meta?.appointmentDate || new Date().toISOString().slice(0, 10)
         const timeVal = row['预约时间'] ?? row['appointment_time'] ?? row['时间'] ?? row['time'] ?? row['时间段'] ?? ''
@@ -330,6 +332,7 @@ export default function AppointmentsPage() {
           liaison,
           gender: gender || undefined,
           age: Number.isFinite(ageNum) ? ageNum : undefined,
+          birth_date: birthDateStr || undefined,
           appointment_date: dateStr,
           appointment_time: timeStr || undefined,
           purpose,

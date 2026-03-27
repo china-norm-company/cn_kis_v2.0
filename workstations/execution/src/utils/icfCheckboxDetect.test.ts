@@ -9,6 +9,7 @@ import {
   icfInteractiveCheckboxGroupsAllAnswered,
   collectInteractiveCheckboxAnswers,
   findFirstUnansweredInteractiveCheckboxGroup,
+  buildSignedCheckboxMarkerInnerHtml,
 } from './icfCheckboxDetect'
 
 describe('stripDocumentOtherInfoPlaceholderForCustomSupplemental', () => {
@@ -57,6 +58,22 @@ describe('countCheckboxPreviewMarkers', () => {
     const injected = injectCheckboxPreviewMarkers(html)
     expect(countCheckboxPreviewMarkers(html)).toBe((injected.match(/class="icf-cb-preview"/g) || []).length)
     expect(countCheckboxPreviewMarkers(html)).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('buildSignedCheckboxMarkerInnerHtml', () => {
+  it('keeps same layout cues as config preview (已签署 + 是/否 boxes, no 请勾选)', () => {
+    const yes = buildSignedCheckboxMarkerInnerHtml('yes')
+    expect(yes).toContain('已签署')
+    expect(yes).not.toContain('请勾选')
+    expect(yes).toContain('✓')
+    expect(yes).toContain('是')
+    expect(yes).toContain('否')
+    const no = buildSignedCheckboxMarkerInnerHtml('no')
+    expect(no).toContain('已签署')
+    expect(no).not.toContain('请勾选')
+    const unk = buildSignedCheckboxMarkerInnerHtml('unknown')
+    expect(unk).toContain('未识别')
   })
 })
 

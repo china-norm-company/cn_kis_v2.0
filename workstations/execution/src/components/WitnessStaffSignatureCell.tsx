@@ -67,16 +67,26 @@ export function WitnessStaffSignatureCell({ staffId, hasSignatureFile }: Props) 
     }
   }, [staffId, hasSignatureFile])
 
-  if (!hasSignatureFile) return <>—</>
+  if (!hasSignatureFile) {
+    return (
+      <span className="inline-flex min-h-10 items-center text-xs text-slate-500">
+        —
+      </span>
+    )
+  }
 
   if (loading) {
-    return <span className="text-xs text-slate-400 tabular-nums">加载中…</span>
+    return (
+      <span className="inline-flex min-h-10 items-center text-xs text-slate-400 tabular-nums">
+        加载中…
+      </span>
+    )
   }
 
   if (failed || !blobUrl) {
     return (
       <span
-        className="inline-flex items-center gap-1 text-xs text-amber-800"
+        className="inline-flex min-h-10 items-center gap-1 text-xs text-amber-800"
         title="无法加载签名文件，请确认后端可访问 MEDIA_ROOT 下文件或重新登记签名"
       >
         <ImageOff className="w-4 h-4 shrink-0" aria-hidden />
@@ -90,7 +100,7 @@ export function WitnessStaffSignatureCell({ staffId, hasSignatureFile }: Props) 
       <button
         type="button"
         onClick={() => setLightboxOpen(true)}
-        className="inline-flex p-0.5 rounded border border-slate-100 bg-white cursor-zoom-in hover:ring-2 hover:ring-indigo-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+        className="inline-flex min-h-10 items-center p-0.5 rounded border border-slate-100 bg-white cursor-zoom-in hover:ring-2 hover:ring-indigo-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
         aria-label="查看签名大图"
       >
         <img

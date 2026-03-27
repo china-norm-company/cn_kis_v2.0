@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from django.utils import timezone
 
 from ..models import Enrollment, EnrollmentStatus, Subject
+from ..models_profile import SubjectProfile
 from ..models_execution import (
     AppointmentStatus,
     SubjectAppointment,
@@ -217,6 +218,43 @@ def _display_project_code(pc: str, en: Optional[Enrollment]) -> str:
     return pc
 
 
+def _expected_birth_date_ymd_for_project(subject: Subject, pc: str, as_of: date) -> str:
+    """
+    认证基础信息出生日期基准：
+    1) 先按「同手机号 + 同项目 + 当日已签到」匹配预约对应受试者档案；
+    2) 找不到再回退当前登录受试者档案。
+    """
+    project_code = (pc or '').strip()
+    phone = (getattr(subject, 'phone', '') or '').strip()
+    if project_code and phone:
+        appts = (
+            SubjectAppointment.objects.filter(
+                appointment_date=as_of,
+                project_code=project_code,
+                subject__phone=phone,
+            )
+            .exclude(status=AppointmentStatus.CANCELLED)
+            .select_related('subject')
+            .order_by('-appointment_time', '-id')
+        )
+        for ap in appts:
+            checked = ReceptionBoardCheckin.objects.filter(
+                subject_id=ap.subject_id,
+                checkin_date=as_of,
+                checkin_time__isnull=False,
+            ).exists()
+            if not checked:
+                continue
+            prof = SubjectProfile.objects.filter(subject_id=ap.subject_id).only('birth_date').first()
+            if prof and prof.birth_date:
+                return prof.birth_date.isoformat()
+    # 回退：当前登录受试者档案
+    prof_self = SubjectProfile.objects.filter(subject_id=subject.id).only('birth_date').first()
+    if prof_self and prof_self.birth_date:
+        return prof_self.birth_date.isoformat()
+    return ''
+
+
 def _dashboard_enrollment_status_label(sc_rec: Optional[ReceptionBoardProjectSc], en: Optional[Enrollment]) -> str:
     """入组状态：优先接待看板 ReceptionBoardProjectSc（初筛合格/正式入组等），无 SC 时用入组记录状态文案。"""
     if sc_rec and (sc_rec.enrollment_status or '').strip():
@@ -325,6 +363,7 @@ def build_home_dashboard_data(subject: Subject, as_of: date) -> Dict[str, Any]:
         enrollment_status = _dashboard_enrollment_status_label(sc_rec, en)
         sc_number = (sc_rec.sc_number or '').strip() if sc_rec else ''
         name_pinyin_initials = _latest_pinyin_initials_for_pc(subject_id, pc)
+        birth_date_ymd = _expected_birth_date_ymd_for_project(subject, pc, as_of)
 
         blocks_by_pc[pc] = {
             'project_code': _display_project_code(pc, en),
@@ -335,6 +374,7 @@ def build_home_dashboard_data(subject: Subject, as_of: date) -> Dict[str, Any]:
             'sc_number': sc_number,
             'sc_display': _format_sc_display(sc_number),
             'name_pinyin_initials': name_pinyin_initials,
+            'birth_date_ymd': birth_date_ymd,
             'queue_checkin_today': q_today,
             'enrollment_id': en.id if en else None,
             'protocol_id': en.protocol_id if en else None,

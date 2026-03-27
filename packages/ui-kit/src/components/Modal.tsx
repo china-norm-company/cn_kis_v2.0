@@ -27,6 +27,10 @@ export interface ModalProps {
   overlayClassName?: string
   /** 层级，用于多弹窗叠放时保证关键弹窗在上层（默认 50） */
   zIndex?: number
+  /** 仅 placement=right 时：覆盖抽屉面板宽度等（如 `max-w-[min(100vw,90rem)]`） */
+  drawerClassName?: string
+  /** 覆盖内容区容器 class（如抽屉内全宽分栏时传 `!p-0`） */
+  bodyClassName?: string
 }
 
 const sizeStyles = {
@@ -54,6 +58,8 @@ export function Modal({
   closeOnOverlay = true,
   overlayClassName,
   zIndex = 50,
+  drawerClassName,
+  bodyClassName,
 }: ModalProps) {
   const visible = isOpen ?? open ?? false
   const isDrawer = placement === 'right'
@@ -99,7 +105,10 @@ export function Modal({
         className={clsx(
           'relative z-10 flex w-full flex-col bg-white shadow-modal',
           isDrawer
-            ? 'h-dvh max-h-dvh min-h-0 max-w-[min(100vw,42rem)] overflow-hidden rounded-none rounded-l-xl animate-in fade-in-0 slide-in-from-right duration-200'
+            ? clsx(
+                'h-dvh max-h-dvh min-h-0 max-w-[min(100vw,42rem)] overflow-hidden rounded-none rounded-l-xl animate-in fade-in-0 slide-in-from-right duration-200',
+                drawerClassName,
+              )
             : clsx(
                 'max-h-[min(90vh,900px)] rounded-xl',
                 'animate-in fade-in-0 zoom-in-95 duration-200',
@@ -140,7 +149,8 @@ export function Modal({
             'min-h-0 flex-1 px-6 py-4',
             isDrawer
               ? 'flex flex-col overflow-hidden overscroll-contain'
-              : 'overflow-y-auto overscroll-contain'
+              : 'overflow-y-auto overscroll-contain',
+            bodyClassName,
           )}
         >
           {children}

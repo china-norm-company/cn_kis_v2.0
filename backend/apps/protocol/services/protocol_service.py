@@ -1063,6 +1063,20 @@ def _unwrap_html_body_fragment(html: str) -> str:
     return s
 
 
+def strip_icf_preview_banner(html: str) -> str:
+    """
+    移除 Word 预览 HTML 顶部的「以原文件为准」提示条。
+    执行台审核正文与回执摘要不应重复展示该说明；占位符替换后的正文即为准。
+    """
+    s = html or ''
+    if not s.strip():
+        return s
+    s = re.sub(r'<div[^>]*class="[^"]*\bbanner\b[^"]*"[^>]*>[\s\S]*?</div>', '', s, flags=re.IGNORECASE)
+    s = re.sub(r'<div[^>]*class="[^"]*lo-icf-banner[^"]*"[^>]*>[\s\S]*?</div>', '', s, flags=re.IGNORECASE)
+    s = re.sub(r'<div[^>]*\blo-icf-banner\b[^>]*>[\s\S]*?</div>', '', s, flags=re.IGNORECASE)
+    return s.strip()
+
+
 def resolve_icf_body_html_for_witness_dev(icf) -> str:
     """
     联调页正文：优先 DB 富文本；否则从上传文件生成预览 HTML（与执行台 ICF 内嵌预览同源）。
@@ -1113,7 +1127,7 @@ def resolve_icf_body_html_for_execution(icf) -> str:
     """
     raw = (getattr(icf, 'content', None) or '').strip()
     if raw:
-        return raw
+        return strip_icf_preview_banner(raw)
     rel = (getattr(icf, 'file_path', None) or '').strip()
     if not rel or '..' in rel:
         return ''
@@ -1156,7 +1170,7 @@ def resolve_icf_body_html_for_execution(icf) -> str:
             html = f.read()
     except OSError:
         return ''
-    return _unwrap_html_body_fragment(html)
+    return strip_icf_preview_banner(_unwrap_html_body_fragment(html))
 
 
 def parse_filename_as_node_title(filename: str) -> str:

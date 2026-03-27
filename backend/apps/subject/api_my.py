@@ -11,9 +11,13 @@ from typing import Optional
 from datetime import date, datetime as dt_datetime, timedelta
 import logging
 
+import os
+
 from django.db import transaction
 from django.utils import timezone
 from django.db.models import Q
+from django.conf import settings as django_settings
+from django.http import FileResponse
 
 logger = logging.getLogger(__name__)
 from apps.identity.decorators import require_permission, _get_account_from_request
@@ -850,6 +854,38 @@ def get_my_consents(request):
     return {'code': 200, 'msg': 'OK', 'data': {'items': items}}
 
 
+@router.get('/consents/{consent_id}/receipt-pdf', summary='下载本人签署回执 PDF（小程序 wx.downloadFile + Authorization）')
+@require_permission('my.consent.read')
+def get_my_consent_receipt_pdf(request, consent_id: int):
+    """
+    受试者端下载回执：走 JWT，避免直链 /media/ 无鉴权或域名不一致导致小程序下载失败。
+    """
+    subject = _get_subject_from_request(request)
+    if not subject:
+        return 404, {'code': 404, 'msg': '未找到受试者信息'}
+    from .models import SubjectConsent
+
+    c = SubjectConsent.objects.filter(id=consent_id, subject_id=subject.id, is_deleted=False).first()
+    if not c:
+        return 404, {'code': 404, 'msg': '记录不存在'}
+    if not c.is_signed:
+        return 400, {'code': 400, 'msg': '尚未签署，无回执'}
+    sig = c.signature_data if isinstance(c.signature_data, dict) else {}
+    rel = (sig.get('receipt_pdf_path') or '').strip()
+    if not rel or '..' in rel or rel.startswith('/'):
+        return 404, {'code': 404, 'msg': '回执文件不存在'}
+    media_root = os.path.abspath(os.path.normpath(str(django_settings.MEDIA_ROOT)))
+    abs_path = os.path.abspath(os.path.normpath(os.path.join(media_root, rel)))
+    if not abs_path.startswith(media_root + os.sep) and abs_path != media_root:
+        return 400, {'code': 400, 'msg': '非法文件路径'}
+    if not os.path.isfile(abs_path):
+        return 404, {'code': 404, 'msg': '文件不存在'}
+    fh = open(abs_path, 'rb')
+    resp = FileResponse(fh, content_type='application/pdf')
+    resp['Content-Disposition'] = 'inline; filename="receipt.pdf"'
+    return resp
+
+
 @router.get('/consents/icf/{icf_version_id}', summary='获取 ICF 内容（动态加载）')
 @require_permission('my.consent.read')
 def get_icf_content(request, icf_version_id: int):
@@ -884,6 +920,10 @@ def get_icf_content(request, icf_version_id: int):
     from apps.protocol.api import _clamp_1_or_2
 
     subj_sig_times = _clamp_1_or_2(rules.get('subject_signature_times'), 1) if rules.get('enable_subject_signature') else 0
+    sup_labels = rules.get('supplemental_collect_labels') or []
+    if not isinstance(sup_labels, list):
+        sup_labels = []
+    sup_labels = [str(x).strip() for x in sup_labels if str(x).strip()][:20]
     return {'code': 200, 'msg': 'OK', 'data': {
         'id': icf.id,
         'version': icf.version,
@@ -900,6 +940,8 @@ def get_icf_content(request, icf_version_id: int):
         'collect_id_card': bool(rules.get('collect_id_card')),
         'collect_screening_number': bool(rules.get('collect_screening_number')),
         'collect_initials': bool(rules.get('collect_initials')),
+        'enable_checkbox_recognition': bool(rules.get('enable_checkbox_recognition', False)),
+        'supplemental_collect_labels': sup_labels,
     }}
 
 

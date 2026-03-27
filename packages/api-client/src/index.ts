@@ -114,6 +114,7 @@ export type {
   ConsentRecord,
   ConsentPreviewData,
   ConsentStats,
+  ConsentFilterTabCounts,
   ProtocolConsentOverview,
   ScreeningBatchConsent,
   DualSignStaff,

@@ -2418,6 +2418,26 @@ def consent_stats(request, protocol_id: int):
     return {'code': 200, 'msg': 'OK', 'data': stats}
 
 
+@router.get('/{protocol_id}/consents/filter-tab-counts', summary='签署记录快捷筛选各 Tab 分组行数（知情管理）')
+@require_any_permission(['protocol.protocol.read', 'subject.subject.read'])
+def consent_filter_tab_counts_api(
+    request,
+    protocol_id: int,
+    date_from: Optional[str] = Query(None, description='YYYY-MM-DD，与列表一致'),
+    date_to: Optional[str] = Query(None),
+    search: Optional[str] = Query(None, description='与列表 search 一致'),
+):
+    """与 GET …/consents group_by=subject 各 status 筛选结果条数一致（受当前日期/关键字影响）。"""
+    _, protocol = _check_protocol_visible(request, protocol_id)
+    if not protocol:
+        return 404, {'code': 404, 'msg': '协议不存在'}
+    from apps.subject.services.consent_service import consent_filter_tab_counts
+    df = _parse_consent_date_query(date_from)
+    dt = _parse_consent_date_query(date_to)
+    counts = consent_filter_tab_counts(protocol_id, None, df, dt, search)
+    return {'code': 200, 'msg': 'OK', 'data': counts}
+
+
 @router.get('/{protocol_id}/consents/export', summary='导出受试者基础信息 Excel（知情管理）')
 @require_any_permission(['protocol.protocol.read', 'subject.subject.read'])
 def export_consents(
@@ -2534,7 +2554,7 @@ def list_consents(
         description='subject：按受试者合并多知情节点为一行；签署结果按全部节点汇总（未签齐为「-」，任一为否则「否」，全为是则「是」）',
     ),
 ):
-    """执行台知情管理：分页签署记录；status: all | signed | pending | result_no；sort 为字段名，order 为 asc|desc；默认按签署时间新到旧；可选 date_from/date_to（YYYY-MM-DD）、search、group_by=subject。"""
+    """执行台知情管理：分页签署记录；status: all | pending | pending_review | returned | signed | result_no；sort 为字段名，order 为 asc|desc；默认按签署时间新到旧；可选 date_from/date_to（YYYY-MM-DD）、search、group_by=subject。"""
     _, protocol = _check_protocol_visible(request, protocol_id)
     if not protocol:
         return 404, {'code': 404, 'msg': '协议不存在'}
@@ -2743,7 +2763,12 @@ def consent_receipt_pdf_for_execution(request, protocol_id: int, consent_id: int
     return resp
 
 
-@router.post('/{protocol_id}/consents/{consent_id}/staff-return', summary='执行台：退回重签（知情管理）')
+@router.post(
+    '/{protocol_id}/consents/{consent_id}/staff-return',
+    summary='执行台：退回重签（知情管理）',
+    # 须声明 400/404，否则 Ninja 抛 ConfigError，全局处理器将 msg 替换为「操作失败」
+    response={200: dict, 400: dict, 404: dict},
+)
 @require_permission('protocol.protocol.update')
 def staff_return_consent_api(
     request,
@@ -2774,7 +2799,11 @@ def staff_return_consent_api(
     }
 
 
-@router.post('/{protocol_id}/consents/{consent_id}/staff-approve', summary='执行台：通过审核（知情管理）')
+@router.post(
+    '/{protocol_id}/consents/{consent_id}/staff-approve',
+    summary='执行台：通过审核（知情管理）',
+    response={200: dict, 400: dict, 404: dict},
+)
 @require_permission('protocol.protocol.update')
 def staff_approve_consent_api(request, protocol_id: int, consent_id: int):
     _, protocol = _check_protocol_visible(request, protocol_id)
@@ -2797,7 +2826,11 @@ def staff_approve_consent_api(request, protocol_id: int, consent_id: int):
     }
 
 
-@router.delete('/{protocol_id}/consents/{consent_id}', summary='执行台：软删除签署记录（知情管理）')
+@router.delete(
+    '/{protocol_id}/consents/{consent_id}',
+    summary='执行台：软删除签署记录（知情管理）',
+    response={200: dict, 400: dict, 404: dict},
+)
 @require_permission('protocol.protocol.update')
 def soft_delete_consent_record(request, protocol_id: int, consent_id: int):
     _, protocol = _check_protocol_visible(request, protocol_id)

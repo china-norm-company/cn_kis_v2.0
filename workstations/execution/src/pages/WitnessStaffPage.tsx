@@ -92,6 +92,11 @@ export default function WitnessStaffPage() {
    * 与用户在分页器上选择的 page 冲突，表现为点「下一页」被 effect 里 setPage(dPage) 拉回第 1 页，需点两次才翻页。
    */
   const [focusDeepLinkConsumed, setFocusDeepLinkConsumed] = useState(() => focusWitnessStaffIdNum == null)
+  /** 同步闸门：避免 setState 异步窗口内，深链回写 effect 抢先把页码拉回去。 */
+  const focusDeepLinkConsumedRef = useRef(focusWitnessStaffIdNum == null)
+  useEffect(() => {
+    focusDeepLinkConsumedRef.current = focusDeepLinkConsumed
+  }, [focusDeepLinkConsumed])
 
   useEffect(() => {
     witnessStaffFocusLog('名单页:解析快照', {
@@ -164,6 +169,7 @@ export default function WitnessStaffPage() {
    * 后端会固定返回「该行所在页」，effect 里 setPage(dPage) 会把页码拉回第 1 页（与「下一页」冲突）。
    */
   const abandonDeepLinkFocus = useCallback(() => {
+    focusDeepLinkConsumedRef.current = true
     setFocusDeepLinkConsumed(true)
     setListFocusWitnessStaffId(null)
     clearWitnessStaffListFocusStorage()
@@ -201,7 +207,7 @@ export default function WitnessStaffPage() {
    *  用 useLayoutEffect 在绘制前完成消费，避免用户先点到「下一页」时仍带 focus 参数被服务端拉回第 1 页。 */
   useLayoutEffect(() => {
     if (focusWitnessStaffIdNum == null) return
-    if (focusDeepLinkConsumed) return
+    if (focusDeepLinkConsumedRef.current) return
     if (!staffListRes?.data?.items) {
       witnessStaffFocusLog('名单页:effect 等待列表', { focusWitnessStaffIdNum, hasRes: !!staffListRes })
       return
@@ -236,8 +242,9 @@ export default function WitnessStaffPage() {
     )
     clearWitnessStaffListFocusStorage()
     setSessionBackedFocusId(null)
+    focusDeepLinkConsumedRef.current = true
     setFocusDeepLinkConsumed(true)
-  }, [focusWitnessStaffIdNum, focusDeepLinkConsumed, staffListRes, navigate, location.pathname, focusStateId])
+  }, [focusWitnessStaffIdNum, staffListRes, navigate, location.pathname, focusStateId])
 
   useEffect(() => {
     if (listFocusWitnessStaffId == null) return

@@ -187,6 +187,29 @@ const GUEST_ACTIONS: Array<{ title: string; sub: string; url: string }> = [
 const subjectApi = buildSubjectEndpoints(taroApiClient)
 const SHOW_DEBUG_INFO = process.env.NODE_ENV !== 'production'
 
+/** 与当前「需重签」项目编号集合对应；忽略后直至集合变化前不再展示首页温馨提醒条（红点仍保留） */
+const STORAGE_HOME_ICF_RESIGN_CARE_DISMISS = 'home_icf_resign_care_dismiss_sig'
+
+function resignCodesDismissSignature(codes: string[]): string {
+  return codes.slice().sort().join('|')
+}
+
+/** 将首页 dashboard 中的项目编号映射为 protocol_id，供「去重签」直达该项目待签队列 */
+function resolveProtocolIdForResignCodes(
+  dash: HomeDashboardData | null,
+  codes: string[],
+): number | null {
+  if (!dash?.projects_ordered?.length || !codes.length) return null
+  const set = new Set(codes.map((c) => c.trim()).filter(Boolean))
+  for (const p of dash.projects_ordered) {
+    const pc = (p.project_code || '').trim()
+    if (!pc || !set.has(pc)) continue
+    const pid = p.protocol_id
+    if (pid != null && Number(pid) > 0) return Number(pid)
+  }
+  return null
+}
+
 /** 日记 2.0：本地/预览时指定全链路 project_id，首页「每日日记」会带上参数 */
 function getDiaryPagePath(): string {
   const pid =
@@ -215,6 +238,16 @@ export default function IndexPage() {
   const [homeDashboard, setHomeDashboard] = useState<HomeDashboardData | null>(null)
   const [moreProjectsExpanded, setMoreProjectsExpanded] = useState(false)
   const [diaryBadgeCount, setDiaryBadgeCount] = useState(0)
+  /** 正式流程且执行台退回重签时的项目编号（用于首页红点 + 温馨提醒） */
+  const [formalConsentResignCodes, setFormalConsentResignCodes] = useState<string[]>([])
+  /** 用户点击「忽略」后隐藏温馨提醒条，直至项目编号集合变化 */
+  const [icfResignCareDismissed, setIcfResignCareDismissed] = useState(false)
+
+  useEffect(() => {
+    const sig = resignCodesDismissSignature(formalConsentResignCodes)
+    const stored = String(Taro.getStorageSync(STORAGE_HOME_ICF_RESIGN_CARE_DISMISS) || '')
+    setIcfResignCareDismissed(sig !== '' && stored === sig)
+  }, [formalConsentResignCodes])
 
   // 使用 ref 防止并发重复请求（避免 useDidShow 和 handleLogin 同时触发）
   const isFetchingHomeDataRef = useRef(false)
@@ -293,6 +326,7 @@ export default function IndexPage() {
       const bindRes = await getMyBindingStatus()
       if (bindRes.code === 200 && bindRes.data && !bindRes.data.is_bound) {
         setDiaryBadgeCount(0)
+        setFormalConsentResignCodes([])
         Taro.navigateTo({ url: '/pages/bind-phone/index' })
         return
       }
@@ -386,10 +420,36 @@ export default function IndexPage() {
       } catch {
         setDiaryBadgeCount(0)
       }
+
+      try {
+        const consRes = await get<{
+          items?: Array<{
+            is_signed?: boolean
+            staff_audit_status?: string
+            protocol_code?: string
+            signing_kind?: string
+          }>
+        }>('/my/consents', { silent: true })
+        const items =
+          consRes.code === 200 && Array.isArray(consRes.data?.items) ? consRes.data!.items! : []
+        const codeSet = new Set<string>()
+        for (const c of items) {
+          if (c.is_signed) continue
+          if ((c.staff_audit_status || '').trim().toLowerCase() !== 'returned') continue
+          const kind = (c.signing_kind || 'formal').trim().toLowerCase()
+          if (kind !== 'formal') continue
+          const pc = (c.protocol_code || '').trim()
+          if (pc) codeSet.add(pc)
+        }
+        setFormalConsentResignCodes(Array.from(codeSet))
+      } catch {
+        setFormalConsentResignCodes([])
+      }
     } catch {
       setQueueInfo(null)
       setHomeDashboard(null)
       setDiaryBadgeCount(0)
+      setFormalConsentResignCodes([])
       setHomeDataError('首页信息刷新失败，可点击重试')
     } finally {
       isFetchingHomeDataRef.current = false
@@ -496,6 +556,13 @@ export default function IndexPage() {
     navTask.catch(() => {
       Taro.showToast({ title: '页面打开失败，请重试', icon: 'none' })
     })
+  }
+
+  const handleDismissIcfResignCare = () => {
+    const sig = resignCodesDismissSignature(formalConsentResignCodes)
+    if (!sig) return
+    Taro.setStorageSync(STORAGE_HOME_ICF_RESIGN_CARE_DISMISS, sig)
+    setIcfResignCareDismissed(true)
   }
 
   const renderHeroMedia = () => <HeroBrandAnimation />
@@ -661,11 +728,44 @@ export default function IndexPage() {
 
       <View className='care-banner'>
         <Text className='care-banner__title'>温馨提醒</Text>
-        <Text className='care-banner__text'>
-          {nextVisit
-            ? `下一次访视 ${nextVisit.date}，请提前准备证件与随访问卷。`
-            : '当前暂无近期访视安排，建议关注项目通知。'}
-        </Text>
+        {formalConsentResignCodes.length > 0 && !icfResignCareDismissed ? (
+          <>
+            <Text className='care-banner__text'>
+              {`项目编号 ${formalConsentResignCodes.join('、')} 需重签知情同意书。`}
+            </Text>
+            <View className='care-banner__actions'>
+              <View
+                className='care-banner__btn care-banner__btn--primary'
+                onClick={() => {
+                  const pid = resolveProtocolIdForResignCodes(homeDashboard, formalConsentResignCodes)
+                  const url =
+                    pid != null
+                      ? `/pages/consent/index?protocol_id=${encodeURIComponent(String(pid))}`
+                      : '/pages/consent/index'
+                  navigateTo(url)
+                }}
+              >
+                <Text className='care-banner__btn-label'>去重签</Text>
+              </View>
+              <View
+                className='care-banner__btn care-banner__btn--ghost'
+                onClick={handleDismissIcfResignCare}
+              >
+                <Text className='care-banner__btn-label'>忽略</Text>
+              </View>
+            </View>
+          </>
+        ) : null}
+        {nextVisit ? (
+          <Text className='care-banner__text'>
+            {`下一次访视 ${nextVisit.date}，请提前准备证件与随访问卷。`}
+          </Text>
+        ) : null}
+        {!nextVisit && !(formalConsentResignCodes.length > 0 && !icfResignCareDismissed) ? (
+          <Text className='care-banner__text'>
+            当前暂无近期访视安排，建议关注项目通知。
+          </Text>
+        ) : null}
         {homeDataError ? (
           <View className='care-banner__retry' onClick={() => userInfo && void fetchHomeData(userInfo)}>
             <Text className='care-banner__retry-text'>重新加载首页信息</Text>
@@ -896,8 +996,11 @@ export default function IndexPage() {
             className='action-item'
             onClick={() => navigateTo('/pages/consent/index')}
           >
-            <View className='action-icon action-icon-consent'>
-              <Text className='action-icon-text'>签</Text>
+            <View className='action-icon-wrap'>
+              <View className='action-icon action-icon-consent'>
+                <Text className='action-icon-text'>签</Text>
+              </View>
+              {formalConsentResignCodes.length > 0 ? <View className='action-icon-dot' /> : null}
             </View>
             <Text className='action-label'>签署知情同意书</Text>
           </View>

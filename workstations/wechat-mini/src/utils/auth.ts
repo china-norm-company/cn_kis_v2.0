@@ -1,5 +1,11 @@
 import Taro from '@tarojs/taro'
-import { post, get, getCurrentChannel, getCurrentApiBaseUrl } from './api'
+import {
+  post,
+  get,
+  getCurrentChannel,
+  getCurrentApiBaseUrl,
+  allowsDevApiBaseStorageOverride,
+} from './api'
 import { computePrimaryRole, resolveLoginRoute } from '@cn-kis/subject-core'
 import type { RouteTarget } from '@cn-kis/subject-core'
 
@@ -193,6 +199,11 @@ function isWechatDevTools(): boolean {
   return false
 }
 
+function isLocalhostApiBase(base: string): boolean {
+  const s = String(base || '').trim()
+  return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/.*)?$/i.test(s)
+}
+
 function extractWechatLoginPayload(res: unknown): {
   raw: Partial<WechatLoginResponseEnvelope>
   payload?: WechatLoginRawResponse
@@ -223,7 +234,7 @@ function extractWechatLoginPayload(res: unknown): {
 export async function wechatLogin(phoneCode?: string): Promise<UserInfo | null> {
   const traceId = `wxlogin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   const apiBase = getCurrentApiBaseUrl?.() ?? (process.env.TARO_APP_API_BASE as string) ?? ''
-  const isLocalDev = /127\.0\.0\.1|localhost/.test(apiBase)
+  const isLocalDev = isLocalhostApiBase(apiBase)
   const isDevTools = isWechatDevTools()
   const isLocalDevOrSimulator = isLocalDev || isDevTools
   appendLoginTrace(
@@ -242,6 +253,25 @@ export async function wechatLogin(phoneCode?: string): Promise<UserInfo | null> 
       content: withTrace,
       showCancel: false,
       confirmText: '我知道了',
+    })
+    return null
+  }
+
+  if (isLocalDev && !isDevTools) {
+    const content =
+      `当前 API 地址为 ${apiBase || 'localhost'}。\n` +
+      '真机无法访问此地址，请改为电脑局域网 IP（示例：http://192.168.x.x:8001/api/v1）后重试。'
+    appendLoginTrace(traceId, 'fail', `real-device localhost api base blocked: ${apiBase}`)
+    Taro.setStorageSync('last_login_error', `真机不可使用 localhost API [trace:${traceId}]`)
+    Taro.showModal({
+      title: '登录配置错误',
+      content,
+      cancelText: '我知道了',
+      confirmText: allowsDevApiBaseStorageOverride() ? '去修改 API' : '确定',
+    }).then((r) => {
+      if (r.confirm && allowsDevApiBaseStorageOverride()) {
+        Taro.navigateTo({ url: '/pages/dev-api/index' })
+      }
     })
     return null
   }

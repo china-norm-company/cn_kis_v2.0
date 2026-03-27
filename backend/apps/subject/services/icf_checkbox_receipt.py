@@ -24,14 +24,18 @@ def apply_checkbox_answers_inline_to_html(html: str, answers: List[Any]) -> str:
     """
     if not html or not answers:
         return html
+    box = r'[\u25a1\u2610\u25a2\u25a3]'
+    # 与配置页预览、icfCheckboxDetect 常见导出句式对齐（含 span 包裹的红色「请勾选」）
     patterns = [
+        re.compile(rf'<span[^>]*>\s*请勾选\s*</span>\s*{box}\s*是\s*{box}\s*否'),
         re.compile(r'请勾选\s*\[\s*\]\s*是\s*\[\s*\]\s*否'),
         re.compile(r'请勾选\s*\[\s*\]是\s*\[\s*\]否'),
         re.compile(r'请勾选\s*［\s*］\s*是\s*［\s*］\s*否'),
         re.compile(r'_{2,8}\s*Yes\s*是\s*_{2,8}\s*No\s*否', re.IGNORECASE),
         re.compile(r'_{2,8}\s*Yes是\s*_{2,8}\s*No否', re.IGNORECASE),
-        re.compile(r'[\u25a1\u2610\u25a2\u25a3]\s*是\s*[\u25a1\u2610\u25a2\u25a3]\s*否'),
-        re.compile(r'[\u25a1\u2610\u25a2\u25a3]是[\u25a1\u2610\u25a2\u25a3]否'),
+        re.compile(rf'请勾选\s*{box}\s*是\s*{box}\s*否'),
+        re.compile(rf'{box}\s*是\s*{box}\s*否'),
+        re.compile(rf'{box}是{box}否'),
     ]
     out = html
     for a in answers:

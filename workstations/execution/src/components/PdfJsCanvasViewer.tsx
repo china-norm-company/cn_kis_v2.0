@@ -23,6 +23,10 @@ type Props = {
   scrollClassName?: string
   /** panel：审核弹窗（限高）；fullscreen：核验页全屏层（随容器增高） */
   layout?: 'panel' | 'fullscreen'
+  /**
+   * iframe 模式：在父级 flex 容器内撑满剩余高度（用 flex-1/min-h-0，不用 vh），用于抽屉侧栏等。
+   */
+  fillContainer?: boolean
   emptyHint?: string
   /** 加载成功后展示「新窗口打开」（使用内存 Blob URL，含鉴权下载场景） */
   showOpenInNewWindowLink?: boolean
@@ -48,6 +52,7 @@ export function PdfJsCanvasViewer({
   className,
   scrollClassName,
   layout = 'panel',
+  fillContainer = false,
   emptyHint,
   showOpenInNewWindowLink = true,
 }: Props) {
@@ -248,6 +253,17 @@ export function PdfJsCanvasViewer({
       ? 'min-h-[min(70vh,800px)] flex-1'
       : 'min-h-[min(58vh,680px)] max-h-[min(78vh,860px)] w-full'
 
+  const iframeShellClass = fillContainer
+    ? clsx(
+        'flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-slate-200 bg-slate-100 shadow-inner',
+        scrollClassName,
+      )
+    : clsx(
+        'overflow-hidden rounded-lg border border-slate-200 bg-slate-100 shadow-inner',
+        iframeMinH,
+        scrollClassName,
+      )
+
   return (
     <div className={clsx('flex min-h-0 flex-1 flex-col', className)}>
       {showOpenInNewWindowLink && newWindowBlobUrl ? (
@@ -266,7 +282,12 @@ export function PdfJsCanvasViewer({
       {renderMode === 'iframe' ? (
         <>
           {loading ? (
-            <div className="flex min-h-[200px] items-center justify-center text-sm text-slate-500">
+            <div
+              className={clsx(
+                'flex items-center justify-center text-sm text-slate-500',
+                fillContainer ? 'min-h-0 flex-1' : 'min-h-[200px]',
+              )}
+            >
               正在加载与小程序下载一致的回执 PDF…
             </div>
           ) : null}
@@ -276,19 +297,17 @@ export function PdfJsCanvasViewer({
             </div>
           ) : null}
           {newWindowBlobUrl && !loading && !err ? (
-            <div
-              className={clsx(
-                'overflow-hidden rounded-lg border border-slate-200 bg-slate-100 shadow-inner',
-                iframeMinH,
-                scrollClassName,
-              )}
-            >
+            <div className={iframeShellClass}>
               <iframe
                 title="签署回执 PDF"
                 src={newWindowBlobUrl}
                 className={clsx(
                   'block w-full border-0 bg-white',
-                  layout === 'fullscreen' ? 'min-h-[60vh] flex-1' : 'h-[min(72vh,820px)] min-h-[52vh]',
+                  fillContainer
+                    ? 'min-h-0 flex-1'
+                    : layout === 'fullscreen'
+                      ? 'min-h-[60vh] flex-1'
+                      : 'h-[min(72vh,820px)] min-h-[52vh]',
                 )}
               />
             </div>

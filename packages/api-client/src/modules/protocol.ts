@@ -136,12 +136,14 @@ export interface ConsentPreviewData {
 
 /** 签署统计（知情管理）；与列表一致按受试者合并行计数（多节点一行） */
 export interface ConsentStats {
-  /** 汇总「签署状态」为已签署或已通过审核的行数 */
+  /** 合并后签署记录总行数（各状态之和） */
   total: number
-  /** 同 total，用于副文案「已签」 */
+  /** 汇总「签署状态」为已签署或已通过审核的行数 */
   signed_count: number
   /** 汇总「签署状态」为待签署的行数 */
   pending_count: number
+  /** 汇总「签署状态」为待审核的行数 */
+  pending_review_count?: number
   /** 至少签署 1 份的受试者数（去重，文档维度） */
   unique_subjects_signed?: number
   /** 已全部签署的受试者数（多 ICF 时有效） */
@@ -151,6 +153,16 @@ export interface ConsentStats {
   signed_result_no_count?: number
   /** 汇总「签署状态」为退回重签中的行数 */
   returned_resign_row_count?: number
+}
+
+/** 与 GET …/consents group_by=subject 各 status 一致的分组行数 */
+export interface ConsentFilterTabCounts {
+  all: number
+  pending: number
+  pending_review: number
+  returned: number
+  signed: number
+  result_no: number
 }
 
 /** 按现场粗筛/到场日（PreScreeningRecord.pre_screening_date）拆分的批次进度 */
@@ -519,6 +531,16 @@ export const protocolApi = {
     return api.get<ConsentStats>(`/protocol/${protocolId}/consents/stats`)
   },
 
+  /** 签署记录各快捷筛选对应的分组行数（与 group_by=subject 列表一致，随日期/搜索变化） */
+  getConsentFilterTabCounts(
+    protocolId: number,
+    params?: { date_from?: string; date_to?: string; search?: string },
+  ) {
+    return api.get<ConsentFilterTabCounts>(`/protocol/${protocolId}/consents/filter-tab-counts`, {
+      params,
+    })
+  },
+
   /** 上传文件创建签署节点（文件名自动解析为节点标题，可传 node_title 覆盖） */
   uploadIcfVersion(protocolId: number, file: File, nodeTitle?: string) {
     const form = new FormData()
@@ -590,7 +612,7 @@ export const protocolApi = {
   listConsents(
     protocolId: number,
     params?: {
-      status?: 'all' | 'signed' | 'pending' | 'result_no'
+      status?: 'all' | 'signed' | 'pending' | 'pending_review' | 'returned' | 'result_no'
       icf_version_id?: number
       /** YYYY-MM-DD，按签署日或未签时的创建日筛选 */
       date_from?: string
@@ -690,7 +712,7 @@ export const protocolApi = {
   async exportConsents(
     protocolId: number,
     params?: {
-      status?: 'all' | 'signed' | 'pending' | 'result_no'
+      status?: 'all' | 'signed' | 'pending' | 'pending_review' | 'returned' | 'result_no'
       icf_version_id?: number
       date_from?: string
       date_to?: string
@@ -708,7 +730,7 @@ export const protocolApi = {
   async exportConsentPdfs(
     protocolId: number,
     params?: {
-      status?: 'all' | 'signed' | 'pending' | 'result_no'
+      status?: 'all' | 'signed' | 'pending' | 'pending_review' | 'returned' | 'result_no'
       icf_version_id?: number
       date_from?: string
       date_to?: string
