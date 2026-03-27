@@ -66,6 +66,16 @@ export default defineConfig(async (merge) => {
       'process.env.TARO_APP_USE_DIRECT_API': JSON.stringify(
         (process.env.TARO_APP_USE_DIRECT_API || '').trim(),
       ),
+      /** 未在 defineConstants 中声明的 process.env 在小程序运行时不会替换，访问 process 会 ReferenceError */
+      'process.env.TARO_APP_MOCK_LOGIN_BTN': JSON.stringify(
+        (process.env.TARO_APP_MOCK_LOGIN_BTN || '').trim(),
+      ),
+      'process.env.TARO_APP_API_BACKUP_BASE': JSON.stringify(
+        (process.env.TARO_APP_API_BACKUP_BASE || '').trim(),
+      ),
+      'process.env.TARO_APP_ENABLE_FALLBACK': JSON.stringify(
+        (process.env.TARO_APP_ENABLE_FALLBACK || '').trim(),
+      ),
       'process.env.TARO_APP_DIARY_PROJECT_ID': JSON.stringify(diaryProjectId),
     },
     copy: {

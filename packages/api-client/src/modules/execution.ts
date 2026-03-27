@@ -99,6 +99,7 @@ export const executionApi = {
     liaison?: string
     gender?: string
     age?: number
+    birth_date?: string
     appointment_date: string
     appointment_time?: string
     purpose?: string

@@ -20,6 +20,9 @@ const MORE_INSERT_TOKENS: { label: string; token: string }[] = [
   { label: '筛选号', token: '{{ICF_SCREENING_NUMBER}}' },
   { label: '拼音首字母', token: '{{ICF_INITIALS}}' },
   { label: '签署时间 ISO', token: '{{ICF_SIGNED_AT_ISO}}' },
+  { label: '签署年', token: '{{ICF_SIGNED_YEAR}}' },
+  { label: '签署月', token: '{{ICF_SIGNED_MONTH}}' },
+  { label: '签署日(日)', token: '{{ICF_SIGNED_DAY}}' },
   { label: '回执号', token: '{{ICF_RECEIPT_NO}}' },
 ]
 
@@ -42,6 +45,13 @@ const DEFAULT_KEYWORD_RULES: KeywordAnchorRule[] = [
   { id: 'subject-1', label: '受试者签名1', keyword: '同意人', token: '{{ICF_SUBJECT_SIG_1}}', mode: 'after' },
   { id: 'subject-2', label: '受试者签名2', keyword: '受试者签名', token: '{{ICF_SUBJECT_SIG_2}}', mode: 'after' },
   { id: 'staff-1', label: '研究者/工作人员签名1', keyword: '研究者', token: '{{ICF_STAFF_SIG_1}}', mode: 'after' },
+  {
+    id: 'ymd',
+    label: '年月日（自动签署日，需唯一匹配）',
+    keyword: '年 月 日',
+    token: '{{ICF_SIGNED_YEAR}}年{{ICF_SIGNED_MONTH}}月{{ICF_SIGNED_DAY}}日',
+    mode: 'after',
+  },
 ]
 
 function ruleStorageKey(protocolId: number, icfId: number): string {
@@ -102,6 +112,8 @@ export type IcfHtmlInsertTokenSettings = {
   subject_signature_times: 1 | 2
   enable_staff_signature: boolean
   staff_signature_times: 1 | 2
+  /** 与节点「启用自动签署日期」一致时展示拆分占位，便于对齐文书「年 月 日」行 */
+  enable_auto_sign_date?: boolean
 }
 
 export function buildIcfHtmlPrimaryInsertTokens(s: IcfHtmlInsertTokenSettings): { label: string; token: string }[] {
@@ -117,6 +129,12 @@ export function buildIcfHtmlPrimaryInsertTokens(s: IcfHtmlInsertTokenSettings): 
     if (st >= 2) out.push({ label: '工作人员签名2', token: '{{ICF_STAFF_SIG_2}}' })
   }
   out.push({ label: '签署日', token: '{{ICF_SIGNED_DATE}}' })
+  if (s.enable_auto_sign_date) {
+    out.push({
+      label: '签署年月日（拆分，与自动签署日一致）',
+      token: '{{ICF_SIGNED_YEAR}}年{{ICF_SIGNED_MONTH}}月{{ICF_SIGNED_DAY}}日',
+    })
+  }
   return out
 }
 

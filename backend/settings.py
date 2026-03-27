@@ -245,6 +245,8 @@ if not CORS_ALLOWED_ORIGINS and not CORS_ALLOW_ALL_ORIGINS:
 # strip() 去掉 Windows CRLF 行尾 \r 与首尾空格，避免飞书 20002 invalid_client
 FEISHU_APP_ID = (os.getenv('FEISHU_APP_ID', '') or '').strip()
 FEISHU_APP_SECRET = (os.getenv('FEISHU_APP_SECRET', '') or '').strip()
+# OAuth 回调页站点 origin（与前端 VITE_FEISHU_REDIRECT_BASE 一致）；identity 换 token 兜底用，优先以前端传入 redirect_uri 为准
+FEISHU_REDIRECT_BASE = (os.getenv('FEISHU_REDIRECT_BASE') or '').strip()
 
 # 各工作台独立 App（可选，仅用于工作台归属校验）
 FEISHU_APP_ID_FINANCE = os.getenv('FEISHU_APP_ID_FINANCE', '')
@@ -479,6 +481,49 @@ MEDIA_URL = '/media/'
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ============================================================================
+# 邮件（SMTP）— 环境变量见 backend/.env 中 EMAIL_* / DEFAULT_FROM_EMAIL
+# ============================================================================
+# 默认使用 libs.smtp_email_backend：支持 EMAIL_SMTP_INSECURE_SKIP_VERIFY（Django 4.2 核心后端不读 EMAIL_SSL_CONTEXT）
+EMAIL_SMTP_INSECURE_SKIP_VERIFY = os.getenv('EMAIL_SMTP_INSECURE_SKIP_VERIFY', 'false').lower() in (
+    '1',
+    'true',
+    'yes',
+)
+EMAIL_BACKEND = (
+    os.getenv('EMAIL_BACKEND', 'libs.smtp_email_backend.EmailBackend').strip()
+    or 'libs.smtp_email_backend.EmailBackend'
+)
+EMAIL_HOST = (os.getenv('EMAIL_HOST') or 'localhost').strip() or 'localhost'
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '25'))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'false').lower() in ('1', 'true', 'yes')
+EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'false').lower() in ('1', 'true', 'yes')
+EMAIL_HOST_USER = (os.getenv('EMAIL_HOST_USER') or '').strip()
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD') or ''
+DEFAULT_FROM_EMAIL = (os.getenv('DEFAULT_FROM_EMAIL') or '').strip() or 'webmaster@localhost'
+
+# ============================================================================
+# 执行台 / 知情核验（邮件内链接、扫码落地页）
+# ============================================================================
+EXECUTION_PUBLIC_BASE_URL = (os.getenv('EXECUTION_PUBLIC_BASE_URL') or '').strip()
+CONSENT_TEST_SCAN_PUBLIC_BASE = (os.getenv('CONSENT_TEST_SCAN_PUBLIC_BASE') or '').strip()
+# 知情测试 H5 /public/consent-test-submit 失败时是否在 JSON msg 中附带「（原因：…）」；未设置环境变量时默认开启便于联调，生产请设 CONSENT_TEST_SCAN_VERBOSE_ERRORS=false
+_cts_ve = (os.getenv('CONSENT_TEST_SCAN_VERBOSE_ERRORS') or '').strip().lower()
+if _cts_ve in ('1', 'true', 'yes'):
+    CONSENT_TEST_SCAN_VERBOSE_ERRORS = True
+elif _cts_ve in ('0', 'false', 'no'):
+    CONSENT_TEST_SCAN_VERBOSE_ERRORS = False
+else:
+    CONSENT_TEST_SCAN_VERBOSE_ERRORS = True
+# 双签邮件人脸联调：跳过火山 H5，本地走「核验完成」中间页再进入授权/签名（见 WITNESS_FACE_DEV_BYPASS）
+WITNESS_FACE_DEV_BYPASS = os.getenv('WITNESS_FACE_DEV_BYPASS', 'false').lower() in ('1', 'true', 'yes')
+
+# ============================================================================
+# 请求体大小（知情测试 H5 等多节点手写签名 base64 批量提交，默认 2.5MB 易触发 RequestDataTooBig）
+# ============================================================================
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv('DJANGO_DATA_UPLOAD_MAX_MEMORY_BYTES', str(32 * 1024 * 1024)))
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv('DJANGO_FILE_UPLOAD_MAX_MEMORY_BYTES', str(32 * 1024 * 1024)))
 
 # ============================================================================
 # 表名前缀

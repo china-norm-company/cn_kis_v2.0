@@ -80,3 +80,25 @@ export function isConsentScanUrlHttpIpv4ImplicitPort80(url: string): boolean {
     return false
   }
 }
+
+/**
+ * 签署回执 PDF：后端可能返回 `http://127.0.0.1:8001/media/...`，iframe/ fetch 指向与前端不同端口时易失败。
+ * 改为同源路径 `/media/...`，开发环境由 Vite 代理到 Django；公网绝对 URL（非 loopback）保持不动。
+ */
+export function normalizeConsentReceiptPdfUrlForBrowser(url: string): string {
+  const t = (url || '').trim()
+  if (!t) return ''
+  if (t.startsWith('/')) return t
+  if (t.startsWith('http://') || t.startsWith('https://')) {
+    try {
+      const u = new URL(t)
+      if (isLoopbackHostname(u.hostname)) {
+        return u.pathname + u.search + u.hash
+      }
+      return t
+    } catch {
+      return t
+    }
+  }
+  return t
+}

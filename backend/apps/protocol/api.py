@@ -37,6 +37,47 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 
+def _sanitize_consent_test_scan_filename_segment(value: str, max_len: int) -> str:
+    """知情测试回执下载名片段：与执行台 H5 一致，去除路径非法字符。"""
+    s = (value or '').strip()
+    if not s:
+        return ''
+    s = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', s)
+    s = re.sub(r'\s+', '_', s)
+    s = s.strip('_')
+    return s[:max_len] if s else ''
+
+
+def _consent_test_scan_receipt_download_basename(icf, protocol, sig: dict, receipt_no_fallback: str) -> str:
+    """项目编号_SC号_签署节点名称.pdf（与核验完成 H5 列表一致；SC 来自扫码基础信息）。"""
+    node = (getattr(icf, 'node_title', None) or '').strip() or '签署节点'
+    pcode = (getattr(protocol, 'code', None) or '').strip() if protocol else ''
+    cti = sig.get('consent_test_scan_identity') if isinstance(sig.get('consent_test_scan_identity'), dict) else {}
+    sc = (cti.get('declared_screening_number') or '').strip()
+    parts = [
+        _sanitize_consent_test_scan_filename_segment(pcode, 40),
+        _sanitize_consent_test_scan_filename_segment(sc, 64),
+        _sanitize_consent_test_scan_filename_segment(node, 120),
+    ]
+    parts = [p for p in parts if p]
+    if parts:
+        return '_'.join(parts) + '.pdf'
+    rno = (receipt_no_fallback or '').replace('/', '_').replace('\\', '_')
+    return f'icf_receipt_{rno}.pdf' if rno else 'icf_receipt.pdf'
+
+
+def _http_content_disposition_filename(disposition: str, filename: str) -> str:
+    """Content-Disposition，含 RFC 5987 filename* 以支持中文文件名。"""
+    from urllib.parse import quote
+
+    if all(ord(c) < 128 for c in filename):
+        return f'{disposition}; filename="{filename}"'
+    ascii_fn = filename.encode('ascii', 'replace').decode('ascii').replace('?', '_')
+    enc = quote(filename, safe='')
+    # RFC 5987: filename*=UTF-8''percent-encoded
+    return f"{disposition}; filename=\"{ascii_fn}\"; filename*=UTF-8''{enc}"
+
+
 def _parse_consent_date_query(value: Optional[str]) -> Optional[date]:
     """签署记录日期筛选：YYYY-MM-DD。"""
     if not value or not str(value).strip():
@@ -618,7 +659,7 @@ def _is_test_screening_batch_for_export(b: dict, settings: dict) -> bool:
 
 
 def _format_staff_verification_for_export(settings: dict, v_snap: dict) -> str:
-    """与列表「工作人员核验」列一致：状态 + 启用双签且有人员时附「已核验数/总人数」（不再单独导出核验进度列）。"""
+    """与知情侧工作人员认证签名汇总一致：状态 + 启用双签且有人员时附「已完成数/总人数」（不再单独导出进度列）。"""
     st = (v_snap.get('staff_verification_status') or '').strip() or '—'
     if not bool(settings.get('require_dual_sign')):
         return st
@@ -930,11 +971,11 @@ def _get_effective_consent_settings(protocol: Protocol) -> dict:
 
 def _staff_verification_snapshot(settings: dict) -> dict:
     """
-    工作人员认证核验（依赖 dual_sign_staffs 已合并 WitnessStaff 核验结果）：
-    - 无需核验：未启用双签
-    - 待核验：已启用双签但尚无人员，或有人员但 0 人已核验
-    - 核验中：部分已核验
-    - 核验完成：全部人员已核验（且至少 1 人）
+    工作人员认证签名进度（依赖 dual_sign_staffs 已合并 WitnessStaff.identity_verified）：
+    - 无需认证：未启用双签
+    - 待完成：已启用双签但尚无人员，或有人员但 0 人已完成
+    - 进行中：部分已完成
+    - 已完成：全部人员已完成（且至少 1 人）
     """
     req = bool(settings.get('require_dual_sign'))
     staffs = settings.get('dual_sign_staffs') or []
@@ -944,16 +985,16 @@ def _staff_verification_snapshot(settings: dict) -> dict:
         return {
             'dual_sign_staff_total': total,
             'verified_staff_count': verified,
-            'staff_verification_status': '无需核验',
+            'staff_verification_status': '无需认证',
         }
     if total == 0:
-        status = '待核验'
+        status = '待完成'
     elif verified >= total:
-        status = '核验完成'
+        status = '已完成'
     elif verified == 0:
-        status = '待核验'
+        status = '待完成'
     else:
-        status = '核验中'
+        status = '进行中'
     return {
         'dual_sign_staff_total': total,
         'verified_staff_count': verified,
@@ -1006,10 +1047,12 @@ def _compute_consent_config_status(
     *,
     has_test_signing: bool = False,
     effective_require_dual_sign: Optional[bool] = None,
+    verify_test_staff_ready: bool = True,
 ) -> str:
     """
     知情管理列表「知情配置状态」：
-    - 未发布：待配置 / 配置中 / 待认证授权 / 已授权待测试 / 已测试待开始（未发布且已产生测试签署时）
+    - 未发布：待配置 / 配置中 / 待认证授权 / 待认证核验（已选核验人选但人脸+签名+邮件授权未齐）/
+      已授权待测试 / 已测试待开始（未发布且已产生测试签署时）
     - 已发布：已测试待开始 / 进行中 / 已结束（按筛选日期与今日比较；「已测试待开始」与未发布同名，表示尚未进入现场筛选窗口）
     """
     from django.utils import timezone
@@ -1049,18 +1092,27 @@ def _compute_consent_config_status(
         else bool(settings.get('require_dual_sign'))
     )
 
+    if (
+        config_ready
+        and req_dual
+        and (settings.get('consent_verify_test_staff_name') or '').strip()
+        and not verify_test_staff_ready
+    ):
+        return '待认证核验'
+
     if config_ready and req_dual:
+        # 邮件侧已写入「授权签名测试」时优先展示，不因双签快照暂时为「进行中」（如名单变更、核验状态回写延迟）而回退为「待认证授权」
+        if settings.get('consent_verify_signature_authorized'):
+            if has_test_signing:
+                return '已测试待开始'
+            return '已授权待测试'
         st = (v_snap.get('staff_verification_status') or '').strip()
-        if st in ('待核验', '核验中'):
+        if st in ('待完成', '进行中'):
             return '待认证授权'
-        if st == '核验完成':
-            if settings.get('consent_verify_signature_authorized'):
-                if has_test_signing:
-                    return '已测试待开始'
-                return '已授权待测试'
+        if st == '已完成':
             return '待认证授权'
 
-    # 未启用双签时：列表「授权核验测试」邮件同意后不走上文分支，否则 consent_verify_signature_authorized 已写入仍长期为「配置中」
+    # 未启用双签时：列表「授权签名测试」邮件同意后不走上文分支，否则 consent_verify_signature_authorized 已写入仍长期为「配置中」
     if (
         icf_count > 0
         and config_ready
@@ -1079,7 +1131,7 @@ def _compute_consent_config_status(
 
 
 def get_consent_config_status_for_protocol(protocol: Protocol) -> str:
-    """与 consent-overview 列表一致的「知情配置状态」（供核验测试扫码、落地页校验复用）。"""
+    """与 consent-overview 列表一致的「知情配置状态」（供知情测试扫码、落地页校验复用）。"""
     from apps.subject.services.consent_service import (
         get_effective_mini_sign_rules,
         get_icf_versions,
@@ -1099,9 +1151,9 @@ def get_consent_config_status_for_protocol(protocol: Protocol) -> str:
         icf_n=icf_count,
     )
     config_ready = _config_ready_for_consent_overview(protocol, icf_count)
-    from apps.protocol.services import witness_staff_service as _ws_svc
 
     has_test_signing = _ws_svc.protocol_has_test_signing(protocol.id)
+    verify_ready = _ws_svc.consent_verify_test_staff_fully_ready(protocol.id, settings)
     return _compute_consent_config_status(
         settings,
         icf_count,
@@ -1111,6 +1163,7 @@ def get_consent_config_status_for_protocol(protocol: Protocol) -> str:
         v_snap,
         has_test_signing=has_test_signing,
         effective_require_dual_sign=dual_eff,
+        verify_test_staff_ready=verify_ready,
     )
 
 
@@ -1125,7 +1178,7 @@ def _execution_base_for_consent_scan_qr(base: str) -> str:
 
 
 def _build_consent_test_scan_url(request, protocol_id: int, token: str) -> str:
-    """执行台「核验测试」二维码：直接打开 H5（/execution/#/consent-test-scan），不拉起小程序。"""
+    """执行台「知情测试」二维码：直接打开 H5（/execution/#/consent-test-scan），不拉起小程序。"""
     import re
     from urllib.parse import quote
 
@@ -1368,6 +1421,8 @@ def consent_overview(
     except Exception:
         _cache_backend = None
 
+    from apps.protocol.services import witness_staff_service as _ws_svc_co
+
     protocol_ids = [int(getattr(p, 'id')) for p in result['items'] if getattr(p, 'id', None)]
     icf_map = {}
     if protocol_ids:
@@ -1447,6 +1502,7 @@ def consent_overview(
                     pass
         verified_staff_count = v_snap['verified_staff_count']
         has_test_signing = int(p.id) in test_signed_protocol_ids
+        verify_ready = _ws_svc_co.consent_verify_test_staff_fully_ready(p.id, settings)
         config_status_val = _compute_consent_config_status(
             settings,
             icf_count,
@@ -1456,6 +1512,7 @@ def consent_overview(
             v_snap,
             has_test_signing=has_test_signing,
             effective_require_dual_sign=dual_eff,
+            verify_test_staff_ready=verify_ready,
         )
         # 列表页当前主要展示 screening_batches 的签署进度，避免逐项目触发重型全量签署统计。
         signed_total = sum(int(b.get('signed_count') or 0) for b in batch_stats['batches'])
@@ -1495,6 +1552,7 @@ def consent_overview(
             'consent_config_account_id': getattr(p, 'consent_config_account_id', None),
             'consent_signing_staff_name': (settings.get('consent_signing_staff_name') or '').strip() or None,
             'consent_verify_test_staff_name': (settings.get('consent_verify_test_staff_name') or '').strip() or None,
+            'consent_verify_test_staff_ready': verify_ready,
         })
     acc_ids = {x['consent_config_account_id'] for x in items if x.get('consent_config_account_id')}
     name_map = {}
@@ -1599,6 +1657,7 @@ def consent_overview_export(
         config_ready = _config_ready_for_consent_overview(p, icf_count)
         from apps.protocol.services import witness_staff_service as _ws_svc_exp
 
+        verify_ready = _ws_svc_exp.consent_verify_test_staff_fully_ready(p.id, settings)
         config_status_val = _compute_consent_config_status(
             settings,
             icf_count,
@@ -1608,6 +1667,7 @@ def consent_overview_export(
             v_snap,
             has_test_signing=_ws_svc_exp.protocol_has_test_signing(p.id),
             effective_require_dual_sign=dual_eff,
+            verify_test_staff_ready=verify_ready,
         )
         if config_status and config_status.strip() and config_status_val != config_status.strip():
             continue
@@ -2358,6 +2418,26 @@ def consent_stats(request, protocol_id: int):
     return {'code': 200, 'msg': 'OK', 'data': stats}
 
 
+@router.get('/{protocol_id}/consents/filter-tab-counts', summary='签署记录快捷筛选各 Tab 分组行数（知情管理）')
+@require_any_permission(['protocol.protocol.read', 'subject.subject.read'])
+def consent_filter_tab_counts_api(
+    request,
+    protocol_id: int,
+    date_from: Optional[str] = Query(None, description='YYYY-MM-DD，与列表一致'),
+    date_to: Optional[str] = Query(None),
+    search: Optional[str] = Query(None, description='与列表 search 一致'),
+):
+    """与 GET …/consents group_by=subject 各 status 筛选结果条数一致（受当前日期/关键字影响）。"""
+    _, protocol = _check_protocol_visible(request, protocol_id)
+    if not protocol:
+        return 404, {'code': 404, 'msg': '协议不存在'}
+    from apps.subject.services.consent_service import consent_filter_tab_counts
+    df = _parse_consent_date_query(date_from)
+    dt = _parse_consent_date_query(date_to)
+    counts = consent_filter_tab_counts(protocol_id, None, df, dt, search)
+    return {'code': 200, 'msg': 'OK', 'data': counts}
+
+
 @router.get('/{protocol_id}/consents/export', summary='导出受试者基础信息 Excel（知情管理）')
 @require_any_permission(['protocol.protocol.read', 'subject.subject.read'])
 def export_consents(
@@ -2369,7 +2449,7 @@ def export_consents(
     date_to: Optional[str] = Query(None),
     search: Optional[str] = Query(None, description='关键字：受试者编号/姓名/手机号（存于受试者表，列表不展示）/SC号/回执号等子串匹配'),
 ):
-    """执行台知情管理：按当前筛选导出受试者基础信息（按受试者去重），字段 SC号、姓名、手机号、身份证号。"""
+    """执行台知情管理：按当前筛选导出受试者基础信息（按受试者去重）；手机号优先扫码基础信息页；按 SC 号升序。"""
     _, protocol = _check_protocol_visible(request, protocol_id)
     if not protocol:
         return 404, {'code': 404, 'msg': '协议不存在'}
@@ -2384,6 +2464,8 @@ def export_consents(
         date_from=df,
         date_to=dt,
         search=search,
+        protocol_code=getattr(protocol, 'code', None) or '',
+        protocol_title=getattr(protocol, 'title', None) or '',
     )
     try:
         import openpyxl
@@ -2393,15 +2475,18 @@ def export_consents(
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = '受试者基础信息'
-    headers = ['SC号', '姓名', '手机号', '身份证号']
+    headers = ['项目编号', '项目名称', 'SC号', '姓名', '手机号', '拼音首字母', '身份证号']
     for col, h in enumerate(headers, 1):
         ws.cell(row=1, column=col, value=h)
         ws.cell(row=1, column=col).font = Font(bold=True)
     for row_idx, r in enumerate(rows, 2):
-        ws.cell(row=row_idx, column=1, value=r.get('sc_number') or '')
-        ws.cell(row=row_idx, column=2, value=r.get('subject_name') or '')
-        ws.cell(row=row_idx, column=3, value=r.get('phone') or '')
-        ws.cell(row=row_idx, column=4, value=r.get('id_card') or '')
+        ws.cell(row=row_idx, column=1, value=r.get('project_code') or '')
+        ws.cell(row=row_idx, column=2, value=r.get('project_title') or '')
+        ws.cell(row=row_idx, column=3, value=r.get('sc_number') or '')
+        ws.cell(row=row_idx, column=4, value=r.get('subject_name') or '')
+        ws.cell(row=row_idx, column=5, value=r.get('phone') or '')
+        ws.cell(row=row_idx, column=6, value=r.get('name_pinyin_initials') or '')
+        ws.cell(row=row_idx, column=7, value=r.get('id_card') or '')
     from io import BytesIO
     buf = BytesIO()
     wb.save(buf)
@@ -2469,7 +2554,7 @@ def list_consents(
         description='subject：按受试者合并多知情节点为一行；签署结果按全部节点汇总（未签齐为「-」，任一为否则「否」，全为是则「是」）',
     ),
 ):
-    """执行台知情管理：分页签署记录；status: all | signed | pending | result_no；sort 为字段名，order 为 asc|desc；默认按签署时间新到旧；可选 date_from/date_to（YYYY-MM-DD）、search、group_by=subject。"""
+    """执行台知情管理：分页签署记录；status: all | pending | pending_review | returned | signed | result_no；sort 为字段名，order 为 asc|desc；默认按签署时间新到旧；可选 date_from/date_to（YYYY-MM-DD）、search、group_by=subject。"""
     _, protocol = _check_protocol_visible(request, protocol_id)
     if not protocol:
         return 404, {'code': 404, 'msg': '协议不存在'}
@@ -2481,7 +2566,7 @@ def list_consents(
         list_consents_grouped_by_subject_page,
         list_consents_page_for_protocol,
         safe_subject_consent_icf_version,
-        signing_staff_name_for_screening_date,
+        screening_signing_staff_for_consent_list,
         subject_name_display_for_consent,
         subject_no_display_for_consent,
     )
@@ -2513,6 +2598,7 @@ def list_consents(
             sched,
             single_ref_date,
             settings.MEDIA_URL,
+            protocol_id,
         )
         return {
             'code': 200,
@@ -2555,10 +2641,15 @@ def list_consents(
             ref_day = single_ref_date
         else:
             ref_day = _dt_to_local_date(c.signed_at) or _dt_to_local_date(c.create_time)
-        screening_signing_staff = signing_staff_name_for_screening_date(sched, ref_day) if ref_day else ''
         sig_for_row = c.signature_data or {}
-        if sig_for_row.get('witness_dev_flow') and (sig_for_row.get('witness_staff_name') or '').strip():
-            screening_signing_staff = str(sig_for_row.get('witness_staff_name')).strip()
+        screening_signing_staff, witness_staff_auth_at = screening_signing_staff_for_consent_list(
+            sched,
+            ref_day,
+            settings_data,
+            sig_for_row,
+            protocol_id=protocol_id,
+            signed_at=c.signed_at,
+        )
         rows.append({
             'id': c.id,
             'subject_id': c.subject_id,
@@ -2578,6 +2669,7 @@ def list_consents(
             'investigator_signed_at': investigator_signed_at,
             'investigator_sign_staff_name': witness_meta.get('staff_name') or '',
             'screening_signing_staff': screening_signing_staff,
+            'witness_staff_auth_at': witness_staff_auth_at,
             'receipt_no': c.receipt_no or '',
             'receipt_pdf_path': receipt_pdf_path,
             'receipt_pdf_url': receipt_pdf_url,
@@ -2617,7 +2709,66 @@ def consent_preview(request, protocol_id: int, consent_id: int):
     return {'code': 200, 'msg': 'OK', 'data': data}
 
 
-@router.post('/{protocol_id}/consents/{consent_id}/staff-return', summary='执行台：退回重签（知情管理）')
+@router.get('/{protocol_id}/consents/{consent_id}/receipt-pdf', summary='执行台：签署回执 PDF 流（知情审核预览，需登录）')
+@require_any_permission(['protocol.protocol.read', 'subject.subject.read'])
+def consent_receipt_pdf_for_execution(request, protocol_id: int, consent_id: int):
+    """
+    与直链 /media 相比：走 JWT + 协议可见性校验，并在服务端再次 ensure 回执；
+    避免前端 fetch 静态媒体 404（环境未挂载 media、路径不一致等）。
+    """
+    _, protocol = _check_protocol_visible(request, protocol_id)
+    if not protocol:
+        return 404, {'code': 404, 'msg': '协议不存在'}
+    from apps.subject.models import SubjectConsent
+    from apps.subject.services.consent_service import _ensure_receipt_pdf_safe
+
+    c = (
+        SubjectConsent.objects.filter(id=consent_id, icf_version__protocol_id=protocol_id)
+        .select_related('icf_version', 'icf_version__protocol')
+        .first()
+    )
+    if not c:
+        return 404, {'code': 404, 'msg': '签署记录不存在'}
+    if not c.is_signed:
+        return 400, {'code': 400, 'msg': '尚未签署，无回执 PDF'}
+
+    sig = dict(c.signature_data or {})
+    if not sig.get('receipt_pdf_path') or sig.get('receipt_stub') is not False:
+        _ensure_receipt_pdf_safe(c)
+        c.save(update_fields=['signature_data', 'update_time'])
+        sig = dict(c.signature_data or {})
+
+    rel = (sig.get('receipt_pdf_path') or '').strip()
+    if not rel or '..' in rel or rel.startswith('/'):
+        return 404, {'code': 404, 'msg': '回执文件不存在'}
+
+    media_root = os.path.abspath(os.path.normpath(str(django_settings.MEDIA_ROOT)))
+    abs_path = os.path.abspath(os.path.normpath(os.path.join(media_root, rel)))
+    if not abs_path.startswith(media_root + os.sep) and abs_path != media_root:
+        return 400, {'code': 400, 'msg': '非法文件路径'}
+    if not os.path.isfile(abs_path):
+        return 404, {'code': 404, 'msg': '回执文件不存在'}
+
+    icf = c.icf_version
+    proto = getattr(icf, 'protocol', None) if icf else None
+    safe_name = _consent_test_scan_receipt_download_basename(
+        icf,
+        proto,
+        sig,
+        (c.receipt_no or str(c.id) or '').strip(),
+    )
+    fh = open(abs_path, 'rb')
+    resp = FileResponse(fh, content_type='application/pdf')
+    resp['Content-Disposition'] = _http_content_disposition_filename('inline', safe_name)
+    return resp
+
+
+@router.post(
+    '/{protocol_id}/consents/{consent_id}/staff-return',
+    summary='执行台：退回重签（知情管理）',
+    # 须声明 400/404，否则 Ninja 抛 ConfigError，全局处理器将 msg 替换为「操作失败」
+    response={200: dict, 400: dict, 404: dict},
+)
 @require_permission('protocol.protocol.update')
 def staff_return_consent_api(
     request,
@@ -2648,7 +2799,11 @@ def staff_return_consent_api(
     }
 
 
-@router.post('/{protocol_id}/consents/{consent_id}/staff-approve', summary='执行台：通过审核（知情管理）')
+@router.post(
+    '/{protocol_id}/consents/{consent_id}/staff-approve',
+    summary='执行台：通过审核（知情管理）',
+    response={200: dict, 400: dict, 404: dict},
+)
 @require_permission('protocol.protocol.update')
 def staff_approve_consent_api(request, protocol_id: int, consent_id: int):
     _, protocol = _check_protocol_visible(request, protocol_id)
@@ -2671,7 +2826,11 @@ def staff_approve_consent_api(request, protocol_id: int, consent_id: int):
     }
 
 
-@router.delete('/{protocol_id}/consents/{consent_id}', summary='执行台：软删除签署记录（知情管理）')
+@router.delete(
+    '/{protocol_id}/consents/{consent_id}',
+    summary='执行台：软删除签署记录（知情管理）',
+    response={200: dict, 400: dict, 404: dict},
+)
 @require_permission('protocol.protocol.update')
 def soft_delete_consent_record(request, protocol_id: int, consent_id: int):
     _, protocol = _check_protocol_visible(request, protocol_id)
@@ -3191,14 +3350,16 @@ class WitnessDevConsentSubmitIn(Schema):
 
 
 class IcfVersionSignaturesIn(Schema):
-    """核验测试 H5：各节点手写签名（data URL 或纯 base64）。"""
+    """知情测试 H5：各节点手写签名（data URL 或纯 base64）。"""
 
     icf_version_id: int
     signature_images: List[str] = []
 
 
 class ConsentTestScanSubmitIn(Schema):
-    """核验测试 H5：凭 p/t 写入测试类型 SubjectConsent。"""
+    """知情测试 H5：凭 p/t 写入测试类型 SubjectConsent。
+    pinyin_initials：扫码页手填拼音首字母，落库 signature_data.consent_test_scan_identity.declared_pinyin_initials。
+    """
 
     p: int
     t: str
@@ -3209,6 +3370,7 @@ class ConsentTestScanSubmitIn(Schema):
     id_card_no: Optional[str] = None
     phone: Optional[str] = None
     screening_number: Optional[str] = None
+    pinyin_initials: Optional[str] = None
 
 
 def _upsert_dual_sign_staff_row(protocol: Protocol, ws: WitnessStaff) -> None:
@@ -3247,7 +3409,7 @@ def _perform_dual_sign_auth(protocol_id: int, data: DualSignAuthRequestIn):
     if _is_consent_launched(protocol):
         return 400, {
             'code': 400,
-            'msg': '知情已发布，请先取消发布（下架）后再进行授权核验测试',
+            'msg': '知情已发布，请先取消发布（下架）后再进行授权签名测试',
         }
     ws = WitnessStaff.objects.filter(id=data.witness_staff_id, is_deleted=False).first()
     if not ws:
@@ -3275,6 +3437,8 @@ def _perform_dual_sign_auth(protocol_id: int, data: DualSignAuthRequestIn):
     _upsert_dual_sign_staff_row(protocol, ws)
     settings_after = dict(_get_effective_consent_settings(protocol))
     settings_after['consent_verify_test_staff_name'] = (ws.name or '').strip()
+    # 新收件人须重新在邮件内完成授权；避免沿用上一人「已同意」导致列表仍显示已测试待开始
+    settings_after['consent_verify_signature_authorized'] = False
     _save_consent_settings(protocol, settings_after)
     return {'code': 200, 'msg': '授权邮件已发送', 'data': {'notify_email': notify}}
 
@@ -3287,6 +3451,7 @@ def witness_staff_list(
     page: int = 1,
     page_size: int = 20,
     focus_witness_staff_id: int = None,
+    auth_signature: str = None,
 ):
     from apps.protocol.services import witness_staff_service as ws_svc
 
@@ -3295,6 +3460,7 @@ def witness_staff_list(
         page=page,
         page_size=min(page_size, 500),
         focus_witness_staff_id=focus_witness_staff_id,
+        auth_signature_filter=auth_signature,
     )
     return {
         'code': 200,
@@ -3306,6 +3472,40 @@ def witness_staff_list(
             'page_size': result['page_size'],
         },
     }
+
+
+@router.get('/witness-staff/{staff_id}/signature-image', summary='双签档案手写签名图片（需登录，列表缩略图）')
+@require_any_permission(['protocol.protocol.read', 'protocol.protocol.update', 'subject.subject.read'])
+def witness_staff_signature_image(request, staff_id: int):
+    """
+    从 MEDIA_ROOT 读取 signature_file 相对路径。
+    不依赖浏览器直接访问 /media：img 无法带 JWT，且本地 STORAGE_ROOT 与静态挂载可能不一致导致 404。
+    """
+    ws = WitnessStaff.objects.filter(id=staff_id, is_deleted=False).first()
+    if not ws:
+        return 404, {'code': 404, 'msg': '记录不存在'}
+    rel = (ws.signature_file or '').strip()
+    if not rel:
+        return 404, {'code': 404, 'msg': '暂无签名文件'}
+    if '..' in rel or os.path.isabs(rel):
+        return 400, {'code': 400, 'msg': '非法文件路径'}
+    media_root = os.path.abspath(os.path.normpath(django_settings.MEDIA_ROOT))
+    abs_path = os.path.abspath(os.path.normpath(os.path.join(media_root, rel)))
+    if not abs_path.startswith(media_root + os.sep) and abs_path != media_root:
+        return 400, {'code': 400, 'msg': '非法文件路径'}
+    if not os.path.isfile(abs_path):
+        return 404, {'code': 404, 'msg': '签名文件不存在'}
+    content_type, _ = mimetypes.guess_type(abs_path)
+    if not content_type:
+        content_type = 'image/png'
+    basename = os.path.basename(abs_path) or 'signature.png'
+    fh = open(abs_path, 'rb')
+    return FileResponse(
+        fh,
+        content_type=content_type,
+        as_attachment=False,
+        filename=basename,
+    )
 
 
 @router.get('/witness-staff/eligible-accounts', summary='可选：治理台账号（QA质量管理，用于建档）')
@@ -3398,7 +3598,7 @@ def witness_staff_delete(request, staff_id: int):
 
 @router.get(
     '/{protocol_id}/dual-sign-staff-status',
-    summary='双签工作人员在本协议+签署节点下的核验阶段（待发邮件/待核验/核验中/已核验）',
+    summary='双签工作人员在本协议+签署节点下的认证签名阶段（待发邮件/pending_verify/verifying/verified）',
 )
 @require_any_permission(['protocol.protocol.read', 'protocol.protocol.update', 'subject.subject.read'])
 def dual_sign_staff_status_list(
@@ -3442,6 +3642,51 @@ def dual_sign_staff_status_list(
                 continue
     items = ws_svc.dual_sign_staff_status_batch(protocol_id, icf_version_id, ids)
     return {'code': 200, 'msg': 'OK', 'data': {'items': items}}
+
+
+@router.get(
+    '/{protocol_id}/witness-signature-auth-records',
+    summary='工作人员双签授权记录列表（知情管理 · 授权记录）',
+)
+@require_any_permission(['protocol.protocol.read', 'subject.subject.read'])
+def list_witness_signature_auth_records(
+    request,
+    protocol_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    date_from: Optional[str] = Query(None, description='按本地日筛选：YYYY-MM-DD（起）；同意/拒绝按授权日，待决策按发信日'),
+    date_to: Optional[str] = Query(None, description='按本地日筛选：YYYY-MM-DD（止）'),
+    status: str = Query('all', description='all：全部；complete：仅已完成同意授权；pending：仅待邮件内决策'),
+):
+    """按授权令牌合并展示（新到旧）：未产生知情签署前同一工作人员重复同意合并为一行；产生签署后再授权则新行。"""
+    from apps.protocol.services import witness_staff_service as ws_svc
+
+    _, protocol = _check_protocol_visible(request, protocol_id)
+    if not protocol:
+        return 404, {'code': 404, 'msg': '协议不存在'}
+    df = _parse_consent_date_query(date_from)
+    dt = _parse_consent_date_query(date_to)
+    st = (status or 'all').strip().lower() or 'all'
+    if st not in ('all', 'complete', 'pending'):
+        st = 'all'
+    total, items = ws_svc.list_witness_signature_auth_daily_summary_for_protocol(
+        protocol_id,
+        date_from=df,
+        date_to=dt,
+        status_filter=st,
+        page=page,
+        page_size=page_size,
+    )
+    return {
+        'code': 200,
+        'msg': 'OK',
+        'data': {
+            'items': items,
+            'total': total,
+            'page': page,
+            'page_size': page_size,
+        },
+    }
 
 
 @router.post(
@@ -3621,7 +3866,7 @@ class WitnessSignatureAuthorizeIn(Schema):
 
 
 class WitnessStaffSignatureRegisterIn(Schema):
-    """档案核验邮件：人脸通过后提交手写签名图片（公开）。"""
+    """档案核验或项目授权邮件：人脸通过后提交手写签名图片（公开）。"""
 
     token: str
     image_base64: str
@@ -3645,7 +3890,7 @@ def witness_auth_signature_authorize(request, data: WitnessSignatureAuthorizeIn)
 
 @router.post(
     '/witness-auth/register-staff-signature',
-    summary='档案核验：人脸通过后提交手写签名图片（公开）',
+    summary='档案核验/项目授权：人脸通过后提交手写签名图片（公开）',
     auth=None,
     response={200: dict, 400: dict},
 )
@@ -3835,7 +4080,13 @@ def witness_auth_face_submit(request, data: WitnessFaceSubmitIn):
     }
 
 
-@router.get('/public/consent-test-queue', summary='核验测试 H5：公开口令下列出 ICF 节点', auth=None)
+@router.get(
+    '/public/consent-test-queue',
+    summary='知情测试 H5：公开口令下列出 ICF 节点',
+    auth=None,
+    # 须声明非 200，否则 Ninja 抛 ConfigError，全局处理器会把 msg 替换成「操作失败」
+    response={200: dict, 400: dict, 403: dict, 404: dict},
+)
 def consent_test_scan_queue(request, p: int = Query(...), t: str = Query(...)):
     """供执行台 /#/consent-test-scan 拉取与联调页一致的节点列表（不须小程序）。"""
     from .consent_test_tokens import unsign_consent_test_scan_token
@@ -3846,13 +4097,9 @@ def consent_test_scan_queue(request, p: int = Query(...), t: str = Query(...)):
     protocol = Protocol.objects.filter(id=p, is_deleted=False).first()
     if not protocol:
         return 404, {'code': 404, 'msg': '协议不存在'}
-    if _is_consent_launched(protocol):
-        return 403, {
-            'code': 403,
-            'msg': '知情已发布，预发布核验测试不可用，请使用正式入口或先下架知情。',
-        }
+    # 已发布且处于现场筛选窗口（列表为「进行中」）时仍允许知情测试 H5，便于与正式入口并行联调；未在此白名单的状态仍拦截
     st = get_consent_config_status_for_protocol(protocol)
-    if st not in ('已授权待测试', '已测试待开始', '核验测试中', '待测试'):
+    if st not in ('已授权待测试', '已测试待开始', '授权测试中', '待测试', '进行中'):
         return 403, {
             'code': 403,
             'msg': '请先完成配置与工作人员授权核验',
@@ -3877,7 +4124,12 @@ def consent_test_scan_queue(request, p: int = Query(...), t: str = Query(...)):
     }
 
 
-@router.post('/public/consent-test-submit', summary='核验测试 H5：写入测试类型签署记录', auth=None)
+@router.post(
+    '/public/consent-test-submit',
+    summary='知情测试 H5：写入测试类型签署记录',
+    auth=None,
+    response={200: dict, 400: dict, 500: dict},
+)
 def consent_test_scan_submit(request, data: ConsentTestScanSubmitIn):
     from .services import witness_staff_service as ws_svc
 
@@ -3891,16 +4143,27 @@ def consent_test_scan_submit(request, data: ConsentTestScanSubmitIn):
             id_card_no=data.id_card_no,
             phone=data.phone,
             screening_number=data.screening_number,
+            pinyin_initials=data.pinyin_initials,
             icf_version_signatures=list(data.icf_version_signatures) if data.icf_version_signatures else None,
         )
     except ValueError as e:
         return 400, {'code': 400, 'msg': str(e)}
     except RuntimeError as e:
         return 400, {'code': 400, 'msg': str(e)}
+    except Exception as e:
+        logger.exception('consent_test_scan_submit failed')
+        msg = '写入签署记录失败，请稍后重试或联系管理员'
+        if getattr(django_settings, 'CONSENT_TEST_SCAN_VERBOSE_ERRORS', False):
+            detail = (str(e) or type(e).__name__).strip()
+            detail = ' '.join(detail.split())
+            if len(detail) > 800:
+                detail = detail[:797] + '...'
+            msg = f'{msg}（原因：{detail}）'
+        return 500, {'code': 500, 'msg': msg}
     return {'code': 200, 'msg': 'OK', 'data': out}
 
 
-@router.get('/public/consent-test-receipt', summary='核验测试 H5：凭口令下载签署回执 PDF', auth=None)
+@router.get('/public/consent-test-receipt', summary='知情测试 H5：凭口令下载签署回执 PDF', auth=None)
 def consent_test_scan_receipt(
     request,
     p: int = Query(...),
@@ -3959,16 +4222,20 @@ def consent_test_scan_receipt(
     if not os.path.isfile(abs_path):
         return 404, {'code': 404, 'msg': '文件不存在'}
 
-    rno = (c.receipt_no or str(c.id)).replace('/', '_').replace('\\', '_')
-    safe_name = f'icf_receipt_{rno}.pdf'
+    proto = getattr(icf, 'protocol', None)
+    safe_name = _consent_test_scan_receipt_download_basename(
+        icf,
+        proto,
+        sig,
+        (c.receipt_no or str(c.id) or '').strip(),
+    )
     fh = open(abs_path, 'rb')
     as_att = bool(int(download or 0))
-    resp = FileResponse(fh, content_type='application/pdf', as_attachment=False, filename=safe_name)
-    # 显式区分：预览 inline，下载 attachment（避免部分浏览器将 inline 也当成下载）
-    if as_att:
-        resp['Content-Disposition'] = f'attachment; filename="{safe_name}"'
-    else:
-        resp['Content-Disposition'] = f'inline; filename="{safe_name}"'
+    resp = FileResponse(fh, content_type='application/pdf')
+    resp['Content-Disposition'] = _http_content_disposition_filename(
+        'attachment' if as_att else 'inline',
+        safe_name,
+    )
     return resp
 
 
@@ -3999,20 +4266,9 @@ def consent_test_landing(request, p: int = Query(...), t: str = Query(...)):
             status=404,
             content_type='text/html; charset=utf-8',
         )
-    if _is_consent_launched(protocol):
-        block_msg = '知情已发布，预发布核验测试扫码不可用，请使用正式入口或先下架知情。'
-        safe = html_module.escape(block_msg)
-        body = (
-            f'<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-            f'<title>暂无法开始签署测试</title></head><body style="font-family:system-ui;padding:24px;line-height:1.6;">'
-            f'<p style="font-size:18px;font-weight:600;">暂无法开始签署测试</p>'
-            f'<p style="color:#334155;">{safe}</p>'
-            f'</body></html>'
-        )
-        return HttpResponse(body, content_type='text/html; charset=utf-8')
     st = get_consent_config_status_for_protocol(protocol)
     block_msg = '请先完成配置与工作人员授权核验'
-    if st not in ('已授权待测试', '已测试待开始', '核验测试中', '待测试'):
+    if st not in ('已授权待测试', '已测试待开始', '授权测试中', '待测试', '进行中'):
         safe = html_module.escape(block_msg)
         safe_status = html_module.escape(st)
         body = (

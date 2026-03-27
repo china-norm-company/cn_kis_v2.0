@@ -79,6 +79,7 @@ class AppointmentImportItem(Schema):
     liaison: Optional[str] = None  # 联络员，Excel 列名「联络员」
     gender: Optional[str] = None
     age: Optional[int] = None
+    birth_date: Optional[str] = None  # 出生年月（预约导入表）
     appointment_date: Optional[str] = None  # 前端传字符串，后端解析为 date
     appointment_time: Optional[str] = None
     purpose: Optional[str] = ''
@@ -271,6 +272,7 @@ def _build_import_subject_name(item: AppointmentImportItem) -> str:
 def _resolve_or_create_subject_for_import(item: AppointmentImportItem, account=None):
     """按手机号/编号匹配或新建受试者。匹配到已有受试者时，用导入的姓名/性别/年龄更新。"""
     from .models import Subject
+    from .services.profile_service import update_profile as svc_update_profile
     from .services.subject_service import (
         create_subject as svc_create_subject,
         find_subjects_by_mobile_normalized,
@@ -311,6 +313,10 @@ def _resolve_or_create_subject_for_import(item: AppointmentImportItem, account=N
                 pass
         if update_fields:
             subject.save(update_fields=update_fields + ['update_time'])
+        birth_date = _parse_import_date(item.birth_date)
+        if birth_date:
+            # 导入预约表中的出生年月写入受试者档案，供小程序认证基础信息校验使用
+            svc_update_profile(subject.id, birth_date=birth_date)
         return subject
 
     phone = (item.subject_phone or '').strip()
@@ -331,6 +337,9 @@ def _resolve_or_create_subject_for_import(item: AppointmentImportItem, account=N
         if not exists:
             subject.subject_no = subject_no
             subject.save(update_fields=['subject_no', 'update_time'])
+    birth_date = _parse_import_date(item.birth_date)
+    if birth_date:
+        svc_update_profile(subject.id, birth_date=birth_date)
     return subject
 
 

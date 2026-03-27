@@ -4,21 +4,67 @@ import Taro, { useDidShow, useRouter } from '@tarojs/taro'
 import { buildSubjectEndpoints } from '@cn-kis/subject-core'
 import { taroApiClient, taroAuthProvider } from '@/adapters/subject-core'
 import { get, getCurrentApiBaseUrl, shouldUseIdentityVerifyDevBypass } from '@/utils/api'
+import { openConsentReceiptPdf } from '@/utils/openConsentReceiptPdf'
 import {
   applyIcfPlaceholders,
   buildIcfPlaceholderValues,
   buildIcfSignatureRawHtmlPlaceholders,
 } from '@cn-kis/consent-placeholders'
+import {
+  appendSupplementalCollectCheckboxPreviewRows,
+  detectCheckboxControlsFromHtml,
+  injectCheckboxPreviewMarkers,
+  stripDocumentOtherInfoPlaceholderForCustomSupplemental,
+} from '@/utils/icfCheckboxDetect'
 import { MiniButton } from '@/components/ui'
 import './index.scss'
 
 const subjectApi = buildSubjectEndpoints(taroApiClient)
 
-const MOCK_LOGIN_BTN = String(process.env.TARO_APP_MOCK_LOGIN_BTN || '').toLowerCase() === 'true'
+const MOCK_LOGIN_BTN =
+  typeof process !== 'undefined' &&
+  !!process.env &&
+  String(process.env.TARO_APP_MOCK_LOGIN_BTN || '').toLowerCase() === 'true'
 
 function isNetworkError(err: unknown): boolean {
   const msg = String((err as Error)?.message || err || '')
   return /request:fail|ERR_CONNECTION|net::|timeout|网络|连接/.test(msg)
+}
+
+/**
+ * 微信小程序 `rich-text` 不支持 iframe/embed 等节点；执行台对 PDF 节点会下发 iframe 嵌入，
+ * 直接渲染会触发「Component is not found in path wx://not-found」并导致整页白屏。
+ */
+/** 与执行台知情测试扫码完成页 PDF 文件名规则一致（展示用） */
+function sanitizeConsentFilenameSegment(s: string, maxLen: number): string {
+  let t = (s || '').trim()
+  t = t.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+  t = t.replace(/\s+/g, '_')
+  t = t.replace(/^_+|_+$/g, '')
+  return t.slice(0, maxLen)
+}
+
+function consentReceiptPdfDisplayName(projectCode: string, scNumber: string, nodeTitle: string): string {
+  const p1 = sanitizeConsentFilenameSegment(projectCode, 40)
+  const p2 = sanitizeConsentFilenameSegment(scNumber, 64)
+  const p3 = sanitizeConsentFilenameSegment(nodeTitle, 120)
+  const parts = [p1, p2, p3].filter(Boolean)
+  if (parts.length) return `${parts.join('_')}.pdf`
+  return 'icf_receipt.pdf'
+}
+
+function sanitizeHtmlForWechatRichText(html: string): string {
+  if (!html) return ''
+  const iframeNotice =
+    '<p style="color:#64748b;font-size:14px;line-height:1.6;padding:8px 0;">'
+    + '[PDF 附件类正文无法在小程序内嵌预览，已省略嵌入区域；请继续阅读下方 HTML 正文，或向现场工作人员索取完整版。]'
+    + '</p>'
+  return html
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, iframeNotice)
+    .replace(/<embed\b[^>]*>[\s\S]*?<\/embed>/gi, '')
+    .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, '')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/on\w+\s*=\s*["'][^"']*["']/gi, '')
 }
 
 /** 开发预览：无后端时使用的模拟知情项 */
@@ -50,7 +96,7 @@ interface ConsentItem {
   node_title?: string
   display_order?: number
   required_reading_duration_seconds?: number
-  /** 执行台知情核验测试扫码入口会带 protocol_id，用于筛选待签队列 */
+  /** 执行台知情测试扫码入口会带 protocol_id，用于筛选待签队列 */
   protocol_id?: number | null
   protocol_code?: string
   protocol_title?: string
@@ -59,6 +105,9 @@ interface ConsentItem {
   staff_audit_status?: string
   staff_return_reason?: string | null
   consent_status_label?: string
+  /** GET /my/consents 已签项回执（与后端 _serialize_subject_consent_for_my_api 一致） */
+  receipt_no?: string | null
+  receipt_pdf_url?: string | null
 }
 
 /** 将后端返回的相对媒体路径转为小程序可下载的绝对 URL */
@@ -72,17 +121,46 @@ function resolveMediaFullUrl(pathOrUrl: string | null | undefined): string {
 }
 
 interface SignedReceiptItem {
+  /** SubjectConsent.id，用于带 JWT 的 /my/consents/{id}/receipt-pdf 下载 */
+  consent_id?: number
   node_title: string
   icf_version_id: number
   receipt_no: string | null
   receipt_pdf_url: string | null
+  /** 与扫码完成页 PDF 文件名一致 */
+  protocol_code?: string
+}
+
+/** 完成页文档列表：取当前全部已签节点（可按项目过滤），避免仅重签会话内只显示一条 */
+function buildSignedReceiptRowsFromConsentItems(
+  items: ConsentItem[],
+  protocolScope: number | null,
+): SignedReceiptItem[] {
+  let signed = items.filter((c) => c.is_signed && c.icf_version_id)
+  if (protocolScope != null) {
+    signed = signed.filter((c) => Number(c.protocol_id) === protocolScope)
+  }
+  signed.sort((a, b) => {
+    const pa = Number(a.protocol_id) || 0
+    const pb = Number(b.protocol_id) || 0
+    if (pa !== pb) return pa - pb
+    return (a.display_order ?? 0) - (b.display_order ?? 0)
+  })
+  return signed.map((c) => ({
+    consent_id: c.id,
+    node_title: (c.node_title || '').trim() || '签署节点',
+    icf_version_id: c.icf_version_id,
+    receipt_no: c.receipt_no ?? null,
+    receipt_pdf_url: c.receipt_pdf_url ? resolveMediaFullUrl(c.receipt_pdf_url) : null,
+    protocol_code: c.protocol_code || '',
+  }))
 }
 
 interface ConsentBootstrap {
   identity_gate_required?: boolean
   total_pending_consent_count?: number
   allow_l1_pilot?: boolean
-  pilot_protocol_codes?: string[]
+  pilot_protocol_codes?: string[] | null
   /** 是否存在「退回重签中」的待签项（与列表 staff_audit_status 一致） */
   has_returned_for_resign?: boolean
   projects?: Array<{
@@ -90,7 +168,57 @@ interface ConsentBootstrap {
     protocol_title: string
     pending_consent_count: number
     auth_ok_for_signing: boolean
-  }>
+  }> | null
+}
+
+/** GET /my/home-dashboard 项目块（与现场预约登记一致的 SC / 拼音首字母预填） */
+interface HomeDashboardProjectBlock {
+  project_code?: string
+  protocol_id?: number | null
+  sc_number?: string
+  sc_display?: string
+  name_pinyin_initials?: string
+  birth_date_ymd?: string
+}
+
+function normalizeYmd(s: string): string {
+  const t = String(s || '').trim().replace(/\//g, '-')
+  const m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (!m) return ''
+  const y = m[1]
+  const mo = m[2].padStart(2, '0')
+  const d = m[3].padStart(2, '0')
+  return `${y}-${mo}-${d}`
+}
+
+function birthYmdFromIdCard(idNorm: string): string {
+  const s = String(idNorm || '').trim()
+  if (/^\d{17}[\dXx]$/.test(s)) {
+    return normalizeYmd(`${s.slice(6, 10)}-${s.slice(10, 12)}-${s.slice(12, 14)}`)
+  }
+  if (/^\d{15}$/.test(s)) {
+    return normalizeYmd(`19${s.slice(6, 8)}-${s.slice(8, 10)}-${s.slice(10, 12)}`)
+  }
+  return ''
+}
+
+/** 允许 007 / SC007 / sc-007 视为同一 SC 号 */
+function normalizeScComparable(sc: string): string {
+  const raw = String(sc || '').trim().toUpperCase().replace(/\s+/g, '')
+  if (!raw) return ''
+  const digits = raw.replace(/^SC/, '').replace(/\D/g, '')
+  if (digits) return `SC${digits.padStart(3, '0')}`
+  return raw
+}
+
+/** 预约信息不一致：用弹窗展示完整说明（避免 toast 字数限制） */
+function showAppointmentMismatchModal(title: string, content: string) {
+  void Taro.showModal({
+    title,
+    content,
+    showCancel: false,
+    confirmText: '我知道了',
+  })
 }
 
 function isIdentityRequiredError(res: { code?: number; data?: unknown; error_code?: unknown }): boolean {
@@ -107,9 +235,32 @@ interface Point {
   y: number
 }
 
+/** 签名触点（与 sample-confirm/sample-return 一致：直接使用 touch.x/y） */
+function getTouchPoint(e: {
+  detail?: { x?: number; y?: number }
+  touches?: Array<{ x?: number; y?: number; clientX?: number; clientY?: number }>
+  changedTouches?: Array<{ x?: number; y?: number; clientX?: number; clientY?: number }>
+}): { x: number; y: number; local: boolean; source: 'touch-client' | 'touch-local' | 'detail' } | null {
+  // 优先 touches 坐标，避免部分环境 detail.y 恒为 0 导致无法签名
+  const t = e.touches?.[0] ?? e.changedTouches?.[0]
+  if (!t) return null
+  if (typeof t.clientX === 'number' && typeof t.clientY === 'number') {
+    return { x: t.clientX, y: t.clientY, local: false, source: 'touch-client' }
+  }
+  if (typeof t.x === 'number' && typeof t.y === 'number') {
+    return { x: t.x, y: t.y, local: true, source: 'touch-local' }
+  }
+  const dx = e.detail?.x
+  const dy = e.detail?.y
+  if (typeof dx === 'number' && typeof dy === 'number') {
+    return { x: dx, y: dy, local: true, source: 'detail' }
+  }
+  return null
+}
+
 function ConsentPage() {
   const router = useRouter()
-  /** 知情核验测试：落地页跳转携带 protocol_id + ct（与执行台列表二维码一致） */
+  /** 知情测试：落地页跳转携带 protocol_id + ct（与执行台列表二维码一致） */
   const consentScanTestRef = useRef<{ protocolId?: number; token?: string }>({})
   const [bootstrap, setBootstrap] = useState<ConsentBootstrap | null>(null)
   const [bootstrapLoading, setBootstrapLoading] = useState(true)
@@ -118,6 +269,8 @@ function ConsentPage() {
   const [signedAll, setSignedAll] = useState(false)
   /** 与执行台扫码核验一致：需补充姓名/手机等时，先单独一步「基础信息」再进入正文阅读签署 */
   const [basicInfoStepDone, setBasicInfoStepDone] = useState(false)
+  /** ICF 规则返回前不渲染正文签署页，避免先闪主页再回基础信息 */
+  const [basicInfoRuleResolved, setBasicInfoRuleResolved] = useState(false)
   /** 每份签署成功后的回执，用于完成页预览/下载 */
   const [signedReceipts, setSignedReceipts] = useState<SignedReceiptItem[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -128,6 +281,12 @@ function ConsentPage() {
   const [devPreview, setDevPreview] = useState(false)
 
   const [pendingQueue, setPendingQueue] = useState<ConsentItem[]>([])
+  /** 与 GET /my/consents 全量列表一致，用于「无待签但已签」时展示完成列表 */
+  const [consentAllItems, setConsentAllItems] = useState<ConsentItem[]>([])
+  /** 与 router 同步：知情测试扫码落地 protocol_id（用于待签筛选与已签列表范围） */
+  const [consentScanProtocolId, setConsentScanProtocolId] = useState<number | null>(null)
+  /** 完成页 PDF 文件名 SC 段：会话签署用表单；再次进入时用 home-dashboard 匹配项目 */
+  const [dashboardScForDonePage, setDashboardScForDonePage] = useState('')
   const [queueLoading, setQueueLoading] = useState(false)
   const initialPendingTotalRef = useRef(0)
 
@@ -161,6 +320,17 @@ function ConsentPage() {
   const [declaredPhone, setDeclaredPhone] = useState('')
   const [declaredScreeningNumber, setDeclaredScreeningNumber] = useState('')
   const [declaredInitials, setDeclaredInitials] = useState('')
+  const [drawingLocked, setDrawingLocked] = useState(false)
+  /** 与执行台「勾选框识别」一致：正文注入「请勾选」样式 + 下方原生勾选 */
+  const [enableCheckboxRecognition, setEnableCheckboxRecognition] = useState(false)
+  const [supplementalCollectLabels, setSupplementalCollectLabels] = useState<string[]>([])
+  const [checkboxAnswers, setCheckboxAnswers] = useState<string[]>([])
+  /** 现场预约登记基准值：用于「认证基础信息」一致性校验 */
+  const [expectedSubjectName, setExpectedSubjectName] = useState('')
+  const [expectedPhone, setExpectedPhone] = useState('')
+  const [expectedScreeningNumber, setExpectedScreeningNumber] = useState('')
+  const [expectedInitials, setExpectedInitials] = useState('')
+  const [expectedBirthYmd, setExpectedBirthYmd] = useState('')
 
   const isDrawing = useRef(false)
   const lastPoint = useRef<Point | null>(null)
@@ -168,8 +338,14 @@ function ConsentPage() {
   const lastPoint2 = useRef<Point | null>(null)
   const ctxRef = useRef<Taro.CanvasContext | null>(null)
   const ctx2Ref = useRef<Taro.CanvasContext | null>(null)
-  const canvasRectRef = useRef<{ left: number; top: number } | null>(null)
-  const canvasRect2Ref = useRef<{ left: number; top: number } | null>(null)
+  const canvasNodeRef = useRef<any>(null)
+  const canvasNode2Ref = useRef<any>(null)
+  const ctx2dRef = useRef<CanvasRenderingContext2D | null>(null)
+  const ctx2d2Ref = useRef<CanvasRenderingContext2D | null>(null)
+  const canvasRectRef = useRef<{ left: number; top: number; width: number; height: number } | null>(null)
+  const canvasRect2Ref = useRef<{ left: number; top: number; width: number; height: number } | null>(null)
+  /** 与画布位图像素一致，避免旧版 canvas 默认 300×150 与样式尺寸不一致导致无法画线或笔画错位 */
+  const [sigCanvasPx, setSigCanvasPx] = useState({ w: 375, h: 160 })
   /** 本地联调：自动 dev-skip 实名仅尝试一次，避免重复请求 */
   const identityDevAutoSkipRef = useRef(false)
 
@@ -182,31 +358,33 @@ function ConsentPage() {
         const data = res.data as ConsentBootstrap | undefined
         if (res.code === 200 && data) {
           setBootstrap(data)
-          setIdentityGateRequired(!!data.identity_gate_required)
-          // 本地 API 为 localhost/127.0.0.1：门禁仅因未实名时，自动完成 L2 dev-skip 并刷新（对接执行台知情配置）
-          if (
-            data.identity_gate_required
-            && shouldUseIdentityVerifyDevBypass()
-            && !identityDevAutoSkipRef.current
-          ) {
-            identityDevAutoSkipRef.current = true
-            void subjectApi.devSkipIdentityVerify()
-              .then((sk) => {
-                if (sk.code !== 200) {
-                  identityDevAutoSkipRef.current = false
-                  return
-                }
-                return subjectApi.getConsentBootstrap().then((r2) => {
-                  const d2 = r2.data as ConsentBootstrap | undefined
-                  if (r2.code === 200 && d2) {
-                    setBootstrap(d2)
-                    setIdentityGateRequired(!!d2.identity_gate_required)
+          const bypass = shouldUseIdentityVerifyDevBypass()
+          const gate = !!data.identity_gate_required
+          // 本地/局域网联调：与执行台扫码测试一致，不拦截「去实名」页，直接进入待签队列与基础信息/正文（后台仍 dev-skip 写入 L2）
+          if (gate && bypass) {
+            setIdentityGateRequired(false)
+            if (!identityDevAutoSkipRef.current) {
+              identityDevAutoSkipRef.current = true
+              void subjectApi.devSkipIdentityVerify()
+                .then((sk) => {
+                  if (sk.code !== 200) {
+                    identityDevAutoSkipRef.current = false
+                    return
                   }
+                  return subjectApi.getConsentBootstrap().then((r2) => {
+                    const d2 = r2.data as ConsentBootstrap | undefined
+                    if (r2.code === 200 && d2) {
+                      setBootstrap(d2)
+                      setIdentityGateRequired(!!d2.identity_gate_required)
+                    }
+                  })
                 })
-              })
-              .catch(() => {
-                identityDevAutoSkipRef.current = false
-              })
+                .catch(() => {
+                  identityDevAutoSkipRef.current = false
+                })
+            }
+          } else {
+            setIdentityGateRequired(gate)
           }
         } else if (res.code === 401) {
           setNeedLogin(true)
@@ -245,29 +423,39 @@ function ConsentPage() {
   useEffect(() => {
     const p = router.params?.protocol_id ?? (router.params as Record<string, string | undefined>)?.protocolId
     const ct = router.params?.ct
-    if (p != null && ct) {
-      const n = Number(p)
-      if (Number.isFinite(n) && n > 0) {
-        consentScanTestRef.current = { protocolId: n, token: String(ct) }
-      }
+    const n = Number(p)
+    const validPid = Number.isFinite(n) && n > 0 ? n : null
+    /** 知情测试扫码：protocol_id + ct；「我的-记录」仅带 protocol_id 时只按项目筛选列表，不携带测试 token */
+    if (validPid != null && ct) {
+      consentScanTestRef.current = { protocolId: validPid, token: String(ct) }
+      setConsentScanProtocolId(validPid)
+      return
     }
+    if (validPid != null) {
+      consentScanTestRef.current = { protocolId: validPid }
+      setConsentScanProtocolId(validPid)
+      return
+    }
+    consentScanTestRef.current = {}
+    setConsentScanProtocolId(null)
   }, [router.params])
 
   const loadPendingQueue = useCallback(() => {
     setQueueLoading(true)
-    setNoPendingConsent(false)
+    /** 不在请求开始时把 noPendingConsent 置为 false，否则会与 isQueueBooting 叠加误触发「认证基础信息」闪屏 */
     subjectApi.getMyConsents()
       .then((res) => {
         if (res.code === 401) {
           setNeedLogin(true)
           setPendingQueue([])
+          setConsentAllItems([])
           return
         }
         const raw = res.data as { items?: ConsentItem[] } | null | undefined
         const items = Array.isArray(raw?.items) ? raw.items : []
-        let pending = items
-          .filter((c) => !c.is_signed && c.icf_version_id)
-          .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))
+        setConsentAllItems(items)
+        // 与后端 list_subject_consents_for_mini_program 返回顺序一致（含多协议 consent_display_order）
+        let pending = items.filter((c) => !c.is_signed && c.icf_version_id)
         const pid = consentScanTestRef.current.protocolId
         if (pid != null) {
           const matched = pending.filter((c) => (c as ConsentItem).protocol_id === pid)
@@ -284,6 +472,7 @@ function ConsentPage() {
       .catch(() => {
         setNoPendingConsent(true)
         setPendingQueue([])
+        setConsentAllItems([])
       })
       .finally(() => setQueueLoading(false))
   }, [])
@@ -301,6 +490,50 @@ function ConsentPage() {
     loadPendingQueue()
   }, [bootstrapLoading, identityGateRequired, needLogin, devPreview, loadPendingQueue])
 
+  const preloadedSignedReceipts = useMemo((): SignedReceiptItem[] => {
+    if (signedAll) return []
+    const signed = consentAllItems.filter((c) => c.is_signed && c.icf_version_id)
+    const scoped =
+      consentScanProtocolId != null
+        ? signed.filter((c) => Number(c.protocol_id) === consentScanProtocolId)
+        : signed
+    return scoped.map((c) => ({
+      consent_id: c.id,
+      node_title: (c.node_title || '').trim() || '签署节点',
+      icf_version_id: c.icf_version_id,
+      receipt_no: c.receipt_no ?? null,
+      receipt_pdf_url: c.receipt_pdf_url ? resolveMediaFullUrl(c.receipt_pdf_url) : null,
+      protocol_code: c.protocol_code || '',
+    }))
+  }, [consentAllItems, consentScanProtocolId, signedAll])
+
+  /** 有待签/退回重签项时不得展示「仅文档列表」：否则多节点已签 + 单节点退回会误进完成页 */
+  const showPreloadedDoneView =
+    !signedAll && preloadedSignedReceipts.length > 0 && noPendingConsent
+
+  useEffect(() => {
+    if (signedAll || preloadedSignedReceipts.length === 0) {
+      setDashboardScForDonePage('')
+      return
+    }
+    const pid = consentScanProtocolId
+    const protoCode = (preloadedSignedReceipts[0]?.protocol_code || '').trim()
+    void get<{ projects_ordered?: HomeDashboardProjectBlock[] }>('/my/home-dashboard', { silent: true }).then(
+      (res) => {
+        if (res.code !== 200 || !res.data?.projects_ordered?.length) return
+        const rows = res.data.projects_ordered
+        const match =
+          (pid != null
+            ? rows.find((b) => b.protocol_id != null && Number(b.protocol_id) === Number(pid))
+            : undefined)
+          || (protoCode ? rows.find((b) => (b.project_code || '').trim() === protoCode) : undefined)
+        if (!match) return
+        const scRaw = ((match.sc_display || match.sc_number || '') as string).trim()
+        if (scRaw) setDashboardScForDonePage(scRaw)
+      },
+    )
+  }, [signedAll, preloadedSignedReceipts, consentScanProtocolId])
+
   const currentItem = pendingQueue[0] ?? null
   /** 与列表项同步，避免 icf 状态晚一帧导致主区域与底部签名区空白（ScrollView 占满 flex 时底部易被顶出视口） */
   const effectiveIcfVersionId = currentItem?.icf_version_id ?? null
@@ -310,6 +543,14 @@ function ConsentPage() {
       ? `（${initialPendingTotalRef.current - totalSteps + 1}/${initialPendingTotalRef.current}）`
       : ''
 
+  /** 与执行台知情测试 H5 卡片头「版本 v1.0」一致 */
+  const icfVersionDisplay = useMemo(() => {
+    const v = (currentItem?.icf_version || '').trim()
+    if (!v) return 'v1.0'
+    if (/^v\d/i.test(v)) return v
+    return `v${v}`
+  }, [currentItem?.icf_version])
+
   /** 切换节点时刷新，用于 {{ICF_SIGNED_DATE}} 等预览锚点 */
   const previewAnchorAt = useMemo(() => new Date(), [effectiveIcfVersionId])
 
@@ -317,11 +558,23 @@ function ConsentPage() {
     if (!currentItem?.icf_version_id) {
       setIcfContent(null)
       setIcfTitle('')
+      setBasicInfoRuleResolved(false)
+      setEnableCheckboxRecognition(false)
+      setSupplementalCollectLabels([])
       return
     }
     const id = currentItem.icf_version_id
+    setBasicInfoRuleResolved(false)
     setIcfLoading(true)
     setIcfContent(null)
+    /** 切换待签项时先清空采集规则，避免沿用上一条的 needSupplement 导致错误页面顺序 */
+    setCollectSubjectName(false)
+    setCollectIdCard(false)
+    setCollectScreeningNumber(false)
+    setCollectInitials(false)
+    setExpectedScreeningNumber('')
+    setExpectedInitials('')
+    setExpectedBirthYmd('')
     setAgreed(false)
     setHasSignature(false)
     setReadingStartedAt(null)
@@ -336,6 +589,7 @@ function ConsentPage() {
       setIcfLoading(false)
       setCollectOtherInformation(true)
       setBasicInfoStepDone(true)
+      setBasicInfoRuleResolved(true)
       setReadingStartedAt(Date.now())
       return
     }
@@ -353,6 +607,8 @@ function ConsentPage() {
           collect_id_card?: boolean
           collect_screening_number?: boolean
           collect_initials?: boolean
+          enable_checkbox_recognition?: boolean
+          supplemental_collect_labels?: string[]
         } | null
         if (r.code === 200 && icfData) {
           setIcfContent(icfData.content ?? '')
@@ -371,9 +627,16 @@ function ConsentPage() {
           setCollectIdCard(!!icfData.collect_id_card)
           setCollectScreeningNumber(!!icfData.collect_screening_number)
           setCollectInitials(!!icfData.collect_initials)
-          setDeclaredIdCard('')
-          setDeclaredScreeningNumber('')
-          setDeclaredInitials('')
+          setEnableCheckboxRecognition(!!icfData.enable_checkbox_recognition)
+          setSupplementalCollectLabels(
+            Array.isArray(icfData.supplemental_collect_labels) ? icfData.supplemental_collect_labels : [],
+          )
+          // 认证基础信息仅在本次知情流程里校验一次，切换后续待签文档不清空已确认值
+          if (!basicInfoStepDone) {
+            setDeclaredIdCard('')
+            setDeclaredScreeningNumber('')
+            setDeclaredInitials('')
+          }
         } else {
           setIcfContent('')
           setCollectOtherInformation(false)
@@ -384,6 +647,8 @@ function ConsentPage() {
           setCollectIdCard(false)
           setCollectScreeningNumber(false)
           setCollectInitials(false)
+          setEnableCheckboxRecognition(false)
+          setSupplementalCollectLabels([])
         }
         const ns =
           !!(
@@ -393,13 +658,15 @@ function ConsentPage() {
               || icfData.collect_screening_number
               || icfData.collect_initials)
           )
-        setBasicInfoStepDone(!ns)
-        if (!ns) {
+        const shouldSkipBasicInfoStep = basicInfoStepDone || !ns
+        setBasicInfoStepDone(shouldSkipBasicInfoStep)
+        if (shouldSkipBasicInfoStep) {
           setReadingStartedAt(Date.now())
         } else {
           setReadingStartedAt(null)
           setElapsedSec(0)
         }
+        setBasicInfoRuleResolved(true)
       })
       .catch(() => {
         setIcfContent('')
@@ -411,23 +678,75 @@ function ConsentPage() {
         setCollectIdCard(false)
         setCollectScreeningNumber(false)
         setCollectInitials(false)
+        setEnableCheckboxRecognition(false)
+        setSupplementalCollectLabels([])
         setBasicInfoStepDone(true)
+        setBasicInfoRuleResolved(true)
         setReadingStartedAt(Date.now())
       })
       .finally(() => setIcfLoading(false))
-  }, [currentItem, devPreview])
+  }, [currentItem, devPreview, basicInfoStepDone])
 
   useEffect(() => {
     if (effectiveIcfVersionId == null || devPreview) return
-    void get<{ phone?: string; name?: string }>('/my/profile', { silent: true }).then((profileRes) => {
+    void get<{ phone?: string; name?: string; profile?: { birth_date?: string | null } }>('/my/profile', { silent: true }).then((profileRes) => {
       if (profileRes.code !== 200 || !profileRes.data) return
       const p = profileRes.data
       const ph = (p.phone || '').replace(/\D/g, '').slice(0, 11)
-      if (ph) setDeclaredPhone(ph)
+      if (ph) {
+        setDeclaredPhone((prev) => (prev.trim() ? prev : ph))
+        setExpectedPhone(ph)
+      }
       const nm = (p.name || '').trim()
-      if (nm) setDeclaredSubjectName(nm)
+      if (nm) {
+        setDeclaredSubjectName((prev) => (prev.trim() ? prev : nm))
+        setExpectedSubjectName(nm)
+      }
+      const birth = normalizeYmd(p.profile?.birth_date || '')
+      if (birth) setExpectedBirthYmd(birth)
     })
   }, [effectiveIcfVersionId, devPreview])
+
+  /** 与首页同源：按当前协议匹配项目块，预填 SC 号、拼音首字母（身份证仍由用户手填） */
+  useEffect(() => {
+    if (effectiveIcfVersionId == null || devPreview) return
+    const code = (currentItem?.protocol_code || '').trim()
+    const pid = currentItem?.protocol_id
+    if (!code && (pid == null || !Number.isFinite(Number(pid)))) return
+    void get<{ projects_ordered?: HomeDashboardProjectBlock[] }>('/my/home-dashboard', { silent: true }).then(
+      (res) => {
+        if (res.code !== 200 || !res.data?.projects_ordered?.length) return
+        const rows = res.data.projects_ordered
+        const match =
+          (pid != null
+            ? rows.find((b) => b.protocol_id != null && Number(b.protocol_id) === Number(pid))
+            : undefined)
+          || (code ? rows.find((b) => (b.project_code || '').trim() === code) : undefined)
+          || (code ? rows.find((b) => (b.project_code || '').includes(code)) : undefined)
+        if (!match) return
+        const scRaw = ((match.sc_display || match.sc_number || '') as string).trim()
+        if (scRaw && collectScreeningNumber) {
+          setDeclaredScreeningNumber((prev) => (prev.trim() ? prev : scRaw))
+        }
+        if (scRaw) setExpectedScreeningNumber(scRaw)
+        const birthYmd = normalizeYmd(match.birth_date_ymd || '')
+        if (birthYmd) setExpectedBirthYmd(birthYmd)
+        const ini = (match.name_pinyin_initials || '').trim()
+        const normalized = ini.replace(/[^A-Za-z]/g, '').toUpperCase()
+        if (normalized) setExpectedInitials(normalized)
+        if (ini && collectInitials) {
+          if (normalized) setDeclaredInitials((prev) => (prev.trim() ? prev : normalized))
+        }
+      },
+    )
+  }, [
+    effectiveIcfVersionId,
+    devPreview,
+    currentItem?.protocol_code,
+    currentItem?.protocol_id,
+    collectScreeningNumber,
+    collectInitials,
+  ])
 
   useEffect(() => {
     if (!readingStartedAt || requiredReadingSeconds <= 0) {
@@ -445,6 +764,25 @@ function ConsentPage() {
     collectSubjectName || collectIdCard || collectScreeningNumber || collectInitials
   const phoneDigits = declaredPhone.replace(/\D/g, '')
   const idNorm = declaredIdCard.replace(/\s/g, '').replace(/[^0-9Xx]/g, '')
+  /** 与执行台知情测试扫码 H5 `ConsentTestScanPage` onSubmitInfo 一致 */
+  const idValidH5 = /^(\d{15}|\d{17}[\dXx])$/.test(idNorm)
+  const idBirthYmd = birthYmdFromIdCard(idNorm)
+  const initialsNorm = declaredInitials.trim().toUpperCase()
+  const initialsValidH5 = /^[A-Z]{1,32}$/.test(initialsNorm)
+  const phoneComparable = phoneDigits
+  const expectedPhoneComparable = expectedPhone.replace(/\D/g, '')
+  const nameComparable = declaredSubjectName.trim()
+  const expectedNameComparable = expectedSubjectName.trim()
+  const scComparable = normalizeScComparable(declaredScreeningNumber)
+  const expectedScComparable = normalizeScComparable(expectedScreeningNumber)
+  const expectedInitialsComparable = expectedInitials.trim().toUpperCase()
+  /** 认证基础信息页：五项齐全且合法（与二维码扫码页字段顺序、规则一致） */
+  const basicInfoFormOk =
+    !!nameComparable &&
+    idValidH5 &&
+    phoneDigits.length >= 11 &&
+    !!declaredScreeningNumber.trim() &&
+    initialsValidH5
   const supplementOk =
     !needSupplement ||
     (phoneDigits.length >= 11 &&
@@ -457,11 +795,26 @@ function ConsentPage() {
     !needSubjectSig ||
     (subjectSignatureTimes === 1 && hasSignature) ||
     (subjectSignatureTimes === 2 && hasSignature && hasSignature2)
-  /** 请求未返回前 icfLoading 可能仍为 false（同一帧），与 icfContent===null 组合避免中间区域整段不渲染 */
+  /** 正文区：等 ICF 接口返回并写入 icfContent（空字符串也算已返回） */
   const showIcfDocLoading = icfLoading || (effectiveIcfVersionId != null && icfContent === null)
-  /** 需身份确认时：先独占一屏填写，再进入阅读计时与签署（与执行台扫码核验顺序一致） */
+  /**
+   * 认证基础信息：仅依赖 ICF 规则是否已返回（icfLoading），不依赖正文 HTML。
+   * 若仍用 showIcfDocLoading 拦截，会先闪「主签署页 + 内容加载中」，体验上像进错页。
+   */
+  const isQueueBooting = bootstrapLoading || queueLoading || (devPreview && pendingQueue.length === 0)
+  const isBasicInfoResolving =
+    !basicInfoStepDone &&
+    effectiveIcfVersionId != null &&
+    !basicInfoRuleResolved
   const showBasicInfoStepOnly =
-    effectiveIcfVersionId != null && needSupplement && !basicInfoStepDone && !showIcfDocLoading
+    !basicInfoStepDone &&
+    !needLogin &&
+    !identityGateRequired &&
+    !signedAll &&
+    !showPreloadedDoneView &&
+    pendingQueue.length > 0 &&
+    !noPendingConsent &&
+    (isQueueBooting || isBasicInfoResolving || (effectiveIcfVersionId != null && needSupplement && !icfLoading))
 
   /** 正文内 {{ICF_SUBJECT_SIG_*}}：导出画布为临时路径供 RichText 内嵌展示 */
   const [sigInlineTempPaths, setSigInlineTempPaths] = useState<string[]>([])
@@ -495,7 +848,7 @@ function ConsentPage() {
     }
   }, [hasSignature, hasSignature2, effectiveIcfVersionId, subjectSignatureTimes, needSubjectSig])
 
-  const icfDisplayContent = useMemo(() => {
+  const icfBodyAfterPlaceholders = useMemo(() => {
     const base = icfContent ?? ''
     if (!base.trim()) return ''
     const idNorm = declaredIdCard.replace(/\s/g, '').replace(/[^0-9Xx]/g, '')
@@ -510,6 +863,7 @@ function ConsentPage() {
         declared_id_card: declaredIdCard,
         declared_phone: declaredPhone,
         declared_screening_number: declaredScreeningNumber,
+        declared_pinyin_initials: declaredInitials,
       },
       miniSignConfirm: {
         subject_name: declaredSubjectName,
@@ -548,43 +902,185 @@ function ConsentPage() {
     sigInlineTempPaths,
   ])
 
-  useEffect(() => {
-    if (effectiveIcfVersionId == null) return
-    try {
-      const ctx = Taro.createCanvasContext('signatureCanvas')
-      ctx.setStrokeStyle('#1a202c')
-      ctx.setLineWidth(3)
-      ctx.setLineCap('round')
-      ctx.setLineJoin('round')
-      ctxRef.current = ctx
-      ctx.clearRect(0, 0, 9999, 9999)
-      ctx.draw()
-      setHasSignature(false)
-    } catch {
-      ctxRef.current = null
+  const icfDisplayContent = useMemo(() => {
+    if (!icfBodyAfterPlaceholders) return ''
+    if (enableCheckboxRecognition) {
+      const stripped = stripDocumentOtherInfoPlaceholderForCustomSupplemental(
+        icfBodyAfterPlaceholders,
+        supplementalCollectLabels,
+      )
+      let injected = injectCheckboxPreviewMarkers(stripped, 'preview')
+      injected = appendSupplementalCollectCheckboxPreviewRows(
+        injected,
+        stripped,
+        supplementalCollectLabels,
+        collectOtherInformation,
+        'preview',
+      )
+      return sanitizeHtmlForWechatRichText(injected)
     }
-  }, [effectiveIcfVersionId])
+    return sanitizeHtmlForWechatRichText(icfBodyAfterPlaceholders)
+  }, [
+    icfBodyAfterPlaceholders,
+    enableCheckboxRecognition,
+    supplementalCollectLabels,
+    collectOtherInformation,
+  ])
+
+  /** 与 H5 一致须每处选「是/否」（小程序 RichText 不支持 input，用下方原生行提交 icf_checkbox_answers） */
+  const checkboxInteractiveRows = useMemo(() => {
+    if (!enableCheckboxRecognition || !icfBodyAfterPlaceholders) return []
+    const stripped = stripDocumentOtherInfoPlaceholderForCustomSupplemental(
+      icfBodyAfterPlaceholders,
+      supplementalCollectLabels,
+    )
+    const doc = detectCheckboxControlsFromHtml(stripped)
+    const rows: Array<{ key: string; title: string }> = doc.map((c) => ({
+      key: `d-${c.id}`,
+      title: (c.headline || c.ordinalLabel || '').trim() || `第 ${c.ordinal} 处`,
+    }))
+    let supLabels = (supplementalCollectLabels || []).map((s) => s.trim()).filter(Boolean)
+    if (supLabels.length === 0 && collectOtherInformation) {
+      supLabels = ['如有其他信息，可在此添加']
+    }
+    for (let i = 0; i < supLabels.length; i += 1) {
+      rows.push({ key: `s-${i}`, title: supLabels[i] })
+    }
+    return rows
+  }, [
+    enableCheckboxRecognition,
+    icfBodyAfterPlaceholders,
+    supplementalCollectLabels,
+    collectOtherInformation,
+  ])
+
+  const checkboxAllAnswered =
+    !enableCheckboxRecognition ||
+    checkboxInteractiveRows.length === 0 ||
+    (checkboxAnswers.length === checkboxInteractiveRows.length &&
+      checkboxAnswers.every((a) => a === 'yes' || a === 'no'))
 
   useEffect(() => {
-    if (effectiveIcfVersionId == null || subjectSignatureTimes < 2) {
+    setCheckboxAnswers(Array(checkboxInteractiveRows.length).fill(''))
+  }, [effectiveIcfVersionId, checkboxInteractiveRows.length])
+
+  useEffect(() => {
+    if (effectiveIcfVersionId == null || showBasicInfoStepOnly || !needSubjectSig) return
+    const t = setTimeout(() => {
+      try {
+        const ctx = Taro.createCanvasContext('signatureCanvas')
+        ctx.setStrokeStyle('#1a202c')
+        ctx.setLineWidth(3)
+        ctx.setLineCap('round')
+        ctx.setLineJoin('round')
+        ctxRef.current = ctx
+        ctx.clearRect(0, 0, 9999, 9999)
+        ctx.draw()
+        setHasSignature(false)
+      } catch {
+        ctxRef.current = null
+      }
+    }, 16)
+    return () => clearTimeout(t)
+  }, [effectiveIcfVersionId, showBasicInfoStepOnly, needSubjectSig, sigCanvasPx.w, sigCanvasPx.h])
+
+  useEffect(() => {
+    if (effectiveIcfVersionId == null || showBasicInfoStepOnly || !needSubjectSig || subjectSignatureTimes < 2) {
       ctx2Ref.current = null
       setHasSignature2(false)
       return
     }
-    try {
-      const ctx = Taro.createCanvasContext('signatureCanvas2')
-      ctx.setStrokeStyle('#1a202c')
-      ctx.setLineWidth(3)
-      ctx.setLineCap('round')
-      ctx.setLineJoin('round')
-      ctx2Ref.current = ctx
-      ctx.clearRect(0, 0, 9999, 9999)
-      ctx.draw()
-      setHasSignature2(false)
-    } catch {
-      ctx2Ref.current = null
+    const t = setTimeout(() => {
+      try {
+        const ctx = Taro.createCanvasContext('signatureCanvas2')
+        ctx.setStrokeStyle('#1a202c')
+        ctx.setLineWidth(3)
+        ctx.setLineCap('round')
+        ctx.setLineJoin('round')
+        ctx2Ref.current = ctx
+        ctx.clearRect(0, 0, 9999, 9999)
+        ctx.draw()
+        setHasSignature2(false)
+      } catch {
+        ctx2Ref.current = null
+      }
+    }, 16)
+    return () => clearTimeout(t)
+  }, [effectiveIcfVersionId, showBasicInfoStepOnly, needSubjectSig, subjectSignatureTimes, sigCanvasPx.w, sigCanvasPx.h])
+
+  useEffect(() => {
+    if (effectiveIcfVersionId == null || showBasicInfoStepOnly || !needSubjectSig) return
+    const t = setTimeout(() => {
+      try {
+        const dpr = Taro.getSystemInfoSync().pixelRatio || 1
+        const q = Taro.createSelectorQuery()
+        q.select('#signatureCanvasNode').fields({ node: true, size: true })
+        q.exec((res) => {
+          const item: any = res?.[0]
+          const node = item?.node
+          const w = Number(item?.width || sigCanvasPx.w || 375)
+          const h = Number(item?.height || sigCanvasPx.h || 160)
+          if (!node || !w || !h) return
+          const ctx = node.getContext('2d')
+          if (!ctx) return
+          node.width = Math.max(1, Math.floor(w * dpr))
+          node.height = Math.max(1, Math.floor(h * dpr))
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+          ctx.strokeStyle = '#1a202c'
+          ctx.lineWidth = 5
+          ctx.lineCap = 'round'
+          ctx.lineJoin = 'round'
+          ctx.clearRect(0, 0, w, h)
+          canvasNodeRef.current = node
+          ctx2dRef.current = ctx
+          setHasSignature(false)
+        })
+      } catch {
+        canvasNodeRef.current = null
+        ctx2dRef.current = null
+      }
+    }, 16)
+    return () => clearTimeout(t)
+  }, [effectiveIcfVersionId, showBasicInfoStepOnly, needSubjectSig, sigCanvasPx.w, sigCanvasPx.h])
+
+  useEffect(() => {
+    if (effectiveIcfVersionId == null || showBasicInfoStepOnly || !needSubjectSig || subjectSignatureTimes < 2) {
+      canvasNode2Ref.current = null
+      ctx2d2Ref.current = null
+      return
     }
-  }, [effectiveIcfVersionId, subjectSignatureTimes])
+    const t = setTimeout(() => {
+      try {
+        const dpr = Taro.getSystemInfoSync().pixelRatio || 1
+        const q = Taro.createSelectorQuery()
+        q.select('#signatureCanvasNode2').fields({ node: true, size: true })
+        q.exec((res) => {
+          const item: any = res?.[0]
+          const node = item?.node
+          const w = Number(item?.width || sigCanvasPx.w || 375)
+          const h = Number(item?.height || sigCanvasPx.h || 160)
+          if (!node || !w || !h) return
+          const ctx = node.getContext('2d')
+          if (!ctx) return
+          node.width = Math.max(1, Math.floor(w * dpr))
+          node.height = Math.max(1, Math.floor(h * dpr))
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+          ctx.strokeStyle = '#1a202c'
+          ctx.lineWidth = 5
+          ctx.lineCap = 'round'
+          ctx.lineJoin = 'round'
+          ctx.clearRect(0, 0, w, h)
+          canvasNode2Ref.current = node
+          ctx2d2Ref.current = ctx
+          setHasSignature2(false)
+        })
+      } catch {
+        canvasNode2Ref.current = null
+        ctx2d2Ref.current = null
+      }
+    }, 16)
+    return () => clearTimeout(t)
+  }, [effectiveIcfVersionId, showBasicInfoStepOnly, needSubjectSig, subjectSignatureTimes, sigCanvasPx.w, sigCanvasPx.h])
 
   const updateCanvasRect = useCallback(() => {
     try {
@@ -594,11 +1090,36 @@ function ConsentPage() {
       query.exec((res) => {
         const r0 = res?.[0]
         const r1 = res?.[1]
-        if (r0 && typeof r0.left === 'number' && typeof r0.top === 'number') {
-          canvasRectRef.current = { left: r0.left, top: r0.top }
+        if (
+          r0 &&
+          typeof r0.left === 'number' &&
+          typeof r0.top === 'number' &&
+          typeof r0.width === 'number' &&
+          r0.width > 0
+        ) {
+          canvasRectRef.current = {
+            left: r0.left,
+            top: r0.top,
+            width: r0.width,
+            height: typeof r0.height === 'number' && r0.height > 0 ? r0.height : 160,
+          }
+          const nw = Math.max(1, Math.floor(r0.width))
+          const nh = Math.max(1, Math.floor(typeof r0.height === 'number' ? r0.height : 160))
+          setSigCanvasPx((prev) => (prev.w === nw && prev.h === nh ? prev : { w: nw, h: nh }))
         }
-        if (r1 && typeof r1.left === 'number' && typeof r1.top === 'number') {
-          canvasRect2Ref.current = { left: r1.left, top: r1.top }
+        if (
+          r1 &&
+          typeof r1.left === 'number' &&
+          typeof r1.top === 'number' &&
+          typeof r1.width === 'number' &&
+          r1.width > 0
+        ) {
+          canvasRect2Ref.current = {
+            left: r1.left,
+            top: r1.top,
+            width: r1.width,
+            height: typeof r1.height === 'number' && r1.height > 0 ? r1.height : 160,
+          }
         }
       })
     } catch {
@@ -613,42 +1134,118 @@ function ConsentPage() {
     return () => clearTimeout(t)
   }, [effectiveIcfVersionId, subjectSignatureTimes, updateCanvasRect])
 
-  const toCanvasCoords = useCallback((x: number, y: number): Point => {
+  const toCanvasCoords = useCallback((x: number, y: number, local: boolean): Point => {
+    if (local) {
+      return {
+        x: Math.max(0, Math.min(sigCanvasPx.w, x)),
+        y: Math.max(0, Math.min(sigCanvasPx.h, y)),
+      }
+    }
     const rect = canvasRectRef.current
-    if (rect) {
-      return { x: x - rect.left, y: y - rect.top }
+    // 优先使用画布容器 rect 做坐标归一，避免触点坐标是页面坐标时画到可视区外
+    if (rect && rect.width > 0 && rect.height > 0) {
+      const localX = x - rect.left
+      const localY = y - rect.top
+      const px = (localX / rect.width) * sigCanvasPx.w
+      const py = (localY / rect.height) * sigCanvasPx.h
+      return {
+        x: Math.max(0, Math.min(sigCanvasPx.w, px)),
+        y: Math.max(0, Math.min(sigCanvasPx.h, py)),
+      }
     }
-    return { x, y }
-  }, [])
-
-  const toCanvasCoords2 = useCallback((x: number, y: number): Point => {
+    return {
+      x: Math.max(0, Math.min(sigCanvasPx.w, x)),
+      y: Math.max(0, Math.min(sigCanvasPx.h, y)),
+    }
+  }, [sigCanvasPx.h, sigCanvasPx.w])
+  const toCanvasCoords2 = useCallback((x: number, y: number, local: boolean): Point => {
+    if (local) {
+      return {
+        x: Math.max(0, Math.min(sigCanvasPx.w, x)),
+        y: Math.max(0, Math.min(sigCanvasPx.h, y)),
+      }
+    }
     const rect = canvasRect2Ref.current
-    if (rect) {
-      return { x: x - rect.left, y: y - rect.top }
+    if (rect && rect.width > 0 && rect.height > 0) {
+      const localX = x - rect.left
+      const localY = y - rect.top
+      const px = (localX / rect.width) * sigCanvasPx.w
+      const py = (localY / rect.height) * sigCanvasPx.h
+      return {
+        x: Math.max(0, Math.min(sigCanvasPx.w, px)),
+        y: Math.max(0, Math.min(sigCanvasPx.h, py)),
+      }
     }
-    return { x, y }
-  }, [])
+    return {
+      x: Math.max(0, Math.min(sigCanvasPx.w, x)),
+      y: Math.max(0, Math.min(sigCanvasPx.h, y)),
+    }
+  }, [sigCanvasPx.h, sigCanvasPx.w])
 
   const handleTouchStart = useCallback((e) => {
-    const touch = e.touches?.[0]
-    if (!touch) return
-    const pt = toCanvasCoords(touch.x, touch.y)
+    e.stopPropagation?.()
+    e.preventDefault?.()
+    setDrawingLocked(true)
+    updateCanvasRect()
+    const p = getTouchPoint(e)
+    if (!p) return
+    if (!ctxRef.current) {
+      try {
+        const ctx = Taro.createCanvasContext('signatureCanvas')
+        ctx.setStrokeStyle('#1a202c')
+        ctx.setLineWidth(5)
+        ctx.setLineCap('round')
+        ctx.setLineJoin('round')
+        ctxRef.current = ctx
+      } catch {
+        ctxRef.current = null
+      }
+    }
+    const pt = toCanvasCoords(p.x, p.y, p.local)
     isDrawing.current = true
     lastPoint.current = pt
-  }, [toCanvasCoords])
+    // 起笔落点：避免某些机型首帧 move 未触发时看起来“无法签名”
+    if (ctx2dRef.current) {
+      const ctx = ctx2dRef.current
+      ctx.beginPath()
+      ctx.moveTo(pt.x, pt.y)
+      ctx.lineTo(pt.x + 0.1, pt.y + 0.1)
+      ctx.stroke()
+      setHasSignature(true)
+    } else if (ctxRef.current) {
+      const ctx = ctxRef.current
+      ctx.beginPath()
+      ctx.moveTo(pt.x, pt.y)
+      ctx.lineTo(pt.x + 0.1, pt.y + 0.1)
+      ctx.stroke()
+      ctx.draw(true)
+      setHasSignature(true)
+    }
+  }, [toCanvasCoords, updateCanvasRect])
 
   const handleTouchMove = useCallback((e) => {
     e.stopPropagation?.()
-    if (!isDrawing.current || !lastPoint.current || !ctxRef.current) return
-    const touch = e.touches?.[0]
-    if (!touch) return
-    const pt = toCanvasCoords(touch.x, touch.y)
-    const ctx = ctxRef.current
-    ctx.beginPath()
-    ctx.moveTo(lastPoint.current!.x, lastPoint.current!.y)
-    ctx.lineTo(pt.x, pt.y)
-    ctx.stroke()
-    ctx.draw(true)
+    e.preventDefault?.()
+    if (!isDrawing.current || !lastPoint.current) return
+    const p = getTouchPoint(e)
+    if (!p) return
+    const pt = toCanvasCoords(p.x, p.y, p.local)
+    if (ctx2dRef.current) {
+      const ctx = ctx2dRef.current
+      ctx.beginPath()
+      ctx.moveTo(lastPoint.current!.x, lastPoint.current!.y)
+      ctx.lineTo(pt.x, pt.y)
+      ctx.stroke()
+    } else if (ctxRef.current) {
+      const ctx = ctxRef.current
+      ctx.beginPath()
+      ctx.moveTo(lastPoint.current!.x, lastPoint.current!.y)
+      ctx.lineTo(pt.x, pt.y)
+      ctx.stroke()
+      ctx.draw(true)
+    } else {
+      return
+    }
     lastPoint.current = pt
     setHasSignature(true)
   }, [toCanvasCoords])
@@ -656,28 +1253,72 @@ function ConsentPage() {
   const handleTouchEnd = useCallback(() => {
     isDrawing.current = false
     lastPoint.current = null
+    setDrawingLocked(false)
   }, [])
 
   const handleTouchStart2 = useCallback((e) => {
-    const touch = e.touches?.[0]
-    if (!touch) return
-    const pt = toCanvasCoords2(touch.x, touch.y)
+    e.stopPropagation?.()
+    e.preventDefault?.()
+    setDrawingLocked(true)
+    updateCanvasRect()
+    const p = getTouchPoint(e)
+    if (!p) return
+    if (!ctx2Ref.current) {
+      try {
+        const ctx = Taro.createCanvasContext('signatureCanvas2')
+        ctx.setStrokeStyle('#1a202c')
+        ctx.setLineWidth(5)
+        ctx.setLineCap('round')
+        ctx.setLineJoin('round')
+        ctx2Ref.current = ctx
+      } catch {
+        ctx2Ref.current = null
+      }
+    }
+    const pt = toCanvasCoords2(p.x, p.y, p.local)
     isDrawing2.current = true
     lastPoint2.current = pt
-  }, [toCanvasCoords2])
+    if (ctx2d2Ref.current) {
+      const ctx = ctx2d2Ref.current
+      ctx.beginPath()
+      ctx.moveTo(pt.x, pt.y)
+      ctx.lineTo(pt.x + 0.1, pt.y + 0.1)
+      ctx.stroke()
+      setHasSignature2(true)
+    } else if (ctx2Ref.current) {
+      const ctx = ctx2Ref.current
+      ctx.beginPath()
+      ctx.moveTo(pt.x, pt.y)
+      ctx.lineTo(pt.x + 0.1, pt.y + 0.1)
+      ctx.stroke()
+      ctx.draw(true)
+      setHasSignature2(true)
+    }
+  }, [toCanvasCoords2, updateCanvasRect])
 
   const handleTouchMove2 = useCallback((e) => {
     e.stopPropagation?.()
-    if (!isDrawing2.current || !lastPoint2.current || !ctx2Ref.current) return
-    const touch = e.touches?.[0]
-    if (!touch) return
-    const pt = toCanvasCoords2(touch.x, touch.y)
-    const ctx = ctx2Ref.current
-    ctx.beginPath()
-    ctx.moveTo(lastPoint2.current!.x, lastPoint2.current!.y)
-    ctx.lineTo(pt.x, pt.y)
-    ctx.stroke()
-    ctx.draw(true)
+    e.preventDefault?.()
+    if (!isDrawing2.current || !lastPoint2.current) return
+    const p = getTouchPoint(e)
+    if (!p) return
+    const pt = toCanvasCoords2(p.x, p.y, p.local)
+    if (ctx2d2Ref.current) {
+      const ctx = ctx2d2Ref.current
+      ctx.beginPath()
+      ctx.moveTo(lastPoint2.current!.x, lastPoint2.current!.y)
+      ctx.lineTo(pt.x, pt.y)
+      ctx.stroke()
+    } else if (ctx2Ref.current) {
+      const ctx = ctx2Ref.current
+      ctx.beginPath()
+      ctx.moveTo(lastPoint2.current!.x, lastPoint2.current!.y)
+      ctx.lineTo(pt.x, pt.y)
+      ctx.stroke()
+      ctx.draw(true)
+    } else {
+      return
+    }
     lastPoint2.current = pt
     setHasSignature2(true)
   }, [toCanvasCoords2])
@@ -685,56 +1326,147 @@ function ConsentPage() {
   const handleTouchEnd2 = useCallback(() => {
     isDrawing2.current = false
     lastPoint2.current = null
+    setDrawingLocked(false)
   }, [])
 
   const handleClearSignature = useCallback(() => {
+    if (ctx2dRef.current) {
+      ctx2dRef.current.clearRect(0, 0, sigCanvasPx.w, sigCanvasPx.h)
+    }
     const ctx = ctxRef.current
-    if (!ctx) return
-    ctx.clearRect(0, 0, 9999, 9999)
-    ctx.draw()
+    if (ctx) {
+      ctx.clearRect(0, 0, 9999, 9999)
+      ctx.draw()
+    }
     setHasSignature(false)
-  }, [])
+  }, [sigCanvasPx.h, sigCanvasPx.w])
 
   const handleClearSignature2 = useCallback(() => {
+    if (ctx2d2Ref.current) {
+      ctx2d2Ref.current.clearRect(0, 0, sigCanvasPx.w, sigCanvasPx.h)
+    }
     const ctx = ctx2Ref.current
-    if (!ctx) return
-    ctx.clearRect(0, 0, 9999, 9999)
-    ctx.draw()
+    if (ctx) {
+      ctx.clearRect(0, 0, 9999, 9999)
+      ctx.draw()
+    }
     setHasSignature2(false)
-  }, [])
+  }, [sigCanvasPx.h, sigCanvasPx.w])
 
   const handleBasicInfoNext = useCallback(() => {
-    if (!supplementOk) {
-      Taro.showToast({ title: '请完整填写确认信息', icon: 'none' })
+    if (!declaredSubjectName.trim()) {
+      Taro.showToast({ title: '请填写姓名', icon: 'none' })
+      return
+    }
+    if (!idValidH5) {
+      Taro.showToast({ title: '请填写合法的身份证号（15 位或 18 位）', icon: 'none' })
+      return
+    }
+    if (phoneDigits.length < 11) {
+      Taro.showToast({ title: '请填写至少 11 位数字的手机号', icon: 'none' })
+      return
+    }
+    if (!declaredScreeningNumber.trim()) {
+      Taro.showToast({ title: '请填写 SC号', icon: 'none' })
+      return
+    }
+    if (!initialsValidH5) {
+      Taro.showToast({ title: '请填写 1～32 位拼音首字母（仅英文字母，如 WMD）', icon: 'none' })
+      return
+    }
+    if (!expectedBirthYmd) {
+      showAppointmentMismatchModal(
+        '缺少出生日期基准',
+        '系统未查询到本次预约登记的出生年月，暂无法完成身份证出生日期一致性校验。请联系现场前台工作人员补充预约登记信息后重试。',
+      )
+      return
+    }
+    if (!idBirthYmd) {
+      showAppointmentMismatchModal(
+        '身份证号格式有误',
+        '无法从当前身份证号解析出生日期。请核对身份证号后重试；如需更正预约登记信息，请联系现场前台工作人员。',
+      )
+      return
+    }
+    // 与现场已导入的预约登记信息一致（基准来自档案 / 首页项目块）
+    if (expectedBirthYmd && idBirthYmd && idBirthYmd !== expectedBirthYmd) {
+      showAppointmentMismatchModal(
+        '出生日期不一致',
+        `身份证号中的出生日期（${idBirthYmd}）须与现场已导入的预约登记中的「出生年月」一致。系统当前记录的预约出生日期为 ${expectedBirthYmd}。请核对身份证号；如需更正预约登记中的出生日期，请联系现场前台工作人员。`,
+      )
+      return
+    }
+    if (expectedNameComparable && nameComparable !== expectedNameComparable) {
+      showAppointmentMismatchModal(
+        '姓名不一致',
+        '您填写的姓名须与现场已导入的预约登记中的姓名一致。请核对后修改；如需更正预约登记中的姓名，请联系现场前台工作人员。',
+      )
+      return
+    }
+    if (expectedPhoneComparable && phoneComparable !== expectedPhoneComparable) {
+      const tail4 =
+        expectedPhoneComparable.length >= 4 ? expectedPhoneComparable.slice(-4) : '****'
+      showAppointmentMismatchModal(
+        '手机号不一致',
+        `您填写的手机号须与现场已导入的预约登记手机号一致。预约登记手机号指：预约表导入系统后，与您当前登录账号绑定的 11 位号码（本页已按系统记录预填，尾号 ${tail4}）。请改回与预约登记一致；如需更正预约登记中的手机号，请联系现场前台工作人员。`,
+      )
+      return
+    }
+    if (expectedScComparable && scComparable !== expectedScComparable) {
+      showAppointmentMismatchModal(
+        'SC 号不一致',
+        '您填写的 SC 号须与现场已导入的预约登记中的 SC 号一致。请核对后修改；如需更正预约登记中的 SC 号，请联系现场前台工作人员。',
+      )
+      return
+    }
+    if (expectedInitialsComparable && initialsNorm !== expectedInitialsComparable) {
+      showAppointmentMismatchModal(
+        '拼音首字母不一致',
+        '您填写的拼音首字母须与现场已导入的预约登记中的拼音首字母一致。请核对后修改；如需更正预约登记中的拼音首字母，请联系现场前台工作人员。',
+      )
       return
     }
     setBasicInfoStepDone(true)
     setReadingStartedAt(Date.now())
     setElapsedSec(0)
-  }, [supplementOk])
-
-  const openReceiptPdf = useCallback((pathOrUrl: string | null | undefined) => {
-    const full = resolveMediaFullUrl(pathOrUrl)
-    if (!full) {
-      Taro.showToast({ title: '暂无 PDF 链接', icon: 'none' })
-      return
-    }
-    Taro.showLoading({ title: '打开中…' })
-    Taro.downloadFile({
-      url: full,
-      success: (df) => {
-        Taro.openDocument({
-          filePath: df.tempFilePath,
-          showMenu: true,
-          fail: () => Taro.showToast({ title: '无法打开文件', icon: 'none' }),
-        })
-      },
-      fail: () => Taro.showToast({ title: '下载失败，请检查网络与域名白名单', icon: 'none', duration: 3500 }),
-    }).finally(() => Taro.hideLoading())
-  }, [])
+  }, [
+    declaredSubjectName,
+    idValidH5,
+    idBirthYmd,
+    expectedBirthYmd,
+    nameComparable,
+    expectedNameComparable,
+    phoneDigits.length,
+    phoneComparable,
+    expectedPhoneComparable,
+    declaredScreeningNumber,
+    scComparable,
+    expectedScComparable,
+    initialsValidH5,
+    initialsNorm,
+    expectedInitialsComparable,
+  ])
 
   const exportSignatureImage = (canvasId: string): Promise<string> => {
     return new Promise((resolve, reject) => {
+      const canvasNode = canvasId === 'signatureCanvas' ? canvasNodeRef.current : canvasNode2Ref.current
+      const wxAny = (typeof wx !== 'undefined' ? (wx as any) : null)
+      if (wxAny && canvasNode && typeof wxAny.canvasToTempFilePath === 'function') {
+        wxAny.canvasToTempFilePath({
+          canvas: canvasNode,
+          fileType: 'png',
+          success: (res) => resolve(res.tempFilePath),
+          fail: () => {
+            Taro.canvasToTempFilePath({
+              canvasId,
+              fileType: 'png',
+              success: (r) => resolve(r.tempFilePath),
+              fail: (err) => reject(err),
+            })
+          },
+        } as any)
+        return
+      }
       Taro.canvasToTempFilePath({
         canvasId,
         fileType: 'png',
@@ -785,6 +1517,7 @@ function ConsentPage() {
       Taro.showToast({ title: '开发预览：签署流程已模拟', icon: 'success' })
       setSignedReceipts([
         {
+          consent_id: MOCK_CONSENT_ITEM.id,
           node_title: currentItem?.node_title || MOCK_CONSENT_ITEM.node_title || '知情文档',
           icf_version_id: effectiveIcfVersionId ?? MOCK_CONSENT_ITEM.icf_version_id,
           receipt_no: 'DEV-PREVIEW',
@@ -800,6 +1533,16 @@ function ConsentPage() {
     setSignError(null)
     try {
       if (effectiveIcfVersionId != null) {
+        if (enableCheckboxRecognition && checkboxInteractiveRows.length > 0 && !checkboxAllAnswered) {
+          Taro.showModal({
+            title: '请完成勾选',
+            content: '请为每一处「请勾选」在下方选择「是」或「否」后再确认签署。',
+            showCancel: false,
+            confirmText: '我知道了',
+          })
+          setSubmitting(false)
+          return
+        }
         if (needSubjectSig) {
           if (subjectSignatureTimes === 1 && !hasSignature) {
             Taro.showToast({ title: '请先完成手写签名', icon: 'none' })
@@ -859,28 +1602,8 @@ function ConsentPage() {
 
         const scanTok = (consentScanTestRef.current.token || '').trim()
         if (needSupplement) {
-          if (phoneDigits.length < 11) {
-            Taro.showToast({ title: '请填写确认手机号（与登录手机号一致）', icon: 'none' })
-            setSubmitting(false)
-            return
-          }
-          if (collectSubjectName && !declaredSubjectName.trim()) {
-            Taro.showToast({ title: '请填写姓名', icon: 'none' })
-            setSubmitting(false)
-            return
-          }
-          if (collectIdCard && idNorm.length < 15) {
-            Taro.showToast({ title: '请填写正确的身份证号', icon: 'none' })
-            setSubmitting(false)
-            return
-          }
-          if (collectScreeningNumber && !declaredScreeningNumber.trim()) {
-            Taro.showToast({ title: '请填写 SC 编号', icon: 'none' })
-            setSubmitting(false)
-            return
-          }
-          if (collectInitials && !declaredInitials.trim()) {
-            Taro.showToast({ title: '请填写拼音首字母', icon: 'none' })
+          if (!basicInfoFormOk) {
+            Taro.showToast({ title: '请返回上一步完善认证基础信息', icon: 'none' })
             setSubmitting(false)
             return
           }
@@ -888,10 +1611,10 @@ function ConsentPage() {
         const supplementBody: Record<string, string> = {}
         if (needSupplement) {
           supplementBody.declared_phone = phoneDigits
-          if (collectSubjectName) supplementBody.declared_subject_name = declaredSubjectName.trim()
-          if (collectIdCard) supplementBody.declared_id_card = declaredIdCard.trim()
-          if (collectScreeningNumber) supplementBody.declared_screening_number = declaredScreeningNumber.trim()
-          if (collectInitials) supplementBody.declared_initials = declaredInitials.trim()
+          supplementBody.declared_subject_name = declaredSubjectName.trim()
+          supplementBody.declared_id_card = idNorm
+          supplementBody.declared_screening_number = declaredScreeningNumber.trim()
+          supplementBody.declared_initials = initialsNorm
         }
         const signPayload: Record<string, unknown> = {
           face_verify_token: faceToken,
@@ -903,6 +1626,9 @@ function ConsentPage() {
             : {}),
           ...(scanTok ? { consent_test_scan_token: scanTok } : {}),
           ...supplementBody,
+          ...(enableCheckboxRecognition && checkboxInteractiveRows.length > 0
+            ? { icf_checkbox_answers: checkboxAnswers.map((v) => ({ value: v })) }
+            : {}),
         }
         if (needSubjectSig) {
           if (subjectSignatureTimes >= 2 && signatureStorageKey && signatureStorageKey2) {
@@ -950,6 +1676,7 @@ function ConsentPage() {
           return
         }
         const data = res.data as {
+          consent_id?: number
           status?: string
           receipt_no?: string
           signed_at?: string
@@ -961,25 +1688,48 @@ function ConsentPage() {
           setReceiptNo(data.receipt_no || null)
           setSignedAt(data.signed_at || null)
           setLastSignStatus(st)
-          setSignedReceipts((prev) => [
-            ...prev,
-            {
-              node_title: currentItem?.node_title || icfTitle || '知情文档',
-              icf_version_id: effectiveIcfVersionId,
-              receipt_no: data.receipt_no ?? null,
-              receipt_pdf_url: data?.receipt_pdf_url ?? null,
-            },
-          ])
+          const cid =
+            typeof data?.consent_id === 'number' && data.consent_id > 0
+              ? data.consent_id
+              : currentItem?.id
+          const newRow: SignedReceiptItem = {
+            consent_id: cid,
+            node_title: currentItem?.node_title || icfTitle || '知情文档',
+            icf_version_id: effectiveIcfVersionId ?? currentItem?.icf_version_id ?? 0,
+            receipt_no: data.receipt_no ?? null,
+            receipt_pdf_url: data?.receipt_pdf_url ? resolveMediaFullUrl(data.receipt_pdf_url) : null,
+            protocol_code: (currentItem?.protocol_code || '').trim() || undefined,
+          }
           Taro.showToast({
             title: st === 'signed_pending_investigator' ? '受试者签署已提交，待工作人员双签' : '签署成功',
             icon: 'success',
           })
           const rest = pendingQueue.slice(1)
           if (rest.length > 0) {
+            setSignedReceipts((prev) => [...(Array.isArray(prev) ? prev : []), newRow])
             setPendingQueue(rest)
             setAgreed(false)
           } else {
-            setSignedAll(true)
+            Taro.showLoading({ title: '加载文档列表…', mask: true })
+            try {
+              const listRes = await subjectApi.getMyConsents()
+              if (listRes.code === 401) {
+                setSignedReceipts([newRow])
+                setSignedAll(true)
+              } else {
+                const raw = listRes.data as { items?: ConsentItem[] } | null | undefined
+                const items = Array.isArray(raw?.items) ? raw.items : []
+                setConsentAllItems(items)
+                const rows = buildSignedReceiptRowsFromConsentItems(items, consentScanProtocolId)
+                setSignedReceipts(rows.length > 0 ? rows : [newRow])
+                setSignedAll(true)
+              }
+            } catch {
+              setSignedReceipts([newRow])
+              setSignedAll(true)
+            } finally {
+              Taro.hideLoading()
+            }
           }
         } else {
           setSignError(res?.msg || '签署失败，请重试')
@@ -1038,19 +1788,7 @@ function ConsentPage() {
     }
   }
 
-  if (bootstrapLoading) {
-    return (
-      <View className='consent-page'>
-        <View className='consent-content'>
-          <View className='doc-section'>
-            <Text className='section-text loading-text'>加载中…</Text>
-          </View>
-        </View>
-      </View>
-    )
-  }
-
-  if (needLogin) {
+    if (needLogin) {
     return (
       <View className='consent-page'>
         <View className='consent-content'>
@@ -1067,10 +1805,11 @@ function ConsentPage() {
   }
 
   if (identityGateRequired) {
-    const protocolHint =
-      (bootstrap?.projects?.length
+    const rawHint =
+      bootstrap?.projects?.length
         ? bootstrap.projects.map((p) => p.protocol_code).filter(Boolean)
-        : bootstrap?.pilot_protocol_codes) || []
+        : bootstrap?.pilot_protocol_codes
+    const protocolHint = Array.isArray(rawHint) ? rawHint : rawHint ? [String(rawHint)] : []
     const protocolHintStr = protocolHint.length ? protocolHint.join('、') : ''
 
     return (
@@ -1080,7 +1819,7 @@ function ConsentPage() {
             <Text className='doc-title'>知情同意</Text>
             <Text className='section-text'>
               {bootstrapError
-                || `当前账号暂无法签署知情同意：需完成实名认证，或已为项目（${protocolHintStr || '与接待台预约/入组一致的项目编号'}）登记受试者且手机号一致。`}
+                || `当前账号暂无法签署知情同意：需完成实名认证，或已为项目（${protocolHintStr || '与现场预约登记或入组一致的项目编号'}）登记受试者且手机号一致。`}
             </Text>
             <View style={{ marginTop: 24 }}>
               <MiniButton onClick={() => Taro.navigateTo({ url: '/pages/identity-verify/index' })}>去实名认证</MiniButton>
@@ -1094,27 +1833,26 @@ function ConsentPage() {
     )
   }
 
-  if (queueLoading || (devPreview && pendingQueue.length === 0)) {
+  /** 队列拉取中且尚无待签项：不落到主签署页，避免白屏或误显其它区块 */
+  if (isQueueBooting && pendingQueue.length === 0 && !signedAll && !showPreloadedDoneView) {
     return (
-      <View className='consent-page'>
-        <View className='consent-content'>
-          <View className='doc-section'>
-            <Text className='section-text loading-text'>
-              {devPreview ? '加载开发预览…' : '加载待签文档…'}
-            </Text>
-          </View>
+      <View className='consent-page consent-page--boot'>
+        <View className='consent-content consent-empty'>
+          <Text className='loading-text'>加载中…</Text>
         </View>
       </View>
     )
   }
 
-  if (noPendingConsent && !signedAll) {
+    if (!isQueueBooting && noPendingConsent && !signedAll && !showPreloadedDoneView) {
     return (
       <View className='consent-page'>
         <View className='consent-content consent-empty'>
           <View className='document'>
             <Text className='doc-title'>知情同意</Text>
-            <Text className='section-text empty-desc'>暂无待签署的知情文档。若您已入组试点项目，请联系研究方确认是否已为您分配签署任务。</Text>
+            <Text className='section-text empty-desc'>
+              暂无待签署的知情文档。请确认：研究方已在执行台「知情管理」中对本项目执行「发布」；您当日已在小程序完成现场签到；现场预约登记信息与当前登录手机号一致。
+            </Text>
             <Text className='consent-back' onClick={() => Taro.navigateBack()}>返回</Text>
           </View>
         </View>
@@ -1122,352 +1860,464 @@ function ConsentPage() {
     )
   }
 
-  if (signedAll) {
+  if (signedAll || showPreloadedDoneView) {
+    const effectiveReceiptRows = signedAll ? signedReceipts : preloadedSignedReceipts
+    const totalDocs = effectiveReceiptRows.length
+    const scForName =
+      (declaredScreeningNumber || '').trim() || (dashboardScForDonePage || '').trim()
+    const projectCodeLine = (effectiveReceiptRows[0]?.protocol_code || '').trim()
     return (
-      <View className='consent-page'>
-        <View className='signed-notice'>
-          <Text className='signed-icon'>✓</Text>
-          <Text className='signed-text'>待签文档已全部处理</Text>
-          {receiptNo ? <Text className='signed-receipt'>最近回执号：{receiptNo}</Text> : null}
-          {signedReceipts.length > 0 ? (
-            <View style={{ marginTop: 16, width: '100%', paddingLeft: 0, paddingRight: 0 }}>
-              <Text className='section-text' style={{ fontWeight: 600, marginBottom: 12 }}>
-                本次签署协议
-              </Text>
-              {signedReceipts.map((row, idx) => (
-                <View
-                  key={`${row.icf_version_id}-${idx}`}
-                  style={{
-                    marginBottom: 16,
-                    padding: 16,
-                    background: '#f7fafc',
-                    borderRadius: 8,
-                    borderLeft: '4px solid #3182ce',
-                  }}
-                >
-                  <Text className='section-text' style={{ fontWeight: 600, marginBottom: 8 }}>
-                    {row.node_title}
-                  </Text>
-                  {row.receipt_no ? (
-                    <Text className='section-text' style={{ fontSize: 24, color: '#4a5568', marginBottom: 8 }}>
-                      回执号：{row.receipt_no}
-                    </Text>
-                  ) : null}
-                  {row.receipt_pdf_url ? (
-                    <Text
-                      className='section-text'
-                      style={{ color: '#3182ce', textDecoration: 'underline' }}
-                      onClick={() => openReceiptPdf(row.receipt_pdf_url)}
-                    >
-                      查看 / 下载 PDF
-                    </Text>
-                  ) : (
-                    <Text className='section-text' style={{ fontSize: 24, color: '#a0aec0' }}>
-                      PDF 生成中或暂不可用
-                    </Text>
-                  )}
-                </View>
-              ))}
+      <View className='consent-page consent-page--done'>
+        <ScrollView className='consent-done-scroll' scrollY enhanced={false}>
+          <View className='consent-done-inner'>
+            <View className='consent-done-hero'>
+              <View className='consent-done-hero__icon-wrap'>
+                <Text className='consent-done-hero__icon'>✓</Text>
+              </View>
+              <Text className='consent-done-hero__status'>知情签署已完成</Text>
+              {projectCodeLine ? (
+                <Text className='consent-done-hero__project'>已签署项目 · {projectCodeLine}</Text>
+              ) : null}
             </View>
-          ) : null}
-          {lastSignStatus === 'signed_pending_investigator' ? (
-            <Text className='section-text' style={{ marginTop: 8 }}>
-              工作人员见证签署可在执行台「知情管理」中完成。
+            {effectiveReceiptRows.length > 0 ? (
+              <View className='consent-done-list-wrap'>
+                <View className='consent-done-list-head'>
+                  <View className='consent-done-list-head__left'>
+                    <Text className='consent-done-list-head__doc-icon'>📄</Text>
+                    <Text className='consent-done-list-head__title'>文档列表</Text>
+                  </View>
+                  {totalDocs > 0 ? (
+                    <Text className='consent-done-list-head__meta'>共 {totalDocs} 份 · 可预览或下载 PDF</Text>
+                  ) : null}
+                </View>
+                <View className='consent-done-list'>
+                  {effectiveReceiptRows.map((row, idx) => {
+                    const pdfName = consentReceiptPdfDisplayName(
+                      row.protocol_code || '',
+                      scForName,
+                      (row.node_title || '').trim() || '签署节点',
+                    )
+                    return (
+                      <View key={`${row.icf_version_id}-${idx}`} className='consent-done-item'>
+                        <View className='consent-done-item__badge'>
+                          <Text className='consent-done-item__badge-text'>
+                            {idx + 1}/{totalDocs}
+                          </Text>
+                        </View>
+                        <View className='consent-done-item__body'>
+                          <Text className='consent-done-item__filename'>{pdfName}</Text>
+                          <View className='consent-done-item__actions'>
+                            {row.receipt_pdf_url ? (
+                              <>
+                                <Button
+                                  className='consent-done-item__btn consent-done-item__btn--primary'
+                                  size='mini'
+                                onClick={() => openConsentReceiptPdf(row)}
+                              >
+                                下载
+                              </Button>
+                              <Button
+                                className='consent-done-item__btn consent-done-item__btn--secondary'
+                                size='mini'
+                                onClick={() => openConsentReceiptPdf(row)}
+                                >
+                                  预览
+                                </Button>
+                              </>
+                            ) : (
+                              <Text className='consent-done-item__muted'>PDF 生成中或暂不可用</Text>
+                            )}
+                          </View>
+                        </View>
+                      </View>
+                    )
+                  })}
+                </View>
+              </View>
+            ) : null}
+            {signedAll && lastSignStatus === 'signed_pending_investigator' ? (
+              <Text className='consent-done-footnote'>
+                工作人员见证签署可在执行台「知情管理」中完成。
+              </Text>
+            ) : null}
+            <Text className='consent-back consent-back--done' onClick={() => Taro.navigateBack()}>
+              返回
             </Text>
-          ) : null}
-          <Text className='consent-back' onClick={() => Taro.navigateBack()}>返回</Text>
-        </View>
+          </View>
+        </ScrollView>
       </View>
     )
   }
 
   if (showBasicInfoStepOnly) {
+    const basicInfoInitializing = isQueueBooting || isBasicInfoResolving
+    const basicSubtitle = (() => {
+      if (!currentItem) return ''
+      const t = (currentItem.protocol_title || '').trim()
+      const c = (currentItem.protocol_code || '').trim()
+      if (c && t) return `${c}  ${t}`
+      if (c) return c
+      if (t) return t
+      return ''
+    })()
+
     return (
-      <View className='consent-page'>
-        <ScrollView className='consent-content' scrollY enhanced showScrollbar>
-          <View className='document'>
-            <Text className='doc-title'>签署前身份确认{stepLabel}</Text>
-            {currentItem?.protocol_code ? (
-              <Text className='doc-subtitle'>
-                项目编号 {currentItem.protocol_code}
-                {currentItem.protocol_title ? ` · ${currentItem.protocol_title}` : ''}
-              </Text>
-            ) : (
-              <Text className='doc-subtitle'>请先完成以下信息，再进入阅读与签署</Text>
-            )}
-            <View className='doc-section' style={{ marginTop: 16 }}>
-              <Text className='section-text' style={{ color: '#4a5568' }}>
-                请与接待登记信息一致；手机号须与当前登录账号一致。
-              </Text>
+      <View className='consent-page consent-page--basic'>
+        <ScrollView className='consent-basic-scroll' scrollY enhanced={false}>
+          <View className='consent-basic-inner'>
+            <View className='consent-basic-card'>
+              <View className='consent-basic-header'>
+                <Text className='consent-basic-icon'>📖</Text>
+                <View className='consent-basic-header-text'>
+                  <Text className='consent-basic-h1'>认证基础信息</Text>
+                </View>
+              </View>
+              {basicSubtitle ? <Text className='consent-basic-subtitle'>{basicSubtitle}</Text> : null}
+              <View className='consent-basic-fields'>
+                {/*
+                  与执行台知情测试扫码 H5 一致：姓名 → 身份证号 → 手机号 → SC号 → 拼音首字母
+                  （不随单项 collect_* 开关隐藏，避免与二维码页字段不一致）
+                */}
+                <View className='consent-field'>
+                  <Text className='consent-field-label'>姓名</Text>
+                  <Input
+                    className='consent-field-input'
+                    value={declaredSubjectName}
+                    onInput={(e) => setDeclaredSubjectName(String(e.detail.value || '').slice(0, 100))}
+                    placeholder='请输入姓名'
+                    disabled={submitting}
+                  />
+                </View>
+                <View className='consent-field'>
+                  <Text className='consent-field-label'>身份证号</Text>
+                  <Input
+                    className='consent-field-input'
+                    value={declaredIdCard}
+                    onInput={(e) => setDeclaredIdCard(String(e.detail.value || '').slice(0, 22))}
+                    placeholder='请输入身份证号'
+                    disabled={submitting}
+                  />
+                </View>
+                <View className='consent-field'>
+                  <Text className='consent-field-label'>手机号</Text>
+                  <Input
+                    type='number'
+                    maxlength={11}
+                    className='consent-field-input'
+                    value={declaredPhone}
+                    onInput={(e) => setDeclaredPhone(String(e.detail.value || '').replace(/\D/g, '').slice(0, 11))}
+                    placeholder='请输入手机号'
+                    disabled={submitting}
+                  />
+                </View>
+                <View className='consent-field'>
+                  <Text className='consent-field-label'>SC号</Text>
+                  <Input
+                    className='consent-field-input'
+                    value={declaredScreeningNumber}
+                    onInput={(e) => setDeclaredScreeningNumber(String(e.detail.value || '').slice(0, 64))}
+                    placeholder='请输入数字'
+                    disabled={submitting}
+                  />
+                </View>
+                <View className='consent-field'>
+                  <Text className='consent-field-label'>拼音首字母</Text>
+                  <Input
+                    className='consent-field-input consent-field-input--mono'
+                    value={declaredInitials}
+                    onInput={(e) =>
+                      setDeclaredInitials(
+                        String(e.detail.value || '')
+                          .replace(/[^A-Za-z]/g, '')
+                          .toUpperCase()
+                          .slice(0, 32),
+                      )
+                    }
+                    placeholder='如 WMD'
+                    disabled={submitting}
+                  />
+                </View>
+              </View>
+              <Button
+                className={`btn-primary consent-basic-submit ${!basicInfoFormOk ? 'disabled' : ''}`}
+                onClick={handleBasicInfoNext}
+                disabled={basicInfoInitializing || !basicInfoFormOk || submitting}
+              >
+                {basicInfoInitializing ? '正在加载认证基础信息...' : (devPreview ? '进入知情测试' : `进入阅读与签署${stepLabel}`)}
+              </Button>
             </View>
           </View>
         </ScrollView>
-        <View className='consent-footer'>
-          <View className='doc-section consent-other-info' style={{ marginBottom: 12 }}>
-            <Text className='signature-label'>确认手机号</Text>
-            <Input
-              type='number'
-              maxlength={11}
-              className='consent-other-info-textarea'
-              style={{ padding: '8px 12px', background: '#f7fafc', borderRadius: 8 }}
-              value={declaredPhone}
-              onInput={(e) => setDeclaredPhone(String(e.detail.value || '').replace(/\D/g, '').slice(0, 11))}
-              placeholder='11 位手机号'
-              disabled={submitting}
-            />
-            {collectSubjectName ? (
-              <>
-                <Text className='signature-label' style={{ fontSize: 26, marginTop: 12 }}>姓名</Text>
-                <Input
-                  className='consent-other-info-textarea'
-                  style={{ padding: '8px 12px', background: '#f7fafc', borderRadius: 8 }}
-                  value={declaredSubjectName}
-                  onInput={(e) => setDeclaredSubjectName(String(e.detail.value || '').slice(0, 100))}
-                  placeholder='与身份证件一致'
-                  disabled={submitting}
-                />
-              </>
-            ) : null}
-            {collectIdCard ? (
-              <>
-                <Text className='signature-label' style={{ fontSize: 26, marginTop: 12 }}>身份证号</Text>
-                <Input
-                  className='consent-other-info-textarea'
-                  style={{ padding: '8px 12px', background: '#f7fafc', borderRadius: 8 }}
-                  value={declaredIdCard}
-                  onInput={(e) => setDeclaredIdCard(String(e.detail.value || '').slice(0, 22))}
-                  placeholder='18 位身份证号码'
-                  disabled={submitting}
-                />
-              </>
-            ) : null}
-            {collectScreeningNumber ? (
-              <>
-                <Text className='signature-label' style={{ fontSize: 26, marginTop: 12 }}>SC 编号</Text>
-                <Input
-                  className='consent-other-info-textarea'
-                  style={{ padding: '8px 12px', background: '#f7fafc', borderRadius: 8 }}
-                  value={declaredScreeningNumber}
-                  onInput={(e) => setDeclaredScreeningNumber(String(e.detail.value || '').slice(0, 64))}
-                  placeholder='现场筛选编号'
-                  disabled={submitting}
-                />
-              </>
-            ) : null}
-            {collectInitials ? (
-              <>
-                <Text className='signature-label' style={{ fontSize: 26, marginTop: 12 }}>拼音首字母</Text>
-                <Input
-                  className='consent-other-info-textarea'
-                  style={{ padding: '8px 12px', background: '#f7fafc', borderRadius: 8 }}
-                  value={declaredInitials}
-                  onInput={(e) => setDeclaredInitials(String(e.detail.value || '').slice(0, 32))}
-                  placeholder='如 WY'
-                  disabled={submitting}
-                />
-              </>
-            ) : null}
-          </View>
-          <Button
-            className={`btn-primary sign-btn ${!supplementOk ? 'disabled' : ''}`}
-            onClick={handleBasicInfoNext}
-            disabled={!supplementOk || submitting}
-          >
-            下一步：阅读并签署本页{stepLabel}
-          </Button>
-        </View>
       </View>
     )
   }
 
   return (
-    <View className='consent-page'>
-      <ScrollView className='consent-content' scrollY enhanced showScrollbar>
-        <View className='document'>
-          <Text className='doc-title'>{icfTitle}{stepLabel}</Text>
-          {currentItem?.protocol_code ? (
-            <Text className='doc-subtitle'>项目编号 {currentItem.protocol_code}{currentItem.protocol_title ? ` · ${currentItem.protocol_title}` : ''}</Text>
-          ) : (
-            <Text className='doc-subtitle'>临床研究知情文档 (ICF)</Text>
-          )}
-          {currentItem?.staff_audit_status === 'returned' ? (
-            <View
-              className='doc-section'
-              style={{
-                padding: '12px 16px',
-                background: '#fff7ed',
-                borderLeft: '4px solid #ea580c',
-                borderRadius: 8,
-                marginBottom: 16,
-              }}
-            >
-              <Text className='section-text' style={{ fontSize: 28, fontWeight: 600, color: '#9a3412' }}>
-                需重新签署
+    <View className='consent-page consent-page--h5'>
+      <ScrollView className='consent-scroll-main' scrollY={!drawingLocked} style={{ height: '100%' }}>
+        <View className='consent-scroll-inner'>
+          <View className='consent-h5-top'>
+            <Text className='consent-h5-top-icon'>📖</Text>
+            <View className='consent-h5-top-text'>
+              <Text className='consent-h5-top-title'>
+                {devPreview ? `知情测试${stepLabel}` : `知情同意${stepLabel}`}
               </Text>
+              <Text className='consent-h5-top-sub'>
+                {currentItem?.protocol_code
+                  ? `项目编号 ${currentItem.protocol_code}${currentItem.protocol_title ? ` · ${currentItem.protocol_title}` : ''}`
+                  : icfTitle || '临床研究知情文档'}
+              </Text>
+            </View>
+          </View>
+
+          {currentItem?.staff_audit_status === 'returned' ? (
+            <View className='consent-banner consent-banner--warn'>
+              <Text className='consent-banner__title'>需重新签署</Text>
               {currentItem.staff_return_reason ? (
-                <Text className='section-text' style={{ marginTop: 8, color: '#431407', fontSize: 26 }}>
-                  原因：{currentItem.staff_return_reason}
-                </Text>
+                <Text className='consent-banner__body'>原因：{currentItem.staff_return_reason}</Text>
               ) : (
-                <Text className='section-text' style={{ marginTop: 8, color: '#78716c', fontSize: 26 }}>
-                  工作人员已退回本次签署，请重新阅读并签署。
-                </Text>
+                <Text className='consent-banner__body'>工作人员已退回本次签署，请重新阅读并签署。</Text>
               )}
             </View>
           ) : null}
-          {devPreview && (
-            <View className='doc-section' style={{ padding: '12px 16px', background: '#e6fffa', borderRadius: 8, marginBottom: 16 }}>
-              <Text className='section-text' style={{ fontSize: 24, color: '#0d9488' }}>
+
+          {devPreview ? (
+            <View className='consent-banner consent-banner--dev'>
+              <Text className='consent-banner__body'>
                 开发预览模式（后端不可达时展示，可测试签名交互）
               </Text>
             </View>
-          )}
-          {showIcfDocLoading ? (
-            <View className='doc-section'>
-              <Text className='section-text loading-text'>内容加载中…</Text>
-            </View>
-          ) : icfContent !== null && icfContent !== '' ? (
-            <View className='doc-section'>
-              {icfDisplayContent.includes('<') ? (
-                <RichText className='icf-rich-html' nodes={`<div class="icf-doc-body">${icfDisplayContent}</div>`} />
-              ) : (
-                <Text className='section-text icf-plain-text'>{icfDisplayContent}</Text>
-              )}
-            </View>
-          ) : effectiveIcfVersionId != null ? (
-            <View className='doc-section'>
-              <Text className='section-text loading-text'>暂无正文，请联系研究方。</Text>
-            </View>
           ) : null}
-        </View>
-      </ScrollView>
 
-      <View className='consent-footer'>
-        <View className='doc-section'>
-          <Text className='section-text'>
-            {requiredReadingSeconds <= 0
-              ? '本页无需阅读计时（项目配置为 0 秒）'
-              : `阅读计时：${elapsedSec} / ${requiredReadingSeconds} 秒${!readOk ? '（未满不可签署）' : '（已满足）'}`}
-          </Text>
-        </View>
-
-        {effectiveIcfVersionId != null && collectOtherInformation ? (
-          <View className='doc-section consent-other-info'>
-            <Text className='signature-label'>其他补充说明（选填）</Text>
-            <Text className='section-text consent-other-info-hint'>
-              若文档中有「如有其他信息，可在此添加」等说明，可在此填写。
-            </Text>
-            <Textarea
-              className='consent-other-info-textarea'
-              value={otherInformationText}
-              onInput={(e) => setOtherInformationText(String(e.detail.value || '').slice(0, 4000))}
-              placeholder='可填写与研究相关的其他说明…'
-              maxlength={4000}
-              showConfirmBar={false}
-              autoHeight
-              disabled={submitting}
-            />
-          </View>
-        ) : null}
-
-        {effectiveIcfVersionId != null && needSubjectSig && (
-          <>
-            <View className='signature-date-row'>
-              <Text className='signature-date-label'>签署日期</Text>
-              <Text className='signature-date-value'>
-                {enableAutoSignDate
-                  ? (() => {
-                      const d = new Date()
-                      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-                    })()
-                  : new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })}
-                {enableAutoSignDate ? '（自动签署日）' : ''}
-              </Text>
-            </View>
-            <View className='signature-area'>
-              <View className='signature-header'>
-                <Text className='signature-label'>
-                  受试者手写签名{subjectSignatureTimes > 1 ? `（${subjectSignatureTimes} 次）` : ''}
+          <View className='consent-icf-card'>
+            <View className='consent-icf-card__head'>
+              <Text className='consent-icf-card__title'>{icfTitle}</Text>
+              <Text className='consent-icf-card__ver'>版本 {icfVersionDisplay}</Text>
+              {enableCheckboxRecognition ? (
+                <Text className='consent-icf-card__cb-hint'>
+                  正文已按执行台「勾选框识别」规则替换为可操作的「请勾选」样式；请逐项在下方选择「是」或「否」后再确认本页。
                 </Text>
-                {hasSignature && (
-                  <Text className='signature-clear' onClick={handleClearSignature}>重新签名</Text>
-                )}
+              ) : null}
+            </View>
+            <ScrollView scrollY className='consent-icf-card__body' style={{ maxHeight: '420px' }}>
+              {showIcfDocLoading ? (
+                <Text className='consent-icf-card__loading'>内容加载中…</Text>
+              ) : icfContent !== null && icfContent !== '' ? (
+                icfDisplayContent.includes('<') ? (
+                  <RichText className='icf-rich-html' nodes={`<div class="icf-doc-body">${icfDisplayContent}</div>`} />
+                ) : (
+                  <Text className='section-text icf-plain-text'>{icfDisplayContent}</Text>
+                )
+              ) : effectiveIcfVersionId != null ? (
+                <Text className='consent-icf-card__loading'>暂无正文，请联系研究方。</Text>
+              ) : (
+                <Text className='consent-icf-card__loading'>暂无正文</Text>
+              )}
+            </ScrollView>
+            {enableCheckboxRecognition && checkboxInteractiveRows.length > 0 ? (
+              <View className='consent-cb-native'>
+                <Text className='consent-cb-native__title'>请逐项勾选（与正文序号对应）</Text>
+                {checkboxInteractiveRows.map((row, idx) => (
+                  <View key={row.key} className='consent-cb-native__row'>
+                    <Text className='consent-cb-native__label'>
+                      {row.title}
+                    </Text>
+                    <View className='consent-cb-native__btns'>
+                      <Button
+                        className={`consent-cb-native__btn ${checkboxAnswers[idx] === 'yes' ? 'consent-cb-native__btn--on' : ''}`}
+                        size='mini'
+                        onClick={() => {
+                          setCheckboxAnswers((prev) => {
+                            const next = [...prev]
+                            next[idx] = 'yes'
+                            return next
+                          })
+                        }}
+                      >
+                        是
+                      </Button>
+                      <Button
+                        className={`consent-cb-native__btn ${checkboxAnswers[idx] === 'no' ? 'consent-cb-native__btn--on' : ''}`}
+                        size='mini'
+                        onClick={() => {
+                          setCheckboxAnswers((prev) => {
+                            const next = [...prev]
+                            next[idx] = 'no'
+                            return next
+                          })
+                        }}
+                      >
+                        否
+                      </Button>
+                    </View>
+                  </View>
+                ))}
               </View>
-              <View
-                className='signature-canvas-wrap signature-canvas-wrap-first signature-canvas'
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
-              >
-                <Canvas
-                  canvasId='signatureCanvas'
-                  className='signature-canvas-inner'
-                  disableScroll
+            ) : null}
+          </View>
+
+          <View className='consent-actions-h5'>
+            {effectiveIcfVersionId != null && collectOtherInformation ? (
+              <View className='consent-other-info consent-other-info--h5'>
+                <Text className='consent-other-info-title'>其他补充说明（选填）</Text>
+                <Text className='section-text consent-other-info-hint'>
+                  若文档中有「如有其他信息，可在此添加」等说明，可在此填写。
+                </Text>
+                <Textarea
+                  className='consent-other-info-textarea'
+                  value={otherInformationText}
+                  onInput={(e) => setOtherInformationText(String(e.detail.value || '').slice(0, 4000))}
+                  placeholder='可填写与研究相关的其他说明…'
+                  maxlength={4000}
+                  showConfirmBar={false}
+                  autoHeight
+                  disabled={submitting}
                 />
               </View>
-              <Text className='signature-hint'>
-                {subjectSignatureTimes > 1 ? '第 1 处：' : ''}
-                {hasSignature ? '签名已完成' : '请在上方区域用手指书写签名'}
-              </Text>
-            </View>
-            {subjectSignatureTimes >= 2 ? (
-              <View className='signature-area' style={{ marginTop: 12 }}>
-                <View className='signature-header'>
-                  <Text className='signature-label'>受试者手写签名（第 2 次）</Text>
-                  {hasSignature2 && (
-                    <Text className='signature-clear' onClick={handleClearSignature2}>重新签名</Text>
-                  )}
-                </View>
-                <View
-                  className='signature-canvas-wrap signature-canvas-wrap-2 signature-canvas'
-                  onTouchStart={handleTouchStart2}
-                  onTouchMove={handleTouchMove2}
-                  onTouchEnd={handleTouchEnd2}
-                >
-                  <Canvas
-                    canvasId='signatureCanvas2'
-                    className='signature-canvas-inner'
-                    disableScroll
-                  />
-                </View>
-                <Text className='signature-hint'>
-                  {hasSignature2 ? '第 2 处签名已完成' : '请完成第二处签名'}
+            ) : null}
+
+            {effectiveIcfVersionId != null && needSubjectSig ? (
+              <View className='signature-date-row signature-date-row--h5'>
+                <Text className='signature-date-label'>签署日期</Text>
+                <Text className='signature-date-value'>
+                  {enableAutoSignDate
+                    ? (() => {
+                        const d = new Date()
+                        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+                      })()
+                    : new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                  {enableAutoSignDate ? '（自动签署日）' : ''}
                 </Text>
               </View>
             ) : null}
-          </>
-        )}
 
-        <View className='agree-row' onClick={() => setAgreed(!agreed)}>
-          <View className={`checkbox ${agreed ? 'checkbox-checked' : ''}`}>
-            {agreed && <Text className='check-mark'>✓</Text>}
+            <View className='agree-row agree-row--h5' onClick={() => setAgreed(!agreed)}>
+              <View className={`checkbox ${agreed ? 'checkbox-checked' : ''}`}>
+                {agreed && <Text className='check-mark'>✓</Text>}
+              </View>
+              <Text className='agree-text'>本人已阅读并知晓上述协议内容</Text>
+            </View>
+
+            {effectiveIcfVersionId != null && needSubjectSig ? (
+              <>
+                <Text className='consent-sig-section-label'>
+                  {devPreview ? '手写签名（知情测试）' : '手写签名'}
+                </Text>
+                <View className='consent-sig-pad'>
+                  {subjectSignatureTimes > 1 ? (
+                    <View className='consent-sig-pad__bar'>
+                      <Text className='consent-sig-pad__bar-text'>
+                        受试者签名 1 / {subjectSignatureTimes}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <View
+                    className='signature-canvas-wrap signature-canvas-wrap-first signature-canvas consent-sig-pad__canvas'
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    onTouchCancel={handleTouchEnd}
+                  >
+                    <Canvas
+                      id='signatureCanvasNode'
+                      canvasId='signatureCanvas'
+                      type='2d'
+                      className='signature-canvas-inner'
+                      disableScroll
+                      width={`${sigCanvasPx.w}`}
+                      height={`${sigCanvasPx.h}`}
+                      onTouchStart={handleTouchStart}
+                      onTouchMove={handleTouchMove}
+                      onTouchEnd={handleTouchEnd}
+                      onTouchCancel={handleTouchEnd}
+                    />
+                  </View>
+                  <View className='consent-sig-pad__footer'>
+                    <Text className='consent-sig-pad__clear' onClick={handleClearSignature}>
+                      清除本框签名
+                    </Text>
+                  </View>
+                </View>
+                {subjectSignatureTimes >= 2 ? (
+                  <View className='consent-sig-pad consent-sig-pad--mt'>
+                    <View className='consent-sig-pad__bar'>
+                      <Text className='consent-sig-pad__bar-text'>
+                        受试者签名 2 / {subjectSignatureTimes}
+                      </Text>
+                    </View>
+                    <View
+                      className='signature-canvas-wrap signature-canvas-wrap-2 signature-canvas consent-sig-pad__canvas'
+                      onTouchStart={handleTouchStart2}
+                      onTouchMove={handleTouchMove2}
+                      onTouchEnd={handleTouchEnd2}
+                      onTouchCancel={handleTouchEnd2}
+                    >
+                      <Canvas
+                        id='signatureCanvasNode2'
+                        canvasId='signatureCanvas2'
+                        type='2d'
+                        className='signature-canvas-inner'
+                        disableScroll
+                        width={`${sigCanvasPx.w}`}
+                        height={`${sigCanvasPx.h}`}
+                        onTouchStart={handleTouchStart2}
+                        onTouchMove={handleTouchMove2}
+                        onTouchEnd={handleTouchEnd2}
+                        onTouchCancel={handleTouchEnd2}
+                      />
+                    </View>
+                    <View className='consent-sig-pad__footer'>
+                      <Text className='consent-sig-pad__clear' onClick={handleClearSignature2}>
+                        清除本框签名
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
+              </>
+            ) : null}
+
+            <Button
+              className={`btn-primary btn-primary--stack sign-btn ${showIcfDocLoading || !agreed || !readOk || !supplementOk || !checkboxAllAnswered || (effectiveIcfVersionId != null && !subjectSigReady) ? 'disabled' : ''}`}
+              onClick={handleSign}
+              disabled={
+                showIcfDocLoading
+                || !agreed
+                || !readOk
+                || !supplementOk
+                || !checkboxAllAnswered
+                || (effectiveIcfVersionId != null && !subjectSigReady)
+                || submitting
+              }
+            >
+              {submitting ? (
+                <Text className='btn-primary-line1'>提交中...</Text>
+              ) : (
+                <View className='btn-primary-inner'>
+                  <Text className='btn-primary-line1'>
+                    {requiredReadingSeconds > 0 && !readOk
+                      ? `请先阅读（剩余 ${Math.max(0, requiredReadingSeconds - elapsedSec)} 秒）`
+                      : (totalSteps > 1 ? `确认签署本页${stepLabel}` : '确认签署')}
+                  </Text>
+                  {requiredReadingSeconds > 0 ? (
+                    <Text className='btn-primary-line2'>
+                      阅读计时 {Math.min(elapsedSec, requiredReadingSeconds)} / {requiredReadingSeconds} 秒
+                      {!readOk ? `，预计还需 ${Math.max(0, requiredReadingSeconds - elapsedSec)} 秒` : '，可确认'}
+                    </Text>
+                  ) : null}
+                </View>
+              )}
+            </Button>
+
+            {signError ? (
+              <View className='sign-error-notice'>
+                <Text className='sign-error-text'>{signError}</Text>
+                <Text className='sign-error-action' onClick={() => setSignError(null)}>关闭</Text>
+                <Text className='consent-back' onClick={() => Taro.navigateBack()}>返回</Text>
+              </View>
+            ) : null}
           </View>
-          <Text className='agree-text'>我已阅读并理解以上内容</Text>
         </View>
-
-        <Button
-          className={`btn-primary sign-btn ${showIcfDocLoading || !agreed || !readOk || !supplementOk || (effectiveIcfVersionId != null && !subjectSigReady) ? 'disabled' : ''}`}
-          onClick={handleSign}
-          disabled={
-            showIcfDocLoading
-            || !agreed
-            || !readOk
-            || !supplementOk
-            || (effectiveIcfVersionId != null && !subjectSigReady)
-            || submitting
-          }
-        >
-          {submitting ? '提交中...' : (totalSteps > 1 ? `确认签署本页${stepLabel}` : '确认签署')}
-        </Button>
-
-        {signError ? (
-          <View className='sign-error-notice'>
-            <Text className='sign-error-text'>{signError}</Text>
-            <Text className='sign-error-action' onClick={() => setSignError(null)}>关闭</Text>
-            <Text className='consent-back' onClick={() => Taro.navigateBack()}>返回</Text>
-          </View>
-        ) : null}
-      </View>
+      </ScrollView>
     </View>
   )
 }

@@ -6,6 +6,7 @@ import { BookOpen, CheckCircle2 } from 'lucide-react'
 import {
   appendSupplementalCollectCheckboxPreviewRows,
   collectInteractiveCheckboxAnswers,
+  focusFirstUnansweredInteractiveCheckbox,
   icfInteractiveCheckboxGroupsAllAnswered,
   injectInteractiveCheckboxMarkers,
   stripDocumentOtherInfoPlaceholderForCustomSupplemental,
@@ -66,8 +67,6 @@ export default function WitnessConsentDevPage() {
   const contentRef = useRef<HTMLDivElement | null>(null)
   /** 联调：每节点正文内勾选结果，提交时写入 icf_version_answers */
   const answersByIcfRef = useRef<Record<number, Array<{ value: string }>>>({})
-  /** 启用勾选识别时：每一处「请勾选」是否已选是/否 */
-  const [checkboxRubricOk, setCheckboxRubricOk] = useState(true)
 
   const current = items[queueIndex] ?? null
   const total = items.length
@@ -153,43 +152,6 @@ export default function WitnessConsentDevPage() {
     sigPreviewDataUrls,
   ])
 
-  useLayoutEffect(() => {
-    if (!current?.enable_checkbox_recognition) {
-      setCheckboxRubricOk(true)
-      return
-    }
-    const el = contentRef.current
-    const sync = () => {
-      setCheckboxRubricOk(icfInteractiveCheckboxGroupsAllAnswered(contentRef.current))
-    }
-    sync()
-    // innerHTML 注入后同一帧内 ref 子树可能尚未稳定，双 rAF 再验一次
-    let raf2 = 0
-    const id0 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(sync)
-    })
-    el?.addEventListener('change', sync)
-    el?.addEventListener('input', sync)
-    el?.addEventListener('click', sync)
-    return () => {
-      cancelAnimationFrame(id0)
-      if (raf2) cancelAnimationFrame(raf2)
-      el?.removeEventListener('change', sync)
-      el?.removeEventListener('input', sync)
-      el?.removeEventListener('click', sync)
-    }
-  }, [articleHtml, current?.enable_checkbox_recognition, queueIndex])
-
-  /** 勾选状态仅依赖事件时偶发不刷新；短轮询兜底，避免底部按钮长期置灰 */
-  useEffect(() => {
-    if (!current?.enable_checkbox_recognition) return
-    const sync = () => {
-      setCheckboxRubricOk(icfInteractiveCheckboxGroupsAllAnswered(contentRef.current))
-    }
-    const t = window.setInterval(sync, 300)
-    return () => window.clearInterval(t)
-  }, [articleHtml, current?.enable_checkbox_recognition, queueIndex])
-
   useEffect(() => {
     if (!token.trim()) {
       setErr('缺少 token，请从邮件人脸页进入')
@@ -230,7 +192,6 @@ export default function WitnessConsentDevPage() {
     setReadingStartedAt(null)
     setElapsedSec(0)
     setSigFilled(Array(padCount).fill(false))
-    canvasRefs.current = []
     activePadIdx.current = null
     drawing.current = false
   }, [queueIndex, current?.icf_version_id, padCount])
@@ -308,6 +269,19 @@ export default function WitnessConsentDevPage() {
     lastPt.current = null
   }, [])
 
+  /** 移动端：画布上手写时阻止页面跟手滚动 */
+  useLayoutEffect(() => {
+    const canvases = canvasRefs.current.filter((c): c is HTMLCanvasElement => c != null)
+    if (canvases.length === 0) return
+    const onTouchMove = (e: TouchEvent) => {
+      if (drawing.current) e.preventDefault()
+    }
+    canvases.forEach((c) => c.addEventListener('touchmove', onTouchMove, { passive: false }))
+    return () => {
+      canvases.forEach((c) => c.removeEventListener('touchmove', onTouchMove))
+    }
+  }, [queueIndex, padCount])
+
   const clearPad = (idx: number) => {
     const c = canvasRefs.current[idx]
     const ctx = c?.getContext('2d')
@@ -328,7 +302,8 @@ export default function WitnessConsentDevPage() {
     if (!readOk) return
     if (!agreed) return
     if (current.enable_checkbox_recognition && !icfInteractiveCheckboxGroupsAllAnswered(contentRef.current)) {
-      setErr('请完成正文中每一处「请勾选」（是/否）')
+      setErr('请先在正文中完成每一处「请勾选」：为「是」或「否」选择一项（已为你定位到第一处未完成项）')
+      focusFirstUnansweredInteractiveCheckbox(contentRef.current)
       return
     }
     if (!hasAllSignatures) return
@@ -427,7 +402,7 @@ export default function WitnessConsentDevPage() {
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/90 px-3 py-2 text-[12px] leading-relaxed text-amber-950">
           <strong className="font-medium">流程说明：</strong>
           本页为开发者浏览器联调（需 WITNESS_FACE_DEV_BYPASS）。正式验收「知情签署」请使用执行台知情管理中的
-          <strong> 核验测试二维码 </strong>
+          <strong> 知情测试二维码 </strong>
           在微信内完成；邮件中的人脸核验与「签名授权」与此页无关。
         </div>
         {err ? <div className="mb-4 rounded-lg bg-rose-50 border border-rose-100 text-rose-700 text-sm p-3">{err}</div> : null}
@@ -468,7 +443,10 @@ export default function WitnessConsentDevPage() {
               <div className="mt-4 space-y-4">
                 <p className="text-xs text-slate-500">手写签名（联调）</p>
                 {Array.from({ length: padCount }, (_, idx) => (
-                  <div key={`sig-${current.icf_version_id}-${idx}`} className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                  <div
+                    key={`sig-${current.icf_version_id}-${idx}`}
+                    className="rounded-lg border border-slate-200 bg-white overflow-hidden touch-none overscroll-contain"
+                  >
                     {padCount > 1 ? (
                       <p className="text-xs text-slate-600 px-3 pt-2 pb-1 border-b border-slate-100 bg-slate-50/50">
                         受试者签名 {idx + 1} / {padCount}
@@ -478,7 +456,7 @@ export default function WitnessConsentDevPage() {
                       ref={setCanvasRef(idx)}
                       width={700}
                       height={160}
-                      className="w-full h-40 touch-none cursor-crosshair touch-pan-y block"
+                      className="w-full h-40 touch-none cursor-crosshair block select-none"
                       onMouseDown={startDraw(idx)}
                       onMouseMove={moveDraw}
                       onMouseUp={endDraw}
@@ -508,13 +486,7 @@ export default function WitnessConsentDevPage() {
             <Button
               variant="primary"
               className="w-full mt-6 min-h-[3rem] flex flex-col items-center justify-center gap-0.5 py-2.5 px-3 h-auto"
-              disabled={
-                submitting ||
-                !readOk ||
-                !agreed ||
-                !hasAllSignatures ||
-                (!!current.enable_checkbox_recognition && !checkboxRubricOk)
-              }
+              disabled={submitting || !readOk || !agreed || !hasAllSignatures}
               onClick={() => void onConfirmStep()}
             >
               {submitting ? (

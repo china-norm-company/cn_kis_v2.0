@@ -37,6 +37,8 @@ openpyxl>=3.1.0
 
 # 报表导出
 reportlab>=4.0.0
+# 知情回执：HTML 片段转 PDF（与正文版式一致；0.2.15+ 与 reportlab 4 兼容）
+xhtml2pdf>=0.2.15
 
 # 二维码图片（小程序我的二维码页，避免第三方 downloadFile 域名）
 qrcode[pil]>=7.4.0

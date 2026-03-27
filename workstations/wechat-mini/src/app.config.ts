@@ -8,6 +8,7 @@ const businessPages = [
   'pages/bind-phone/index',
   'pages/identity-verify/index',
   'pages/consent/index',
+  'pages/consent-records/index',
   'pages/questionnaire/index',
   'pages/report/index',
   'pages/report/history',

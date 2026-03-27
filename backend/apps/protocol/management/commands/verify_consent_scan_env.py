@@ -34,7 +34,7 @@ def _is_ipv4(host: str) -> bool:
 
 
 class Command(BaseCommand):
-    help = '检查 CONSENT_TEST_SCAN_PUBLIC_BASE（知情管理列表二维码 → 执行台 H5 核验测试）'
+    help = '检查 CONSENT_TEST_SCAN_PUBLIC_BASE（知情管理列表二维码 → 执行台 H5 知情测试）'
 
     def handle(self, *args, **options):
         base = (getattr(settings, 'CONSENT_TEST_SCAN_PUBLIC_BASE', None) or '').strip()
@@ -82,7 +82,7 @@ class Command(BaseCommand):
         if not appid or not secret:
             self.stdout.write(
                 self.style.WARNING(
-                    '[ ] WECHAT_APPID / WECHAT_SECRET 未齐 — 仅影响小程序等能力；「核验测试」H5 扫码不依赖此项'
+                    '[ ] WECHAT_APPID / WECHAT_SECRET 未齐 — 仅影响小程序等能力；「知情测试」H5 扫码不依赖此项'
                 )
             )
         else:

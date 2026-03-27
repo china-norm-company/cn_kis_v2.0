@@ -38,7 +38,13 @@ import {
   normalizePrivateLanHttpIpv4ImplicitPort8001,
   rewriteConsentTestScanUrlForBrowserClient,
 } from '@/utils/consentScanUrl'
-import { Link, useSearchParams } from 'react-router-dom'
+import { PdfJsCanvasViewer } from '@/components/PdfJsCanvasViewer'
+import {
+  clearConsentListFocusStorage,
+  parseFocusProtocolIdFromHash,
+  peekConsentListFocusProtocolId,
+} from '@/utils/consentListFocusStorage'
+import { Link, useSearchParams, useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   applyIcfPlaceholders,
@@ -51,6 +57,7 @@ import type {
   ICFVersion,
   ConsentRecord,
   ConsentPreviewData,
+  ConsentFilterTabCounts,
   Protocol,
   ProtocolConsentOverview,
   ConsentSettings,
@@ -61,6 +68,7 @@ import type {
   WitnessStaffRecord,
   DualSignStaffVerificationStatus,
   WitnessSignatureAuthStatus,
+  WitnessSignatureAuthRecordRow,
 } from '@cn-kis/api-client'
 import {
   Badge,
@@ -116,6 +124,19 @@ function getMutationErrorMessage(err: unknown, fallback: string): string {
   return fallback
 }
 
+type ConsentTab = 'settings' | 'authorizations' | 'consents'
+
+function parseConsentTab(raw: string | null): ConsentTab {
+  if (raw === 'settings' || raw === 'authorizations' || raw === 'consents') return raw
+  return 'settings'
+}
+
+function parseProtocolIdParam(raw: string | null): number | null {
+  if (!raw) return null
+  const n = parseInt(raw, 10)
+  return Number.isNaN(n) || n <= 0 ? null : n
+}
+
 /** 本地日历日 YYYY-MM-DD（签署记录日期筛选） */
 function formatLocalDateYmd(d: Date): string {
   const y = d.getFullYear()
@@ -135,18 +156,6 @@ function formatLocalDateTimeYmdHms(input: string | Date): string {
   const mm = String(d.getMinutes()).padStart(2, '0')
   const ss = String(d.getSeconds()).padStart(2, '0')
   return `${y}-${m}-${day} ${hh}:${mm}:${ss}`
-}
-
-function aggregatePreviewSigningResults(items: ConsentPreviewData[]): string {
-  const vals = items.map((p) => (p.signing_result || '').trim())
-  if (vals.some((v) => v === '否')) return '否'
-  if (vals.length > 0 && vals.every((v) => v === '是')) return '是'
-  if (vals.some((v) => v === '是')) return '是'
-  return vals[0] || '-'
-}
-
-function escapeHtmlForPreviewTitle(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;')
 }
 
 type ConsentTableDisplayRow =
@@ -234,7 +243,7 @@ function serializeSigningStaffNames(names: string[]): string {
   return out.join('、')
 }
 
-/** 授权核验测试弹窗：右侧文案（支持多次发信重测，不与核验状态互斥） */
+/** 授权签名测试弹窗：右侧文案（支持多次发信重测，不与核验状态互斥） */
 function listVerifyTestModalActionLabel(opts: { sending: boolean; hasWitness: boolean; statusLoading: boolean }): string {
   if (!opts.hasWitness) return '未在双签档案中匹配姓名'
   if (opts.statusLoading) return '…'
@@ -242,7 +251,7 @@ function listVerifyTestModalActionLabel(opts: { sending: boolean; hasWitness: bo
   return '点击发送'
 }
 
-/** 列表「知情签署工作人员」列：最近一次「授权核验测试」所选姓名以蓝色气泡突出（无额外「核验」文案） */
+/** 列表「知情签署工作人员」列：最近一次「授权签名测试」所选姓名——全流程完成后蓝色气泡；进行中为琥珀色线框标签；状态文案仅悬停气泡时通过 title 展示 */
 function renderListSigningStaffCell(record: ProtocolConsentOverview): ReactNode {
   const s = formatListSigningStaffCell(record)
   if (!s) {
@@ -251,6 +260,7 @@ function renderListSigningStaffCell(record: ProtocolConsentOverview): ReactNode 
   const names = parseSigningStaffNames(s)
   const marked = (record.consent_verify_test_staff_name || '').trim()
   const showMark = marked && names.some((n) => n === marked)
+  const verifyReady = record.consent_verify_test_staff_ready === true
   if (!showMark) {
     return (
       <span className="block min-w-0 truncate text-sm text-slate-800" title={s}>
@@ -267,9 +277,21 @@ function renderListSigningStaffCell(record: ProtocolConsentOverview): ReactNode 
         <span key={`${n}-${i}`} className="inline-flex max-w-full items-center">
           {i > 0 ? <span className="text-slate-400">、</span> : null}
           {n === marked ? (
-            <span className="inline-flex max-w-full items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-800">
-              {n}
-            </span>
+            verifyReady ? (
+              <span
+                className="inline-flex max-w-full items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-800 cursor-default"
+                title="已授权：人脸核身、档案手写签名与项目邮件内授权均已完成"
+              >
+                {n}
+              </span>
+            ) : (
+              <span
+                className="inline-flex max-w-full items-center rounded-md border border-dashed border-amber-300/90 bg-amber-50/80 px-2 py-0.5 text-xs font-medium text-amber-900 cursor-default"
+                title="授权中：认证、档案手写签名与项目邮件内授权尚未全部完成"
+              >
+                {n}
+              </span>
+            )
           ) : (
             <span>{n}</span>
           )}
@@ -334,7 +356,7 @@ function computeDualSignRowRollup(args: {
     return {
       statusLabel: '同步中…',
       statusClass: 'border-slate-200 bg-white text-slate-400',
-      statusTitle: '正在拉取核验状态',
+      statusTitle: '正在拉取认证签名状态',
     }
   }
 
@@ -370,7 +392,7 @@ function computeDualSignRowRollup(args: {
     return {
       statusLabel: '待扫码测试',
       statusClass: 'border-indigo-200 bg-indigo-50 text-indigo-900',
-      statusTitle: '请在知情管理列表使用「核验测试」扫码；亦可再次使用下方「发送认证授权邮件」',
+      statusTitle: '请在知情管理列表使用「知情测试」扫码；亦可再次使用下方「发送认证授权邮件」',
     }
   }
 
@@ -378,7 +400,7 @@ function computeDualSignRowRollup(args: {
     return {
       statusLabel: '待测试条件',
       statusClass: 'border-slate-200 bg-slate-50 text-slate-600',
-      statusTitle: '需列表侧完成「授权核验测试」相关条件（如邮件授权）后方可扫码测试',
+      statusTitle: '需列表侧完成「授权签名测试」相关条件（如邮件授权）后方可扫码测试',
     }
   }
 
@@ -1081,7 +1103,7 @@ function ConsentRowMoreMenu(props: {
       <button
         ref={btnRef}
         type="button"
-        title="发布、下架、授权核验测试、签署记录、删除项目"
+        title="发布、下架、授权签名测试、授权记录、签署记录、删除项目"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={(e) => {
@@ -1304,10 +1326,28 @@ async function downloadConsentOverviewExport(
 
 const STATUS_OPTIONS = [
   { value: 'all', label: '全部' },
-  { value: 'signed', label: '已签署' },
   { value: 'pending', label: '待签署' },
+  { value: 'pending_review', label: '待审核' },
+  { value: 'returned', label: '退回重签' },
+  { value: 'signed', label: '已签署' },
   { value: 'result_no', label: '签署结果为否' },
 ] as const
+
+/** 授权记录列表筛选（与 GET …/witness-signature-auth-records status 一致） */
+const AUTH_SIG_STATUS_OPTIONS = [
+  { value: 'all', label: '全部' },
+  { value: 'complete', label: '已完成' },
+  { value: 'pending', label: '待授权' },
+] as const
+
+function witnessAuthRecordStatusBadge(row: WitnessSignatureAuthRecordRow): {
+  label: string
+  variant: 'success' | 'warning' | 'error'
+} {
+  if (row.signature_auth_status === 'agreed') return { label: '已完成', variant: 'success' }
+  if (row.signature_auth_status === 'refused') return { label: '已拒绝', variant: 'error' }
+  return { label: '待授权', variant: 'warning' }
+}
 
 function consentRowStatusLabel(c: ConsentRecord): string {
   const raw = (c.consent_status_label || '').trim()
@@ -1319,6 +1359,7 @@ function consentStatusBadgeVariant(label: string): 'primary' | 'success' | 'warn
   if (label === '已签署') return 'primary'
   if (label === '已通过审核') return 'success'
   if (label === '退回重签中') return 'error'
+  if (label === '待审核') return 'warning'
   return 'warning'
 }
 
@@ -1749,17 +1790,26 @@ function SigningStaffMultiCombobox(props: {
 
   useEffect(() => {
     if (!open) return
-    const onDoc = (e: MouseEvent) => {
+    const onDocPointer = (e: PointerEvent | MouseEvent) => {
+      const el = rootRef.current
+      if (el && !el.contains(e.target as Node)) setOpen(false)
+    }
+    const onDocFocusIn = (e: FocusEvent) => {
       const el = rootRef.current
       if (el && !el.contains(e.target as Node)) setOpen(false)
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
     }
-    document.addEventListener('mousedown', onDoc)
+    // 捕获阶段监听，避免外层组件 stopPropagation 导致「点框外不收起」。
+    document.addEventListener('pointerdown', onDocPointer, true)
+    document.addEventListener('click', onDocPointer, true)
+    document.addEventListener('focusin', onDocFocusIn)
     document.addEventListener('keydown', onKey)
     return () => {
-      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('pointerdown', onDocPointer, true)
+      document.removeEventListener('click', onDocPointer, true)
+      document.removeEventListener('focusin', onDocFocusIn)
       document.removeEventListener('keydown', onKey)
     }
   }, [open])
@@ -2199,10 +2249,10 @@ const SCREENING_SCHEDULE_TIP_BULK =
 
 function ScreeningScheduleHintIcon({ title, ariaLabel }: { title: string; ariaLabel: string }) {
   return (
-    <RichTooltip content={<span className="block">{title}</span>}>
+    <RichTooltip content={<span className="block">{title}</span>} contentAriaLabel={title}>
       <button
         type="button"
-        className="inline-flex shrink-0 rounded p-0.5 text-slate-400 hover:text-indigo-600 cursor-help focus:outline-none focus:ring-2 focus:ring-indigo-500/30 align-middle"
+        className="inline-flex shrink-0 rounded p-0.5 text-slate-400 hover:text-indigo-600 cursor-default focus:outline-none focus:ring-2 focus:ring-indigo-500/30 align-middle"
         aria-label={ariaLabel}
       >
         <HelpCircle className="w-3.5 h-3.5" aria-hidden />
@@ -2211,13 +2261,13 @@ function ScreeningScheduleHintIcon({ title, ariaLabel }: { title: string; ariaLa
   )
 }
 
-/** 知情配置侧栏：? 说明仅用文案，统一 RichTooltip 白底样式（避免原生 title 带大问号/灰底观感） */
+/** 知情配置侧栏：? 说明仅用文案，统一 RichTooltip 白底样式（避免原生 title 带大问号/灰底观感）；触发器用 cursor-default 避免系统 help 光标呈问号状 */
 function ConsentHelpIcon({ text, ariaLabel }: { text: string; ariaLabel: string }) {
   return (
-    <RichTooltip content={<span className="block">{text}</span>} side="top" align="start">
+    <RichTooltip content={<span className="block">{text}</span>} contentAriaLabel={text} side="top" align="start">
       <button
         type="button"
-        className="inline-flex shrink-0 rounded p-0.5 text-slate-400 hover:text-indigo-600 cursor-help focus:outline-none focus:ring-2 focus:ring-indigo-500/30 align-middle"
+        className="inline-flex shrink-0 rounded p-0.5 text-slate-400 hover:text-indigo-600 cursor-default focus:outline-none focus:ring-2 focus:ring-indigo-500/30 align-middle"
         aria-label={ariaLabel}
       >
         <HelpCircle className="w-3.5 h-3.5" aria-hidden />
@@ -2389,10 +2439,13 @@ function ScreeningScheduleEditor({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-sm font-medium text-slate-800">现场筛选日期与预约人数</span>
-            <RichTooltip content={screeningSectionHelpTooltip}>
+            <RichTooltip
+              content={screeningSectionHelpTooltip}
+              contentAriaLabel="现场筛选计划：保存影响、列表字段、逐行编辑、批量添加与上限等说明"
+            >
               <button
                 type="button"
-                className="inline-flex shrink-0 rounded p-0.5 text-slate-400 hover:text-indigo-600 cursor-help focus:outline-none focus:ring-2 focus:ring-indigo-500/30 align-middle"
+                className="inline-flex shrink-0 rounded p-0.5 text-slate-400 hover:text-indigo-600 cursor-default focus:outline-none focus:ring-2 focus:ring-indigo-500/30 align-middle"
                 aria-label="现场筛选计划说明（保存影响、列表字段、逐行编辑）"
               >
                 <HelpCircle className="w-3.5 h-3.5" aria-hidden />
@@ -2646,6 +2699,8 @@ const CONFIG_STATUS_OPTIONS = [
   { value: '待配置', label: '待配置' },
   { value: '配置中', label: '配置中' },
   { value: '待认证授权', label: '待认证授权' },
+  { value: '待认证核验', label: '待认证核验' },
+  { value: '授权测试中', label: '授权测试中' },
   { value: '已授权待测试', label: '已授权待测试' },
   { value: '已测试待开始', label: '已测试待开始' },
   { value: '进行中', label: '进行中' },
@@ -2661,7 +2716,8 @@ function configStatusBadgeProps(s: ProtocolConsentOverview['config_status']): {
   if (x === '已结束') return { variant: 'default', className: '!bg-zinc-200/90 !text-zinc-800' }
   if (x === '待配置') return { variant: 'default' }
   if (x === '配置中') return { variant: 'primary' }
-  if (x === '待认证授权' || x === '核验测试中') return { variant: 'warning' }
+  if (x === '待认证核验') return { variant: 'warning', className: '!bg-orange-50 !text-orange-950 !border-orange-200/90' }
+  if (x === '待认证授权' || x === '授权测试中' || x === '核验测试中') return { variant: 'warning' }
   if (x === '已授权待测试' || x === '待测试') return { variant: 'info' }
   if (x === '已测试待开始' || x === '待开始') return { variant: 'success' }
   if (x === '进行中') return { variant: 'default', className: '!bg-indigo-100 !text-indigo-900' }
@@ -2976,35 +3032,61 @@ function ConfigCenterView({
 
 export default function ConsentManagementPage() {
   const queryClient = useQueryClient()
+  const refreshConsentOverviewList = useCallback(async () => {
+    // 计划弹窗关闭回列表时强制拉新，避免仅 invalidate 导致的可见区延迟刷新。
+    await queryClient.invalidateQueries({ queryKey: ['protocol', 'consent-overview'] })
+    await queryClient.refetchQueries({
+      queryKey: ['protocol', 'consent-overview'],
+      type: 'active',
+    })
+  }, [queryClient])
   const [searchParams, setSearchParams] = useSearchParams()
-  const [protocolId, setProtocolId] = useState<number | null>(null)
-  /** 邮件授权页等深链：#/consent?protocolId= 仅首次应用，避免与手动导航冲突 */
-  const consentProtocolDeepLinkAppliedRef = useRef(false)
-  /** 列表定位：#/consent?focusProtocolId= 高亮该行并滚动（由 searchParams 驱动请求，见下方 sync effect） */
-  const focusProtocolIdParam = searchParams.get('focusProtocolId')
+  const location = useLocation()
+  const [protocolId, setProtocolId] = useState<number | null>(() => parseProtocolIdParam(searchParams.get('protocolId')))
+  const [activeTab, setActiveTab] = useState<ConsentTab>(() => parseConsentTab(searchParams.get('tab')))
+  /** 列表定位：OAuth 会丢 hash；与 searchParams、hash、sessionStorage 对齐 WitnessStaffPage */
+  const [sessionBackedFocusProtocolId, setSessionBackedFocusProtocolId] = useState<number | null>(() =>
+    peekConsentListFocusProtocolId(),
+  )
   const focusProtocolIdNum = useMemo(() => {
-    if (!focusProtocolIdParam) return null
-    const n = parseInt(focusProtocolIdParam, 10)
-    return Number.isNaN(n) || n <= 0 ? null : n
-  }, [focusProtocolIdParam])
+    const fromSearchParams = searchParams.get('focusProtocolId')
+    const fromLocSearch = new URLSearchParams(location.search || '').get('focusProtocolId')
+    const fromHash = parseFocusProtocolIdFromHash()
+    for (const raw of [fromSearchParams, fromLocSearch, fromHash]) {
+      if (raw) {
+        const n = parseInt(raw, 10)
+        if (!Number.isNaN(n) && n > 0) return n
+      }
+    }
+    if (sessionBackedFocusProtocolId != null && sessionBackedFocusProtocolId > 0) {
+      return sessionBackedFocusProtocolId
+    }
+    return null
+  }, [searchParams, location.search, location.key, sessionBackedFocusProtocolId])
   useEffect(() => {
-    if (consentProtocolDeepLinkAppliedRef.current) return
-    const raw = searchParams.get('protocolId')
-    if (!raw) return
-    const n = parseInt(raw, 10)
-    if (Number.isNaN(n) || n <= 0) return
-    consentProtocolDeepLinkAppliedRef.current = true
-    setProtocolId(n)
+    const nextProtocolId = parseProtocolIdParam(searchParams.get('protocolId'))
+    const nextTab = parseConsentTab(searchParams.get('tab'))
+    setProtocolId((prev) => (prev === nextProtocolId ? prev : nextProtocolId))
+    setActiveTab((prev) => (prev === nextTab ? prev : nextTab))
+  }, [searchParams])
+
+  useEffect(() => {
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev)
-        next.delete('protocolId')
+        if (protocolId != null) {
+          next.set('protocolId', String(protocolId))
+          next.set('tab', activeTab)
+        } else {
+          next.delete('protocolId')
+          next.delete('tab')
+        }
+        if (next.toString() === prev.toString()) return prev
         return next
       },
       { replace: true },
     )
-  }, [searchParams, setSearchParams])
-  const [activeTab, setActiveTab] = useState<'consents' | 'settings'>('settings')
+  }, [activeTab, protocolId, setSearchParams])
   const [selectedConfigIcfId, setSelectedConfigIcfId] = useState<number | null>(null)
   /** 无正文仅 .docx 时：与 iframe 预览同源异步转换后统计「请勾选」处数 */
   const [icfDocxCheckboxMatchCount, setIcfDocxCheckboxMatchCount] = useState<number | null>(null)
@@ -3030,9 +3112,13 @@ export default function ConsentManagementPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [jumpPageInput, setJumpPageInput] = useState('')
   const [exportingList, setExportingList] = useState(false)
-  const [consentStatus, setConsentStatus] = useState<'all' | 'signed' | 'pending' | 'result_no'>('all')
+  const [consentStatus, setConsentStatus] = useState<
+    'all' | 'signed' | 'pending' | 'pending_review' | 'returned' | 'result_no'
+  >('all')
   /** 审核预览：单条或多条（联调同批次）consent id */
   const [previewConsentIds, setPreviewConsentIds] = useState<number[] | null>(null)
+  /** 多节点审核时当前查看的节点下标（与 PDF/网页预览联动） */
+  const [previewAuditNodeIndex, setPreviewAuditNodeIndex] = useState(0)
   const [staffReturnReason, setStaffReturnReason] = useState('')
   const [staffAuditActionError, setStaffAuditActionError] = useState<string | null>(null)
   const [deleteConsentIds, setDeleteConsentIds] = useState<number[] | null>(null)
@@ -3043,6 +3129,13 @@ export default function ConsentManagementPage() {
   const [consentSortOrder, setConsentSortOrder] = useState<'asc' | 'desc'>('desc')
   const [consentSelectedIds, setConsentSelectedIds] = useState<Set<number>>(new Set())
   const [consentJumpInput, setConsentJumpInput] = useState('')
+  const [authSigRecordPage, setAuthSigRecordPage] = useState(1)
+  const [authSigRecordPageSize, setAuthSigRecordPageSize] = useState(10)
+  const [authSigRecordSelectedIds, setAuthSigRecordSelectedIds] = useState<Set<number>>(() => new Set())
+  const [authSigJumpInput, setAuthSigJumpInput] = useState('')
+  const [authSigDateFrom, setAuthSigDateFrom] = useState('')
+  const [authSigDateTo, setAuthSigDateTo] = useState('')
+  const [authSigStatusFilter, setAuthSigStatusFilter] = useState<'all' | 'complete' | 'pending'>('all')
   const consentHeaderCheckboxRef = useRef<HTMLInputElement>(null)
   /** 「知情配置」保存结果：成功文案短时自动消失 */
   const [consentSettingsSaveFeedback, setConsentSettingsSaveFeedback] = useState<
@@ -3135,7 +3228,7 @@ export default function ConsentManagementPage() {
   const [consentListMoreOpenId, setConsentListMoreOpenId] = useState<number | null>(null)
   /** 列表「下架」确认（取消发布后引导核验邮件） */
   const [listDelistModal, setListDelistModal] = useState<{ id: number; title: string } | null>(null)
-  /** 列表「授权核验测试」：选工作人员发双签授权邮件 */
+  /** 列表「授权签名测试」：选工作人员发双签授权邮件 */
   const [listVerifyTestModal, setListVerifyTestModal] = useState<{
     id: number
     title: string
@@ -3169,7 +3262,7 @@ export default function ConsentManagementPage() {
       configStatus,
       dateStart,
       dateEnd,
-      focusProtocolIdParam ?? '',
+      focusProtocolIdNum ?? '',
     ],
     queryFn: () =>
       protocolApi.getConsentOverview({
@@ -3333,6 +3426,8 @@ export default function ConsentManagementPage() {
       },
       { replace: true },
     )
+    clearConsentListFocusStorage()
+    setSessionBackedFocusProtocolId(null)
   }, [focusProtocolIdNum, overviewRes, page, setSearchParams])
 
   useEffect(() => {
@@ -3714,6 +3809,72 @@ export default function ConsentManagementPage() {
     staleTime: 0,
     refetchOnWindowFocus: true,
   })
+  const { data: consentTabCountsRes, isLoading: consentTabCountsLoading } = useQuery({
+    queryKey: [
+      'protocol',
+      protocolId,
+      'consent-filter-tab-counts',
+      consentDateFrom,
+      consentDateTo,
+      consentSearchDebounced,
+    ],
+    queryFn: () =>
+      protocolApi.getConsentFilterTabCounts(protocolId!, {
+        ...(consentDateFrom.trim() && { date_from: consentDateFrom.trim() }),
+        ...(consentDateTo.trim() && { date_to: consentDateTo.trim() }),
+        ...(consentSearchDebounced && { search: consentSearchDebounced }),
+      }),
+    enabled: !!protocolId && activeTab === 'consents',
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  })
+  const consentFilterTabCounts = consentTabCountsRes?.data as ConsentFilterTabCounts | undefined
+  const { data: witnessAuthRecordsRes, isLoading: witnessAuthRecordsLoading } = useQuery({
+    queryKey: [
+      'protocol',
+      protocolId,
+      'witness-signature-auth-records',
+      authSigRecordPage,
+      authSigRecordPageSize,
+      authSigDateFrom,
+      authSigDateTo,
+      authSigStatusFilter,
+    ],
+    queryFn: () =>
+      protocolApi.listWitnessSignatureAuthRecords(protocolId!, {
+        page: authSigRecordPage,
+        page_size: authSigRecordPageSize,
+        ...(authSigDateFrom.trim() && { date_from: authSigDateFrom.trim() }),
+        ...(authSigDateTo.trim() && { date_to: authSigDateTo.trim() }),
+        status: authSigStatusFilter,
+      }),
+    enabled: !!protocolId && activeTab === 'authorizations',
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  })
+  const witnessAuthListPayload = witnessAuthRecordsRes?.data as
+    | {
+        items?: WitnessSignatureAuthRecordRow[]
+        total?: number
+        page?: number
+        page_size?: number
+      }
+    | undefined
+  const witnessAuthItems = (witnessAuthListPayload?.items ?? []) as WitnessSignatureAuthRecordRow[]
+  const witnessAuthTotal = witnessAuthListPayload?.total ?? 0
+  const witnessAuthTotalPages = Math.max(1, Math.ceil((witnessAuthTotal || 0) / authSigRecordPageSize))
+  const witnessAuthPageIds = useMemo(() => witnessAuthItems.map((r) => r.id), [witnessAuthItems])
+  const allWitnessAuthPageSelected =
+    witnessAuthPageIds.length > 0 && witnessAuthPageIds.every((id) => authSigRecordSelectedIds.has(id))
+  const someWitnessAuthPageSelected = witnessAuthPageIds.some((id) => authSigRecordSelectedIds.has(id))
+
+  const handleAuthSigJumpPage = useCallback(() => {
+    const n = parseInt(authSigJumpInput, 10)
+    if (!Number.isNaN(n) && n >= 1 && n <= witnessAuthTotalPages) {
+      setAuthSigRecordPage(n)
+      setAuthSigJumpInput('')
+    }
+  }, [authSigJumpInput, witnessAuthTotalPages])
   const consentListPayload = consentsRes?.data as
     | {
         items?: ConsentRecord[]
@@ -3739,11 +3900,24 @@ export default function ConsentManagementPage() {
       : [...previewConsentIds].sort((a, b) => a - b).join(',')
 
   useEffect(() => {
+    setPreviewAuditNodeIndex(0)
+  }, [previewConsentIdsKey])
+
+  useEffect(() => {
     setConsentTablePage(1)
     setConsentSelectedIds(new Set())
     setConsentSearchInput('')
     setConsentSearchDebounced('')
+    setAuthSigRecordPage(1)
+    setAuthSigRecordSelectedIds(new Set())
+    setAuthSigDateFrom('')
+    setAuthSigDateTo('')
+    setAuthSigStatusFilter('all')
   }, [protocolId])
+
+  useEffect(() => {
+    setAuthSigRecordPage(1)
+  }, [authSigDateFrom, authSigDateTo, authSigStatusFilter, authSigRecordPageSize])
 
   useEffect(() => {
     setConsentTablePage(1)
@@ -3755,6 +3929,12 @@ export default function ConsentManagementPage() {
       setConsentTablePage(consentTotalPages)
     }
   }, [consentTablePage, consentTotalPages])
+
+  useEffect(() => {
+    if (authSigRecordPage > witnessAuthTotalPages) {
+      setAuthSigRecordPage(witnessAuthTotalPages)
+    }
+  }, [authSigRecordPage, witnessAuthTotalPages])
 
   useEffect(() => {
     const ids = consentIdsFlatOnPage
@@ -3778,63 +3958,75 @@ export default function ConsentManagementPage() {
   })
   const previewBatchData = previewResList ?? []
 
+  const activePreviewData: ConsentPreviewData | undefined = useMemo(() => {
+    if (!previewBatchData.length) return undefined
+    const idx = Math.min(Math.max(0, previewAuditNodeIndex), previewBatchData.length - 1)
+    return previewBatchData[idx]
+  }, [previewBatchData, previewAuditNodeIndex])
+
   const staffAuditPreviewHtml = useMemo(() => {
-    if (!previewBatchData.length) return ''
-    if (previewBatchData.length === 1) {
-      const previewData = previewBatchData[0]!
-      return buildStaffConsentAuditPreviewHtml({
-        baseHtml: previewData.icf_content_html || '',
-        isSigned: !!previewData.is_signed,
-        signedAt: previewData.signed_at,
-        signatureSummary: (previewData.signature_summary || {}) as Record<string, unknown>,
-        rules: previewData.mini_sign_rules_preview ?? null,
-        protocolCode: previewData.protocol_code,
-        protocolTitle: previewData.protocol_title,
-        nodeTitle: previewData.node_title,
-        versionLabel: previewData.icf_version,
-        receiptNo: previewData.receipt_no,
-        enableAutoSignDate: previewData.mini_sign_rules_preview?.enable_auto_sign_date,
-        enableSubjectSignature: previewData.mini_sign_rules_preview?.enable_subject_signature,
-        subjectSignatureTimes: previewData.mini_sign_rules_preview?.subject_signature_times,
-        enableStaffSignature: previewData.mini_sign_rules_preview?.enable_staff_signature,
-        staffSignatureTimes: previewData.mini_sign_rules_preview?.staff_signature_times,
-      })
-    }
-    const parts = previewBatchData.map((previewData, i) => {
-      const title =
-        (previewData.node_title || '').trim() || `v${previewData.icf_version || ''}` || `节点 ${i + 1}`
-      const banner = `<div class="mb-2 rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-medium text-slate-800">签署节点 ${i + 1} / ${previewBatchData.length}：${escapeHtmlForPreviewTitle(title)}</div>`
-      const body = buildStaffConsentAuditPreviewHtml({
-        baseHtml: previewData.icf_content_html || '',
-        isSigned: !!previewData.is_signed,
-        signedAt: previewData.signed_at,
-        signatureSummary: (previewData.signature_summary || {}) as Record<string, unknown>,
-        rules: previewData.mini_sign_rules_preview ?? null,
-        protocolCode: previewData.protocol_code,
-        protocolTitle: previewData.protocol_title,
-        nodeTitle: previewData.node_title,
-        versionLabel: previewData.icf_version,
-        receiptNo: previewData.receipt_no,
-        enableAutoSignDate: previewData.mini_sign_rules_preview?.enable_auto_sign_date,
-        enableSubjectSignature: previewData.mini_sign_rules_preview?.enable_subject_signature,
-        subjectSignatureTimes: previewData.mini_sign_rules_preview?.subject_signature_times,
-        enableStaffSignature: previewData.mini_sign_rules_preview?.enable_staff_signature,
-        staffSignatureTimes: previewData.mini_sign_rules_preview?.staff_signature_times,
-      })
-      return `${banner}${body}`
+    if (!activePreviewData) return ''
+    const previewData = activePreviewData
+    return buildStaffConsentAuditPreviewHtml({
+      baseHtml: previewData.icf_content_html || '',
+      isSigned: !!previewData.is_signed,
+      signedAt: previewData.signed_at,
+      signatureSummary: (previewData.signature_summary || {}) as Record<string, unknown>,
+      rules: previewData.mini_sign_rules_preview ?? null,
+      protocolCode: previewData.protocol_code,
+      protocolTitle: previewData.protocol_title,
+      nodeTitle: previewData.node_title,
+      versionLabel: previewData.icf_version,
+      receiptNo: previewData.receipt_no,
+      enableAutoSignDate: previewData.mini_sign_rules_preview?.enable_auto_sign_date,
+      enableSubjectSignature: previewData.mini_sign_rules_preview?.enable_subject_signature,
+      subjectSignatureTimes: previewData.mini_sign_rules_preview?.subject_signature_times,
+      enableStaffSignature: previewData.mini_sign_rules_preview?.enable_staff_signature,
+      staffSignatureTimes: previewData.mini_sign_rules_preview?.staff_signature_times,
     })
-    return parts.join(
-      '<div style="margin:1.25rem 0;height:1px;background:#e2e8f0" role="separator" aria-hidden="true"></div>',
-    )
-  }, [previewBatchData])
+  }, [activePreviewData])
+
+  const activeAuditConsentId = useMemo(() => {
+    if (!previewConsentIds?.length) return undefined
+    const i = Math.min(Math.max(0, previewAuditNodeIndex), previewConsentIds.length - 1)
+    return previewConsentIds[i]
+  }, [previewConsentIds, previewAuditNodeIndex])
+
+  const loadAuditReceiptPdfBytes = useCallback(() => {
+    if (!protocolId || activeAuditConsentId == null) {
+      return Promise.reject(new Error('无法加载回执'))
+    }
+    return protocolApi.getConsentReceiptPdfBlob(protocolId, activeAuditConsentId)
+  }, [protocolId, activeAuditConsentId])
 
   const previewHead = previewBatchData[0]
-  const consentPreviewBatchAuditable = useMemo(() => {
+  /** 批次内是否仍有待工作人员审核的节点 */
+  const hasPendingAuditInBatch = useMemo(() => {
     if (!previewBatchData.length) return false
-    return previewBatchData.every(
+    return previewBatchData.some(
       (p) =>
         p.is_signed && (!p.staff_audit_status || p.staff_audit_status === 'pending_review'),
     )
+  }, [previewBatchData])
+  /** 当前预览节点是否仍可操作通过/退回 */
+  const currentNodeAuditable = useMemo(() => {
+    if (!activePreviewData) return false
+    return (
+      !!activePreviewData.is_signed &&
+      (!activePreviewData.staff_audit_status || activePreviewData.staff_audit_status === 'pending_review')
+    )
+  }, [activePreviewData])
+  /** 批次内每个节点均已通过或已退回重签 */
+  const allBatchNodesResolved = useMemo(() => {
+    if (!previewBatchData.length) return false
+    return previewBatchData.every((p) => {
+      const st = (p.staff_audit_status || '').trim()
+      return st === 'approved' || st === 'returned'
+    })
+  }, [previewBatchData])
+  const allBatchNodesApproved = useMemo(() => {
+    if (!previewBatchData.length) return false
+    return previewBatchData.every((p) => (p.staff_audit_status || '').trim() === 'approved')
   }, [previewBatchData])
 
   const { data: statsRes } = useQuery({
@@ -3849,6 +4041,7 @@ export default function ConsentManagementPage() {
     total: 0,
     signed_count: 0,
     pending_count: 0,
+    pending_review_count: 0,
     signed_result_no_count: 0,
     returned_resign_row_count: 0,
   }
@@ -4155,7 +4348,7 @@ export default function ConsentManagementPage() {
       try {
         const savedPid = variables.pid
         await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['protocol', 'consent-overview'] }),
+          refreshConsentOverviewList(),
           queryClient.invalidateQueries({ queryKey: ['protocol', savedPid, 'consent-settings'] }),
         ])
         // 若用户已关闭抽屉或已打开其他项目，勿更新当前抽屉状态
@@ -4187,6 +4380,7 @@ export default function ConsentManagementPage() {
   /** 关闭「计划」抽屉：始终可关；若保存请求卡住，reset mutation 解除「保存中」锁死 */
   const closeScreeningPlanModal = useCallback(() => {
     saveScreeningPlanMutation.reset()
+    void refreshConsentOverviewList()
     setScreeningPlanSaveUiBusy(false)
     setScreeningPlanSaveSuccess(null)
     setScreeningPlanMergeSource(null)
@@ -4195,7 +4389,7 @@ export default function ConsentManagementPage() {
     setScreeningPlanProjectInitial(null)
     setScreeningPlanConsentAssigneeId('')
     setScreeningPlanConsentSigningStaffNames([])
-  }, [saveScreeningPlanMutation])
+  }, [refreshConsentOverviewList, saveScreeningPlanMutation])
 
   const deleteProtocolMutation = useMutation({
     mutationFn: (id: number) => protocolApi.softDeleteProtocol(id),
@@ -4444,12 +4638,14 @@ export default function ConsentManagementPage() {
     }
   }, [])
 
+  // 仅依赖 protocolId：saveSettings 若放入依赖，reset() 触发重渲染后引用可能变化，导致 Maximum update depth
   useEffect(() => {
     if (!protocolId) {
       setSettingsSaveUiBusy(false)
       saveSettings.reset()
     }
-  }, [protocolId, saveSettings])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在 protocolId 变化时清空保存态；mutation 实例不应驱动该 effect
+  }, [protocolId])
 
   const saveConfigProtocolMutation = useMutation({
     mutationFn: (data: ConsentSettings) => protocolApi.updateConsentSettings(configProtocolId!, data),
@@ -4474,11 +4670,10 @@ export default function ConsentManagementPage() {
     onSuccess: () => {
       setStaffAuditActionError(null)
       queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'consents'] })
+      queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'consent-filter-tab-counts'] })
       queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'consents-stats'] })
       queryClient.invalidateQueries({ queryKey: ['protocol', 'consent-overview'] })
       queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'consent-preview'] })
-      setPreviewConsentIds(null)
-      setStaffReturnReason('')
     },
     onError: (err: Error) => {
       setStaffAuditActionError(getMutationErrorMessage(err, '退回重签失败'))
@@ -4497,11 +4692,10 @@ export default function ConsentManagementPage() {
     onSuccess: () => {
       setStaffAuditActionError(null)
       queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'consents'] })
+      queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'consent-filter-tab-counts'] })
       queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'consents-stats'] })
       queryClient.invalidateQueries({ queryKey: ['protocol', 'consent-overview'] })
       queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'consent-preview'] })
-      setPreviewConsentIds(null)
-      setStaffReturnReason('')
     },
     onError: (err: Error) => {
       setStaffAuditActionError(getMutationErrorMessage(err, '通过审核失败'))
@@ -4516,6 +4710,7 @@ export default function ConsentManagementPage() {
     },
     onSuccess: (_data, ids) => {
       queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'consents'] })
+      queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'consent-filter-tab-counts'] })
       queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'consents-stats'] })
       queryClient.invalidateQueries({ queryKey: ['protocol', 'consent-overview'] })
       queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'consent-preview'] })
@@ -4555,6 +4750,7 @@ export default function ConsentManagementPage() {
       queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'icf-versions'] })
       queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'consents-stats'] })
       queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'consents'] })
+      queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'consent-filter-tab-counts'] })
       queryClient.invalidateQueries({ queryKey: ['protocol', 'consent-overview'] })
       queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'consent-settings'] })
       if (selectedConfigIcfId === icfId) {
@@ -4874,10 +5070,11 @@ export default function ConsentManagementPage() {
       queryClient.invalidateQueries({ queryKey: ['protocol', 'consent-overview'] })
       queryClient.invalidateQueries({ queryKey: ['witness-staff'] })
       queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'dual-sign-staff-status'] })
+      queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'witness-signature-auth-records'] })
     },
   })
 
-  /** 每人双签阶段：待发邮件 / 待核验 / 核验中 / 已核验（与当前签署节点 + 发信记录对齐） */
+  /** 每人双签阶段：待发邮件 / pending_verify / verifying / verified（与当前签署节点 + 发信记录对齐） */
   const dualSignStaffStatusQuery = useQuery({
     queryKey: [
       'protocol',
@@ -4929,8 +5126,8 @@ export default function ConsentManagementPage() {
 
   /**
    * 「发送认证授权邮件」主按钮文案。
-   * 「核验进行中」仅当当前签署节点下**至少一人**处于待核验/核验中（与 dual-sign-staff-status 一致）；
-   * 不再用 consent-settings 的 identity_verified 汇总（partialVerified），否则易与按节点状态不一致，出现全员「待发邮件」却显示「核验进行中」。
+   * 「认证签名进行中」仅当当前签署节点下**至少一人**处于 pending_verify/verifying（与 dual-sign-staff-status 一致）；
+   * 不再用 consent-settings 的 identity_verified 汇总（partialVerified），否则易与按节点状态不一致，出现全员「待发邮件」却显示「认证签名进行中」。
    */
   const dualSignAuthButtonLabel = useMemo(() => {
     if (dualSignAuthMutation.isPending) return '发送中…'
@@ -4938,7 +5135,7 @@ export default function ConsentManagementPage() {
       const st = dualSignStatusByStaffId.get(id)
       return st === 'pending_verify' || st === 'verifying'
     })
-    if (anyInVerifyFlow) return '核验进行中'
+    if (anyInVerifyFlow) return '认证签名进行中'
     const s = loadedSettings as ConsentSettings
     if (s.require_dual_sign) {
       if (
@@ -5564,8 +5761,8 @@ export default function ConsentManagementPage() {
                             知情签署工作人员
                           </span>
                           <ConsentHelpIcon
-                            text="蓝色气泡：最近一次在本列表通过「授权核验测试」所选、并已触发双签授权邮件的姓名（与后台 consent_verify_test_staff_name 一致）。不等于「邮件/人脸已全部完成」或「列表已处于可扫码测试态」；可扫码仍以列表「知情配置状态」与是否已发布为准。未使用气泡的姓名为项目级或各现场筛选日汇总的知情签署人员。"
-                            ariaLabel="知情签署工作人员列蓝色气泡说明"
+                            text="最近一次「授权签名测试」所选姓名：人脸核身、档案手写签名与项目邮件内授权均完成后为蓝色气泡；进行中为琥珀色虚线框；将鼠标悬停在姓名气泡上可查看「已授权」或「授权中」及说明。未套标签的姓名为项目级或各现场筛选日汇总的知情签署人员。可扫码测试仍以列表「知情配置状态」与是否已发布为准。"
+                            ariaLabel="知情签署工作人员列核验标签说明"
                           />
                         </span>
                       ),
@@ -5576,7 +5773,7 @@ export default function ConsentManagementPage() {
                       title: '知情配置状态',
                       headerRender: (
                         <span
-                          title="未发布：待配置 / 配置中 / 待认证授权 / 已授权待测试 / 已测试待开始（未发布且已测签）；已发布后：已测试待开始（未到筛选日）/ 进行中 / 已结束"
+                          title="未发布：待配置 / 配置中 / 待认证授权 / 待认证核验（已发核验邮件但人选未完成认证+签名+授权）/ 已授权待测试 / 已测试待开始（未发布且已测签）；已发布后：已测试待开始（未到筛选日）/ 进行中 / 已结束"
                           className="whitespace-nowrap"
                         >
                           知情配置状态
@@ -5734,18 +5931,19 @@ export default function ConsentManagementPage() {
                                 }),
                               )
                             : urlRaw
-                        const preLaunchConsentScanOk =
+                        /** 与后端 /public/consent-test-queue 白名单一致：含已发布后现场筛选窗口「进行中」，测试 H5 可与正式入口并行 */
+                        const consentTestScanAllowed =
+                          record.config_status === '授权测试中' ||
                           record.config_status === '核验测试中' ||
                           record.config_status === '已授权待测试' ||
                           record.config_status === '待测试' ||
-                          record.config_status === '已测试待开始'
-                        const scanTestAllowed =
-                          preLaunchConsentScanOk && !record.consent_launched
+                          record.config_status === '已测试待开始' ||
+                          record.config_status === '进行中'
                         return (
                           <div className={consentOverviewSideCellWrapperClass(record, 'center')}>
                             <ConsentTestScanQr
                               scanUrl={url}
-                              verificationActive={scanTestAllowed}
+                              verificationActive={consentTestScanAllowed}
                               consentLaunched={!!record.consent_launched}
                               configStatus={record.config_status}
                               disabled={!url}
@@ -5873,7 +6071,7 @@ export default function ConsentManagementPage() {
                                       className="w-full px-3 py-2 text-left text-slate-800 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none"
                                       title={
                                         record.consent_launched
-                                          ? '知情已发布后须先下架，方可再次从列表发起「授权核验测试」发邮（与蓝底气泡是否曾选过人无关）'
+                                          ? '知情已发布后须先下架，方可再次从列表发起「授权签名测试」发邮（与蓝底气泡是否曾选过人无关）'
                                           : undefined
                                       }
                                       disabled={!!record.consent_launched}
@@ -5887,7 +6085,21 @@ export default function ConsentManagementPage() {
                                         })
                                       }}
                                     >
-                                      授权核验测试
+                                      授权签名测试
+                                    </button>
+                                  </li>
+                                  <li>
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      className="w-full px-3 py-2 text-left text-slate-800 hover:bg-slate-50"
+                                      onClick={() => {
+                                        setConsentListMoreOpenId(null)
+                                        setProtocolId(record.id)
+                                        setActiveTab('authorizations')
+                                      }}
+                                    >
+                                      授权记录
                                     </button>
                                   </li>
                                   <li>
@@ -6108,7 +6320,7 @@ export default function ConsentManagementPage() {
           }
         >
           <p className="text-sm text-slate-700 leading-relaxed">
-            下架后知情将对小程序侧不可见，可再次编辑配置。请在下一筛选日前，为<strong className="text-slate-900">该日对应的知情人员</strong>完成授权与核验测试（可通过下方「授权核验测试」发送邮件），通过后再发布。
+            下架后知情将对小程序侧不可见，可再次编辑配置。请在下一筛选日前，为<strong className="text-slate-900">该日对应的知情人员</strong>完成授权签名测试（可通过下方「授权签名测试」发送邮件），通过后再发布。
           </p>
           <p className="mt-2 text-xs text-slate-500">
             项目：{listDelistModal.title || `项目 #${listDelistModal.id}`}
@@ -6122,7 +6334,7 @@ export default function ConsentManagementPage() {
           onClose={() => {
             if (!listVerifyTestAuthMutation.isPending) setListVerifyTestModal(null)
           }}
-          title="授权核验测试"
+          title="授权签名测试"
           size="sm"
           footer={
             <div className="flex w-full justify-end gap-2">
@@ -6624,9 +6836,10 @@ export default function ConsentManagementPage() {
 
           <Tabs
             value={activeTab}
-            onChange={(v) => setActiveTab(v as 'consents' | 'settings')}
+            onChange={(v) => setActiveTab(v as ConsentTab)}
             tabs={[
               { value: 'settings', label: '知情配置' },
+              { value: 'authorizations', label: '授权记录' },
               { value: 'consents', label: '签署记录' },
             ]}
           />
@@ -6864,12 +7077,12 @@ export default function ConsentManagementPage() {
                           <div className="flex flex-wrap items-baseline justify-between gap-2">
                             <p className="text-[11px] font-medium text-rose-600">知情签署工作人员</p>
                             {dualSignStaffStatusQuery.isFetching ? (
-                              <span className="text-[10px] text-slate-400">同步核验阶段…</span>
+                              <span className="text-[10px] text-slate-400">同步认证签名阶段…</span>
                             ) : null}
                           </div>
                           {dualSignStaffStatusQuery.isError ? (
                             <p className="text-[10px] text-amber-700">
-                              核验阶段暂无法同步（可稍后刷新页面）；发信与保存不受影响。
+                              认证签名阶段暂无法同步（可稍后刷新页面）；发信与保存不受影响。
                             </p>
                           ) : null}
                           <div className="overflow-x-auto rounded-lg border border-slate-100 bg-white">
@@ -7307,6 +7520,14 @@ export default function ConsentManagementPage() {
                       ) : null}
                       用于嵌入手写签名；签署日可用
                       <code className="text-indigo-700">{'{{ICF_SIGNED_DATE}}'}</code>
+                      {settingsDraft.enable_auto_sign_date ? (
+                        <>
+                          ，或与文书「年 月 日」行对齐的
+                          <code className="text-indigo-700">{'{{ICF_SIGNED_YEAR}}'}</code>
+                          <code className="text-indigo-700">{'{{ICF_SIGNED_MONTH}}'}</code>
+                          <code className="text-indigo-700">{'{{ICF_SIGNED_DAY}}'}</code>
+                        </>
+                      ) : null}
                       （与「自动签署日期」等配置一致）。右侧预览将示意虚线签名框，签署后小程序/H5/审核弹窗将替换为实际影像。
                       <span className="block mt-1">
                         推荐：点击右侧「签署文件预览」中的<strong className="font-medium text-slate-700">「编辑正文 HTML」</strong>
@@ -7464,6 +7685,7 @@ export default function ConsentManagementPage() {
                               subject_signature_times: (settingsDraft.subject_signature_times ?? 1) as 1 | 2,
                               enable_staff_signature: !!settingsDraft.enable_staff_signature,
                               staff_signature_times: (settingsDraft.staff_signature_times ?? 1) as 1 | 2,
+                              enable_auto_sign_date: !!settingsDraft.enable_auto_sign_date,
                             })}
                             onCancel={() => setIcfContentHtmlEditorOpen(false)}
                             onSaved={() => setIcfContentHtmlEditorOpen(false)}
@@ -7600,18 +7822,18 @@ export default function ConsentManagementPage() {
                 </Modal>
               )}
 
-          {activeTab === 'consents' && (
+          {activeTab === 'authorizations' && (
             <div className="bg-white rounded-xl border border-slate-200">
               <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-slate-100">
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="flex flex-wrap gap-2">
-                    {STATUS_OPTIONS.map((opt) => (
+                    {AUTH_SIG_STATUS_OPTIONS.map((opt) => (
                       <button
                         key={opt.value}
                         type="button"
-                        onClick={() => setConsentStatus(opt.value)}
+                        onClick={() => setAuthSigStatusFilter(opt.value)}
                         className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                          consentStatus === opt.value
+                          authSigStatusFilter === opt.value
                             ? 'bg-indigo-100 text-indigo-700'
                             : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                         }`}
@@ -7619,6 +7841,260 @@ export default function ConsentManagementPage() {
                         {opt.label}
                       </button>
                     ))}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-medium text-slate-500 shrink-0">日期</span>
+                    <input
+                      type="date"
+                      value={authSigDateFrom}
+                      onChange={(e) => setAuthSigDateFrom(e.target.value)}
+                      className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                    <span className="text-slate-400">—</span>
+                    <input
+                      type="date"
+                      value={authSigDateTo}
+                      onChange={(e) => setAuthSigDateTo(e.target.value)}
+                      className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const t = new Date()
+                        const s = formatLocalDateYmd(t)
+                        setAuthSigDateFrom(s)
+                        setAuthSigDateTo(s)
+                        setAuthSigRecordPage(1)
+                      }}
+                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      当日
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const t = new Date()
+                        t.setDate(t.getDate() - 1)
+                        const s = formatLocalDateYmd(t)
+                        setAuthSigDateFrom(s)
+                        setAuthSigDateTo(s)
+                        setAuthSigRecordPage(1)
+                      }}
+                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      昨日
+                    </button>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500 max-w-xl text-right">
+                  列表按<strong className="text-slate-700">授权时间新到旧</strong>；同一工作人员在产生知情签署前重复同意会合并为一行，产生签署后再授权会新增一行。最右列「签署人数」为与本次授权时刻（witness_staff_auth_at）一致且已完成签署的<strong className="text-slate-700">不同受试者人数</strong>（同一人多节点只计 1）。
+                </p>
+              </div>
+              {witnessAuthRecordsLoading ? (
+                <div className="p-6 text-center text-sm text-slate-400">加载中…</div>
+              ) : witnessAuthTotal === 0 ? (
+                <div className="p-6">
+                  <Empty message="暂无授权记录" />
+                </div>
+              ) : (
+                <div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[800px] table-fixed border-collapse text-sm">
+                      <colgroup>
+                        <col className="w-10" />
+                        <col className="w-12" />
+                        <col className="min-w-0 w-[26%]" />
+                        <col className="w-[9.5rem]" />
+                        <col className="w-[11.5rem]" />
+                        <col className="w-[6.5rem]" />
+                      </colgroup>
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50/80">
+                          <th className="py-3 pl-4 pr-1 text-center align-middle font-medium text-slate-600">
+                            <input
+                              type="checkbox"
+                              className="rounded border-slate-300"
+                              aria-label="全选本页授权记录"
+                              disabled={witnessAuthPageIds.length === 0}
+                              checked={allWitnessAuthPageSelected}
+                              ref={(el) => {
+                                if (el) el.indeterminate = someWitnessAuthPageSelected && !allWitnessAuthPageSelected
+                              }}
+                              onChange={() => {
+                                setAuthSigRecordSelectedIds((prev) => {
+                                  const next = new Set(prev)
+                                  if (allWitnessAuthPageSelected) {
+                                    witnessAuthPageIds.forEach((id) => next.delete(id))
+                                  } else {
+                                    witnessAuthPageIds.forEach((id) => next.add(id))
+                                  }
+                                  return next
+                                })
+                              }}
+                            />
+                          </th>
+                          <th className="py-3 px-1 text-center align-middle font-medium text-slate-600 whitespace-nowrap">
+                            序号
+                          </th>
+                          <th className="py-3 px-2 text-left align-middle font-medium text-slate-600 whitespace-nowrap">
+                            知情签署工作人员
+                          </th>
+                          <th className="py-3 px-2 text-left align-middle font-medium text-slate-600 whitespace-nowrap">
+                            授权签名状态
+                          </th>
+                          <th className="py-3 px-2 text-left align-middle font-medium text-slate-600 whitespace-nowrap">
+                            授权签名时间
+                          </th>
+                          <th className="py-3 pl-2 pr-4 text-right align-middle font-medium text-slate-600 whitespace-nowrap tabular-nums">
+                            签署人数
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {witnessAuthItems.map((row, idx) => {
+                          const seq = (authSigRecordPage - 1) * authSigRecordPageSize + idx + 1
+                          const st = witnessAuthRecordStatusBadge(row)
+                          return (
+                            <tr key={row.id} className="hover:bg-slate-50/80">
+                              <td className="py-3 pl-4 pr-1 text-center align-middle whitespace-nowrap">
+                                <input
+                                  type="checkbox"
+                                  className="rounded border-slate-300"
+                                  aria-label={`选择授权记录 ${row.id}`}
+                                  checked={authSigRecordSelectedIds.has(row.id)}
+                                  onChange={() => {
+                                    setAuthSigRecordSelectedIds((prev) => {
+                                      const next = new Set(prev)
+                                      if (next.has(row.id)) next.delete(row.id)
+                                      else next.add(row.id)
+                                      return next
+                                    })
+                                  }}
+                                />
+                              </td>
+                              <td className="py-3 px-1 text-center align-middle whitespace-nowrap tabular-nums text-slate-500">
+                                {seq}
+                              </td>
+                              <td className="max-w-0 py-3 px-2 text-left align-middle whitespace-nowrap">
+                                {row.witness_staff_name ? (
+                                  <span className="block truncate font-semibold text-indigo-800" title={row.witness_staff_name}>
+                                    {row.witness_staff_name}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-2 text-left align-middle whitespace-nowrap">
+                                <Badge variant={st.variant}>{st.label}</Badge>
+                              </td>
+                              <td className="py-3 px-2 text-left align-middle whitespace-nowrap tabular-nums text-slate-600">
+                                {row.signature_auth_at
+                                  ? formatLocalDateTimeYmdHms(row.signature_auth_at)
+                                  : '—'}
+                              </td>
+                              <td className="py-3 pl-2 pr-4 text-right align-middle whitespace-nowrap tabular-nums text-slate-800">
+                                {row.consent_sign_count}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 bg-white px-4 py-3">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="text-sm text-slate-500">
+                        共 <span className="font-medium tabular-nums text-slate-800">{witnessAuthTotal}</span> 条
+                      </span>
+                      <span className="text-slate-300 hidden sm:inline">|</span>
+                      <span className="text-sm text-slate-500">每页</span>
+                      <select
+                        value={authSigRecordPageSize}
+                        onChange={(e) => {
+                          setAuthSigRecordPageSize(Number(e.target.value))
+                          setAuthSigRecordPage(1)
+                        }}
+                        className="h-8 px-2 text-sm border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-primary-500/30"
+                        aria-label="每页条数"
+                      >
+                        <option value={10}>10</option>
+                        <option value={20}>20</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                      <span className="text-sm text-slate-500">条</span>
+                    </div>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => setAuthSigRecordPage((p) => Math.max(1, p - 1))}
+                        disabled={authSigRecordPage <= 1 || witnessAuthTotalPages <= 1}
+                        className="px-3 py-1.5 text-sm rounded border border-slate-200 disabled:opacity-50 hover:bg-slate-50"
+                      >
+                        上一页
+                      </button>
+                      <span className="text-sm text-slate-600 tabular-nums">
+                        第 {authSigRecordPage} / {witnessAuthTotalPages} 页
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setAuthSigRecordPage((p) => Math.min(witnessAuthTotalPages, p + 1))}
+                        disabled={authSigRecordPage >= witnessAuthTotalPages || witnessAuthTotalPages <= 1}
+                        className="px-3 py-1.5 text-sm rounded border border-slate-200 disabled:opacity-50 hover:bg-slate-50"
+                      >
+                        下一页
+                      </button>
+                      <span className="text-sm text-slate-500">跳转至</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={witnessAuthTotalPages}
+                        value={authSigJumpInput}
+                        onChange={(e) => setAuthSigJumpInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleAuthSigJumpPage()}
+                        className="w-14 px-2 py-1 text-sm border border-slate-200 rounded text-center"
+                        placeholder="页"
+                        disabled={witnessAuthTotalPages <= 1}
+                        aria-label="跳转页码"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAuthSigJumpPage}
+                        disabled={witnessAuthTotalPages <= 1}
+                        className="px-2 py-1 text-sm rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        跳转
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'consents' && (
+            <div className="bg-white rounded-xl border border-slate-200">
+              <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-slate-100">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex flex-wrap gap-2">
+                    {STATUS_OPTIONS.map((opt) => {
+                      const cnt = consentFilterTabCounts?.[opt.value]
+                      const countStr = consentTabCountsLoading ? '…' : String(cnt ?? 0)
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setConsentStatus(opt.value)}
+                          className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                            consentStatus === opt.value
+                              ? 'bg-indigo-100 text-indigo-700'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {opt.label}({countStr})
+                        </button>
+                      )
+                    })}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-medium text-slate-500 shrink-0">日期</span>
@@ -8241,98 +8717,234 @@ export default function ConsentManagementPage() {
         isOpen={previewConsentIds != null && previewConsentIds.length > 0}
         onClose={() => {
           setPreviewConsentIds(null)
+          setPreviewAuditNodeIndex(0)
           setStaffAuditActionError(null)
           setStaffReturnReason('')
         }}
         title="签署内容审核"
+        placement="right"
+        zIndex={60}
+        drawerClassName="max-w-[min(100vw,90rem)]"
+        bodyClassName="!flex !min-h-0 !flex-1 !flex-col !overflow-hidden !p-0"
       >
-        <div className="p-4 space-y-3 max-w-[min(960px,92vw)]">
-          {previewLoading ? (
-            <div className="text-sm text-slate-500">加载中…</div>
-          ) : !previewHead ? (
-            <div className="text-sm text-rose-600">无法加载签署内容</div>
-          ) : (
-            <>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-700">
-                <span>
-                  <span className="text-slate-500">受试者：</span>
-                  {previewHead.subject_name || '-'}
-                </span>
-                <span>
-                  <span className="text-slate-500">节点：</span>
-                  {previewBatchData.length > 1
-                    ? `多节点合并预览（${previewBatchData.length}）`
-                    : previewHead.node_title?.trim() || `v${previewHead.icf_version}`}
-                </span>
-                <span>
-                  <span className="text-slate-500">签署结果：</span>
-                  {previewBatchData.length > 1
-                    ? aggregatePreviewSigningResults(previewBatchData)
-                    : previewHead.signing_result || '-'}
-                </span>
-                <span>
-                  <span className="text-slate-500">状态：</span>
-                  {previewBatchData.length > 1
-                    ? previewBatchData.map((p, i) => `${i + 1}.${p.consent_status_label || '-'}`).join(' ')
-                    : previewHead.consent_status_label || '-'}
-                </span>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain lg:flex-row lg:overflow-hidden">
+          {/* 左侧：预览（已签署仅回执 PDF，撑满列高；未签署为 HTML 正文） */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-slate-200 lg:min-h-0 lg:border-r">
+            {previewLoading ? (
+              <div className="p-4 text-sm text-slate-500">加载中…</div>
+            ) : !previewHead ? (
+              <div className="p-4 text-sm text-rose-600">无法加载签署内容</div>
+            ) : activePreviewData?.is_signed && protocolId && activeAuditConsentId != null ? (
+              <div className="flex min-h-0 flex-1 flex-col p-0">
+                <PdfJsCanvasViewer
+                  key={`audit-receipt-${activeAuditConsentId}-${previewAuditNodeIndex}`}
+                  documentKey={`${activeAuditConsentId}-${previewAuditNodeIndex}`}
+                  renderMode="iframe"
+                  layout="fullscreen"
+                  fillContainer
+                  showOpenInNewWindowLink={false}
+                  className="min-h-0 flex-1"
+                  loadPdfBytes={loadAuditReceiptPdfBytes}
+                />
               </div>
-              <div
-                className="consent-icf-preview prose prose-sm max-w-none max-h-[min(60vh,520px)] overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/60 p-3 text-slate-800
+            ) : (
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+                <div
+                  className="consent-icf-preview prose prose-sm max-w-none min-h-[min(40vh,360px)] max-h-[min(70vh,720px)] overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/60 p-3 text-slate-800
                   [&_table]:border-collapse [&_th]:border [&_td]:border [&_th]:border-slate-200 [&_td]:border-slate-200
                   [&_p]:has(.icf-cb-item-row):!my-0 [&_p]:has(.icf-cb-item-row):!py-0
                   [&_td]:align-top [&_td:has(.icf-cb-item-row)]:!py-1 [&_td:has(.icf-cb-item-row)]:align-top
                   [&_.icf-cb-item-row]:!block [&_.icf-cb-item-row]:!w-full [&_.icf-cb-item-row]:!max-w-full [&_.icf-cb-item-row]:!box-border [&_.icf-cb-item-row]:!m-0 [&_.icf-cb-item-row]:!py-2.5 [&_.icf-cb-item-row]:!leading-normal
                   [&_.icf-cb-preview]:not-prose"
-                dangerouslySetInnerHTML={{
-                  __html: staffAuditPreviewHtml || '<p class="text-slate-400">暂无正文</p>',
-                }}
-              />
-              {staffAuditActionError ? (
-                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{staffAuditActionError}</div>
-              ) : null}
-              {consentPreviewBatchAuditable ? (
-                <div className="space-y-2 border-t border-slate-100 pt-3">
-                  <label className="block text-sm font-medium text-slate-700">退回原因（选填，将展示在小程序知情页）</label>
-                  <textarea
-                    value={staffReturnReason}
-                    onChange={(e) => setStaffReturnReason(e.target.value.slice(0, 500))}
-                    rows={3}
-                    placeholder="如：勾选项与现场沟通不一致，请补充说明后重新签署"
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-300"
-                  />
-                </div>
-              ) : null}
-              {consentPreviewBatchAuditable ? (
-                <div className="flex flex-wrap justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStaffAuditActionError(null)
-                      if (previewConsentIds?.length) {
-                        staffReturnMutation.mutate({ ids: previewConsentIds, reason: staffReturnReason })
-                      }
-                    }}
-                    disabled={staffReturnMutation.isPending || staffApproveMutation.isPending}
-                    className="rounded-lg border border-amber-400 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
-                  >
-                    {staffReturnMutation.isPending ? '处理中…' : '退回重签'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStaffAuditActionError(null)
-                      if (previewConsentIds?.length) staffApproveMutation.mutate(previewConsentIds)
-                    }}
-                    disabled={staffReturnMutation.isPending || staffApproveMutation.isPending}
-                    className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-                  >
-                    {staffApproveMutation.isPending ? '处理中…' : '通过审核'}
-                  </button>
-                </div>
-              ) : null}
-            </>
-          )}
+                  dangerouslySetInnerHTML={{
+                    __html: staffAuditPreviewHtml || '<p class="text-slate-400">暂无正文</p>',
+                  }}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* 右侧：协议切换、退回重签、操作按钮（底部固定，与旧版 Modal footer 一致） */}
+          <aside className="flex min-h-0 w-full shrink-0 flex-col border-t border-slate-200 bg-slate-50/90 lg:max-h-none lg:w-[min(100%,22rem)] lg:max-w-md lg:self-stretch lg:border-t-0 lg:border-l">
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4 sm:px-5">
+              {previewLoading ? (
+                <p className="text-sm text-slate-500">加载签署信息…</p>
+              ) : !previewHead ? (
+                <p className="text-sm text-slate-500">无可用摘要信息</p>
+              ) : (
+                <>
+                  <div>
+                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">签署摘要</p>
+                    {previewBatchData.length > 1 ? (
+                      <p className="mb-2 text-xs text-slate-500">
+                        审核进度：
+                        {
+                          previewBatchData.filter((p) => {
+                            const st = (p.staff_audit_status || '').trim()
+                            return st === 'approved' || st === 'returned'
+                          }).length
+                        }
+                        /{previewBatchData.length}
+                      </p>
+                    ) : null}
+                    <dl className="space-y-2 text-sm text-slate-700">
+                      <div className="flex gap-2">
+                        <dt className="w-20 shrink-0 text-slate-500">受试者</dt>
+                        <dd className="min-w-0 break-words">{previewHead.subject_name || '-'}</dd>
+                      </div>
+                      <div className="flex gap-2">
+                        <dt className="w-20 shrink-0 text-slate-500">节点</dt>
+                        <dd className="min-w-0 break-words">
+                          {previewBatchData.length > 1
+                            ? `${(activePreviewData?.node_title || '').trim() || `v${activePreviewData?.icf_version || ''}` || '-'}（${Math.min(previewAuditNodeIndex + 1, previewBatchData.length)}/${previewBatchData.length}）`
+                            : previewHead.node_title?.trim() || `v${previewHead.icf_version}`}
+                        </dd>
+                      </div>
+                      <div className="flex gap-2">
+                        <dt className="w-20 shrink-0 text-slate-500">签署结果</dt>
+                        <dd className="min-w-0 break-words">{activePreviewData?.signing_result || '-'}</dd>
+                      </div>
+                      <div className="flex gap-2">
+                        <dt className="w-20 shrink-0 text-slate-500">状态</dt>
+                        <dd className="min-w-0 break-words">{activePreviewData?.consent_status_label || '-'}</dd>
+                      </div>
+                    </dl>
+                  </div>
+
+                  {previewBatchData.length > 1 ? (
+                    <div className="mt-4">
+                      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">协议 / 节点</p>
+                      <div className="flex flex-col gap-2">
+                        {previewBatchData.map((p, idx) => {
+                          const label = (p.node_title || '').trim() || `v${p.icf_version}` || `节点 ${idx + 1}`
+                          const active = idx === previewAuditNodeIndex
+                          const st = (p.staff_audit_status || '').trim()
+                          const stShort =
+                            st === 'approved'
+                              ? '已通过'
+                              : st === 'returned'
+                                ? '退回'
+                                : st === 'pending_review' || !st
+                                  ? '待审核'
+                                  : p.consent_status_label || st
+                          return (
+                            <button
+                              key={`audit-node-${previewConsentIds?.[idx] ?? idx}-${idx}`}
+                              type="button"
+                              onClick={() => setPreviewAuditNodeIndex(idx)}
+                              title={p.consent_status_label || stShort}
+                              className={`rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${
+                                active
+                                  ? 'bg-indigo-100 text-indigo-900 ring-1 ring-indigo-200'
+                                  : 'bg-white text-slate-600 shadow-sm ring-1 ring-slate-200 hover:bg-slate-100'
+                              }`}
+                            >
+                              <span className="block break-words">{label}</span>
+                              <span className="mt-0.5 block text-xs font-normal text-slate-500">{stShort}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
+
+            {!previewLoading &&
+            previewHead &&
+            (staffAuditActionError || hasPendingAuditInBatch || allBatchNodesResolved) ? (
+              <div className="shrink-0 space-y-3 border-t border-slate-200 bg-white px-4 py-4 sm:px-5">
+                {staffAuditActionError ? (
+                  <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                    {staffAuditActionError}
+                  </div>
+                ) : null}
+                {!staffAuditActionError && allBatchNodesResolved ? (
+                  <div className="space-y-3">
+                    <p className="text-sm leading-relaxed text-slate-700">
+                      {allBatchNodesApproved
+                        ? '全部节点均已通过审核。可进行后续通告、通知受试者或关闭本窗口。'
+                        : '全部节点已审核完毕（含退回重签）。请按流程通知受试者后再关闭本窗口。'}
+                    </p>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPreviewConsentIds(null)
+                          setStaffReturnReason('')
+                          setStaffAuditActionError(null)
+                        }}
+                        className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700"
+                      >
+                        完成审核
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {!staffAuditActionError && !allBatchNodesResolved && hasPendingAuditInBatch ? (
+                  currentNodeAuditable ? (
+                    <>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-slate-700">退回重签</label>
+                        <p className="mb-2 text-xs text-slate-500">仅对当前节点生效；原因选填，将展示在小程序知情页</p>
+                        <textarea
+                          value={staffReturnReason}
+                          onChange={(e) => setStaffReturnReason(e.target.value.slice(0, 500))}
+                          rows={4}
+                          placeholder="如：勾选项与现场沟通不一致，请补充说明后重新签署"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-300"
+                        />
+                      </div>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStaffAuditActionError(null)
+                            if (activeAuditConsentId != null) {
+                              staffReturnMutation.mutate({
+                                ids: [activeAuditConsentId],
+                                reason: staffReturnReason,
+                              })
+                            }
+                          }}
+                          disabled={
+                            staffReturnMutation.isPending ||
+                            staffApproveMutation.isPending ||
+                            activeAuditConsentId == null
+                          }
+                          className="rounded-lg border border-amber-400 bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                        >
+                          {staffReturnMutation.isPending ? '处理中…' : '退回重签'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStaffAuditActionError(null)
+                            if (activeAuditConsentId != null) {
+                              staffApproveMutation.mutate([activeAuditConsentId])
+                            }
+                          }}
+                          disabled={
+                            staffReturnMutation.isPending ||
+                            staffApproveMutation.isPending ||
+                            activeAuditConsentId == null
+                          }
+                          className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                          {staffApproveMutation.isPending ? '处理中…' : '通过审核'}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-slate-600">
+                      当前节点已处理，请从上方「协议 / 节点」列表切换到仍有「待审核」的节点。
+                    </p>
+                  )
+                ) : null}
+              </div>
+            ) : null}
+          </aside>
         </div>
       </Modal>
 

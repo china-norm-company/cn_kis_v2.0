@@ -8,6 +8,8 @@ import {
   stripDocumentOtherInfoPlaceholderForCustomSupplemental,
   icfInteractiveCheckboxGroupsAllAnswered,
   collectInteractiveCheckboxAnswers,
+  findFirstUnansweredInteractiveCheckboxGroup,
+  buildSignedCheckboxMarkerInnerHtml,
 } from './icfCheckboxDetect'
 
 describe('stripDocumentOtherInfoPlaceholderForCustomSupplemental', () => {
@@ -56,6 +58,22 @@ describe('countCheckboxPreviewMarkers', () => {
     const injected = injectCheckboxPreviewMarkers(html)
     expect(countCheckboxPreviewMarkers(html)).toBe((injected.match(/class="icf-cb-preview"/g) || []).length)
     expect(countCheckboxPreviewMarkers(html)).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('buildSignedCheckboxMarkerInnerHtml', () => {
+  it('keeps same layout cues as config preview (已签署 + 是/否 boxes, no 请勾选)', () => {
+    const yes = buildSignedCheckboxMarkerInnerHtml('yes')
+    expect(yes).toContain('已签署')
+    expect(yes).not.toContain('请勾选')
+    expect(yes).toContain('✓')
+    expect(yes).toContain('是')
+    expect(yes).toContain('否')
+    const no = buildSignedCheckboxMarkerInnerHtml('no')
+    expect(no).toContain('已签署')
+    expect(no).not.toContain('请勾选')
+    const unk = buildSignedCheckboxMarkerInnerHtml('unknown')
+    expect(unk).toContain('未识别')
   })
 })
 
@@ -139,6 +157,20 @@ describe('injectInteractiveCheckboxMarkers / 方形勾选与采集', () => {
     const yes = root?.querySelector('input.icf-cb-yes') as HTMLInputElement
     yes!.checked = true
     expect(icfInteractiveCheckboxGroupsAllAnswered(root)).toBe(true)
+  })
+
+  it('findFirstUnansweredInteractiveCheckboxGroup returns first incomplete group in document order', () => {
+    const html = '<p>A 请勾选 [ ] 是 [ ] 否</p><p>B 请勾选 [ ] 是 [ ] 否</p>'
+    const injected = injectInteractiveCheckboxMarkers(html)
+    document.body.innerHTML = `<div id="r">${injected}</div>`
+    const root = document.getElementById('r')!
+    const g0 = root.querySelectorAll('.icf-cb-interactive')[0]
+    const g1 = root.querySelectorAll('.icf-cb-interactive')[1]
+    expect(findFirstUnansweredInteractiveCheckboxGroup(root)).toBe(g0)
+    ;(g0 as HTMLElement).querySelector<HTMLInputElement>('input.icf-cb-yes')!.checked = true
+    expect(findFirstUnansweredInteractiveCheckboxGroup(root)).toBe(g1)
+    ;(g1 as HTMLElement).querySelector<HTMLInputElement>('input.icf-cb-no')!.checked = true
+    expect(findFirstUnansweredInteractiveCheckboxGroup(root)).toBeNull()
   })
 
   it('collectInteractiveCheckboxAnswers returns yes/no per group', () => {

@@ -19,6 +19,10 @@ export const ICF_PLACEHOLDER_TOKENS = [
   '{{ICF_SCREENING_NUMBER}}',
   '{{ICF_INITIALS}}',
   '{{ICF_SIGNED_DATE}}',
+  /** 与「年 月 日」分行占位一致，取自签署日 YYYY-MM-DD */
+  '{{ICF_SIGNED_YEAR}}',
+  '{{ICF_SIGNED_MONTH}}',
+  '{{ICF_SIGNED_DAY}}',
   '{{ICF_SIGNED_AT_ISO}}',
   '{{ICF_RECEIPT_NO}}',
   /** 正文内手写签名位（文书模板中自行择位插入，与前后文案无关） */
@@ -36,6 +40,8 @@ export type IcfIdentityLike = {
   declared_id_card?: string
   declared_phone?: string
   declared_screening_number?: string
+  /** 知情测试 H5 扫码页手填拼音首字母 */
+  declared_pinyin_initials?: string
 }
 
 export type IcfMiniSignConfirmLike = {
@@ -52,7 +58,7 @@ export type BuildIcfPlaceholderValuesInput = {
   protocolTitle?: string
   nodeTitle?: string
   versionLabel?: string
-  /** 核验测试 H5 identity */
+  /** 知情测试 H5 identity */
   identity?: IcfIdentityLike | null
   /** 小程序签署后 mini_sign_confirm */
   miniSignConfirm?: IcfMiniSignConfirmLike | null
@@ -125,7 +131,10 @@ export function buildIcfPlaceholderValues(input: BuildIcfPlaceholderValuesInput)
     (typeof id.declared_screening_number === 'string' && id.declared_screening_number.trim()) ||
     ''
 
-  const initials = (typeof mc.initials === 'string' && mc.initials.trim()) || ''
+  const initials =
+    (typeof mc.initials === 'string' && mc.initials.trim()) ||
+    (typeof id.declared_pinyin_initials === 'string' && id.declared_pinyin_initials.trim()) ||
+    ''
 
   const signed = parseSignedAt(input.signedAt)
   const preview = input.previewNow instanceof Date && !Number.isNaN(input.previewNow.getTime()) ? input.previewNow : null
@@ -142,6 +151,16 @@ export function buildIcfPlaceholderValues(input: BuildIcfPlaceholderValuesInput)
 
   const receiptNo = (input.receiptNo || '').trim()
 
+  let signedYear = ''
+  let signedMonth = ''
+  let signedDay = ''
+  if (signedDate && /^\d{4}-\d{2}-\d{2}$/.test(signedDate)) {
+    const [yy, mm, dd] = signedDate.split('-')
+    signedYear = yy || ''
+    signedMonth = mm || ''
+    signedDay = dd || ''
+  }
+
   const out: Record<string, string> = {
     '{{ICF_PROTOCOL_CODE}}': (input.protocolCode || '').trim(),
     '{{ICF_PROTOCOL_TITLE}}': (input.protocolTitle || '').trim(),
@@ -156,6 +175,9 @@ export function buildIcfPlaceholderValues(input: BuildIcfPlaceholderValuesInput)
     '{{ICF_SCREENING_NUMBER}}': screening,
     '{{ICF_INITIALS}}': initials,
     '{{ICF_SIGNED_DATE}}': signedDate,
+    '{{ICF_SIGNED_YEAR}}': signedYear,
+    '{{ICF_SIGNED_MONTH}}': signedMonth,
+    '{{ICF_SIGNED_DAY}}': signedDay,
     '{{ICF_SIGNED_AT_ISO}}': signedAtIso,
     '{{ICF_RECEIPT_NO}}': receiptNo,
   }
