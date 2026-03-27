@@ -26,7 +26,7 @@ const todayQueue = {
     },
     {
       appointment_id: 2, subject_id: 102, subject_name: '李四', subject_no: 'SUB-202603-0002',
-      appointment_time: '09:30', purpose: '粗筛', task_type: 'pre_screening',
+      appointment_time: '09:30', purpose: '初筛', task_type: 'pre_screening',
       status: 'checked_in', checkin_id: 10, checkin_time: '2026-03-04T09:35:00', checkout_time: null, enrollment_id: null,
     },
   ],

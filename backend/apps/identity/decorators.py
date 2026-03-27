@@ -226,6 +226,78 @@ def require_permission(
     return decorator
 
 
+def require_any_permission(
+    permission_codes: List[str],
+    message: str = None,
+    project_param: str = None,
+) -> Callable:
+    """
+    满足任一权限即可（OR）。用于与业务流程对齐：如「审批」与「更新招募信息」在招募专员侧等价。
+    """
+    if not permission_codes:
+        raise ValueError('require_any_permission: permission_codes 不能为空')
+
+    def decorator(view_func: Callable) -> Callable:
+        @wraps(view_func)
+        def wrapper(request: HttpRequest, *args, **kwargs):
+            from .phone_session import get_phone_from_request
+            phone = get_phone_from_request(request)
+            if phone:
+                return view_func(request, *args, **kwargs)
+
+            account = _get_account_from_request(request)
+            if not account:
+                return _forbidden('请先登录', {'error_code': 'AUTH_REQUIRED'})
+
+            if getattr(settings, 'DEBUG', False):
+                auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+                if auth_header == 'Bearer dev-bypass-token':
+                    return view_func(request, *args, **kwargs)
+            if _is_dev_test_account(account):
+                return view_func(request, *args, **kwargs)
+
+            try:
+                authz = get_authz_service()
+            except Exception as e:
+                logger.exception('require_any_permission get_authz_service failed: %s', e)
+                return JsonResponse(
+                    {'code': 500, 'msg': f'权限服务不可用: {e!s}', 'data': None},
+                    status=500,
+                )
+
+            pid: Optional[int] = None
+            if project_param:
+                pid = _extract_project_id(kwargs, project_param)
+
+            try:
+                has_any = authz.has_any_permission(account, permission_codes, project_id=pid)
+            except Exception as e:
+                logger.exception('require_any_permission has_any_permission failed: %s', e)
+                return JsonResponse(
+                    {'code': 500, 'msg': f'权限校验失败: {e!s}', 'data': None},
+                    status=500,
+                )
+
+            if not has_any:
+                joined = ' 或 '.join(permission_codes)
+                error_msg = message or f'缺少权限: {joined}'
+                logger.warning(
+                    f'权限拒绝(任一): user={account.username}, '
+                    f'permissions={permission_codes}, project_id={pid}, path={request.path}'
+                )
+                return _forbidden(
+                    error_msg,
+                    {
+                        'required_permissions': permission_codes,
+                        'project_id': pid,
+                    },
+                )
+
+            return view_func(request, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
 def require_login(message: str = None) -> Callable:
     """
     仅检查登录状态的装饰器（不检查权限）。

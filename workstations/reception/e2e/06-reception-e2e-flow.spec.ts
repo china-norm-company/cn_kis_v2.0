@@ -30,7 +30,7 @@ async function setupE2EMocks(page: Page) {
       {
         appointment_id: 100, subject_id: 200, subject_name: '新受试者-E2E',
         subject_no: 'SUB-202602-0100', appointment_time: '09:00',
-        purpose: '粗筛', task_type: 'pre_screening',
+        purpose: '初筛', task_type: 'pre_screening',
         status: checkinDone ? 'checked_in' : 'waiting',
         checkin_id: checkinDone ? 50 : null,
         checkin_time: checkinDone ? new Date().toISOString() : null,
@@ -112,7 +112,7 @@ test.describe('场景 R6: 前台完整闭环', () => {
 
   test('R6.2 分流跳转与独立工作台标识正确', async () => {
     const popupPromise = page.waitForEvent('popup')
-    await page.getByRole('button', { name: '发起粗筛' }).click()
+    await page.getByRole('button', { name: '发起初筛' }).click()
     const popup = await popupPromise
     await expect(popup).toHaveURL(/\/recruitment\/#\/prescreening/)
     await popup.close()
