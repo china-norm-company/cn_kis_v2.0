@@ -91,13 +91,13 @@ class Protocol(models.Model):
     # 知情管理：展示与签署顺序（越小越靠前）
     consent_display_order = models.IntegerField('知情管理展示顺序', default=0, db_index=True)
 
-    # 知情管理：配置负责人（治理台账号，全局角色 crc / crc_supervisor）
+    # 知情管理：配置负责人（治理台账号，全局角色 qa）
     consent_config_account_id = models.IntegerField(
         '知情配置负责人账号ID',
         null=True,
         blank=True,
         db_index=True,
-        help_text='治理台 Account.id，须具备全局角色 crc 或 crc_supervisor；每项目至多一人',
+        help_text='治理台 Account.id，须具备全局角色 qa（QA质量管理）；每项目至多一人',
     )
 
     # 时间
