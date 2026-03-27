@@ -5,7 +5,8 @@
 所有端点从 JWT 解出 account_id -> 查找 Subject -> 仅返回自己的数据。
 用于微信小程序 C 端。
 """
-from ninja import Router, Schema, Body
+from ninja import Router, Schema, Body, Query
+from pydantic import field_validator
 from typing import Optional
 from datetime import date, datetime as dt_datetime, timedelta
 import logging
@@ -1753,16 +1754,412 @@ def submit_nps(request, data: NpsSubmitIn):
 # ============================================================================
 # 受试者日记 (eDiary)
 # ============================================================================
+def _resolve_diary_project_id_for_subject(subject):
+    """
+    不传 project_id 时：按手机号对应受试者的入组/项目编号，对齐全链路 project_no，
+    找到存在「已发布且研究员已确认」日记配置的全链路项目 ID。
+
+    优先级（同项目多条来源取最高优先级）：已入组 enrollment > 待入组 enrollment >
+    受试者项目 SC 记录 > 预约中的 project_code。
+    匹配规则：protocol.code / project_code 与 project_full_link.Project.project_no 一致（去空格后全等）。
+    """
+    from apps.project_full_link.models import Project
+    from .models import Enrollment, EnrollmentStatus
+    from .models_diary_config import SubjectDiaryConfig, SubjectDiaryConfigStatus
+    from .models_execution import SubjectAppointment, SubjectProjectSC
+
+    def _has_usable_diary(pid: int) -> bool:
+        return SubjectDiaryConfig.objects.filter(
+            project_id=pid,
+            status=SubjectDiaryConfigStatus.PUBLISHED,
+            researcher_confirmed_at__isnull=False,
+        ).exists()
+
+    def _pid_for_code(code: str):
+        c = (code or '').strip()
+        if not c:
+            return None
+        proj = Project.objects.filter(project_no=c, is_delete=False).first()
+        if not proj or not _has_usable_diary(proj.id):
+            return None
+        return proj.id
+
+    best: dict[int, tuple[int, object]] = {}
+
+    def _consider(pid: int, priority: int, sort_time):
+        prev = best.get(pid)
+        st = sort_time
+        if prev is None:
+            best[pid] = (priority, st)
+            return
+        pr_prev, st_prev = prev
+        if priority > pr_prev:
+            best[pid] = (priority, st)
+            return
+        if priority < pr_prev:
+            return
+        if st_prev is None and st is not None:
+            best[pid] = (priority, st)
+        elif st_prev is not None and st is not None and st > st_prev:
+            best[pid] = (priority, st)
+
+    enrollments = Enrollment.objects.filter(subject=subject).select_related('protocol').order_by('-create_time')
+    for e in enrollments:
+        pid = _pid_for_code(e.protocol.code if e.protocol else '')
+        if pid is None:
+            continue
+        if e.status == EnrollmentStatus.ENROLLED:
+            pri = 100
+        elif e.status == EnrollmentStatus.PENDING:
+            pri = 80
+        elif e.status == EnrollmentStatus.COMPLETED:
+            pri = 60
+        else:
+            pri = 40
+        sort_t = e.enrolled_at or e.create_time
+        _consider(pid, pri, sort_t)
+
+    for rec in SubjectProjectSC.objects.filter(subject=subject, is_deleted=False).order_by('-update_time'):
+        pid = _pid_for_code(rec.project_code)
+        if pid is None:
+            continue
+        _consider(pid, 50, rec.update_time)
+
+    for a in SubjectAppointment.objects.filter(subject=subject).order_by('-create_time'):
+        pid = _pid_for_code(a.project_code)
+        if pid is None:
+            continue
+        _consider(pid, 30, a.create_time)
+
+    if not best:
+        return None
+    return max(
+        best.keys(),
+        key=lambda p: (
+            best[p][0],
+            best[p][1].timestamp() if getattr(best[p][1], 'timestamp', None) else 0.0,
+        ),
+    )
+
+
+@router.get('/diary/config', summary='日记表单配置（2.0 项目级）')
+@require_permission('my.profile.read')
+def get_diary_config(
+    request,
+    project_id: Optional[int] = Query(
+        None,
+        description='全链路项目主键；不传则按入组/项目编号与全链路 project_no 自动匹配',
+    ),
+):
+    """
+    拉取指定项目下已发布且研究员已确认的最新日记配置。
+    project_id 与 project_full_link.Project.id 一致；省略时由后端根据受试者入组等自动解析。
+    """
+    subject = _get_subject_from_request(request)
+    if not subject:
+        return 404, {'code': 404, 'msg': '未找到受试者信息'}
+    from .models_diary_config import SubjectDiaryConfig, SubjectDiaryConfigStatus
+
+    resolved = project_id
+    if resolved is None or resolved <= 0:
+        resolved = _resolve_diary_project_id_for_subject(subject)
+        if resolved is None:
+            return 404, {
+                'code': 404,
+                'msg': (
+                    '未能自动匹配日记项目：请确认协议编号与全链路项目编号一致且已发布日记配置，'
+                    '或在请求中指定 project_id'
+                ),
+                'data': None,
+            }
+
+    cfg = (
+        SubjectDiaryConfig.objects.filter(
+            project_id=resolved,
+            status=SubjectDiaryConfigStatus.PUBLISHED,
+            researcher_confirmed_at__isnull=False,
+        )
+        .order_by('-id')
+        .first()
+    )
+    if not cfg:
+        return 404, {
+            'code': 404,
+            'msg': '该项目暂无可用日记配置（未发布或未确认）',
+            'data': {'project_id': resolved},
+        }
+    return {
+        'code': 200,
+        'msg': 'OK',
+        'data': {
+            'id': cfg.id,
+            'project_id': cfg.project_id,
+            'project_no': cfg.project_no or '',
+            'config_version_label': cfg.config_version_label or '',
+            'form_definition_json': cfg.form_definition_json,
+            'rule_json': cfg.rule_json,
+            'status': cfg.status,
+            'researcher_confirmed_at': (
+                cfg.researcher_confirmed_at.isoformat() if cfg.researcher_confirmed_at else None
+            ),
+            'supervisor_confirmed_at': (
+                cfg.supervisor_confirmed_at.isoformat() if cfg.supervisor_confirmed_at else None
+            ),
+            'create_time': cfg.create_time.isoformat(),
+            'update_time': cfg.update_time.isoformat(),
+        },
+    }
+
+
 class DiaryEntryIn(Schema):
     mood: Optional[str] = ''
     symptoms: Optional[str] = ''
     medication_taken: bool = True
+    symptom_severity: Optional[str] = ''
+    symptom_onset: Optional[str] = ''
+    symptom_duration: Optional[str] = ''
     notes: Optional[str] = ''
+    """规定使用日期 YYYY-MM-DD；不传则使用服务端当日（TIME_ZONE 本地日历）"""
+    entry_date: Optional[date] = None
+
+    @field_validator('mood', 'symptoms', 'notes', 'symptom_severity', 'symptom_onset', 'symptom_duration', mode='before')
+    @classmethod
+    def _normalize_diary_text_fields(cls, v):
+        from .diary_text import normalize_diary_text_field
+
+        return normalize_diary_text_field(v)
+
+
+def _subject_diary_match_codes(subject) -> list:
+    """
+    入组 / SC / 预约 侧的项目编号（去重保序）。
+    用于在「全链表 project_no 与协议编号略有偏差」时，仍能靠 SubjectDiaryConfig.project_no 命中配置并得到 diary_period。
+    """
+    from .models import Enrollment
+    from .models_execution import SubjectProjectSC, SubjectAppointment
+
+    codes = []
+    seen = set()
+    for e in Enrollment.objects.filter(subject=subject).select_related('protocol'):
+        if e.protocol and e.protocol.code:
+            c = (e.protocol.code or '').strip()
+            if c and c not in seen:
+                seen.add(c)
+                codes.append(c)
+    for rec in SubjectProjectSC.objects.filter(subject=subject, is_deleted=False):
+        c = (rec.project_code or '').strip()
+        if c and c not in seen:
+            seen.add(c)
+            codes.append(c)
+    for a in SubjectAppointment.objects.filter(subject=subject):
+        c = (a.project_code or '').strip()
+        if c and c not in seen:
+            seen.add(c)
+            codes.append(c)
+    return codes
+
+
+def _project_ids_for_subject_codes(codes: list) -> list:
+    if not codes:
+        return []
+    from apps.project_full_link.models import Project
+
+    ids = []
+    seen = set()
+    for c in codes:
+        proj = Project.objects.filter(project_no=c, is_delete=False).first()
+        if proj and proj.id not in seen:
+            seen.add(proj.id)
+            ids.append(proj.id)
+    return ids
+
+
+def _extract_diary_period_from_rule_json(rj) -> Optional[dict]:
+    if not isinstance(rj, dict):
+        return None
+    dp = rj.get('diary_period')
+    start, end = None, None
+    if isinstance(dp, dict):
+        start = dp.get('start')
+        end = dp.get('end')
+    elif isinstance(dp, list) and dp and isinstance(dp[0], dict):
+        start = dp[0].get('start')
+        end = dp[0].get('end')
+
+    def _norm(v):
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s if s else None
+
+    start_s, end_s = _norm(start), _norm(end)
+    if not start_s and not end_s:
+        return None
+    return {'start': start_s, 'end': end_s}
+
+
+def _extract_retrospective_days_max_from_rule_json(rj) -> int:
+    """rule_json.retrospective_days_max：研究台「允许补填最多回溯天数」；非法或缺失时默认 7。"""
+    if not isinstance(rj, dict):
+        return 7
+    v = rj.get('retrospective_days_max')
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return 7
+    if n < 0:
+        return 0
+    if n > 366:
+        return 366
+    return n
+
+
+def _diary_period_and_rule_from_entry_coverage(subject):
+    """
+    入组等路径拿不到编号时：若受试者已有日记行，则从「能覆盖其全部已填日期」的已发布配置中取 diary_period；
+    多配置并存时取 period.start 最晚者（通常对应当前生效的研究窗），避免历史列表落回固定 N 天而出现周期外日期。
+    """
+    from .models_loyalty import SubjectDiary
+    from .models_diary_config import SubjectDiaryConfig, SubjectDiaryConfigStatus
+
+    dates = list(
+        SubjectDiary.objects.filter(
+            subject_id=subject.id,
+            is_deleted=False,
+        ).values_list('entry_date', flat=True)
+    )
+    if not dates:
+        return None, None
+
+    def ymd(d) -> str:
+        if hasattr(d, 'isoformat'):
+            return d.isoformat()[:10]
+        return str(d)[:10]
+
+    date_strs = sorted({ymd(d) for d in dates})
+
+    best_meta = None
+    best_rj = None
+    best_start = ''
+    best_cfg_id = -1
+
+    qs = SubjectDiaryConfig.objects.filter(
+        status=SubjectDiaryConfigStatus.PUBLISHED,
+        researcher_confirmed_at__isnull=False,
+    ).order_by('-id')
+
+    for cfg in qs:
+        meta = _extract_diary_period_from_rule_json(cfg.rule_json)
+        if not meta or not meta.get('start'):
+            continue
+        s = meta['start']
+        e_raw = (meta.get('end') or '').strip() if meta.get('end') else ''
+        ok = True
+        for ds in date_strs:
+            if ds < s:
+                ok = False
+                break
+            if e_raw and ds > e_raw:
+                ok = False
+                break
+        if not ok:
+            continue
+        cid = cfg.id
+        if best_meta is None or s > best_start or (s == best_start and cid > best_cfg_id):
+            best_meta = meta
+            best_start = s
+            best_cfg_id = cid
+            best_rj = cfg.rule_json if isinstance(cfg.rule_json, dict) else {}
+
+    return best_meta, best_rj
+
+
+def _diary_list_meta_bundle(subject, explicit_project_id: Optional[int] = None):
+    """
+    与 /my/diary 列表一并返回：应填周期 + 研究台配置的补填回溯天数（rule_json.retrospective_days_max）。
+    解析顺序与历史逻辑一致；无任何命中周期时 retrospective_days_max 仍返回默认值 7。
+    """
+    from .models_diary_config import SubjectDiaryConfig, SubjectDiaryConfigStatus
+
+    default_retro = 7
+
+    if explicit_project_id is not None and int(explicit_project_id) > 0:
+        cfg0 = (
+            SubjectDiaryConfig.objects.filter(
+                project_id=int(explicit_project_id),
+                status=SubjectDiaryConfigStatus.PUBLISHED,
+                researcher_confirmed_at__isnull=False,
+            )
+            .order_by('-id')
+            .first()
+        )
+        if cfg0:
+            rj0 = cfg0.rule_json if isinstance(cfg0.rule_json, dict) else {}
+            meta0 = _extract_diary_period_from_rule_json(rj0)
+            if meta0:
+                return meta0, _extract_retrospective_days_max_from_rule_json(rj0)
+
+    pid = _resolve_diary_project_id_for_subject(subject)
+    if pid:
+        cfg = (
+            SubjectDiaryConfig.objects.filter(
+                project_id=pid,
+                status=SubjectDiaryConfigStatus.PUBLISHED,
+                researcher_confirmed_at__isnull=False,
+            )
+            .order_by('-id')
+            .first()
+        )
+        if cfg:
+            rj = cfg.rule_json if isinstance(cfg.rule_json, dict) else {}
+            meta = _extract_diary_period_from_rule_json(rj)
+            if meta:
+                return meta, _extract_retrospective_days_max_from_rule_json(rj)
+
+    codes = _subject_diary_match_codes(subject)
+    if codes:
+        proj_ids = _project_ids_for_subject_codes(codes)
+        cfg = (
+            SubjectDiaryConfig.objects.filter(
+                Q(project_no__in=codes) | Q(project_id__in=proj_ids),
+                status=SubjectDiaryConfigStatus.PUBLISHED,
+                researcher_confirmed_at__isnull=False,
+            )
+            .order_by('-id')
+            .first()
+        )
+        if cfg:
+            rj = cfg.rule_json if isinstance(cfg.rule_json, dict) else {}
+            meta = _extract_diary_period_from_rule_json(rj)
+            if meta:
+                return meta, _extract_retrospective_days_max_from_rule_json(rj)
+
+    meta, rj = _diary_period_and_rule_from_entry_coverage(subject)
+    if meta:
+        return meta, _extract_retrospective_days_max_from_rule_json(rj or {})
+    return None, default_retro
+
+
+def _diary_period_meta_for_subject(subject, explicit_project_id: Optional[int] = None):
+    """
+    与 /my/diary/config 尽量同源：可选 explicit_project_id（列表查询参数）优先；
+    再全链路 project 解析；再按入组等编号匹配配置；最后用已有日记行反推可覆盖全部已填日期的配置周期。
+    """
+    period, _ = _diary_list_meta_bundle(subject, explicit_project_id)
+    return period
 
 
 @router.get('/diary', summary='日记列表')
 @require_permission('my.profile.read')
-def list_diary(request, page: int = 1, page_size: int = 30):
+def list_diary(
+    request,
+    page: int = 1,
+    page_size: int = 30,
+    project_id: Optional[int] = Query(
+        None,
+        description='可选。传入全链路 project_id 时优先用该项目已发布日记配置的 diary_period（无入组编号也能裁剪历史）',
+    ),
+):
     subject = _get_subject_from_request(request)
     if not subject:
         return 404, {'code': 404, 'msg': '未找到受试者信息'}
@@ -1773,16 +2170,28 @@ def list_diary(request, page: int = 1, page_size: int = 30):
     total = qs.count()
     start = (page - 1) * page_size
     items = qs[start:start + page_size]
-    return {'code': 200, 'msg': 'OK', 'data': {
-        'items': [{
+    diary_period, retrospective_days_max = _diary_list_meta_bundle(subject, explicit_project_id=project_id)
+    from .diary_text import diary_symptom_fields_for_api, normalize_diary_text_field
+
+    def _item(d):
+        sym = diary_symptom_fields_for_api(d)
+        return {
             'id': d.id,
             'entry_date': d.entry_date.isoformat(),
-            'mood': d.mood,
-            'symptoms': d.symptoms,
+            'mood': normalize_diary_text_field(d.mood),
+            'symptoms': normalize_diary_text_field(d.symptoms),
             'medication_taken': d.medication_taken,
-            'notes': d.notes,
-        } for d in items],
+            'symptom_severity': sym['symptom_severity'],
+            'symptom_onset': sym['symptom_onset'],
+            'symptom_duration': sym['symptom_duration'],
+            'notes': sym['notes'],
+        }
+
+    return {'code': 200, 'msg': 'OK', 'data': {
+        'items': [_item(d) for d in items],
         'total': total,
+        'diary_period': diary_period,
+        'retrospective_days_max': retrospective_days_max,
     }}
 
 
@@ -1794,26 +2203,23 @@ def create_diary(request, data: DiaryEntryIn):
         return 404, {'code': 404, 'msg': '未找到受试者信息'}
     from django.utils import timezone
     from .models_loyalty import SubjectDiary
-    today = timezone.now().date()
+    target_date = data.entry_date if data.entry_date is not None else timezone.localdate()
     existing = SubjectDiary.objects.filter(
-        subject_id=subject.id, entry_date=today, is_deleted=False,
+        subject_id=subject.id, entry_date=target_date, is_deleted=False,
     ).first()
     if existing:
-        existing.mood = data.mood or existing.mood
-        existing.symptoms = data.symptoms or existing.symptoms
-        existing.medication_taken = data.medication_taken
-        existing.notes = data.notes or existing.notes
-        existing.save(update_fields=['mood', 'symptoms', 'medication_taken', 'notes', 'update_time'])
-        entry = existing
-    else:
-        entry = SubjectDiary.objects.create(
-            subject_id=subject.id,
-            entry_date=today,
-            mood=data.mood or '良好',
-            symptoms=data.symptoms or '',
-            medication_taken=data.medication_taken,
-            notes=data.notes or '',
-        )
+        return 400, {'code': 400, 'msg': '该日期已提交日记，不可重复提交', 'data': None}
+    entry = SubjectDiary.objects.create(
+        subject_id=subject.id,
+        entry_date=target_date,
+        mood=data.mood or '良好',
+        symptoms=data.symptoms or '',
+        medication_taken=data.medication_taken,
+        symptom_severity=data.symptom_severity or '',
+        symptom_onset=data.symptom_onset or '',
+        symptom_duration=data.symptom_duration or '',
+        notes=data.notes or '',
+    )
     return {'code': 200, 'msg': '记录成功', 'data': {
         'id': entry.id, 'entry_date': entry.entry_date.isoformat(),
     }}
@@ -1911,7 +2317,7 @@ def get_upcoming_visits(request, days: int = 30):
 @router.get('/screening-status', summary='我的筛选状态')
 @require_permission('my.profile.read')
 def get_my_screening_status(request):
-    """受试者查看自己的报名→粗筛→筛选→入组状态"""
+    """受试者查看自己的报名→初筛→筛选→入组状态"""
     subject = _get_subject_from_request(request)
     if not subject:
         return 404, {'code': 404, 'msg': '未找到受试者信息'}
@@ -2239,7 +2645,7 @@ def mark_my_notification_read(request, nid: int):
 
 
 # ============================================================================
-# 阶段1/4: 项目详情 + 粗筛到场确认
+# 阶段1/4: 项目详情 + 初筛到场确认
 # ============================================================================
 def _serialize_available_plan_item(plan):
     start_date = plan.start_date.isoformat() if plan.start_date else None
@@ -2361,7 +2767,7 @@ def get_my_registration_status(request):
     }}
 
 
-@router.post('/confirm-arrival', summary='粗筛到场确认')
+@router.post('/confirm-arrival', summary='初筛到场确认')
 @require_permission('my.profile.update')
 def confirm_arrival(request):
     """受试者扫码确认到场，更新报名状态为已到场"""

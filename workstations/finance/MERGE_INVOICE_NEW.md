@@ -2,6 +2,8 @@
 
 本目录中的「发票管理（新）」功能已从 `独立工作台/cn_kis_v1.0/apps/finance` 合并到当前项目，**未修改独立工作台中的任何文件**。
 
+> **说明（2026-03）**：`cn_kis_v1.0` 独立财务台已不再使用；日常开发与联调请以本仓库 **`workstations/finance`**（默认 **http://localhost:3004/finance/**）为准，勿再启动 v1.0 的 `apps/finance` 开发服务。
+
 ## 合并内容
 
 - **页面**：`src/pages/new/`（README.md + InvoiceManagementNewPage.tsx）

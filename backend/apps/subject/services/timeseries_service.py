@@ -205,7 +205,7 @@ def get_subject_journey(subject_id: int, date_from: datetime = None, date_to: da
             events.append({
                 'stage': 'pre_screening',
                 'time': pre.create_time.isoformat(),
-                'title': '粗筛结果',
+                'title': '初筛结果',
                 'status': pre.result,
             })
         scr = ScreeningRecord.objects.filter(registration=reg).order_by('-create_time').first()

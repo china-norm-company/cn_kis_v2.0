@@ -25,7 +25,7 @@ const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: '招募看板', permissions: ['subject.recruitment.read'] },
   { to: '/plans', icon: ClipboardList, label: '计划管理', permissions: ['subject.recruitment.read'] },
   { to: '/registrations', icon: UserPlus, label: '报名管理', permissions: ['subject.recruitment.read'] },
-  { to: '/pre-screening', icon: Microscope, label: '粗筛管理', permissions: ['subject.recruitment.read'] },
+  { to: '/pre-screening', icon: Microscope, label: '初筛管理', permissions: ['subject.recruitment.read'] },
   { to: '/screening', icon: Filter, label: '筛选管理', permissions: ['subject.recruitment.read'] },
   { to: '/enrollment', icon: UserCheck, label: '入组确认', permissions: ['subject.recruitment.read'] },
   { to: '/subjects', icon: Users, label: '受试者管理', permissions: ['subject.subject.read'] },

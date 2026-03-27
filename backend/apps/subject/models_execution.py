@@ -219,7 +219,7 @@ class SubjectAppointment(models.Model):
     notes = models.TextField('备注', blank=True, default='')
 
     # 项目与访视信息（用于接待台筛选和小程序展示）
-    visit_point = models.CharField('访视点', max_length=100, blank=True, default='', help_text='如 V0/V1/粗筛/筛选/基线等')
+    visit_point = models.CharField('访视点', max_length=100, blank=True, default='', help_text='如 V0/V1/初筛/筛选/基线等')
     project_code = models.CharField('项目编号', max_length=100, blank=True, default='', db_index=True, help_text='研究机构方案编号')
     project_name = models.CharField('项目名称', max_length=200, blank=True, default='', help_text='研究名称')
     liaison = models.CharField('联络员', max_length=100, blank=True, default='', help_text='预约联络人')

@@ -1,0 +1,71 @@
+---
+description: 采苓·研究台本地预览与联调 — 用户开始研究台开发时按此标准流程执行（与 2026-03 已验证方式一致）
+alwaysApply: true
+---
+
+# 采苓·研究台本地开发（标准方式，已验证）
+
+当用户表示要开始**研究台 / 采苓 / research** 本地开发、预览或联调时，在 **Agent 模式**下优先按下列顺序**直接代其执行**可自动化部分；仅将必须人工操作（浏览器、飞书控制台、本机策略）留给用户。
+
+## 1. 路径与 Shell
+
+- **仓库根目录**：`D:\git_project\cn_kis_v1.0`（若用户说明其他路径则以用户为准）。
+- **Windows CMD**：新开窗口若在 **C:**，须先 **`D:`** 再 **`cd`**，或使用 **`cd /d D:\git_project\cn_kis_v1.0`**。详见 `.cursor/rules/copy-paste-commands.mdc`。
+
+## 2. Git（按需）
+
+- 确认当前分支（用户常用 **`lvyue2.0`** 时与其保持一致，除非用户指定其他分支）。
+- 执行：`git fetch origin`，再 `git merge origin/main`（或用户习惯的 `pull`），确保基线较新。
+
+## 3. 前端依赖
+
+- 在仓库根目录执行 **`pnpm install`**（克隆后、或 `pnpm-lock.yaml` 有变更时必做）。
+
+## 4. 启动研究台前端（Vite）
+
+- 在根目录：**`pnpm dev:research`**
+- 预览地址：**http://localhost:3002/research/**（`base: '/research/'`，端口 **3002**）。
+- **Agent**：若终端已有 `dev:research` 在跑，**不要**再启第二个（避免端口冲突）；否则在后台启动并告知用户打开上述 URL。
+
+## 5. 启动后端（Django，供 `/api` 代理）
+
+- 研究台 Vite 将 **`/api` 代理到 `http://127.0.0.1:8001`**，无后端则登录/回调会报 proxy 错误。
+- 在 **`backend`** 目录激活虚拟环境后执行：**`python manage.py runserver 8001`**
+- **Agent** 可用免激活方式（等价）：  
+  `backend\.venv\Scripts\python.exe backend\manage.py runserver 8001`（工作目录为仓库根或 `backend` 时注意路径一致）。
+- **Agent**：若 **8001** 已监听，勿重复启动；否则后台启动。
+- 成功标志：日志出现 **`Starting development server at http://127.0.0.1:8001/`**。可选自检：**http://127.0.0.1:8001/api/v1/docs**。
+
+## 6. 本地数据库与配置
+
+- 用户本机常见：**`USE_SQLITE=true`**，数据在 **`backend/db.sqlite3`**（勿提交）。
+- **`deploy/.env.volcengine.plan-a`**、**`backend/.env`** 等含密钥文件勿提交；按 `docs/BACKEND_LOCAL_SETUP_WINDOWS.md` 配置。
+
+## 7. 飞书登录异常（可选）
+
+- 本地 OAuth 报错时，可在 **`apps/research/.env.local`** 设置 **`VITE_DEV_AUTH_BYPASS=1`**（推荐用 `.env.local` 避免误提交），然后**重启** `pnpm dev:research`。
+
+## 8. 交给用户的事项（简述即可）
+
+- 浏览器打开 **http://localhost:3002/research/** 并刷新。
+- 需要两个终端时：**一个**跑前端、**一个**跑后端（或由 Agent 已后台拉起其一/二者）。
+- 飞书开放平台 **redirect_uri**、可信域名等仍须按项目文档在飞书侧配置。
+
+## 可复制 CMD 块（给用户备用）
+
+前端（根目录）：
+
+```cmd
+D:
+cd D:\git_project\cn_kis_v1.0
+pnpm dev:research
+```
+
+后端（第二窗口）：
+
+```cmd
+D:
+cd D:\git_project\cn_kis_v1.0\backend
+.venv\Scripts\activate.bat
+python manage.py runserver 8001
+```

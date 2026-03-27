@@ -29,6 +29,11 @@ export interface ApiClientConfig {
   timeout?: number
   getToken?: () => string | null
   onUnauthorized?: () => void
+  /**
+   * 为 true 时：401/403 鉴权失败不清理 localStorage 中的 token（用于 VITE_DEV_AUTH_BYPASS=1 且后端未开 DEBUG 时，
+   * 避免每次 API 报错都把旁路 token 清掉；真实登录请关闭开发旁路）。
+   */
+  skipClearAuthStorageOnAuthError?: boolean
 }
 
 // ============================================================================
@@ -298,27 +303,107 @@ export interface EnrollIn {
 export interface RecruitmentPlan {
   id: number
   plan_no: string
-  protocol_id: number
+  protocol_id: number | null
+  /** 关联 Protocol.code，与预约管理 project_code 对齐 */
+  protocol_code?: string
+  /** 维周/手工项目编号，唯一 */
+  project_code?: string | null
+  /** 列表展示用：project_code 或 protocol_code */
+  display_project_code?: string
   title: string
   description: string
   target_count: number
+  /** 计划详情 GET（live）：与 display_project_code 对齐时，为初筛 SC「正式入组」人数 */
   enrolled_count: number
+  /** 计划详情 GET（live）：与 display_project_code 对齐时，为预约管理 SubjectAppointment 条数（预约条数）；列表接口仍为库表字段 */
   screened_count: number
+  /** 筛选管理：已完成正式筛选条数（通过+不通过） */
+  screening_completed_count?: number
+  /** 预约管理：与 display_project_code 对齐的 V1 访视点预约条数（按条计数，不去重） */
+  actual_appointment_count?: number
   registered_count: number
   start_date: string
   end_date: string
   status: string
+  /** 入组完成率 0–100 */
   completion_rate: number
+  /** 预约完成率 0–100：实际预约人数(V1 条数) / 计划预约人数 */
+  appointment_completion_rate?: number
+  create_time: string
+  sample_requirement?: string
+  wei_visit_point?: string
+  wei_visit_date?: string | null
+  researcher_name?: string
+  supervisor_name?: string
+  recruit_start_date?: string | null
+  recruit_end_date?: string | null
+  planned_appointment_count?: number
+  estimated_work_hours?: number | null
+  actual_work_hours?: number | null
+  recruit_specialist_names?: string[]
+  channel_recruitment_needed?: boolean
+  material_prep_status?: string
+  /** 预约文档包状态：missing | pending_review | approved | rejected */
+  appointment_docs_status?: string
+  appointment_docs_reject_reason?: string
+  recruit_template_ad_id?: number | null
+  recruit_template_ad_status?: string | null
+  ad_template_ready?: boolean
+  appointment_docs_ready?: boolean
+  material_prep_can_publish?: boolean
+}
+
+/** 招募模板广告（单计划一条 recruit_template） */
+export interface RecruitTemplateAd {
+  id: number
+  ad_type: string
+  title: string
+  content: string
+  status: string
+  template_project_code: string
+  template_project_name: string
+  template_sample_requirement: string
+  template_visit_date: string | null
+  template_honorarium: number | null
+  /** 联络费：金额或说明文字 */
+  template_liaison_fee: string
+  reject_reason: string
+  submitted_at: string | null
+  submitted_by_id: number | null
+  published_at: string | null
   create_time: string
 }
 
+export interface RecruitmentAppointmentDocItem {
+  doc_type: string
+  original_filename: string
+  file_size: number
+  file_url: string
+  storage_path: string
+  update_time: string | null
+}
+
 export interface RecruitmentPlanCreateIn {
-  protocol_id: number
+  protocol_id?: number | null
   title: string
   target_count: number
   start_date: string
   end_date: string
   description?: string
+  project_code?: string
+  sample_requirement?: string
+  wei_visit_point?: string
+  wei_visit_date?: string
+  researcher_name?: string
+  supervisor_name?: string
+  recruit_start_date?: string
+  recruit_end_date?: string
+  planned_appointment_count?: number
+  estimated_work_hours?: number
+  recruit_specialist_names?: string[]
+  channel_recruitment_needed?: boolean
+  material_prep_status?: string
+  actual_work_hours?: number
 }
 
 export interface EligibilityCriteria {

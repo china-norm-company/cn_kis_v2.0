@@ -253,7 +253,7 @@ class StartupPackService:
 
     @classmethod
     def _build_recruitment_pack(cls, protocol: Protocol, parsed_data: dict) -> Dict[str, Any]:
-        """招募准备包：入排口径、FAQ、粗筛问卷、渠道文案、海报文案（由 recruitment_prep_service 生成）。"""
+        """招募准备包：入排口径、FAQ、初筛问卷、渠道文案、海报文案（由 recruitment_prep_service 生成）。"""
         try:
             from apps.subject.services.recruitment_prep_service import generate_recruitment_prep_draft
             out = generate_recruitment_prep_draft(protocol_id=protocol.id)
