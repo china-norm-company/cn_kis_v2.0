@@ -882,6 +882,7 @@ def lab_schedule_person_calendar(
     year_month: str,
     person_role: Optional[str] = None,
     equipment: Optional[str] = None,
+    all_data: bool = False,
 ):
     """
     人员日历数据：排除「行政」「评估」「操作」组别（group/day_group 完全等于）、
@@ -891,7 +892,8 @@ def lab_schedule_person_calendar(
     from .models import LabScheduleUpload, LabScheduleRow
 
     ym = (year_month or '').strip()
-    if not ym or len(ym) < 6:
+    all_flag = bool(all_data)
+    if (not all_flag) and (not ym or len(ym) < 6):
         return {'code': 200, 'msg': 'OK', 'data': {
             'calendar_by_date': {}, 'detail_rows': [], 'source_file_name': '',
             'filter_options': {'person_roles': [], 'equipments': []},
@@ -904,7 +906,7 @@ def lab_schedule_person_calendar(
             'filter_options': {'person_roles': [], 'equipments': []},
         }}
 
-    ym_q = _lab_schedule_year_month_filter_q(ym)
+    ym_q = _lab_schedule_year_month_filter_q(ym) if not all_flag else None
     has_orm_rows = (
         LabScheduleRow.objects.filter(upload=rec)
         .exclude(_lab_schedule_protocol_exclude_q())
@@ -924,14 +926,16 @@ def lab_schedule_person_calendar(
             LabScheduleRow.objects.filter(upload=rec)
             .exclude(_lab_schedule_protocol_exclude_q())
             .exclude(_lab_schedule_exclude_admin_eval_group_q())
-            .filter(ym_q)
         )
+        if ym_q is not None:
+            base_qs = base_qs.filter(ym_q)
         base_for_options = (
             LabScheduleRow.objects.filter(upload=rec)
             .exclude(_lab_schedule_protocol_exclude_q())
             .exclude(_lab_schedule_exclude_admin_eval_group_q())
-            .filter(ym_q)
         )
+        if ym_q is not None:
+            base_for_options = base_for_options.filter(ym_q)
         person_opts = sorted(
             {
                 str(p).strip()
@@ -978,7 +982,7 @@ def lab_schedule_person_calendar(
             if _lab_schedule_json_row_excluded_admin_eval(row):
                 continue
             ds = str(row.get('date') or '')
-            if not _lab_schedule_date_str_in_year_month(ds, ym):
+            if (not all_flag) and (not _lab_schedule_date_str_in_year_month(ds, ym)):
                 continue
             if not _person_role_valid_for_calendar(str(row.get('person_role') or '')):
                 continue

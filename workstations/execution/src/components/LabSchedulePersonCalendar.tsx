@@ -277,15 +277,21 @@ export function LabSchedulePersonCalendar({ hasAnyLabData }: LabSchedulePersonCa
   )
 
   const handleExport = useCallback(async () => {
-    if (detailRows.length === 0) return
-    const monthDays = listYmdDatesInMonth(viewYear, viewMonth)
-    const monthSet = new Set(monthDays)
+    const exportRes = await schedulingApi.getLabSchedulePersonCalendar({
+      year_month: yearMonth,
+      person_role: appliedPerson.trim() || undefined,
+      equipment: appliedEquipment.trim() || undefined,
+      all_data: true,
+    })
+    const exportRows = exportRes?.data?.detail_rows ?? []
+    if (exportRows.length === 0) return
+    const allDates = [...new Set(exportRows.map((r) => dateKeyFromRow(r.date)).filter(Boolean))].sort()
     const cellLines = new Map<string, string[]>()
     const personSet = new Set<string>()
 
-    for (const r of detailRows) {
+    for (const r of exportRows) {
       const dk = dateKeyFromRow(r.date)
-      if (!dk || !monthSet.has(dk)) continue
+      if (!dk) continue
       const person = String(r.person_role ?? '').trim()
       if (!person) continue
       personSet.add(person)
@@ -297,7 +303,7 @@ export function LabSchedulePersonCalendar({ hasAnyLabData }: LabSchedulePersonCa
     }
 
     const persons = [...personSet].sort((a, b) => a.localeCompare(b, 'zh-CN'))
-    const header = ['人员/岗位', ...monthDays]
+    const header = ['人员/岗位', ...allDates]
     const colCount = header.length
     const columnValues: string[][] = Array.from({ length: colCount }, () => [])
 
@@ -310,7 +316,7 @@ export function LabSchedulePersonCalendar({ hasAnyLabData }: LabSchedulePersonCa
     for (const person of persons) {
       columnValues[0].push(person)
       const rowVals: string[] = [person]
-      monthDays.forEach((d, idx) => {
+      allDates.forEach((d, idx) => {
         const lines = cellLines.get(`${person}\t${d}`) ?? []
         const uniq = [...new Set(lines)].sort((a, b) => a.localeCompare(b, 'zh-CN'))
         const cellText = uniq.join('\n')
@@ -339,10 +345,10 @@ export function LabSchedulePersonCalendar({ hasAnyLabData }: LabSchedulePersonCa
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `实验室排期-人员日历-${yearMonth}.xlsx`
+    a.download = `实验室排期-人员日历-全部日期.xlsx`
     a.click()
     URL.revokeObjectURL(url)
-  }, [detailRows, yearMonth, viewYear, viewMonth])
+  }, [appliedEquipment, appliedPerson, yearMonth])
 
   const detailList = detailDate ? dayEntries(detailDate) : []
 

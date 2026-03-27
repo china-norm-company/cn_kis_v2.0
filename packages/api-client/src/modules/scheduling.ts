@@ -277,6 +277,7 @@ export const schedulingApi = {
     year_month: string
     person_role?: string
     equipment?: string
+    all_data?: boolean
   }) {
     return api.get<{
       calendar_by_date: Record<string, PersonCalendarDayEntry[]>
