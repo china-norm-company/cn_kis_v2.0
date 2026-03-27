@@ -187,7 +187,7 @@ def test_feishu_yaml(t: TestResult):
     t.check(len(uris) >= 18, f'redirect_uri 数量: {len(uris)} (>=18)')
 
     path_map = {
-        'secretary': '/login',
+        'secretary': '/secretary/',
         'finance': '/finance/',
         'admin': '/admin/',
         'digital-workforce': '/digital-workforce/',
@@ -380,10 +380,10 @@ def test_oauth_flow_e2e(t: TestResult):
     if config_ts:
         t.check('import.meta.env.VITE_FEISHU_APP_ID' in config_ts,
                 'config.ts 从 VITE_FEISHU_APP_ID 读取 appId')
-        t.check("normalized === 'secretary'" in config_ts,
-                'secretary 使用 /login 作为 redirect_uri')
-        t.check('/${normalized}/' in config_ts,
-                '其他工作台使用 /${key}/ 作为 redirect_uri')
+        t.check('${normalized}' in config_ts,
+                'redirect_uri 路径段使用 normalized workstation（秘书台为 /secretary/）')
+        t.check('baseNorm' in config_ts,
+                'config.ts 使用 baseNorm 与路径拼接 redirect_uri')
 
     auth_ts = read('packages/feishu-sdk/src/auth.ts')
     if auth_ts:

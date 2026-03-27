@@ -734,11 +734,16 @@ def _send_reauth_message(account, client, log):
     """向用户推送飞书消息引导重新授权（静默失败，不阻断流程）"""
     from django.conf import settings
     try:
+        from urllib.parse import quote
+
         app_id = getattr(settings, 'FEISHU_PRIMARY_APP_ID', '') or getattr(settings, 'FEISHU_APP_ID', '')
-        redirect_base = getattr(settings, 'FEISHU_REDIRECT_BASE', 'http://118.196.64.48')
+        redirect_base = str(
+            getattr(settings, 'FEISHU_REDIRECT_BASE', '') or 'http://118.196.64.48'
+        ).rstrip('/')
+        redirect_uri = f'{redirect_base}/secretary/'
         auth_url = (
             f'https://open.feishu.cn/open-apis/authen/v1/authorize'
-            f'?app_id={app_id}&redirect_uri={redirect_base}/login&response_type=code'
+            f'?app_id={app_id}&redirect_uri={quote(redirect_uri, safe="")}&response_type=code'
         )
         content = {
             'text': (

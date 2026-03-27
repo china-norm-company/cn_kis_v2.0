@@ -39,6 +39,8 @@ LIMS 数据注入器（P0 增强版）
 import contextvars
 import json
 import logging
+import re
+
 from datetime import date as date_cls, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -97,6 +99,64 @@ FIELD_ALIASES = {
     'sample_name': ['样品名称', '产品名称', 'sampleName', 'productName'],
     'batch_no': ['批号', 'batchNo', '批次号'],
 }
+
+
+def _parse_lims_date(val: Any) -> Optional[date_cls]:
+    """解析 LIMS 日期字符串为 date（YYYY-MM-DD / YYYY/MM/DD）"""
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s:
+        return None
+    s = s[:19].replace('T', ' ')[:10]
+    for fmt in ('%Y-%m-%d', '%Y/%m/%d', '%Y.%m.%d'):
+        try:
+            return datetime.strptime(s[:10], fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _lims_first_nonempty_str(raw: dict, keys: tuple) -> str:
+    """按候选键顺序取第一个非空字符串（LIMS 列名兼容）"""
+    for k in keys:
+        v = raw.get(k)
+        if v is None:
+            continue
+        s = str(v).strip()
+        if s:
+            return s
+    return ''
+
+
+def _infer_unified_name_type(display_name: str) -> str:
+    """
+    LIMS 未单列「名称分类」时，从展示用设备名推断统一规格类型。
+    例：温湿度记录仪 16 → 温湿度记录仪；电子天平 01 → 电子天平。
+    """
+    if not display_name or not str(display_name).strip():
+        return ''
+    s = str(display_name).strip()
+    t = re.sub(r'\s+\d+$', '', s)
+    if t != s:
+        return t.strip()
+    t = re.sub(r'[-_#]\d+$', '', s, flags=re.IGNORECASE)
+    return (t.strip() if t.strip() else s)
+
+
+def _parse_cycle_days(val: Any) -> Optional[int]:
+    """从「365」「365天」「12 个月」等提取周期天数"""
+    if val is None or val == '':
+        return None
+    if isinstance(val, int) and val > 0:
+        return val
+    if isinstance(val, float) and val > 0:
+        return int(val)
+    m = re.match(r'^(\d+)', str(val).strip())
+    if m:
+        n = int(m.group(1))
+        return n if n > 0 else None
+    return None
 
 
 def _extract_field(raw_data: dict, field_key: str, default: str = '') -> str:

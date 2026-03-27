@@ -355,7 +355,7 @@ def _normalize_oauth_code(code: str) -> str:
 
 def _resolve_redirect_uri(state_payload: Optional[Dict[str, Any]] = None) -> str:
     """
-    根据 workstation 推导 redirect_uri（与前端 config.ts 逻辑完全一致）。
+    根据 workstation 推导 redirect_uri（与 packages/feishu-sdk/src/config.ts 一致）。
 
     规则：
     - secretary → {base}/login（与生产 nginx location = /login 一致；本地 Vite 联调时前端会传 {base}/secretary/login）
@@ -368,8 +368,6 @@ def _resolve_redirect_uri(state_payload: Optional[Dict[str, Any]] = None) -> str
         or 'http://118.196.64.48'
     ).rstrip('/')
     ws = (state_payload or {}).get('ws', 'secretary')
-    if ws == 'secretary':
-        return f'{base}/login'
     return f'{base}/{ws}/'
 
 
