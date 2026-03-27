@@ -24,6 +24,7 @@
     "dev:lab-personnel": "pnpm --filter @cn-kis/lab-personnel dev",
     "dev:ethics": "pnpm --filter @cn-kis/ethics dev",
     "dev:reception": "pnpm --filter @cn-kis/reception dev",
+    "dev:all": "bash scripts/start-all-workstations.sh",
     "build:all": "pnpm -r build",
     "build:secretary": "pnpm --filter @cn-kis/secretary build",
     "build:research": "pnpm --filter @cn-kis/research build",
@@ -43,10 +44,14 @@
     "build:lab-personnel": "pnpm --filter @cn-kis/lab-personnel build",
     "build:ethics": "pnpm --filter @cn-kis/ethics build",
     "build:reception": "pnpm --filter @cn-kis/reception build",
+    "dev:wechat-mini": "pnpm --filter @cn-kis/wechat-mini dev:weapp",
+    "build:wechat-mini": "pnpm --filter @cn-kis/wechat-mini build:weapp",
+    "lint:wechat-mini": "pnpm --filter @cn-kis/wechat-mini lint",
     "type-check": "pnpm -r type-check",
     "clean": "pnpm -r exec rm -rf dist node_modules",
     "e2e": "playwright test",
-    "e2e:headed": "HEADED=1 playwright test"
+    "e2e:headed": "HEADED=1 playwright test",
+    "deploy:volcengine": "ALLOW_LEGACY_SERVER_DEPLOY=true bash deploy/deploy_volcengine.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

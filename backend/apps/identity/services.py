@@ -72,6 +72,8 @@ def verify_jwt_token(token: str) -> Optional[dict]:
     """验证 JWT Token，并校验会话未撤销/未过期。开发环境下可接受火山云等外部签发 token（仅校验签名与过期）。"""
     try:
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=['HS256'])
+        if payload.get('type') == 'phone_auth':
+            return payload
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         active_session_exists = SessionToken.objects.filter(
             token_hash=token_hash,
@@ -356,7 +358,7 @@ def _resolve_redirect_uri(state_payload: Optional[Dict[str, Any]] = None) -> str
     根据 workstation 推导 redirect_uri（与前端 config.ts 逻辑完全一致）。
 
     规则：
-    - secretary → {base}/login
+    - secretary → {base}/login（与生产 nginx location = /login 一致；本地 Vite 联调时前端会传 {base}/secretary/login）
     - 其他工作台 → {base}/{workstation}/
     - base 默认 http://118.196.64.48，可通过 FEISHU_REDIRECT_BASE 覆盖
     """

@@ -62,6 +62,7 @@ describe('FeishuAuth state handling', () => {
       '/api/v1/auth/feishu/callback',
       expect.objectContaining({
         code: 'oauth-code',
+        redirect_uri: 'https://example.com/secretary/',
         state: 'stored-oauth-state',
         trace_id: 'trace-001',
       }),
@@ -98,11 +99,53 @@ describe('FeishuAuth state handling', () => {
       '/api/v1/auth/feishu/callback',
       expect.objectContaining({
         code: 'in-app-code',
+        redirect_uri: 'https://example.com/secretary/',
         state: undefined,
         trace_id: 'trace-002',
       }),
       expect.any(Object),
     )
     expect(sessionStorage.getItem('cnkis_auth_state')).toBe('stale-state')
+  })
+
+  it('shares the same callback exchange result across concurrent autoLogin calls', async () => {
+    postMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({
+              data: {
+                access_token: 'jwt-token',
+                user: {
+                  id: 1,
+                  username: 'secretary_user',
+                  display_name: '子衿用户',
+                  email: 'secretary@example.com',
+                  avatar: '',
+                  account_type: 'internal',
+                },
+                roles: ['viewer'],
+                visible_workbenches: ['secretary'],
+              },
+            } as Awaited<ReturnType<typeof axios.post>>)
+          }, 10)
+        }),
+    )
+    sessionStorage.setItem('cnkis_auth_state', 'stored-oauth-state')
+    sessionStorage.setItem('cnkis_auth_trace_id', 'trace-003')
+    window.history.replaceState({}, '', '/secretary/?code=oauth-code')
+
+    const auth = new FeishuAuth({
+      appId: 'cli_secretary',
+      redirectUri: 'https://example.com/secretary/',
+      workstation: 'secretary',
+      apiBaseUrl: '/api/v1',
+    })
+
+    const [result1, result2] = await Promise.all([auth.autoLogin(), auth.autoLogin()])
+
+    expect(result1?.token).toBe('jwt-token')
+    expect(result2?.token).toBe('jwt-token')
+    expect(postMock).toHaveBeenCalledTimes(1)
   })
 })

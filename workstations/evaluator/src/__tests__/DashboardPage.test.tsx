@@ -30,6 +30,12 @@ vi.mock('@cn-kis/api-client', () => ({
       },
     }),
   },
+  clawRegistryApi: {
+    getByWorkstation: vi.fn().mockResolvedValue({ data: { quick_actions: [] } }),
+  },
+  digitalWorkforcePortalApi: {
+    getSuggestions: vi.fn().mockResolvedValue({ data: { data: { items: [] } } }),
+  },
 }))
 
 function renderWithProviders(ui: React.ReactElement) {

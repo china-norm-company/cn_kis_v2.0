@@ -33,7 +33,11 @@ class SchedulingQueryService:
         page_size: int = 20,
     ) -> dict:
         """排程计划分页列表"""
-        qs = SchedulePlan.objects.all().order_by('-create_time')
+        qs = (
+            SchedulePlan.objects.all()
+            .select_related('visit_plan', 'visit_plan__protocol')
+            .order_by('-create_time')
+        )
         if status:
             qs = qs.filter(status=status)
         if visit_plan_id:

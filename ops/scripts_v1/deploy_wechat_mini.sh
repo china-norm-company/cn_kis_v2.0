@@ -168,8 +168,8 @@ fi
 echo "[3/6] 准备上传包..."
 rm -rf /tmp/wechat-mini-upload
 mkdir -p /tmp/wechat-mini-upload
-cp -R apps/wechat-mini/dist /tmp/wechat-mini-upload/
-cp apps/wechat-mini/project.config.json /tmp/wechat-mini-upload/
+cp -R workstations/wechat-mini/dist /tmp/wechat-mini-upload/
+cp workstations/wechat-mini/project.config.json /tmp/wechat-mini-upload/
 
 echo "[4/6] 上传包到通讯云..."
 eval "$SCP_CMD -r /tmp/wechat-mini-upload \"$SSH_USER@$SSH_HOST:/tmp/\""

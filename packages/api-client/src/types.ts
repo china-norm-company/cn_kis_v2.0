@@ -500,9 +500,21 @@ export interface Protocol {
   regulatory_standard?: string
   sponsor_id?: number | null
   team_members?: Array<{ id: number; name: string; role: string }>
+  /** 治理台账号 ID，全局角色 QA质量管理（qa） */
+  consent_config_account_id?: number | null
   created_by_id: number | null
   create_time: string
   update_time: string
+}
+
+/** 现场筛选计划日 + 预约人数 target_count（与协议知情配置 screening_schedule 一致） */
+export interface ScreeningDay {
+  date: string
+  target_count: number
+  /** 测试筛选：日期须早于最早正式筛选日；不参与「最早现场筛选日期」；发布前须删除 */
+  is_test_screening?: boolean
+  /** 该现场日知情签署工作人员姓名，须与知情配置中双签名单（dual_sign_staffs）姓名一致 */
+  signing_staff_name?: string
 }
 
 export interface ProtocolCreateIn {
@@ -510,6 +522,20 @@ export interface ProtocolCreateIn {
   code?: string
   efficacy_type?: string
   sample_size?: number
+  /** 可选；创建时写入 parsed_data.consent_settings */
+  screening_schedule?: ScreeningDay[]
+  /** 治理台账号，须具备全局角色 qa（QA质量管理） */
+  consent_config_account_id?: number
+  /** 项目级知情签署工作人员姓名（须为双签名单中的姓名；创建后写入 consent_settings） */
+  consent_signing_staff_name?: string
+}
+
+/** 更新协议基本信息（执行台知情管理「编辑项目信息」） */
+export interface ProtocolBasicUpdateIn {
+  title?: string
+  code?: string
+  /** 0 表示清空知情配置负责人 */
+  consent_config_account_id?: number
 }
 
 // ============================================================================

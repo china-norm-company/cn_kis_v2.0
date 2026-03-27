@@ -220,13 +220,34 @@ def get_invoice_stats() -> dict:
 # ============================================================================
 # 回款管理
 # ============================================================================
-def list_payments(status: str = None, invoice_id: int = None, page: int = 1, page_size: int = 20, account=None) -> dict:
+def list_payments(
+    status: str = None,
+    invoice_id: int = None,
+    page: int = 1,
+    page_size: int = 20,
+    account=None,
+    start_date=None,
+    end_date=None,
+) -> dict:
+    from datetime import date as date_cls
     qs = Payment.objects.filter(is_deleted=False).select_related('invoice')
     qs = _apply_data_scope(qs, account)
     if status:
         qs = qs.filter(status=status)
     if invoice_id:
         qs = qs.filter(invoice_id=invoice_id)
+    if start_date:
+        try:
+            d0 = date_cls.fromisoformat(str(start_date)[:10])
+            qs = qs.filter(payment_date__gte=d0)
+        except ValueError:
+            pass
+    if end_date:
+        try:
+            d1 = date_cls.fromisoformat(str(end_date)[:10])
+            qs = qs.filter(payment_date__lte=d1)
+        except ValueError:
+            pass
     total = qs.count()
     offset = (page - 1) * page_size
     items = list(qs[offset:offset + page_size])

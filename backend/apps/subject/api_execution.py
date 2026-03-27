@@ -85,10 +85,41 @@ class AppointmentImportItem(Schema):
     visit_point: Optional[str] = ''
     project_code: Optional[str] = ''
     project_name: Optional[str] = ''
+    sc_number: Optional[str] = None  # SC号，导入时非空则直接使用
+    rd_number: Optional[str] = None  # RD号，导入时非空则直接使用
 
 
 class AppointmentImportIn(Schema):
     items: List[AppointmentImportItem]
+
+
+class AppointmentUpdateIn(Schema):
+    """单条预约部分字段更新（今日队列编辑用），仅传要改的字段。"""
+    appointment_date: Optional[str] = None  # YYYY-MM-DD
+    appointment_time: Optional[str] = None  # HH:mm
+    visit_point: Optional[str] = None
+    purpose: Optional[str] = None
+    project_code: Optional[str] = None
+    project_name: Optional[str] = None
+    name_pinyin_initials: Optional[str] = None
+    liaison: Optional[str] = None
+
+
+class AppointmentBatchItem(Schema):
+    appointment_date: str
+    appointment_time: Optional[str] = None
+    visit_point: Optional[str] = ''
+
+
+class AppointmentBatchIn(Schema):
+    items: List[AppointmentBatchItem]
+    project_code: Optional[str] = ''
+    project_name: Optional[str] = ''
+    name_pinyin_initials: Optional[str] = ''
+    liaison: Optional[str] = ''
+    gender: Optional[str] = ''
+    age: Optional[int] = None
+    enrollment_id: Optional[int] = None
 
 
 class ScheduleQueryIn(Schema):
@@ -100,10 +131,14 @@ class ScheduleQueryIn(Schema):
 # ============================================================================
 # 维周排程（与衡技我的排程同源，供接待台等调用）
 # ============================================================================
-@router.get('/my-schedule', summary='我的排程（维周排班）')
-@require_permission('workorder.workorder.read')
+@router.get('/my-schedule', summary='我的排程')
+@require_any_permission([
+    'evaluator.schedule.read',
+    'subject.recruitment.read',
+    'workorder.workorder.read',
+])
 def my_schedule(request, params: Query[ScheduleQueryIn]):
-    """获取当前用户（或指定人员）的排程，与衡技评估台「我的排程」同数据源。"""
+    """获取当前用户（或指定人员）的排程；与评估台/接待台共用数据源。"""
     account = _get_account_from_request(request)
     from apps.workorder.services.evaluator_service import get_my_schedule, get_my_schedule_month
     if params.month_offset is not None:
@@ -118,7 +153,7 @@ def my_schedule(request, params: Query[ScheduleQueryIn]):
             week_offset=params.week_offset,
             person_name=params.person_name or '',
         )
-    return {'code': 0, 'msg': 'ok', 'data': data}
+    return {'code': 200, 'msg': 'OK', 'data': data}
 
 
 # ============================================================================
@@ -234,17 +269,48 @@ def _build_import_subject_name(item: AppointmentImportItem) -> str:
 
 
 def _resolve_or_create_subject_for_import(item: AppointmentImportItem, account=None):
+    """按手机号/编号匹配或新建受试者。匹配到已有受试者时，用导入的姓名/性别/年龄更新。"""
     from .models import Subject
-    from .services.subject_service import create_subject as svc_create_subject
+    from .services.subject_service import (
+        create_subject as svc_create_subject,
+        find_subjects_by_mobile_normalized,
+        normalize_subject_phone,
+        resolve_subject_for_mobile_session,
+    )
 
     subject = None
     if item.subject_id:
         subject = Subject.objects.filter(id=item.subject_id, is_deleted=False).first()
     if not subject and item.subject_phone:
-        subject = Subject.objects.filter(phone=item.subject_phone.strip(), is_deleted=False).first()
+        raw_p = item.subject_phone.strip()
+        mob = normalize_subject_phone(raw_p)
+        appt_d = _parse_import_date(item.appointment_date)
+        if mob and find_subjects_by_mobile_normalized(mob).exists():
+            subject = resolve_subject_for_mobile_session(raw_p, appt_d)
+        if not subject:
+            subject = Subject.objects.filter(phone=raw_p, is_deleted=False).first()
     if not subject and item.subject_no:
         subject = Subject.objects.filter(subject_no=item.subject_no.strip(), is_deleted=False).first()
     if subject:
+        update_fields = []
+        if (item.subject_name or '').strip():
+            subject.name = (item.subject_name or '').strip()
+            update_fields.append('name')
+        if item.gender is not None:
+            norm = _normalize_import_gender(item.gender)
+            if norm and subject.gender != norm:
+                subject.gender = norm
+                update_fields.append('gender')
+        if item.age is not None:
+            try:
+                age_val = int(item.age)
+                if 0 <= age_val <= 150 and subject.age != age_val:
+                    subject.age = age_val
+                    update_fields.append('age')
+            except (TypeError, ValueError):
+                pass
+        if update_fields:
+            subject.save(update_fields=update_fields + ['update_time'])
         return subject
 
     phone = (item.subject_phone or '').strip()
@@ -290,6 +356,15 @@ def import_appointments(request, data: AppointmentImportIn):
 
     try:
         for idx, item in enumerate(data.items):
+            phone = (item.subject_phone or '').strip()
+            project_code = (item.project_code or '').strip()
+            if not phone:
+                errors.append({'row': idx + 1, 'msg': '手机号不能为空'})
+                continue
+            if not project_code:
+                errors.append({'row': idx + 1, 'msg': '项目编号不能为空'})
+                continue
+
             subject = _resolve_or_create_subject_for_import(item, account=account)
             if not subject:
                 errors.append({'row': idx + 1, 'msg': '请至少填写手机号或受试者编号'})
@@ -317,11 +392,23 @@ def import_appointments(request, data: AppointmentImportIn):
                     purpose=item.purpose or '',
                     enrollment_id=None,
                     visit_point=item.visit_point or '',
-                    project_code=item.project_code or '',
+                    project_code=project_code,
                     project_name=item.project_name or '',
                     name_pinyin_initials=(item.name_pinyin_initials or '').strip() or '',
                     liaison=(item.liaison or '').strip() or '',
                 )
+                pc = project_code
+                sc_val = (item.sc_number or '').strip()
+                rd_val = (item.rd_number or '').strip()
+                if pc and (sc_val or rd_val):
+                    from apps.subject.services.reception_service import ensure_project_sc_from_import
+                    ensure_project_sc_from_import(
+                        subject_id=subject.id,
+                        project_code=pc,
+                        sc_number=sc_val or None,
+                        rd_number=rd_val or None,
+                        operator_id=account.id if account else None,
+                    )
                 created += 1
             except Exception as e:
                 errors.append({'row': idx + 1, 'msg': str(e)})
@@ -331,12 +418,103 @@ def import_appointments(request, data: AppointmentImportIn):
         logger.exception('预约导入失败: %s', e)
         err_msg = str(e).strip() if e else ''
         if not err_msg:
-            err_msg = '导入失败，请检查数据格式（预约日期为 YYYY-MM-DD / YYYY/M/D，且至少提供手机号或受试者编号）'
+            err_msg = '导入失败，请检查数据格式（预约日期为 YYYY-MM-DD / YYYY/M/D，且项目编号、手机号不能为空）'
         return 500, {
             'code': 500,
             'msg': err_msg,
             'data': {},
         }
+
+
+@router.patch('/appointments/{appointment_id}', summary='更新单条预约（今日队列编辑）')
+@require_permission('subject.subject.update')
+def update_appointment(request, appointment_id: int, data: AppointmentUpdateIn):
+    from .services.execution_service import update_appointment as svc_update
+    from datetime import time as dt_time, date as dt_date
+    appt_date = None
+    if data.appointment_date:
+        s = data.appointment_date.strip()
+        if len(s) >= 10 and s[4] == '-' and s[7] == '-':
+            try:
+                appt_date = dt_date(int(s[:4]), int(s[5:7]), int(s[8:10]))
+            except (ValueError, IndexError):
+                pass
+    appt_time = None
+    if data.appointment_time:
+        parts = data.appointment_time.strip().split(':')
+        if len(parts) >= 2:
+            try:
+                appt_time = dt_time(int(parts[0]), int(parts[1]))
+            except (ValueError, IndexError):
+                pass
+    appt = svc_update(
+        appointment_id=appointment_id,
+        appointment_date=appt_date,
+        appointment_time=appt_time,
+        visit_point=data.visit_point,
+        purpose=data.purpose,
+        project_code=data.project_code,
+        project_name=data.project_name,
+        name_pinyin_initials=data.name_pinyin_initials,
+        liaison=data.liaison,
+    )
+    if not appt:
+        return 404, {'code': 404, 'msg': '预约不存在或已取消'}
+    return {'code': 200, 'msg': 'OK', 'data': {'id': appt.id}}
+
+
+@router.get('/{subject_id}/appointments/latest', summary='该受试者在该项目下最近一次预约时间')
+@require_permission('subject.subject.read')
+def get_latest_appointment_time(request, subject_id: int, project_code: Optional[str] = None):
+    from .services.execution_service import get_latest_appointment_time as svc
+    t = svc(subject_id=subject_id, project_code=project_code or '')
+    return {'code': 200, 'msg': 'OK', 'data': {'appointment_time': t}}
+
+
+@router.get('/appointments/daily-summary', summary='按日按项目预约情况汇总')
+@require_permission('subject.subject.read')
+def get_daily_appointment_summary(request, target_date: Optional[date] = None, project_code: Optional[str] = None):
+    from .services.execution_service import get_daily_appointment_summary as svc
+    from django.utils import timezone
+    d = None
+    if getattr(request, 'GET', None):
+        raw = request.GET.get('target_date')
+        if raw and isinstance(raw, str):
+            try:
+                parts = raw.strip().split('-')
+                if len(parts) == 3:
+                    d = date(int(parts[0]), int(parts[1]), int(parts[2]))
+            except (ValueError, TypeError, IndexError):
+                pass
+    if d is None and target_date is not None:
+        d = target_date if hasattr(target_date, 'isoformat') else None
+    if d is None:
+        d = timezone.localdate()
+    pc = ''
+    if getattr(request, 'GET', None) and request.GET.get('project_code'):
+        pc = request.GET.get('project_code') or ''
+    else:
+        pc = (project_code or '') if project_code is not None else ''
+    slots = svc(target_date=d, project_code=pc or '')
+    return {'code': 200, 'msg': 'OK', 'data': {'date': d.isoformat(), 'slots': slots}}
+
+
+@router.post('/{subject_id}/appointments/batch', summary='批量创建回访预约')
+@require_permission('subject.subject.update')
+def batch_create_appointments(request, subject_id: int, data: AppointmentBatchIn):
+    from .services.execution_service import batch_create_appointments as svc
+    ids = svc(
+        subject_id=subject_id,
+        items=[i.dict() for i in data.items],
+        project_code=data.project_code or '',
+        project_name=data.project_name or '',
+        name_pinyin_initials=data.name_pinyin_initials or '',
+        liaison=data.liaison or '',
+        gender=data.gender or '',
+        age=data.age,
+        enrollment_id=data.enrollment_id,
+    )
+    return {'code': 200, 'msg': 'OK', 'data': {'created': len(ids), 'ids': ids}}
 
 
 @router.get('/{subject_id}/checkins', summary='签到记录列表')

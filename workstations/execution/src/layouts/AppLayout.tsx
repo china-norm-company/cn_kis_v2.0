@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import {
   LayoutDashboard,
+  FolderKanban,
   CalendarClock,
   CalendarCheck,
   Users,
@@ -9,9 +10,12 @@ import {
   Database,
   FlaskConical,
   BarChart3,
+  FileSignature,
 } from 'lucide-react'
 import { FeishuAuthProvider, useFeishuContext, LoginFallback, createWorkstationFeishuConfig } from '@cn-kis/feishu-sdk'
 import { MobileWorkstationLayout, type MobileWorkstationNavItem } from '@cn-kis/ui-kit'
+import { ThemeProvider } from '../contexts/ThemeContext'
+import { ThemeToggle } from '../components/ThemeToggle'
 
 const FEISHU_CONFIG = createWorkstationFeishuConfig('execution')
 
@@ -24,13 +28,14 @@ const FEISHU_CONFIG = createWorkstationFeishuConfig('execution')
  *
  * 核心功能：
  * 1. 执行仪表盘：全局项目状态概览、关键指标、预警
- * 2. 排程管理：所有项目的访视排程与资源调配
- * 3. 访视管理：所有项目的访视执行跟踪
- * 4. 受试者管理：全局受试者入组/随访/脱落管理
- * 5. 工单管理：创建/分发/跟踪/关闭工单
- * 6. 变更管理：协议变更、方案偏差升级
- * 7. EDC数据采集：电子数据采集、录入、核查
- * 8. LIMS对接：人机料法环管理（人员/仪器/物料/方法/环境）
+ * 2. 项目管理：上传执行订单、资源需求
+ * 3. 排程管理：所有项目的访视排程与资源调配
+ * 4. 访视管理：所有项目的访视执行跟踪
+ * 5. 受试者管理：全局受试者入组/随访/脱落管理
+ * 6. 工单管理：创建/分发/跟踪/关闭工单
+ * 7. 变更管理：协议变更、方案偏差升级
+ * 8. EDC数据采集：电子数据采集、录入、核查
+ * 9. LIMS对接：人机料法环管理（人员/仪器/物料/方法/环境）
  */
 const navItems: Array<{
   to: string
@@ -39,9 +44,11 @@ const navItems: Array<{
   permissions: string[]
 }> = [
   { to: '/dashboard', icon: LayoutDashboard, label: '仪表盘', permissions: ['dashboard.stats.read'] },
+  { to: '/project-management', icon: FolderKanban, label: '项目管理', permissions: ['visit.plan.read'] },
   { to: '/scheduling', icon: CalendarClock, label: '排程管理', permissions: ['visit.plan.read'] },
   { to: '/visits', icon: CalendarCheck, label: '访视管理', permissions: ['visit.plan.read'] },
   { to: '/subjects', icon: Users, label: '受试者', permissions: ['subject.subject.read'] },
+  { to: '/consent', icon: FileSignature, label: '知情管理', permissions: ['subject.subject.read'] },
   { to: '/workorders', icon: ClipboardList, label: '工单管理', permissions: ['workorder.workorder.read'] },
   { to: '/changes', icon: GitBranch, label: '变更管理', permissions: ['protocol.protocol.read'] },
   { to: '/edc', icon: Database, label: 'EDC采集', permissions: ['edc.crf.read'] },
@@ -55,14 +62,16 @@ function useVisibleNavItems(): MobileWorkstationNavItem[] {
 
   if (mode === 'blank') return []
 
-  return navItems.filter((item) => {
-    const menuKey = item.to.replace(/^\//, '')
-    if (mode === 'pilot') {
-      const pilotMenus = ctx.profile?.visible_menu_items?.['execution'] ?? []
-      return pilotMenus.includes(menuKey)
-    }
-    return ctx.canSeeMenu('execution', menuKey, item.permissions)
-  }).map((item) => ({ to: item.to, label: item.label, icon: item.icon }))
+  return navItems
+    .filter((item) => {
+      const menuKey = item.to.replace(/^\//, '')
+      if (mode === 'pilot') {
+        const pilotMenus = ctx.profile?.visible_menu_items?.['execution'] ?? []
+        return pilotMenus.includes(menuKey)
+      }
+      return ctx.canSeeMenu('execution', menuKey, item.permissions)
+    })
+    .map((item) => ({ to: item.to, label: item.label, icon: item.icon }))
 }
 
 function WorkstationPlaceholder() {
@@ -96,6 +105,7 @@ function LayoutContent() {
       userName={user?.name}
       userAvatar={user?.avatar}
       onLogout={logout}
+      headerExtra={<ThemeToggle />}
     >
       <Outlet />
     </MobileWorkstationLayout>
@@ -118,7 +128,9 @@ export function AppLayout() {
       }
       loginFallback={<ExecutionLoginFallback />}
     >
-      <LayoutContent />
+      <ThemeProvider>
+        <LayoutContent />
+      </ThemeProvider>
     </FeishuAuthProvider>
   )
 }

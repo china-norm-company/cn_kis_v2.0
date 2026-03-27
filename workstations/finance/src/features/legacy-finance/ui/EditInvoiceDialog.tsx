@@ -46,7 +46,7 @@ const editInvoiceSchema = z.object({
   invoice_currency: z.string().optional(),
   invoice_amount_tax_included: z.number().optional(),
   revenue_amount: z.number().min(0.01, "收入金额必须大于0"),
-  invoice_type: z.enum(["全电专票", "全电普票", "形式发票"]),
+  invoice_type: z.enum(["全电专票", "全电普票", "形式发票", "专票", "普票"]),
   company_name: z.string().min(1, "我司名称不能为空"),
   project_code: z.string().min(1, "项目编号不能为空"),
   po: z.string().optional(),
@@ -113,13 +113,17 @@ export function EditInvoiceDialog({ open, onOpenChange, invoice, onSuccess }: Ed
         invoice_currency: invoice.invoice_currency,
         invoice_amount_tax_included: invoice.invoice_amount_tax_included,
         revenue_amount: invoice.revenue_amount,
-        invoice_type: (["全电专票", "全电普票", "形式发票"] as const).includes(invoice.invoice_type)
-          ? invoice.invoice_type
-          : ((invoice.invoice_type as string) === "普票" || invoice.invoice_type === "全电普票"
+        invoice_type: (
+          ["全电专票", "全电普票", "形式发票", "专票", "普票"] as const
+        ).includes(invoice.invoice_type as "全电专票" | "全电普票" | "形式发票" | "专票" | "普票")
+          ? (invoice.invoice_type as "全电专票" | "全电普票" | "形式发票" | "专票" | "普票")
+          : invoice.invoice_type === "普票" || invoice.invoice_type === "全电普票"
             ? "全电普票"
-            : (invoice.invoice_type as string) === "形式发票"
+            : invoice.invoice_type === "形式发票"
               ? "形式发票"
-              : "全电专票"),
+              : invoice.invoice_type === "专票"
+                ? "专票"
+                : "全电专票",
         company_name: invoice.company_name,
         project_code: invoice.project_code,
         po: invoice.po,

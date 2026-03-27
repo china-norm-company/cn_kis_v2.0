@@ -1,6 +1,6 @@
 import { ErrorBoundary, OfflineBanner, HealthPage } from '@cn-kis/ui-kit'
 import { useNetworkStatus } from '@cn-kis/feishu-sdk'
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { AppLayout } from './layouts/AppLayout'
 import { QuoteListPage } from './pages/QuoteListPage'
@@ -25,6 +25,7 @@ import { EfficiencyPage } from './pages/EfficiencyPage'
 import { InvoiceManagementNewPage } from './pages/new/InvoiceManagementNewPage'
 import StipendPayPage from './pages/StipendPayPage'
 import { useApiInit } from './hooks/useApiInit'
+import { FinanceHomeRedirect } from './components/FinanceHomeRedirect'
 
 function App() {
   useApiInit()
@@ -38,7 +39,7 @@ function App() {
         <Routes>
           <Route path="/health" element={<HealthPage workstation="finance" />} />
           <Route path="/" element={<AppLayout />}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route index element={<FinanceHomeRedirect />} />
             <Route path="dashboard" element={<FinanceDashboardPage />} />
             <Route path="profit-analysis" element={<ProfitAnalysisPage />} />
             <Route path="reports" element={<FinanceReportPage />} />

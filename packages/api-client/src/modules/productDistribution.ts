@@ -6,6 +6,14 @@ import { api } from '../client'
 
 type KisBody<T> = { success?: boolean; data?: T; message?: string }
 
+/** 工单执行记录分页接口 data 载荷 */
+export type WorkOrderExecutionsPage = {
+  list: unknown[]
+  total: number
+  page: number
+  pageSize: number
+}
+
 async function unwrap<T>(promise: Promise<KisBody<T>>): Promise<T> {
   const res = await promise as KisBody<T>
   if (res && res.success !== false && res.data !== undefined) return res.data
@@ -23,8 +31,24 @@ export const productDistributionApi = {
     pageSize?: number
   }) => unwrap(api.get<KisBody<any>>('/product/workorders', { params })),
 
-  getWorkOrder: (id: number) =>
-    unwrap(api.get<KisBody<any>>(`/product/workorders/${id}`)),
+  getWorkOrder: (id: number, params?: { include_executions?: boolean }) =>
+    unwrap(
+      api.get<KisBody<any>>(`/product/workorders/${id}`, {
+        params:
+          params?.include_executions === false ? { include_executions: false } : undefined,
+      }),
+    ),
+
+  /** 工单下执行记录分页（摘要列表） */
+  getWorkOrderExecutions: (id: number, params?: { page?: number; pageSize?: number }): Promise<WorkOrderExecutionsPage> =>
+    unwrap<WorkOrderExecutionsPage>(
+      api.get(`/product/workorders/${id}/executions`, {
+        params: {
+          page: params?.page ?? 1,
+          pageSize: params?.pageSize ?? 10,
+        },
+      }) as Promise<KisBody<WorkOrderExecutionsPage>>,
+    ),
 
   createWorkOrder: (data: {
     project_no: string
@@ -113,6 +137,18 @@ export const productDistributionApi = {
   /** 获取全部工单（用于下拉/参考），后端单页最大 100 条 */
   getAllWorkOrders: () =>
     unwrap(api.get<KisBody<any>>('/product/workorders', { params: { page: 1, pageSize: 100 } })),
+
+  /** 项目执行概览：按日期返回当日项目执行项 */
+  getExecutionOverview: (date: string) =>
+    unwrap(
+      api.get<KisBody<{ items: Array<Record<string, unknown>> }>>('/product/execution-overview', {
+        params: { date: date.slice(0, 10) },
+      }),
+    ),
+
+  /** 项目执行概览：按月份返回每日项目数量，用于月历角标 */
+  getExecutionOverviewCounts: (month: string) =>
+    unwrap(api.get<KisBody<Record<string, number>>>('/product/execution-overview/counts', { params: { month: month.slice(0, 7) } })),
 
   /** 导出 Excel：POST 表头与行数据，触发浏览器下载 */
   exportExcel: async (params: {

@@ -1,7 +1,7 @@
 import { type ComponentType, type ReactNode, useMemo, useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
-import { Menu, X, LogOut } from 'lucide-react'
+import { Menu, X, LogOut, ChevronDown, ChevronRight } from 'lucide-react'
 
 export interface MobileWorkstationNavItem {
   to: string
@@ -10,11 +10,17 @@ export interface MobileWorkstationNavItem {
   indent?: boolean
 }
 
+export interface MobileWorkstationNavSection {
+  title: string
+  items: MobileWorkstationNavItem[]
+}
+
 export interface MobileWorkstationLayoutProps {
   title: string
   logoText: string
   logoClassName?: string
   navItems: MobileWorkstationNavItem[]
+  navSections?: MobileWorkstationNavSection[]
   children: ReactNode
   userName?: string
   userAvatar?: string
@@ -39,6 +45,7 @@ function NavigationList({
         <NavLink
           key={item.to}
           to={item.to}
+          end
           onClick={onNavigate}
           className={({ isActive }) =>
             clsx(
@@ -54,6 +61,102 @@ function NavigationList({
           <span>{item.label}</span>
         </NavLink>
       ))}
+    </nav>
+  )
+}
+
+function SectionedNavigationList({
+  sections,
+  onNavigate,
+}: {
+  sections: MobileWorkstationNavSection[]
+  onNavigate?: () => void
+}) {
+  const location = useLocation()
+
+  // 初始化：当前路由所在的分组默认展开，其余收起
+  const [openSections, setOpenSections] = useState<Set<string>>(() => {
+    const defaultOpen = new Set<string>()
+    for (const section of sections) {
+      const isActive = section.items.some((item) =>
+        location.hash ? location.hash.replace('#', '') === item.to : location.pathname === item.to,
+      )
+      if (isActive) defaultOpen.add(section.title)
+    }
+    // 若没有匹配（如首次加载），展开第一个分组
+    if (defaultOpen.size === 0 && sections.length > 0) defaultOpen.add(sections[0].title)
+    return defaultOpen
+  })
+
+  const toggleSection = (title: string) => {
+    setOpenSections((prev) => {
+      const next = new Set(prev)
+      if (next.has(title)) {
+        next.delete(title)
+      } else {
+        next.add(title)
+      }
+      return next
+    })
+  }
+
+  return (
+    <nav className="flex flex-col px-3 py-3">
+      {sections.map((section) => {
+        const isOpen = openSections.has(section.title)
+        const hasActiveChild = section.items.some((item) => {
+          const hash = location.hash.replace('#', '')
+          return hash ? hash === item.to || hash.startsWith(item.to + '/') : false
+        })
+
+        return (
+          <div key={section.title} className="mb-1">
+            {/* 一级菜单：分组标题 */}
+            <button
+              onClick={() => toggleSection(section.title)}
+              className={clsx(
+                'flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wide transition-colors',
+                hasActiveChild
+                  ? 'text-primary-700 bg-primary-50/60'
+                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700',
+              )}
+            >
+              <span>{section.title}</span>
+              {isOpen ? (
+                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5 opacity-60" />
+              )}
+            </button>
+
+            {/* 二级菜单：子菜单项 */}
+            {isOpen && (
+              <div className="mt-0.5 flex flex-col gap-0.5 pl-2">
+                {section.items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end
+                    onClick={onNavigate}
+                    className={({ isActive }) =>
+                      clsx(
+                        'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                        item.indent && 'ml-4 text-[13px]',
+                        isActive
+                          ? 'bg-primary-50 text-primary-700'
+                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800',
+                      )
+                    }
+                  >
+                    <item.icon className="h-4 w-4 flex-shrink-0" />
+                    <span>{item.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
     </nav>
   )
 }
@@ -79,6 +182,7 @@ export function MobileWorkstationLayout({
   logoText,
   logoClassName = 'bg-primary-600',
   navItems,
+  navSections,
   children,
   userName,
   userAvatar,
@@ -90,7 +194,7 @@ export function MobileWorkstationLayout({
   mobilePrimaryNavItems,
 }: MobileWorkstationLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const hasNav = navItems.length > 0
+  const hasNav = navItems.length > 0 || (navSections?.length ?? 0) > 0
   const primaryNavItems = useMemo(() => {
     if (mobilePrimaryNavItems?.length) return mobilePrimaryNavItems.slice(0, 5)
     return navItems.slice(0, 5)
@@ -115,10 +219,22 @@ export function MobileWorkstationLayout({
     )
   }, [onLogout, userAvatar, userName])
 
+  const sidebarNav = navSections?.length ? (
+    <SectionedNavigationList sections={navSections} />
+  ) : (
+    <NavigationList items={navItems} />
+  )
+
+  const mobileSidebarNav = navSections?.length ? (
+    <SectionedNavigationList sections={navSections} onNavigate={() => setMobileMenuOpen(false)} />
+  ) : (
+    <NavigationList items={navItems} onNavigate={() => setMobileMenuOpen(false)} />
+  )
+
   return (
     <div className="flex min-h-[100dvh] h-[100dvh] md:h-screen overflow-hidden bg-slate-50">
-      <aside className="hidden w-56 flex-col border-r border-slate-200 bg-white md:flex">
-        <div className="flex h-14 items-center border-b border-slate-200 px-5">
+      <aside className="hidden w-56 flex-shrink-0 flex-col border-r border-slate-200 bg-white md:flex h-full min-h-0">
+        <div className="flex h-14 shrink-0 items-center border-b border-slate-200 px-5">
           <div className="flex items-center gap-2">
             <div
               className={clsx(
@@ -131,8 +247,10 @@ export function MobileWorkstationLayout({
             <span className="text-sm font-semibold text-slate-700">{appName}</span>
           </div>
         </div>
-        <NavigationList items={navItems} />
-        {sidebarFooter}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {sidebarNav}
+        </div>
+        {sidebarFooter ? <div className="shrink-0 border-t border-slate-100">{sidebarFooter}</div> : null}
       </aside>
 
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -174,6 +292,7 @@ export function MobileWorkstationLayout({
               <li key={item.to} className="min-w-0">
                 <NavLink
                   to={item.to}
+                  end
                   className={({ isActive }) =>
                     clsx(
                       'flex h-full w-full flex-col items-center justify-center gap-0.5 rounded-lg px-1 text-[11px] font-medium',
@@ -197,8 +316,8 @@ export function MobileWorkstationLayout({
             onClick={() => setMobileMenuOpen(false)}
             aria-label="关闭导航菜单遮罩"
           />
-          <aside className="relative h-full w-72 max-w-[85vw] border-r border-slate-200 bg-white shadow-xl">
-            <div className="flex h-14 items-center justify-between border-b border-slate-200 px-4 pt-[env(safe-area-inset-top)]">
+          <aside className="relative flex h-full w-72 max-w-[85vw] flex-col border-r border-slate-200 bg-white shadow-xl">
+            <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-4 pt-[env(safe-area-inset-top)]">
               <div className="flex items-center gap-2">
                 <div
                   className={clsx(
@@ -218,11 +337,13 @@ export function MobileWorkstationLayout({
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="border-b border-slate-100 px-4 py-3">
+            <div className="shrink-0 border-b border-slate-100 px-4 py-3">
               <UserIdentity userName={userName} userAvatar={userAvatar} />
             </div>
-            <NavigationList items={navItems} onNavigate={() => setMobileMenuOpen(false)} />
-            <div className="pb-[env(safe-area-inset-bottom)]" />
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {mobileSidebarNav}
+            </div>
+            <div className="shrink-0 pb-[env(safe-area-inset-bottom)]" />
           </aside>
         </div>
       )}

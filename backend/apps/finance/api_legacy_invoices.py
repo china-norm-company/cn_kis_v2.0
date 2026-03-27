@@ -4,7 +4,7 @@
 与前端「发票管理（新）」对接，路径 /finance/invoices（与合同关联的 Invoice 使用 /finance/invoices/list）。
 数据存 t_legacy_invoice，多用户共享。
 """
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from ninja import Router, Query
 from pydantic import BaseModel
@@ -299,3 +299,78 @@ def delete_legacy_invoice(request, invoice_id: int):
     inv.is_deleted = True
     inv.save(update_fields=['is_deleted', 'update_time'])
     return {'code': 200, 'msg': 'OK', 'success': True, 'data': None}
+
+
+# ============================================================================
+# 逾期催款提醒（与前端 GET /finance/overdue-reminders 对接，数据源于 LegacyInvoice）
+# ============================================================================
+def list_overdue_reminders_payload(
+    page: int = 1,
+    page_size: int = 20,
+    customer_name: Optional[str] = None,
+    sales_manager: Optional[str] = None,
+    min_overdue_days: Optional[int] = None,
+) -> dict:
+    """按前端 mock 逻辑：未结清且应到账日早于今日的发票 → 催款提醒列表。"""
+    today = date.today()
+    qs = LegacyInvoice.objects.filter(is_deleted=False).exclude(status='paid')
+    if customer_name:
+        qs = qs.filter(customer_name__icontains=customer_name.strip())
+    if sales_manager:
+        qs = qs.filter(sales_manager__icontains=sales_manager.strip())
+    reminders = []
+    for inv in qs.order_by('-invoice_date', '-id'):
+        rev = float(inv.revenue_amount)
+        pay = float(inv.payment_amount or 0)
+        unpaid = rev - pay
+        if unpaid <= 0.0001:
+            continue
+        exp = None
+        if inv.expected_payment_date:
+            exp = inv.expected_payment_date
+        elif inv.invoice_date is not None and inv.payment_term is not None:
+            exp = inv.invoice_date + timedelta(days=int(inv.payment_term))
+        if not exp:
+            continue
+        if exp >= today:
+            continue
+        overdue_days = (today - exp).days
+        if min_overdue_days is not None and overdue_days < min_overdue_days:
+            continue
+        reminders.append({
+            'id': inv.id,
+            'invoice_id': inv.id,
+            'invoice_no': inv.invoice_no,
+            'invoice_date': inv.invoice_date.isoformat() if inv.invoice_date else '',
+            'customer_name': inv.customer_name,
+            'project_code': inv.project_code or '',
+            'sales_manager': inv.sales_manager or '',
+            'invoice_amount': rev,
+            'paid_amount': pay,
+            'unpaid_amount': unpaid,
+            'payment_term': inv.payment_term,
+            'expected_payment_date': exp.isoformat(),
+            'overdue_days': overdue_days,
+            'reminder_count': 0,
+            'last_reminder_date': None,
+            'status': 'pending',
+            'created_at': inv.create_time.isoformat() if inv.create_time else '',
+            'updated_at': inv.update_time.isoformat() if inv.update_time else '',
+        })
+    reminders.sort(key=lambda x: -x['overdue_days'])
+    total = len(reminders)
+    page = max(1, page)
+    page_size = max(1, min(500, page_size))
+    total_pages = (total + page_size - 1) // page_size if page_size else 1
+    start = (page - 1) * page_size
+    return {
+        'code': 200,
+        'msg': 'OK',
+        'success': True,
+        'data': {
+            'reminders': reminders[start:start + page_size],
+            'total_records': total,
+            'total_pages': total_pages,
+            'current_page': page,
+        },
+    }

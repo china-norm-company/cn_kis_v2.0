@@ -237,6 +237,9 @@ class PaymentQueryParams(Schema):
     invoice_id: Optional[int] = None
     page: int = 1
     page_size: int = 20
+    # 与前端收款列表筛选一致（到账日）
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
 
 
 class PaymentCreateIn(Schema):
@@ -454,3 +457,7 @@ class InvoiceRequestUpdateIn(Schema):
     items: Optional[List[InvoiceRequestItemIn]] = None
     po: Optional[str] = None
     request_by: Optional[str] = None
+
+
+class OverdueReminderBatchSendIn(Schema):
+    reminder_ids: List[int]

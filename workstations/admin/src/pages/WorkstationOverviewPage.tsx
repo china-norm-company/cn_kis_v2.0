@@ -1,4 +1,4 @@
-import { Monitor, ExternalLink } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
 
 const WORKSTATIONS = [
   { key: 'secretary', name: '子衿·秘书台', path: '/secretary', color: 'bg-violet-50 text-violet-600 border-violet-200', logo: '衿' },

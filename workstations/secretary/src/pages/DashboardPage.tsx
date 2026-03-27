@@ -210,8 +210,8 @@ export function DashboardPage() {
   const statsData = stats?.data
   const activityList = activities?.data ?? []
   const overview = overviewRes?.data
-  const effectMetrics = (effectMetricsRes as { data?: AssistantEffectMetrics } | undefined)?.data
-  const researchInsights = (researchInsightsRes as { data?: ResearchInsights } | undefined)?.data
+  const effectMetrics = effectMetricsRes?.data as unknown as AssistantEffectMetrics | undefined
+  const researchInsights = researchInsightsRes?.data as unknown as ResearchInsights | undefined
   const routePref = (routePrefRes as { data?: { overrides?: Record<string, string> } } | undefined)?.data?.overrides ?? {}
   const pushResearchInsightMutation = useMutation({
     mutationFn: (cardTypes: string[]) =>

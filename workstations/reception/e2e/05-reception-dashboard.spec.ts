@@ -56,6 +56,10 @@ const todayStats = {
   total_signed_in: 3,
   signed_in_count: 3,
   walk_in_count: 1,
+  project_options: [
+    { code: 'PROJ-001', name: '测试项目一' },
+    { code: 'PROJ-002', name: '测试项目二' },
+  ],
 }
 
 const pendingAlerts = {

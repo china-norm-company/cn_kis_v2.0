@@ -58,84 +58,121 @@ function WorkOrderForm({
   setFormData,
   errors = {},
   hasTriedSubmit = false,
+  readOnlyExecutionFields = false,
 }: {
   formData: Partial<WorkOrderCreate>
   setFormData: Dispatch<SetStateAction<Partial<WorkOrderCreate>>>
   errors?: Record<string, string>
   hasTriedSubmit?: boolean
+  /** 编辑工单时：项目主数据与执行台一致，禁止在物料台修改 */
+  readOnlyExecutionFields?: boolean
 }) {
   const inputCls = 'h-9 w-full rounded-lg border border-slate-200 px-3 text-sm'
   const errCls = 'border-red-500'
+  const roCls = readOnlyExecutionFields ? 'bg-slate-50 text-slate-700 cursor-not-allowed' : ''
   return (
     <div className="space-y-4">
+      {readOnlyExecutionFields && (
+        <p className="text-xs text-slate-600 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+          项目编号、名称、日期、访视次数、研究员、督导 与执行台一致，请在<strong className="font-medium">执行台项目管理</strong>中维护。
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5" data-field="project_no">
-          <label className="text-xs font-medium text-slate-500">项目编号 <span className="text-red-500">*</span></label>
+          <label className="text-xs font-medium text-slate-500">
+            项目编号 {!readOnlyExecutionFields && <span className="text-red-500">*</span>}
+            {readOnlyExecutionFields && <span className="text-slate-400 font-normal">（只读）</span>}
+          </label>
           <input
-            className={`${inputCls} ${hasTriedSubmit && errors.project_no ? errCls : ''}`}
+            className={`${inputCls} ${roCls} ${hasTriedSubmit && errors.project_no ? errCls : ''}`}
             value={formData.project_no ?? ''}
             onChange={(e) => setFormData((f) => ({ ...f, project_no: e.target.value }))}
             placeholder="输入项目编号"
+            disabled={readOnlyExecutionFields}
           />
           {hasTriedSubmit && errors.project_no && <p className="text-sm text-red-600">{errors.project_no}</p>}
         </div>
         <div className="space-y-1.5" data-field="project_name">
-          <label className="text-xs font-medium text-slate-500">项目名称 <span className="text-red-500">*</span></label>
+          <label className="text-xs font-medium text-slate-500">
+            项目名称 {!readOnlyExecutionFields && <span className="text-red-500">*</span>}
+            {readOnlyExecutionFields && <span className="text-slate-400 font-normal">（只读）</span>}
+          </label>
           <input
-            className={`${inputCls} ${hasTriedSubmit && errors.project_name ? errCls : ''}`}
+            className={`${inputCls} ${roCls} ${hasTriedSubmit && errors.project_name ? errCls : ''}`}
             value={formData.project_name ?? ''}
             onChange={(e) => setFormData((f) => ({ ...f, project_name: e.target.value }))}
             placeholder="输入项目名称"
+            disabled={readOnlyExecutionFields}
           />
           {hasTriedSubmit && errors.project_name && <p className="text-sm text-red-600">{errors.project_name}</p>}
         </div>
         <div className="space-y-1.5" data-field="project_start_date">
-          <label className="text-xs font-medium text-slate-500">项目启动日期 <span className="text-red-500">*</span></label>
+          <label className="text-xs font-medium text-slate-500">
+            项目启动日期 {!readOnlyExecutionFields && <span className="text-red-500">*</span>}
+            {readOnlyExecutionFields && <span className="text-slate-400 font-normal">（只读）</span>}
+          </label>
           <input
             type="date"
-            className={`${inputCls} ${hasTriedSubmit && errors.project_start_date ? errCls : ''}`}
+            className={`${inputCls} ${roCls} ${hasTriedSubmit && errors.project_start_date ? errCls : ''}`}
             value={formData.project_start_date ?? ''}
             onChange={(e) => setFormData((f) => ({ ...f, project_start_date: e.target.value }))}
+            disabled={readOnlyExecutionFields}
           />
           {hasTriedSubmit && errors.project_start_date && <p className="text-sm text-red-600">{errors.project_start_date}</p>}
         </div>
         <div className="space-y-1.5" data-field="project_end_date">
-          <label className="text-xs font-medium text-slate-500">项目结束日期 <span className="text-red-500">*</span></label>
+          <label className="text-xs font-medium text-slate-500">
+            项目结束日期 {!readOnlyExecutionFields && <span className="text-red-500">*</span>}
+            {readOnlyExecutionFields && <span className="text-slate-400 font-normal">（只读）</span>}
+          </label>
           <input
             type="date"
-            className={`${inputCls} ${hasTriedSubmit && errors.project_end_date ? errCls : ''}`}
+            className={`${inputCls} ${roCls} ${hasTriedSubmit && errors.project_end_date ? errCls : ''}`}
             value={formData.project_end_date ?? ''}
             onChange={(e) => setFormData((f) => ({ ...f, project_end_date: e.target.value }))}
+            disabled={readOnlyExecutionFields}
           />
           {hasTriedSubmit && errors.project_end_date && <p className="text-sm text-red-600">{errors.project_end_date}</p>}
         </div>
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-slate-500">访视次数</label>
+          <label className="text-xs font-medium text-slate-500">
+            访视次数
+            {readOnlyExecutionFields && <span className="text-slate-400 font-normal">（只读）</span>}
+          </label>
           <input
             type="number"
             min={0}
-            className={inputCls}
+            className={`${inputCls} ${roCls}`}
             value={formData.visit_count ?? ''}
             onChange={(e) => setFormData((f) => ({ ...f, visit_count: parseInt(e.target.value, 10) || 0 }))}
             placeholder="0"
+            disabled={readOnlyExecutionFields}
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-slate-500">研究员</label>
+          <label className="text-xs font-medium text-slate-500">
+            研究员
+            {readOnlyExecutionFields && <span className="text-slate-400 font-normal">（只读）</span>}
+          </label>
           <input
-            className={inputCls}
+            className={`${inputCls} ${roCls}`}
             value={formData.researcher ?? ''}
             onChange={(e) => setFormData((f) => ({ ...f, researcher: e.target.value }))}
             placeholder="输入研究员姓名"
+            disabled={readOnlyExecutionFields}
           />
         </div>
         <div className="space-y-1.5 col-span-2 sm:col-span-1">
-          <label className="text-xs font-medium text-slate-500">督导</label>
+          <label className="text-xs font-medium text-slate-500">
+            督导
+            {readOnlyExecutionFields && <span className="text-slate-400 font-normal">（只读）</span>}
+          </label>
           <input
-            className={inputCls}
+            className={`${inputCls} ${roCls}`}
             value={formData.supervisor ?? ''}
             onChange={(e) => setFormData((f) => ({ ...f, supervisor: e.target.value }))}
             placeholder="输入督导姓名"
+            disabled={readOnlyExecutionFields}
           />
         </div>
       </div>
@@ -314,7 +351,7 @@ function WorkOrderViewContent({
                 <Card key={ex.id} variant="elevated" className="p-4 border-l-4 border-l-blue-400">
                   <p className="text-sm font-medium text-slate-800">执行记录 #{recordNum}（共{total}条）</p>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    执行日期：{dateStr ?? '—'} · 受试者：{ex.subject_rd}（{ex.subject_initials}）· 筛选编号：{fullRecord?.screening_no?.trim() || '—'} · 操作人：{(ex as { operator_name?: string }).operator_name ?? '—'} · 产品数：{productCount}
+                    执行日期：{dateStr ?? '—'} · 受试者SC号：{fullRecord?.screening_no?.trim() || '—'} · 首字母：{ex.subject_initials} · 受试者RD：{(ex.subject_rd || '').trim() || '—'} · 操作人：{(ex as { operator_name?: string }).operator_name ?? '—'} · 产品数：{productCount}
                   </p>
                   <div className="mt-3 text-sm">
                     {fullRecord == null ? (
@@ -449,18 +486,19 @@ export function WorkOrderTab() {
   }, [keyword])
 
   const validate = (): Record<string, string> => {
-    const today = new Date().toISOString().split('T')[0]
     const e: Record<string, string> = {}
     if (!formData.project_no?.trim()) e.project_no = '请填写项目编号'
     if (!formData.project_name?.trim()) e.project_name = '请填写项目名称'
     if (!formData.project_start_date) e.project_start_date = '请选择'
     if (!formData.project_end_date) e.project_end_date = '请选择'
-    if (formData.project_start_date && formData.project_start_date < today) e.project_start_date = '启动日期不能早于今日'
     if (formData.project_start_date && formData.project_end_date && formData.project_end_date <= formData.project_start_date) {
       e.project_end_date = '须晚于启动日期'
     }
     return e
   }
+
+  /** 编辑时项目主数据只读，仅校验可编辑区块（当前无可选必填项） */
+  const validateForEdit = (): Record<string, string> => ({})
 
   const openCreate = () => {
     setErrors({})
@@ -569,17 +607,10 @@ export function WorkOrderTab() {
   const handleSaveEdit = async () => {
     if (!editingRow) return
     setHasTriedSubmit(true)
-    const newErrors = validate()
+    const newErrors = validateForEdit()
     setErrors(newErrors)
     if (Object.keys(newErrors).length > 0) return
     const payload = {
-      project_no: formData.project_no!.trim(),
-      project_name: formData.project_name!.trim(),
-      project_start_date: formData.project_start_date!,
-      project_end_date: formData.project_end_date!,
-      visit_count: formData.visit_count ?? 0,
-      researcher: formData.researcher || null,
-      supervisor: formData.supervisor || null,
       usage_method: formData.usage_method || null,
       usage_frequency: formData.usage_frequency || null,
       precautions: formData.precautions || null,
@@ -610,7 +641,7 @@ export function WorkOrderTab() {
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="搜索工单编号、项目编号、名称、研究员..."
+            placeholder="搜索项目编号、名称、研究员..."
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             className="h-9 w-full pl-8 rounded-lg border border-slate-200 text-sm"
@@ -636,7 +667,6 @@ export function WorkOrderTab() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="text-left px-2 py-1.5 font-medium">工单编号</th>
                   <th className="text-left px-2 py-1.5 font-medium">项目编号</th>
                   <th className="text-left px-2 py-1.5 font-medium">项目名称</th>
                   <th className="text-left px-2 py-1.5 font-medium">启动日期</th>
@@ -651,7 +681,6 @@ export function WorkOrderTab() {
               <tbody>
                 {list.map((wo) => (
                   <tr key={wo.id} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="px-2 py-1.5 font-medium">{wo.work_order_no}</td>
                     <td className="px-2 py-1.5">{wo.project_no}</td>
                     <td className="px-2 py-1.5 max-w-[160px] truncate" title={wo.project_name}>{wo.project_name}</td>
                     <td className="px-2 py-1.5">{wo.project_start_date}</td>
@@ -730,7 +759,6 @@ export function WorkOrderTab() {
         }
       >
         <div className="space-y-2">
-          <p className="text-sm text-slate-500">工单编号由系统自动生成</p>
           {createError && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{createError}</div>
           )}
@@ -754,14 +782,19 @@ export function WorkOrderTab() {
         }
       >
         <div className="space-y-2">
-          {editingRow && <p className="text-sm text-slate-500">{editingRow.work_order_no}</p>}
           {editError && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{editError}</div>
           )}
           {editFormLoading ? (
             <div className="py-8 text-center text-sm text-slate-500">加载中...</div>
           ) : (
-            <WorkOrderForm formData={formData} setFormData={setFormData} errors={errors} hasTriedSubmit={hasTriedSubmit} />
+            <WorkOrderForm
+              formData={formData}
+              setFormData={setFormData}
+              errors={errors}
+              hasTriedSubmit={hasTriedSubmit}
+              readOnlyExecutionFields
+            />
           )}
         </div>
       </Modal>

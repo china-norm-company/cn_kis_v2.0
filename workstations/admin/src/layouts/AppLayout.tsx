@@ -43,8 +43,6 @@ const navGroups = [
   },
 ]
 
-const navItems = navGroups.flatMap((g) => g.items)
-
 function SidebarNav() {
   const { canSeeMenu } = useFeishuContext()
   return (

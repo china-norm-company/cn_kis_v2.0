@@ -1,10 +1,12 @@
 #!/bin/bash
 # 线上认证链路完整性体检（发布后快速验收）
 # 用法:
-#   bash scripts/check_prod_auth_integrity.sh
-#   bash scripts/check_prod_auth_integrity.sh --quick   # 仅 3 项关键检查，约 2s
+#   bash ops/scripts_v1/check_prod_auth_integrity.sh
+#   bash ops/scripts_v1/check_prod_auth_integrity.sh --quick   # 仅 3 项关键检查，约 2s
 # 可选环境变量:
-#   SSH_KEY=/path/to/key.pem
+#   SSH_KEY=/path/to/key.pem          # 优先于 VOLCENGINE_SSH_KEY
+#   VOLCENGINE_SSH_KEY=/path/to/key.pem
+#   VOLCENGINE_SSH_PASS=...           # 与 deploy 一致：无密钥时使用，需本机已安装 sshpass
 #   SSH_HOST=root@118.196.64.48
 #   BASE_URL=http://118.196.64.48
 
@@ -15,11 +17,32 @@ for arg in "$@"; do
   [[ "$arg" == "--quick" ]] && QUICK=1
 done
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SSH_KEY="${SSH_KEY:-/Users/aksu/Downloads/openclaw1.1.pem}"
+# 仓库根（ops/scripts_v1 → ../..）
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+SSH_KEY="${SSH_KEY:-${VOLCENGINE_SSH_KEY:-}}"
 SSH_HOST="${SSH_HOST:-root@118.196.64.48}"
 BASE_URL="${BASE_URL:-http://118.196.64.48}"
-SSH_OPTS=(-i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=10)
+BASE_SSH_OPTS=(-o StrictHostKeyChecking=no -o ConnectTimeout=10)
+
+USE_PASSWORD_SSH=0
+if [[ -n "$SSH_KEY" ]] && [[ -f "$SSH_KEY" ]]; then
+  :
+elif [[ -n "${VOLCENGINE_SSH_PASS:-}" ]] && command -v sshpass >/dev/null 2>&1; then
+  USE_PASSWORD_SSH=1
+else
+  echo "FAIL: 无法 SSH 到线上。请在 deploy/secrets.env 中配置 VOLCENGINE_SSH_KEY（密钥路径），"
+  echo "      或 VOLCENGINE_SSH_PASS + 本机安装 sshpass；也可导出 SSH_KEY=/path/to.pem"
+  exit 2
+fi
+
+run_ssh() {
+  if [[ "$USE_PASSWORD_SSH" -eq 1 ]]; then
+    sshpass -p "$VOLCENGINE_SSH_PASS" ssh -n "${BASE_SSH_OPTS[@]}" "$SSH_HOST" "$@"
+  else
+    ssh -n -i "$SSH_KEY" "${BASE_SSH_OPTS[@]}" "$SSH_HOST" "$@"
+  fi
+}
 
 PASS=0
 FAIL=0
@@ -51,22 +74,18 @@ echo "  线上认证链路完整性体检"
 [[ "$QUICK" -eq 1 ]] && echo "  模式: --quick（仅 3 项关键检查）"
 echo "  host=$SSH_HOST"
 echo "  base=$BASE_URL"
+echo "  repo=$REPO_ROOT"
 echo "========================================"
 
-if [[ ! -f "$SSH_KEY" ]]; then
-  echo "FAIL: SSH_KEY 不存在: $SSH_KEY"
-  exit 2
-fi
-
 echo "[1/6] 服务与基础依赖检查..."
-if ssh "${SSH_OPTS[@]}" "$SSH_HOST" "systemctl is-active cn-kis-api >/dev/null"; then
+if run_ssh "systemctl is-active cn-kis-api >/dev/null"; then
   pass "cn-kis-api 服务运行中"
 else
   fail "cn-kis-api 服务未运行"
 fi
 
 if [[ "$QUICK" -eq 0 ]]; then
-  if ssh -n "${SSH_OPTS[@]}" "$SSH_HOST" "systemctl is-active redis-server >/dev/null && redis-cli -h 127.0.0.1 -p 6379 ping | grep -q PONG"; then
+  if run_ssh "systemctl is-active redis-server >/dev/null && redis-cli -h 127.0.0.1 -p 6379 ping | grep -q PONG"; then
     pass "redis-server 运行且可访问"
   else
     fail "redis-server 不可用（会影响 state 防重放缓存）"
@@ -74,7 +93,7 @@ if [[ "$QUICK" -eq 0 ]]; then
 fi
 
 echo "[2/6] 线上认证核心标记检查..."
-if ssh -n "${SSH_OPTS[@]}" "$SSH_HOST" "python3 - <<'PY'
+if run_ssh "python3 - <<'PY'
 from pathlib import Path
 import sys
 p = Path('/opt/cn-kis/backend/apps/identity/services.py')
@@ -96,23 +115,29 @@ fi
 
 if [[ "$QUICK" -eq 0 ]]; then
   echo "[3/6] 本地-线上关键文件哈希一致性..."
-  python3 - <<'PY' >/tmp/cn_kis_hash_pairs.txt
+  python3 - <<PY > /tmp/cn_kis_hash_pairs.txt
 from pathlib import Path
 import hashlib
+import sys
+repo = Path("$REPO_ROOT")
 pairs = [
-    ('/Users/aksu/Cursor/CN_KIS_V1.0/backend/apps/identity/services.py', '/opt/cn-kis/backend/apps/identity/services.py'),
-    ('/Users/aksu/Cursor/CN_KIS_V1.0/backend/apps/identity/api.py', '/opt/cn-kis/backend/apps/identity/api.py'),
-    ('/Users/aksu/Cursor/CN_KIS_V1.0/deploy/nginx.conf', '/opt/cn-kis/deploy/nginx.conf'),
-    ('/Users/aksu/Cursor/CN_KIS_V1.0/backend/settings.py', '/opt/cn-kis/backend/settings.py'),
-    ('/Users/aksu/Cursor/CN_KIS_V1.0/backend/db_router.py', '/opt/cn-kis/backend/db_router.py'),
+    (repo / "backend/apps/identity/services.py", "/opt/cn-kis/backend/apps/identity/services.py"),
+    (repo / "backend/apps/identity/api.py", "/opt/cn-kis/backend/apps/identity/api.py"),
+    (repo / "deploy/nginx.conf", "/opt/cn-kis/deploy/nginx.conf"),
+    (repo / "backend/settings.py", "/opt/cn-kis/backend/settings.py"),
+    (repo / "backend/db_router.py", "/opt/cn-kis/backend/db_router.py"),
 ]
 for local, remote in pairs:
-    h = hashlib.sha256(Path(local).read_bytes()).hexdigest()
+    if not local.is_file():
+        print(f"SKIP 本地缺少 {local}，跳过该文件哈希比对", file=sys.stderr)
+        continue
+    h = hashlib.sha256(local.read_bytes()).hexdigest()
     print(local, remote, h)
 PY
 
   while read -r local remote local_hash; do
-    remote_hash="$(ssh -n "${SSH_OPTS[@]}" "$SSH_HOST" "python3 - <<'PY'
+    [[ -z "$local" ]] && continue
+    remote_hash="$(run_ssh "python3 - <<'PY'
 from pathlib import Path
 import hashlib
 p = Path('$remote')
@@ -135,7 +160,7 @@ fi
 echo "[5/6] 认证回调行为检查..."
 callback_resp="$(curl -s -X POST "$BASE_URL/api/v1/auth/feishu/callback" \
   -H "Content-Type: application/json" \
-  -d '{"code":"test invalid code","workstation":"secretary","app_id":"cli_a907f21f0723dbce"}' || true)"
+  -d '{"code":"test invalid code","workstation":"secretary","app_id":"cli_a98b0babd020500e"}' || true)"
 if [[ "$callback_resp" == *"AUTH_OAUTH_FAILED"* && "$callback_resp" == *"error_code"* ]]; then
   pass "认证回调返回结构化错误（非旧版 None）"
 else
@@ -144,7 +169,7 @@ fi
 
 if [[ "$QUICK" -eq 0 ]]; then
   echo "[6/6] Nginx 冲突检查..."
-  nginx_conflict_count="$(ssh -n "${SSH_OPTS[@]}" "$SSH_HOST" "python3 - <<'PY'
+  nginx_conflict_count="$(run_ssh "python3 - <<'PY'
 from pathlib import Path
 base = Path('/etc/nginx/sites-enabled')
 hits = [p.name for p in base.glob('*') if 'cn-kis.conf.bak' in p.name]

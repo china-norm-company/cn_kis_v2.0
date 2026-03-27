@@ -69,15 +69,15 @@ export function AiParseUploadDialog({
     >
       <div className="space-y-3">
         <p className="text-sm text-slate-600">
-          请选择 Word（.docx）格式的方案文件，确认后将依次调用 AI 解析。
+          请选择 PDF 或 Word 格式的方案文件，确认后将依次调用 AI 解析。
         </p>
         <input
           type="file"
-          accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          accept=".pdf,.doc,.docx"
           className="block w-full text-sm text-slate-600 file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm"
           onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
         />
-        <p className="text-xs text-slate-500">仅支持 DOCX 格式（AI 解析服务要求）。</p>
+        <p className="text-xs text-slate-500">支持 PDF / DOC / DOCX 格式。</p>
         {needOverwriteConfirm && (
           <label className="flex items-center gap-2 mt-3 p-3 rounded-md bg-amber-50 border border-amber-200 text-sm text-amber-800 cursor-pointer">
             <input

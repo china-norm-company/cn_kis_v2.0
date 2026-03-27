@@ -84,6 +84,7 @@ export interface ClientOrgMap {
 
 export interface Opportunity {
   id: number
+  code?: string
   title: string
   client_id: number
   client_name: string
@@ -91,8 +92,34 @@ export interface Opportunity {
   estimated_amount: string
   probability: number
   owner: string
+  owner_id?: number | null
+  commercial_owner_name?: string
+  research_group?: string
+  business_segment?: string
+  client_pm?: string
+  client_contact_info?: string
+  client_department_line?: string
+  is_decision_maker?: string
+  actual_decision_maker?: string
+  actual_decision_maker_department_line?: string
+  actual_decision_maker_level?: string
+  demand_stages?: string[]
+  project_elements?: string
+  project_detail?: Record<string, unknown>
+  necessity_pct?: number | null
+  urgency_pct?: number | null
+  uniqueness_pct?: number | null
   expected_close_date: string
+  planned_start_date?: string
+  demand_name?: string
+  sales_amount_total?: string
+  sales_by_year?: Record<string, string>
+  sales_amount_change?: string
+  key_opportunity?: boolean
   description: string
+  remark?: string
+  cancel_reason?: string
+  lost_reason?: string
   create_time: string
 }
 

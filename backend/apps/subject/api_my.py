@@ -5,12 +5,19 @@
 所有端点从 JWT 解出 account_id -> 查找 Subject -> 仅返回自己的数据。
 用于微信小程序 C 端。
 """
-from ninja import Router, Schema, Body
+from ninja import Router, Schema, Body, Query
+from pydantic import field_validator
 from typing import Optional
-from datetime import date, timedelta
+from datetime import date, datetime as dt_datetime, timedelta
+import logging
+
+from django.db import transaction
 from django.utils import timezone
 from django.db.models import Q
+
+logger = logging.getLogger(__name__)
 from apps.identity.decorators import require_permission, _get_account_from_request
+from apps.identity.phone_session import get_phone_from_request
 from .services.identity_provider_service import (
     get_identity_provider_payload,
     get_identity_provider_config_state,
@@ -21,12 +28,32 @@ router = Router()
 
 
 def _get_subject_from_request(request):
-    """从请求中获取当前受试者（通过 Account -> Subject 关联）"""
+    """从请求中获取当前受试者（优先 JWT phone，兼容 account）。
+    同手机号多条档案时，解析为与当日预约一致的 canonical Subject，避免扫码签到写到错误 subject_id。
+    """
     from .models import Subject
+    from .services import subject_service as subject_svc
+
+    # 方法1: 尝试从 phone_session JWT 提取 phone
+    phone = get_phone_from_request(request)
+    if phone:
+        subject = subject_svc.resolve_subject_for_mobile_session(phone, timezone.localdate())
+        if subject:
+            return subject
+
+    # 方法2: 兼容旧逻辑（account-based token）
     account = _get_account_from_request(request)
-    if not account:
-        return None
-    return Subject.objects.filter(account_id=account.id, is_deleted=False).first()
+    if account:
+        sub = Subject.objects.filter(account_id=account.id, is_deleted=False).first()
+        if sub and (sub.phone or '').strip():
+            canonical = subject_svc.resolve_subject_for_mobile_session(
+                sub.phone, timezone.localdate()
+            )
+            if canonical:
+                return canonical
+        return sub
+
+    return None
 
 
 # ============================================================================
@@ -42,6 +69,11 @@ class MyProfileUpdateIn(Schema):
     consent_data_sharing: Optional[bool] = None
     consent_rwe_usage: Optional[bool] = None
     consent_follow_up: Optional[bool] = None
+
+
+class MyWechatDisplayNameIn(Schema):
+    """登录后可选：同步微信昵称到账号 display_name，仅影响问候展示优先级中的 wechat_nickname 档（§2.2）。"""
+    display_name: str
 
 
 class MyAppointmentIn(Schema):
@@ -388,11 +420,10 @@ def get_binding_status(request):
     """判断当前微信账号是否已绑定 Subject（手机号关联）。
     is_bound=false 时前端应引导用户进入手机号绑定页。
     """
-    account = _get_account_from_request(request)
-    if not account:
-        return 401, {'code': 401, 'msg': '未授权'}
-    from .models import Subject
-    subject = Subject.objects.filter(account_id=account.id, is_deleted=False).first()
+    subject = _get_subject_from_request(request)
+    if not subject:
+        return 404, {'code': 404, 'msg': '未找到受试者信息'}
+
     return {
         'code': 200,
         'msg': 'OK',
@@ -418,7 +449,12 @@ def bind_phone(request, data: BindPhoneIn):
         return 400, {'code': 400, 'msg': '请输入正确的11位手机号'}
 
     from .models import Subject, AuthLevel
-    from .services.subject_service import generate_subject_no
+    from .services.subject_service import (
+        generate_subject_no,
+        normalize_subject_phone,
+        find_subjects_by_mobile_normalized,
+        resolve_subject_for_mobile_session,
+    )
 
     # 检查当前账号是否已绑定
     existing_subject = Subject.objects.filter(account_id=account.id, is_deleted=False).first()
@@ -433,8 +469,14 @@ def bind_phone(request, data: BindPhoneIn):
             },
         }
 
-    # 查找已有 Subject（招募台录入的预约数据中）
-    subject = Subject.objects.filter(phone=phone, is_deleted=False).first()
+    n = normalize_subject_phone(phone)
+
+    # 查找已有 Subject；同号多条时绑定到与当日预约一致的 canonical，避免再建「微信用户」重复档
+    subject = None
+    if n and find_subjects_by_mobile_normalized(n).exists():
+        subject = resolve_subject_for_mobile_session(phone, timezone.localdate())
+    if subject is None:
+        subject = Subject.objects.filter(phone=phone, is_deleted=False).first()
     if subject:
         if subject.account_id and subject.account_id != account.id:
             return 409, {'code': 409, 'msg': '该手机号已被其他账号绑定，请联系工作人员'}
@@ -452,12 +494,18 @@ def bind_phone(request, data: BindPhoneIn):
             },
         }
 
-    # 未找到，自动创建 Subject
+    # 未找到，自动创建 Subject（防御：规范化后应仍无同号档）
+    if n and find_subjects_by_mobile_normalized(n).exists():
+        return 400, {
+            'code': 400,
+            'msg': '该手机号已有受试者档案，请稍后再试或联系前台处理重复档案。',
+            'data': None,
+        }
     subject = Subject.objects.create(
         subject_no=generate_subject_no(),
         account_id=account.id,
         name='受试者',
-        phone=phone,
+        phone=n if n else phone,
         auth_level=AuthLevel.PHONE_VERIFIED,
     )
     return {
@@ -486,6 +534,14 @@ def get_my_profile(request):
     from django.utils import timezone
 
     profile = get_profile_dict(subject.id, include_sensitive=False)
+    from .models import Subject
+    from .services.home_dashboard_service import compute_subject_display_name
+
+    sub_full = Subject.objects.filter(pk=subject.id, is_deleted=False).select_related('account').first()
+    display_name, display_name_source = ('受试者', 'fallback')
+    if sub_full:
+        display_name, display_name_source = compute_subject_display_name(sub_full, timezone.localdate())
+
     data = {
         'subject_id': subject.id,
         'subject_no': subject.subject_no,
@@ -494,6 +550,8 @@ def get_my_profile(request):
         'age': subject.age,
         'phone': subject.phone,
         'profile': profile,
+        'display_name': display_name,
+        'display_name_source': display_name_source,
     }
     # 无入组时，从预约记录取项目名称供小程序首页展示
     next_appt = SubjectAppointment.objects.filter(
@@ -518,10 +576,57 @@ def update_my_profile(request, data: MyProfileUpdateIn):
     return {'code': 200, 'msg': 'OK', 'data': None}
 
 
+@router.post('/profile/wechat-display-name', summary='（可选）同步微信昵称用于问候展示')
+@require_permission('my.profile.update')
+def post_my_wechat_display_name(request, data: MyWechatDisplayNameIn):
+    """写入关联账号的 display_name，不阻塞登录；无档案/预约名时仍优先于 fallback（附录 A §4）。"""
+    from .models import Subject
+
+    subject = _get_subject_from_request(request)
+    if not subject:
+        return 404, {'code': 404, 'msg': '未找到受试者信息', 'data': None}
+    sub_full = Subject.objects.filter(pk=subject.id, is_deleted=False).select_related('account').first()
+    if not sub_full or not sub_full.account_id:
+        return 400, {'code': 400, 'msg': '当前受试者未关联登录账号，无法保存称呼', 'data': None}
+    raw = (data.display_name or '').strip()
+    if not raw:
+        return 400, {'code': 400, 'msg': 'display_name 不能为空', 'data': None}
+    acc = sub_full.account
+    acc.display_name = raw[:100]
+    acc.save(update_fields=['display_name'])
+    return {'code': 200, 'msg': 'OK', 'data': None}
+
+
+@router.get('/home-dashboard', summary='首页聚合（主项目+多项目卡片，附录 A）')
+@require_permission('my.profile.read')
+def get_home_dashboard(request, date: Optional[str] = None):
+    """小程序首页一次拉齐：问候展示名、多项目块、入组/SC/当日队列签到态（GET /api/v1/my/home-dashboard）。"""
+    subject = _get_subject_from_request(request)
+    if not subject:
+        return 404, {'code': 404, 'msg': '未找到受试者信息', 'data': None}
+
+    as_of = timezone.localdate()
+    if date and str(date).strip():
+        try:
+            as_of = dt_datetime.strptime(str(date).strip()[:10], '%Y-%m-%d').date()
+        except ValueError:
+            return 400, {'code': 400, 'msg': 'date 参数须为 YYYY-MM-DD', 'data': None}
+
+    from .models import Subject
+    from .services.home_dashboard_service import build_home_dashboard_data
+
+    sub = Subject.objects.filter(pk=subject.id).select_related('account').first()
+    if not sub:
+        return 404, {'code': 404, 'msg': '未找到受试者信息', 'data': None}
+
+    data = build_home_dashboard_data(sub, as_of)
+    return {'code': 200, 'msg': 'OK', 'data': data}
+
+
 # ============================================================================
 # 我的项目
 # ============================================================================
-@router.get('/enrollments', summary='我参与的项目')
+@router.get('/enrollments', summary='我参与的项目', response={200: dict, 404: dict})
 @require_permission('my.profile.read')
 def get_my_enrollments(request):
     """查看受试者参与的所有项目（含访视计划ID）。
@@ -985,9 +1090,15 @@ class MyAEReportIn(Schema):
     symptom_description: str
     severity: str = 'mild'
     occur_date: Optional[str] = None
+    # 多项目并存时由小程序传入；不传则取最近一条「已入组」记录
+    enrollment_id: Optional[int] = None
 
 
-@router.post('/report-ae', summary='受试者自助上报不良反应')
+@router.post(
+    '/report-ae',
+    summary='受试者自助上报不良反应',
+    response={200: dict, 400: dict, 404: dict},
+)
 @require_permission('my.profile.update')
 def report_adverse_event(request, data: MyAEReportIn):
     """受试者通过小程序直接上报 AE，自动创建 safety.AdverseEvent 记录"""
@@ -996,11 +1107,21 @@ def report_adverse_event(request, data: MyAEReportIn):
         return 404, {'code': 404, 'msg': '未找到受试者信息'}
 
     from apps.subject.models import Enrollment
-    enrollment = Enrollment.objects.filter(
-        subject=subject, status='enrolled',
-    ).first()
+    qs = Enrollment.objects.filter(subject=subject, status='enrolled')
+    if data.enrollment_id is not None:
+        enrollment = qs.filter(id=data.enrollment_id).first()
+        if not enrollment:
+            return 400, {
+                'code': 400,
+                'msg': '无效的入组记录或该项目尚未完成入组，请重新选择项目后再试',
+            }
+    else:
+        enrollment = qs.order_by('-enrolled_at', '-id').first()
     if not enrollment:
-        return 400, {'code': 400, 'msg': '未找到有效入组记录'}
+        return 400, {
+            'code': 400,
+            'msg': '未找到有效入组记录：您可能仍处于「待入组审批」或未入组，完成后即可上报',
+        }
 
     from apps.safety.services import create_adverse_event
     from datetime import date as date_type
@@ -1011,7 +1132,7 @@ def report_adverse_event(request, data: MyAEReportIn):
         severity=data.severity,
         start_date=start_date,
         relation='possible',
-        is_sae=(data.severity == 'severe'),
+        is_sae=(data.severity in ('severe', 'very_severe')),
     )
     return {'code': 200, 'msg': '上报成功', 'data': {
         'id': ae.id, 'severity': ae.severity, 'status': ae.status,
@@ -1428,8 +1549,41 @@ def get_my_queue_position(request):
     if not subject:
         return 404, {'code': 404, 'msg': '未找到受试者信息'}
     try:
-        from .services.queue_service import get_queue_position
-        result = get_queue_position(subject.id)
+        from .models_execution import ReceptionBoardCheckin
+        from .services.queue_service import format_local_hhmm
+
+        today = timezone.localdate()
+        rows = list(
+            ReceptionBoardCheckin.objects.filter(
+                subject_id=subject.id,
+                checkin_date=today,
+                checkin_time__isnull=False,
+            ).order_by('-checkin_time', '-id')
+        )
+        if not rows:
+            return {'code': 200, 'msg': 'OK', 'data': {'position': 0, 'ahead_count': 0, 'wait_minutes': 0, 'status': 'none'}}
+
+        latest = rows[0]
+        if latest.checkout_time:
+            return {'code': 200, 'msg': 'OK', 'data': {'position': 0, 'ahead_count': 0, 'wait_minutes': 0, 'status': 'completed'}}
+
+        open_rows = list(
+            ReceptionBoardCheckin.objects.filter(
+                checkin_date=today,
+                checkin_time__isnull=False,
+                checkout_time__isnull=True,
+            ).order_by('checkin_time', 'id')
+        )
+        ahead_count = sum(1 for r in open_rows if r.subject_id != subject.id and (r.checkin_time or dt_datetime.min) < (latest.checkin_time or dt_datetime.min))
+        position = ahead_count + 1
+        wait_minutes = ahead_count * 10
+        result = {
+            'position': position,
+            'ahead_count': ahead_count,
+            'wait_minutes': wait_minutes,
+            'status': 'waiting',
+            'checkin_time': format_local_hhmm(latest.checkin_time),
+        }
         return {'code': 200, 'msg': 'OK', 'data': result}
     except Exception:
         return {'code': 200, 'msg': 'OK', 'data': {'position': 0, 'wait_minutes': 0, 'status': 'none'}}
@@ -1502,35 +1656,72 @@ def my_scan_checkin(request, data: Optional[ScanCheckinIn] = Body(default=None))
                     action='self_checkin',
                 )
 
-    from django.utils import timezone as tz
-    today = tz.localdate()
-    from .models_execution import SubjectCheckin, CheckinStatus
-    existing = SubjectCheckin.objects.filter(
-        subject_id=subject.id, checkin_date=today,
-    ).first()
+    from .services import reception_service as reception_svc
+    from .models_execution import ReceptionBoardCheckin
 
-    if not existing:
-        # 首次：签到
-        from .services.reception_service import quick_checkin
-        result = quick_checkin(subject.id, method='qr_scan', location=location)
-        return {'code': 200, 'msg': '签到成功', 'data': {**result, 'action': 'checkin'}}
+    today = reception_svc._local_today()
 
-    if existing.status == CheckinStatus.CHECKED_OUT:
-        # 已签出：重复提示
+    open_board = (
+        ReceptionBoardCheckin.objects.filter(
+            subject_id=subject.id,
+            checkin_date=today,
+            checkin_time__isnull=False,
+            checkout_time__isnull=True,
+        )
+        .order_by('checkin_time', 'id')
+        .first()
+    )
+    if open_board is not None:
+        # 小程序扫码仅影响接待看板，不写工单执行 SubjectCheckin。
+        result = reception_svc.board_checkout(subject.id, target_date=today)
+        return {'code': 200, 'msg': '签出成功', 'data': {**result, 'action': 'checkout'}}
+
+    # 仅「签到/签出时间曾写过」算有过看板记录；两行均为 NULL 的空壳（如库内批量清空）视为可再次签到
+    has_meaningful_board_today = ReceptionBoardCheckin.objects.filter(
+        subject_id=subject.id,
+        checkin_date=today,
+    ).filter(Q(checkin_time__isnull=False) | Q(checkout_time__isnull=False)).exists()
+    if (not has_meaningful_board_today) or reception_svc.has_pending_appointments_for_checkin(
+        subject.id, today
+    ):
+        # 首次签到，或同日仍有待到访预约时再次签到：仅写接待看板链路。
+        appt_ctx = reception_svc.resolve_today_appointment_for_quick_checkin(subject.id, None, today)
+        project_code = (appt_ctx.project_code or '').strip() if appt_ctx else None
+        result = reception_svc.board_checkin(
+            subject_id=subject.id,
+            target_date=today,
+            project_code=project_code or None,
+        )
         return {
             'code': 200,
-            'msg': '您今日已完成签出，无需重复操作',
+            'msg': '签到成功',
             'data': {
-                'action': 'already_checked_out',
-                'checkin_id': existing.id,
-                'checkout_time': existing.checkout_time.isoformat() if existing.checkout_time else None,
+                **result,
+                'action': 'checkin',
+                'location': location,
+                'project_name': (getattr(appt_ctx, 'project_name', '') or '').strip() if appt_ctx else '',
+                'visit_point': (getattr(appt_ctx, 'visit_point', '') or '').strip() if appt_ctx else '',
             },
         }
 
-    # 已签到或执行中：签出
-    from .services.reception_service import quick_checkout
-    result = quick_checkout(existing.id)
-    return {'code': 200, 'msg': '签出成功', 'data': {**result, 'action': 'checkout'}}
+    last_done = (
+        ReceptionBoardCheckin.objects.filter(
+            subject_id=subject.id,
+            checkin_date=today,
+            checkout_time__isnull=False,
+        )
+        .order_by('-checkout_time', '-id')
+        .first()
+    )
+    return {
+        'code': 200,
+        'msg': '您今日已完成签出，无需重复操作',
+        'data': {
+            'action': 'already_checked_out',
+            'checkin_id': last_done.id if last_done else None,
+            'checkout_time': last_done.checkout_time.isoformat() if last_done and last_done.checkout_time else None,
+        },
+    }
 
 
 # ============================================================================
@@ -1563,16 +1754,412 @@ def submit_nps(request, data: NpsSubmitIn):
 # ============================================================================
 # 受试者日记 (eDiary)
 # ============================================================================
+def _resolve_diary_project_id_for_subject(subject):
+    """
+    不传 project_id 时：按手机号对应受试者的入组/项目编号，对齐全链路 project_no，
+    找到存在「已发布且研究员已确认」日记配置的全链路项目 ID。
+
+    优先级（同项目多条来源取最高优先级）：已入组 enrollment > 待入组 enrollment >
+    受试者项目 SC 记录 > 预约中的 project_code。
+    匹配规则：protocol.code / project_code 与 project_full_link.Project.project_no 一致（去空格后全等）。
+    """
+    from apps.project_full_link.models import Project
+    from .models import Enrollment, EnrollmentStatus
+    from .models_diary_config import SubjectDiaryConfig, SubjectDiaryConfigStatus
+    from .models_execution import SubjectAppointment, SubjectProjectSC
+
+    def _has_usable_diary(pid: int) -> bool:
+        return SubjectDiaryConfig.objects.filter(
+            project_id=pid,
+            status=SubjectDiaryConfigStatus.PUBLISHED,
+            researcher_confirmed_at__isnull=False,
+        ).exists()
+
+    def _pid_for_code(code: str):
+        c = (code or '').strip()
+        if not c:
+            return None
+        proj = Project.objects.filter(project_no=c, is_delete=False).first()
+        if not proj or not _has_usable_diary(proj.id):
+            return None
+        return proj.id
+
+    best: dict[int, tuple[int, object]] = {}
+
+    def _consider(pid: int, priority: int, sort_time):
+        prev = best.get(pid)
+        st = sort_time
+        if prev is None:
+            best[pid] = (priority, st)
+            return
+        pr_prev, st_prev = prev
+        if priority > pr_prev:
+            best[pid] = (priority, st)
+            return
+        if priority < pr_prev:
+            return
+        if st_prev is None and st is not None:
+            best[pid] = (priority, st)
+        elif st_prev is not None and st is not None and st > st_prev:
+            best[pid] = (priority, st)
+
+    enrollments = Enrollment.objects.filter(subject=subject).select_related('protocol').order_by('-create_time')
+    for e in enrollments:
+        pid = _pid_for_code(e.protocol.code if e.protocol else '')
+        if pid is None:
+            continue
+        if e.status == EnrollmentStatus.ENROLLED:
+            pri = 100
+        elif e.status == EnrollmentStatus.PENDING:
+            pri = 80
+        elif e.status == EnrollmentStatus.COMPLETED:
+            pri = 60
+        else:
+            pri = 40
+        sort_t = e.enrolled_at or e.create_time
+        _consider(pid, pri, sort_t)
+
+    for rec in SubjectProjectSC.objects.filter(subject=subject, is_deleted=False).order_by('-update_time'):
+        pid = _pid_for_code(rec.project_code)
+        if pid is None:
+            continue
+        _consider(pid, 50, rec.update_time)
+
+    for a in SubjectAppointment.objects.filter(subject=subject).order_by('-create_time'):
+        pid = _pid_for_code(a.project_code)
+        if pid is None:
+            continue
+        _consider(pid, 30, a.create_time)
+
+    if not best:
+        return None
+    return max(
+        best.keys(),
+        key=lambda p: (
+            best[p][0],
+            best[p][1].timestamp() if getattr(best[p][1], 'timestamp', None) else 0.0,
+        ),
+    )
+
+
+@router.get('/diary/config', summary='日记表单配置（2.0 项目级）')
+@require_permission('my.profile.read')
+def get_diary_config(
+    request,
+    project_id: Optional[int] = Query(
+        None,
+        description='全链路项目主键；不传则按入组/项目编号与全链路 project_no 自动匹配',
+    ),
+):
+    """
+    拉取指定项目下已发布且研究员已确认的最新日记配置。
+    project_id 与 project_full_link.Project.id 一致；省略时由后端根据受试者入组等自动解析。
+    """
+    subject = _get_subject_from_request(request)
+    if not subject:
+        return 404, {'code': 404, 'msg': '未找到受试者信息'}
+    from .models_diary_config import SubjectDiaryConfig, SubjectDiaryConfigStatus
+
+    resolved = project_id
+    if resolved is None or resolved <= 0:
+        resolved = _resolve_diary_project_id_for_subject(subject)
+        if resolved is None:
+            return 404, {
+                'code': 404,
+                'msg': (
+                    '未能自动匹配日记项目：请确认协议编号与全链路项目编号一致且已发布日记配置，'
+                    '或在请求中指定 project_id'
+                ),
+                'data': None,
+            }
+
+    cfg = (
+        SubjectDiaryConfig.objects.filter(
+            project_id=resolved,
+            status=SubjectDiaryConfigStatus.PUBLISHED,
+            researcher_confirmed_at__isnull=False,
+        )
+        .order_by('-id')
+        .first()
+    )
+    if not cfg:
+        return 404, {
+            'code': 404,
+            'msg': '该项目暂无可用日记配置（未发布或未确认）',
+            'data': {'project_id': resolved},
+        }
+    return {
+        'code': 200,
+        'msg': 'OK',
+        'data': {
+            'id': cfg.id,
+            'project_id': cfg.project_id,
+            'project_no': cfg.project_no or '',
+            'config_version_label': cfg.config_version_label or '',
+            'form_definition_json': cfg.form_definition_json,
+            'rule_json': cfg.rule_json,
+            'status': cfg.status,
+            'researcher_confirmed_at': (
+                cfg.researcher_confirmed_at.isoformat() if cfg.researcher_confirmed_at else None
+            ),
+            'supervisor_confirmed_at': (
+                cfg.supervisor_confirmed_at.isoformat() if cfg.supervisor_confirmed_at else None
+            ),
+            'create_time': cfg.create_time.isoformat(),
+            'update_time': cfg.update_time.isoformat(),
+        },
+    }
+
+
 class DiaryEntryIn(Schema):
     mood: Optional[str] = ''
     symptoms: Optional[str] = ''
     medication_taken: bool = True
+    symptom_severity: Optional[str] = ''
+    symptom_onset: Optional[str] = ''
+    symptom_duration: Optional[str] = ''
     notes: Optional[str] = ''
+    """规定使用日期 YYYY-MM-DD；不传则使用服务端当日（TIME_ZONE 本地日历）"""
+    entry_date: Optional[date] = None
+
+    @field_validator('mood', 'symptoms', 'notes', 'symptom_severity', 'symptom_onset', 'symptom_duration', mode='before')
+    @classmethod
+    def _normalize_diary_text_fields(cls, v):
+        from .diary_text import normalize_diary_text_field
+
+        return normalize_diary_text_field(v)
+
+
+def _subject_diary_match_codes(subject) -> list:
+    """
+    入组 / SC / 预约 侧的项目编号（去重保序）。
+    用于在「全链表 project_no 与协议编号略有偏差」时，仍能靠 SubjectDiaryConfig.project_no 命中配置并得到 diary_period。
+    """
+    from .models import Enrollment
+    from .models_execution import SubjectProjectSC, SubjectAppointment
+
+    codes = []
+    seen = set()
+    for e in Enrollment.objects.filter(subject=subject).select_related('protocol'):
+        if e.protocol and e.protocol.code:
+            c = (e.protocol.code or '').strip()
+            if c and c not in seen:
+                seen.add(c)
+                codes.append(c)
+    for rec in SubjectProjectSC.objects.filter(subject=subject, is_deleted=False):
+        c = (rec.project_code or '').strip()
+        if c and c not in seen:
+            seen.add(c)
+            codes.append(c)
+    for a in SubjectAppointment.objects.filter(subject=subject):
+        c = (a.project_code or '').strip()
+        if c and c not in seen:
+            seen.add(c)
+            codes.append(c)
+    return codes
+
+
+def _project_ids_for_subject_codes(codes: list) -> list:
+    if not codes:
+        return []
+    from apps.project_full_link.models import Project
+
+    ids = []
+    seen = set()
+    for c in codes:
+        proj = Project.objects.filter(project_no=c, is_delete=False).first()
+        if proj and proj.id not in seen:
+            seen.add(proj.id)
+            ids.append(proj.id)
+    return ids
+
+
+def _extract_diary_period_from_rule_json(rj) -> Optional[dict]:
+    if not isinstance(rj, dict):
+        return None
+    dp = rj.get('diary_period')
+    start, end = None, None
+    if isinstance(dp, dict):
+        start = dp.get('start')
+        end = dp.get('end')
+    elif isinstance(dp, list) and dp and isinstance(dp[0], dict):
+        start = dp[0].get('start')
+        end = dp[0].get('end')
+
+    def _norm(v):
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s if s else None
+
+    start_s, end_s = _norm(start), _norm(end)
+    if not start_s and not end_s:
+        return None
+    return {'start': start_s, 'end': end_s}
+
+
+def _extract_retrospective_days_max_from_rule_json(rj) -> int:
+    """rule_json.retrospective_days_max：研究台「允许补填最多回溯天数」；非法或缺失时默认 7。"""
+    if not isinstance(rj, dict):
+        return 7
+    v = rj.get('retrospective_days_max')
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return 7
+    if n < 0:
+        return 0
+    if n > 366:
+        return 366
+    return n
+
+
+def _diary_period_and_rule_from_entry_coverage(subject):
+    """
+    入组等路径拿不到编号时：若受试者已有日记行，则从「能覆盖其全部已填日期」的已发布配置中取 diary_period；
+    多配置并存时取 period.start 最晚者（通常对应当前生效的研究窗），避免历史列表落回固定 N 天而出现周期外日期。
+    """
+    from .models_loyalty import SubjectDiary
+    from .models_diary_config import SubjectDiaryConfig, SubjectDiaryConfigStatus
+
+    dates = list(
+        SubjectDiary.objects.filter(
+            subject_id=subject.id,
+            is_deleted=False,
+        ).values_list('entry_date', flat=True)
+    )
+    if not dates:
+        return None, None
+
+    def ymd(d) -> str:
+        if hasattr(d, 'isoformat'):
+            return d.isoformat()[:10]
+        return str(d)[:10]
+
+    date_strs = sorted({ymd(d) for d in dates})
+
+    best_meta = None
+    best_rj = None
+    best_start = ''
+    best_cfg_id = -1
+
+    qs = SubjectDiaryConfig.objects.filter(
+        status=SubjectDiaryConfigStatus.PUBLISHED,
+        researcher_confirmed_at__isnull=False,
+    ).order_by('-id')
+
+    for cfg in qs:
+        meta = _extract_diary_period_from_rule_json(cfg.rule_json)
+        if not meta or not meta.get('start'):
+            continue
+        s = meta['start']
+        e_raw = (meta.get('end') or '').strip() if meta.get('end') else ''
+        ok = True
+        for ds in date_strs:
+            if ds < s:
+                ok = False
+                break
+            if e_raw and ds > e_raw:
+                ok = False
+                break
+        if not ok:
+            continue
+        cid = cfg.id
+        if best_meta is None or s > best_start or (s == best_start and cid > best_cfg_id):
+            best_meta = meta
+            best_start = s
+            best_cfg_id = cid
+            best_rj = cfg.rule_json if isinstance(cfg.rule_json, dict) else {}
+
+    return best_meta, best_rj
+
+
+def _diary_list_meta_bundle(subject, explicit_project_id: Optional[int] = None):
+    """
+    与 /my/diary 列表一并返回：应填周期 + 研究台配置的补填回溯天数（rule_json.retrospective_days_max）。
+    解析顺序与历史逻辑一致；无任何命中周期时 retrospective_days_max 仍返回默认值 7。
+    """
+    from .models_diary_config import SubjectDiaryConfig, SubjectDiaryConfigStatus
+
+    default_retro = 7
+
+    if explicit_project_id is not None and int(explicit_project_id) > 0:
+        cfg0 = (
+            SubjectDiaryConfig.objects.filter(
+                project_id=int(explicit_project_id),
+                status=SubjectDiaryConfigStatus.PUBLISHED,
+                researcher_confirmed_at__isnull=False,
+            )
+            .order_by('-id')
+            .first()
+        )
+        if cfg0:
+            rj0 = cfg0.rule_json if isinstance(cfg0.rule_json, dict) else {}
+            meta0 = _extract_diary_period_from_rule_json(rj0)
+            if meta0:
+                return meta0, _extract_retrospective_days_max_from_rule_json(rj0)
+
+    pid = _resolve_diary_project_id_for_subject(subject)
+    if pid:
+        cfg = (
+            SubjectDiaryConfig.objects.filter(
+                project_id=pid,
+                status=SubjectDiaryConfigStatus.PUBLISHED,
+                researcher_confirmed_at__isnull=False,
+            )
+            .order_by('-id')
+            .first()
+        )
+        if cfg:
+            rj = cfg.rule_json if isinstance(cfg.rule_json, dict) else {}
+            meta = _extract_diary_period_from_rule_json(rj)
+            if meta:
+                return meta, _extract_retrospective_days_max_from_rule_json(rj)
+
+    codes = _subject_diary_match_codes(subject)
+    if codes:
+        proj_ids = _project_ids_for_subject_codes(codes)
+        cfg = (
+            SubjectDiaryConfig.objects.filter(
+                Q(project_no__in=codes) | Q(project_id__in=proj_ids),
+                status=SubjectDiaryConfigStatus.PUBLISHED,
+                researcher_confirmed_at__isnull=False,
+            )
+            .order_by('-id')
+            .first()
+        )
+        if cfg:
+            rj = cfg.rule_json if isinstance(cfg.rule_json, dict) else {}
+            meta = _extract_diary_period_from_rule_json(rj)
+            if meta:
+                return meta, _extract_retrospective_days_max_from_rule_json(rj)
+
+    meta, rj = _diary_period_and_rule_from_entry_coverage(subject)
+    if meta:
+        return meta, _extract_retrospective_days_max_from_rule_json(rj or {})
+    return None, default_retro
+
+
+def _diary_period_meta_for_subject(subject, explicit_project_id: Optional[int] = None):
+    """
+    与 /my/diary/config 尽量同源：可选 explicit_project_id（列表查询参数）优先；
+    再全链路 project 解析；再按入组等编号匹配配置；最后用已有日记行反推可覆盖全部已填日期的配置周期。
+    """
+    period, _ = _diary_list_meta_bundle(subject, explicit_project_id)
+    return period
 
 
 @router.get('/diary', summary='日记列表')
 @require_permission('my.profile.read')
-def list_diary(request, page: int = 1, page_size: int = 30):
+def list_diary(
+    request,
+    page: int = 1,
+    page_size: int = 30,
+    project_id: Optional[int] = Query(
+        None,
+        description='可选。传入全链路 project_id 时优先用该项目已发布日记配置的 diary_period（无入组编号也能裁剪历史）',
+    ),
+):
     subject = _get_subject_from_request(request)
     if not subject:
         return 404, {'code': 404, 'msg': '未找到受试者信息'}
@@ -1583,16 +2170,28 @@ def list_diary(request, page: int = 1, page_size: int = 30):
     total = qs.count()
     start = (page - 1) * page_size
     items = qs[start:start + page_size]
-    return {'code': 200, 'msg': 'OK', 'data': {
-        'items': [{
+    diary_period, retrospective_days_max = _diary_list_meta_bundle(subject, explicit_project_id=project_id)
+    from .diary_text import diary_symptom_fields_for_api, normalize_diary_text_field
+
+    def _item(d):
+        sym = diary_symptom_fields_for_api(d)
+        return {
             'id': d.id,
             'entry_date': d.entry_date.isoformat(),
-            'mood': d.mood,
-            'symptoms': d.symptoms,
+            'mood': normalize_diary_text_field(d.mood),
+            'symptoms': normalize_diary_text_field(d.symptoms),
             'medication_taken': d.medication_taken,
-            'notes': d.notes,
-        } for d in items],
+            'symptom_severity': sym['symptom_severity'],
+            'symptom_onset': sym['symptom_onset'],
+            'symptom_duration': sym['symptom_duration'],
+            'notes': sym['notes'],
+        }
+
+    return {'code': 200, 'msg': 'OK', 'data': {
+        'items': [_item(d) for d in items],
         'total': total,
+        'diary_period': diary_period,
+        'retrospective_days_max': retrospective_days_max,
     }}
 
 
@@ -1604,26 +2203,23 @@ def create_diary(request, data: DiaryEntryIn):
         return 404, {'code': 404, 'msg': '未找到受试者信息'}
     from django.utils import timezone
     from .models_loyalty import SubjectDiary
-    today = timezone.now().date()
+    target_date = data.entry_date if data.entry_date is not None else timezone.localdate()
     existing = SubjectDiary.objects.filter(
-        subject_id=subject.id, entry_date=today, is_deleted=False,
+        subject_id=subject.id, entry_date=target_date, is_deleted=False,
     ).first()
     if existing:
-        existing.mood = data.mood or existing.mood
-        existing.symptoms = data.symptoms or existing.symptoms
-        existing.medication_taken = data.medication_taken
-        existing.notes = data.notes or existing.notes
-        existing.save(update_fields=['mood', 'symptoms', 'medication_taken', 'notes', 'update_time'])
-        entry = existing
-    else:
-        entry = SubjectDiary.objects.create(
-            subject_id=subject.id,
-            entry_date=today,
-            mood=data.mood or '良好',
-            symptoms=data.symptoms or '',
-            medication_taken=data.medication_taken,
-            notes=data.notes or '',
-        )
+        return 400, {'code': 400, 'msg': '该日期已提交日记，不可重复提交', 'data': None}
+    entry = SubjectDiary.objects.create(
+        subject_id=subject.id,
+        entry_date=target_date,
+        mood=data.mood or '良好',
+        symptoms=data.symptoms or '',
+        medication_taken=data.medication_taken,
+        symptom_severity=data.symptom_severity or '',
+        symptom_onset=data.symptom_onset or '',
+        symptom_duration=data.symptom_duration or '',
+        notes=data.notes or '',
+    )
     return {'code': 200, 'msg': '记录成功', 'data': {
         'id': entry.id, 'entry_date': entry.entry_date.isoformat(),
     }}
@@ -1675,20 +2271,42 @@ def get_upcoming_visits(request, days: int = 30):
     today = timezone.now().date()
     end = today + timedelta(days=days)
 
-    appts = SubjectAppointment.objects.filter(
-        subject=subject,
-        appointment_date__gte=today,
-        appointment_date__lte=end,
-        status__in=['pending', 'confirmed'],
-    ).order_by('appointment_date', 'appointment_time')
+    appts = list(
+        SubjectAppointment.objects.filter(
+            subject=subject,
+            appointment_date__gte=today,
+            appointment_date__lte=end,
+            status__in=['pending', 'confirmed'],
+        ).order_by('appointment_date', 'appointment_time')
+    )
 
-    items = [{
-        'id': a.id,
-        'date': a.appointment_date.isoformat(),
-        'time': a.appointment_time.isoformat() if a.appointment_time else None,
-        'purpose': a.purpose,
-        'status': a.status,
-    } for a in appts]
+    # 排除「今天但预约时点已过」的条目，避免首页「下次访视」展示过期时段（仍保留无具体时间的当日预约）
+    now_local = timezone.localtime(timezone.now())
+    today_local = now_local.date()
+    now_t = now_local.time()
+    upcoming: list = []
+    for a in appts:
+        d = a.appointment_date
+        if d > today_local:
+            upcoming.append(a)
+        elif d < today_local:
+            continue
+        else:
+            if a.appointment_time is None or a.appointment_time >= now_t:
+                upcoming.append(a)
+
+    items = []
+    for a in upcoming:
+        tstr = None
+        if a.appointment_time:
+            tstr = a.appointment_time.strftime('%H:%M')
+        items.append({
+            'id': a.id,
+            'date': a.appointment_date.isoformat(),
+            'time': tstr,
+            'purpose': a.purpose,
+            'status': a.status,
+        })
 
     return {'code': 200, 'msg': 'OK', 'data': {'items': items, 'total': len(items)}}
 

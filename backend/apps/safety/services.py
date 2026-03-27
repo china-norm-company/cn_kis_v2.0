@@ -74,7 +74,11 @@ def create_adverse_event(
 
 
 def get_adverse_event(ae_id: int) -> Optional[AdverseEvent]:
-    return AdverseEvent.objects.filter(id=ae_id).first()
+    return (
+        AdverseEvent.objects.select_related('enrollment__subject', 'enrollment__protocol')
+        .filter(id=ae_id)
+        .first()
+    )
 
 
 def list_adverse_events(
@@ -84,7 +88,7 @@ def list_adverse_events(
     page: int = 1,
     page_size: int = 20,
 ) -> dict:
-    qs = AdverseEvent.objects.all()
+    qs = AdverseEvent.objects.select_related('enrollment__subject', 'enrollment__protocol').all()
     if enrollment_id:
         qs = qs.filter(enrollment_id=enrollment_id)
     if status:

@@ -11,7 +11,8 @@ import { BaseEntity } from "@/shared/types/entities";
 export type InvoiceStatus = 'draft' | 'issued' | 'paid' | 'partial' | 'overdue' | 'cancelled';
 
 /** 发票类型 */
-export type InvoiceType = '全电专票' | '全电普票' | '形式发票';
+/** 含历史 mock/导入中的「专票」「普票」别名 */
+export type InvoiceType = '全电专票' | '全电普票' | '形式发票' | '专票' | '普票';
 
 /** 发票 */
 export interface Invoice extends BaseEntity {

@@ -1,0 +1,14 @@
+.demo-hero-page {
+  min-height: 100vh;
+  padding: 48rpx;
+  background: #f5f8ff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32rpx;
+}
+
+.demo-hero-page__label {
+  font-size: 24rpx;
+  color: #5f7088;
+}

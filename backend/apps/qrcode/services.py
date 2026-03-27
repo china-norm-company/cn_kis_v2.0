@@ -296,9 +296,12 @@ def _get_subject_checkin_status(subject_id: int) -> dict:
         from apps.subject.models import SubjectCheckin
         from django.utils import timezone
         today = timezone.localdate()
-        checkin = SubjectCheckin.objects.filter(
-            subject_id=subject_id, checkin_date=today,
-        ).exclude(status='checked_out').first()
+        checkin = (
+            SubjectCheckin.objects.filter(subject_id=subject_id, checkin_date=today)
+            .exclude(status='checked_out')
+            .order_by('checkin_time', 'id')
+            .first()
+        )
         if checkin:
             return {'status': 'checked_in', 'checkin_id': checkin.id}
         return {'status': 'not_checked_in', 'checkin_id': None}

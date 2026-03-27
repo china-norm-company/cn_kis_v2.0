@@ -15,17 +15,24 @@
     "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
+    "@cn-kis/consent-placeholders": "workspace:*",
     "@cn-kis/ui-kit": "workspace:*",
     "@cn-kis/api-client": "workspace:*",
     "@cn-kis/feishu-sdk": "workspace:*",
+    "@radix-ui/react-tooltip": "^1.2.8",
     "@tanstack/react-query": "^5.17.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.21.0",
     "recharts": "^2.12.0",
-    "lucide-react": "^0.562.0"
+    "lucide-react": "^0.562.0",
+    "mammoth": "^1.12.0",
+    "qrcode": "^1.5.4",
+    "xlsx": "^0.18.5",
+    "clsx": "^2.1.1"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.6",
     "@playwright/test": "^1.58.0",
     "@testing-library/jest-dom": "^6.2.0",
     "@testing-library/react": "^14.1.2",

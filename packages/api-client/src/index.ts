@@ -57,7 +57,9 @@ export type {
   TimelineEvent,
   // Protocol
   Protocol,
+  ProtocolBasicUpdateIn,
   ProtocolCreateIn,
+  ScreeningDay,
   // Resource
   ResourceCategory,
   ResourceItem,
@@ -103,13 +105,30 @@ export type {
 export { workorderApi } from './modules/workorder'
 export { edcApi } from './modules/edc'
 export { subjectApi } from './modules/subject'
+export { mySubjectApi } from './modules/my-subject'
+export type { MyHomeDashboardData, MyHomeDashboardProject } from './modules/my-subject'
 export { protocolApi } from './modules/protocol'
+export type {
+  ICFVersion,
+  MiniSignRules,
+  ConsentRecord,
+  ConsentPreviewData,
+  ConsentStats,
+  ProtocolConsentOverview,
+  ScreeningBatchConsent,
+  DualSignStaff,
+  ConsentSettings,
+  WitnessStaffRecord,
+  DualSignStaffVerificationStatus,
+  WitnessSignatureAuthStatus,
+} from './modules/protocol'
 export { resourceApi } from './modules/resource'
 export { qualityApi } from './modules/quality'
 export { auditApi } from './modules/audit'
 export { identityApi } from './modules/identity'
 export { visitApi } from './modules/visit'
 export { schedulingApi } from './modules/scheduling'
+export type { LabScheduleRow, ExecutionOrderSummaryItem, ExecutionOrderFullDetailItem } from './modules/scheduling'
 export { workflowApi } from './modules/workflow'
 export { notificationApi } from './modules/notification'
 export type { NotificationItem, NotificationInbox } from './modules/notification'
@@ -193,6 +212,7 @@ export type {
   FeishuAlertResult,
   FeishuApprovalResult,
   AlertCheckResult,
+  ProductReturnItem,
 } from './modules/material'
 export type {
   EquipmentDashboard,
@@ -226,6 +246,8 @@ export type {
   WorkOrderException as EvaluatorException,
   EvaluatorProfile,
   WeeklySchedule,
+  ScheduleNote,
+  ScheduleAttachment,
   WaitingSubject,
   EnvironmentStatus,
   InstrumentStatus,
@@ -254,6 +276,10 @@ export type {
   CleaningItem,
   CleaningStats,
   CleaningCreateIn,
+  VenueUsageScheduleItem,
+  VenueUsageScheduleCreateIn,
+  VenueMonitorItem,
+  AccountForMonitor,
 } from './modules/facility'
 
 // 管理驾驶舱（A1/A2/A3/E1）

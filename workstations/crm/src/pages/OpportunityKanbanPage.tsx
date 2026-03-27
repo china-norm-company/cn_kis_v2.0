@@ -1,90 +1,166 @@
 import { useQuery } from '@tanstack/react-query'
 import { Card } from '@cn-kis/ui-kit'
 import { api } from '@cn-kis/api-client'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { PermissionGuard } from '@cn-kis/feishu-sdk'
 import { Kanban } from 'lucide-react'
+import { FALLBACK_SALES_STAGE_OPTIONS } from '../constants/opportunityFormFallback'
+import { opportunityStageLabel } from '../constants/opportunityStages'
 
-const STAGES = ['initial_contact', 'requirement', 'quotation', 'negotiation', 'contract', 'won'] as const
-
-const STAGE_LABELS: Record<string, string> = {
-  initial_contact: '初步接触',
-  requirement: '需求确认',
-  quotation: '报价中',
-  negotiation: '谈判中',
-  contract: '签约中',
-  won: '已成交',
-}
+const KANBAN_STAGE_ORDER = FALLBACK_SALES_STAGE_OPTIONS.map((o) => o.value)
+const KNOWN_STAGES = new Set(KANBAN_STAGE_ORDER)
 
 interface Opportunity {
   id: number
+  code?: string
   title: string
   client_name: string
   stage: string
   estimated_amount: number | string
+  sales_amount_total?: string
   probability: number
   owner: string
+  commercial_owner_name?: string
+  business_segment?: string
+  research_group?: string
+  demand_name?: string
   [key: string]: unknown
+}
+
+function money(v: unknown) {
+  if (v === undefined || v === null || v === '') return '—'
+  const n = Number(v)
+  if (Number.isNaN(n)) return '—'
+  return `¥${n.toLocaleString()}`
 }
 
 export function OpportunityKanbanPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const fromPath = location.pathname + location.search
 
   const { data } = useQuery({
     queryKey: ['crm', 'opportunities', 'list', 'kanban'],
     queryFn: () =>
       api.get<{ items: Opportunity[]; total: number }>('/crm/opportunities/list', {
-        params: { page: 1, page_size: 100 },
+        params: { page: 1, page_size: 200 },
       }),
   })
 
   const items = data?.data?.items ?? []
-  const byStage = STAGES.reduce<Record<string, Opportunity[]>>((acc, s) => {
-    acc[s] = items.filter((o) => o.stage === s)
-    return acc
-  }, {})
+  const byStage: Record<string, Opportunity[]> = {}
+  for (const s of KANBAN_STAGE_ORDER) {
+    byStage[s] = []
+  }
+  byStage.other = []
+
+  for (const o of items) {
+    const s = KNOWN_STAGES.has(o.stage) ? o.stage : 'other'
+    byStage[s].push(o)
+  }
+
+  const columns = [...KANBAN_STAGE_ORDER, ...(byStage.other.length > 0 ? ['other'] : [])]
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Kanban className="w-8 h-8 text-blue-500" />
+        <Kanban className="h-8 w-8 text-blue-500" />
         <div>
           <h1 className="text-2xl font-bold text-slate-800">商机看板</h1>
-          <p className="text-sm text-slate-500">按阶段查看商机，点击卡片进入详情</p>
+          <p className="text-sm text-slate-500">按商机阶段查看；卡片含关键字段，点击查看完整信息</p>
         </div>
       </div>
 
       <div className="flex gap-4 overflow-x-auto pb-4">
-        {STAGES.map((stage) => {
+        {columns.map((stage) => {
           const list = byStage[stage] ?? []
+          const title =
+            stage === 'other' ? '其他阶段' : opportunityStageLabel(stage)
           return (
             <div
               key={stage}
-              className="flex-shrink-0 w-72 bg-slate-50 rounded-xl border border-slate-200 overflow-hidden"
+              className="w-80 flex-shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
             >
-              <div className="px-4 py-3 bg-white border-b border-slate-200">
+              <div className="border-b border-slate-200 bg-white px-4 py-3">
                 <h3 className="font-semibold text-slate-800">
-                  {STAGE_LABELS[stage] ?? stage}
+                  {title}
                   <span className="ml-2 text-sm font-normal text-slate-500">({list.length})</span>
                 </h3>
               </div>
-              <div className="p-3 space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto">
-                {list.map((opp) => (
-                  <Card
-                    key={opp.id}
-                    variant="bordered"
-                    className="p-3 cursor-pointer hover:border-blue-300 hover:shadow-sm transition-all"
-                    onClick={() => navigate(`/opportunities/${opp.id}`)}
-                  >
-                    <div className="font-medium text-slate-800 text-sm">{opp.title}</div>
-                    <div className="text-xs text-slate-500 mt-1">{opp.client_name}</div>
-                    <div className="flex justify-between items-center mt-2 text-xs">
-                      <span className="text-amber-600 font-medium">
-                        ¥{Number(opp.estimated_amount ?? 0).toLocaleString()}
-                      </span>
-                      <span className="text-slate-500">{opp.probability}% · {opp.owner ?? '-'}</span>
-                    </div>
-                  </Card>
-                ))}
+              <div className="max-h-[calc(100vh-280px)] space-y-2 overflow-y-auto p-3">
+                {list.map((opp) => {
+                  const ownerName = opp.commercial_owner_name || opp.owner || '—'
+                  return (
+                    <Card
+                      key={opp.id}
+                      variant="bordered"
+                      className="p-3 transition-all hover:border-blue-300 hover:shadow-sm"
+                    >
+                      <button
+                        type="button"
+                        className="w-full text-left"
+                        onClick={() =>
+                          navigate(`/opportunities/${opp.id}`, { state: { from: fromPath } })
+                        }
+                      >
+                        {opp.code ? (
+                          <div className="text-[11px] font-medium text-slate-500">{opp.code}</div>
+                        ) : null}
+                        <div className="text-sm font-medium leading-snug text-slate-800">{opp.title}</div>
+                        <div className="mt-1 text-xs text-slate-500">{opp.client_name}</div>
+                        {opp.demand_name ? (
+                          <div className="mt-1 line-clamp-2 text-xs text-slate-600">需求：{opp.demand_name}</div>
+                        ) : null}
+                        <div className="mt-2 space-y-0.5 text-[11px] text-slate-600">
+                          <div>
+                            <span className="text-slate-400">业务板块</span>{' '}
+                            {opp.business_segment || '—'}
+                          </div>
+                          <div>
+                            <span className="text-slate-400">研究组</span> {opp.research_group || '—'}
+                          </div>
+                          <div>
+                            <span className="text-slate-400">商机阶段</span>{' '}
+                            {opportunityStageLabel(opp.stage)}
+                          </div>
+                          <div className="flex flex-wrap gap-x-2 gap-y-0.5">
+                            <span>
+                              <span className="text-slate-400">预估</span> {money(opp.estimated_amount)}
+                            </span>
+                            <span>
+                              <span className="text-slate-400">销售额</span> {money(opp.sales_amount_total)}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400">商务负责人</span> {ownerName}
+                          </div>
+                        </div>
+                      </button>
+                      <div className="mt-2 flex justify-end gap-1.5 border-t border-slate-100 pt-2">
+                        <button
+                          type="button"
+                          className="rounded border border-slate-200 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                          onClick={() =>
+                            navigate(`/opportunities/${opp.id}`, { state: { from: fromPath } })
+                          }
+                        >
+                          查看
+                        </button>
+                        <PermissionGuard permission="crm.opportunity.update">
+                          <button
+                            type="button"
+                            className="rounded bg-blue-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-blue-700"
+                            onClick={() =>
+                              navigate(`/opportunities/${opp.id}/edit`, { state: { from: fromPath } })
+                            }
+                          >
+                            编辑
+                          </button>
+                        </PermissionGuard>
+                      </div>
+                    </Card>
+                  )
+                })}
                 {list.length === 0 && (
                   <div className="py-8 text-center text-sm text-slate-400">暂无商机</div>
                 )}

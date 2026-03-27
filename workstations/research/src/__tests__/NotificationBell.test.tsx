@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { NotificationBell } from '../components/NotificationBell'
+import { notificationApi } from '@cn-kis/api-client'
 
 const markReadFn = vi.fn().mockResolvedValue({ code: 200 })
 
@@ -24,8 +25,7 @@ vi.mock('@cn-kis/api-client', () => ({
 
 function renderBell(overrideInbox?: any) {
   if (overrideInbox) {
-    const { notificationApi } = require('@cn-kis/api-client')
-    notificationApi.inbox.mockResolvedValueOnce(overrideInbox)
+    vi.mocked(notificationApi.inbox).mockResolvedValueOnce(overrideInbox)
   }
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(

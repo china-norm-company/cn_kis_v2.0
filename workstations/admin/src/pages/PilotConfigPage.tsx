@@ -28,14 +28,19 @@ const ALL_WORKSTATIONS = [
   { key: 'lab-personnel', name: '共济·人员台' },
   { key: 'ethics', name: '御史·伦理台' },
   { key: 'reception', name: '和序·接待台' },
+  { key: 'control-plane', name: '天工·统管台' },
+  { key: 'admin', name: '鹿鸣·治理台' },
+  { key: 'digital-workforce', name: '中书·智能台' },
 ]
 
 interface AccountItem {
   id: number
-  name: string
+  name?: string
+  display_name?: string
+  username?: string
   phone?: string
   email?: string
-  roles?: string[]
+  roles?: Array<{ name: string; display_name: string }>
 }
 
 interface WorkstationConfigItem {
@@ -127,6 +132,10 @@ export function PilotConfigPage() {
 
   const accounts = accountsRes?.data?.items ?? []
 
+  const selectedLabel = selectedAccount
+    ? (selectedAccount.display_name || selectedAccount.name || selectedAccount.username || `账号 ${selectedAccount.id}`)
+    : ''
+
   return (
     <div className="space-y-5">
       <div>
@@ -166,12 +175,14 @@ export function PilotConfigPage() {
                       : 'hover:bg-slate-50 text-slate-700'
                   }`}
                 >
-                  <div className="font-medium">{acc.name}</div>
+                  <div className="font-medium">{acc.display_name || acc.name || acc.username || `账号 ${acc.id}`}</div>
                   <div className="text-xs text-slate-400">{acc.phone || acc.email || `ID: ${acc.id}`}</div>
                   {acc.roles && acc.roles.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1">
                       {acc.roles.slice(0, 3).map((r) => (
-                        <span key={r} className="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-xs rounded">{r}</span>
+                        <span key={r.name} className="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-xs rounded">
+                          {r.display_name || r.name}
+                        </span>
                       ))}
                     </div>
                   )}
@@ -197,7 +208,7 @@ export function PilotConfigPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-semibold text-slate-700">
-                    {selectedAccount.name} 的工作台访问配置
+                    {selectedLabel} 的工作台访问配置
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">蓝色表示已启用，灰色表示已禁用</p>
                 </div>

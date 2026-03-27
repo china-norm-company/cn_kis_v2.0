@@ -8,7 +8,7 @@
 import { apiClient } from "@/shared/api/client";
 import { createMockAdapterCaller } from "@/shared/api/mock-adapter";
 import { getApiMode } from "@/shared/config/env";
-import type { Invoice, InvoiceStatus } from "@/entities/finance/domain";
+import type { Invoice, InvoiceStatus, InvoiceType } from "@/entities/finance/domain";
 
 // 开发：后端不可用时可回落 mock。生产：禁止回落，否则每人仍只看到本机 localStorage，团队共享失效
 const callWithMock = createMockAdapterCaller({
@@ -67,7 +67,7 @@ export interface CreateInvoiceRequest {
   invoice_currency?: string;
   invoice_amount_tax_included?: number;
   revenue_amount: number;
-  invoice_type: '全电专票' | '全电普票' | '形式发票';
+  invoice_type: InvoiceType;
   company_name: string;
   project_code: string;              // 主项目编号（兼容字段）
   project_id?: number;

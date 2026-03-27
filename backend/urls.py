@@ -43,6 +43,7 @@ api = get_api()
 # ============================================================================
 if not is_registration_done():
     from apps.identity.api import router as identity_router
+    from apps.identity.api_menu_config import router as menu_config_router
     from apps.audit.api import router as audit_router
     from apps.subject.api import router as subject_router
     from apps.protocol.api import router as protocol_router
@@ -53,11 +54,13 @@ if not is_registration_done():
     from apps.signature.api import router as signature_router
 
     _safe_add_router(api, '/auth/', identity_router, tags=['认证授权'])
+    _safe_add_router(api, '/menu-config/', menu_config_router, tags=['研究台菜单'])
     _safe_add_router(api, '/audit/', audit_router, tags=['审计日志'])
     _safe_add_router(api, '/subject/', subject_router, tags=['受试者管理'])
     from apps.subject.api_recruitment import router as recruitment_router
     from apps.subject.api_execution import router as execution_router
     from apps.subject.api_my import router as my_router
+    from apps.subject.api_research_diary import router as research_diary_router
     from apps.subject.api_questionnaire import router as questionnaire_router
     from apps.subject.api_loyalty import router as loyalty_router
     from apps.subject.api_prescreening import router as prescreening_router
@@ -67,6 +70,7 @@ if not is_registration_done():
     _safe_add_router(api, '/reception/', reception_router, tags=['前台接待'])
     _safe_add_router(api, '/execution/', execution_router, tags=['执行管理'])
     _safe_add_router(api, '/my/', my_router, tags=['受试者自助'])
+    _safe_add_router(api, '/research/diary/', research_diary_router, tags=['研究台日记管理'])
     _safe_add_router(api, '/questionnaire/', questionnaire_router, tags=['问卷管理'])
     _safe_add_router(api, '/loyalty/', loyalty_router, tags=['忠诚度管理'])
     _safe_add_router(api, '/protocol/', protocol_router, tags=['协议管理'])

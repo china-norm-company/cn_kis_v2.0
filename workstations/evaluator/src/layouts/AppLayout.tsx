@@ -11,7 +11,7 @@ const navItems = [
   { path: '/workorders', label: '我的工单', icon: ClipboardList, permissions: ['workorder.workorder.read'] },
   { path: '/scan', label: '扫码执行', icon: QrCode, permissions: ['workorder.workorder.read'] },
   { path: '/instrument-measure', label: '仪器测量', icon: Gauge, permissions: ['workorder.workorder.read'] },
-  { path: '/schedule', label: '我的排程', icon: Calendar, permissions: ['workorder.workorder.read'] },
+  { path: '/schedule', label: '我的排程', icon: Calendar, permissions: [] },
   { path: '/detections', label: '检测记录', icon: Microscope, permissions: ['workorder.workorder.read'] },
   { path: '/exceptions', label: '异常管理', icon: AlertTriangle, permissions: ['workorder.workorder.read'] },
   { path: '/history', label: '执行历史', icon: History, permissions: ['workorder.workorder.read'] },

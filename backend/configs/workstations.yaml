@@ -16,7 +16,7 @@
 #
 # 检查清单：新增工作台时需同时完成
 # - [ ] 本文件添加条目
-# - [ ] apps/{key}/.env 配置 VITE_FEISHU_APP_ID=cli_a98b0babd020500e
+# - [ ] workstations/{key}/.env 配置 VITE_FEISHU_APP_ID=cli_a98b0babd020500e
 # - [ ] 飞书后台为子衿应用（cli_a98b0babd020500e）添加新工作台的 redirect_uri
 # - [ ] backend/settings.py 添加工作台到 FEISHU_WORKSTATION_APP_IDS（若有独立 App）
 # - [ ] backend/urls.py 添加 API 路由（如需要）

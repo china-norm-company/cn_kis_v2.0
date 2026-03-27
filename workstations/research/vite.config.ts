@@ -23,6 +23,12 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/aiapi/, ''),
       },
+      // 方案检查台代理（Flask，端口 5000）
+      '/protocol-qc': {
+        target: 'http://127.0.0.1:5000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/protocol-qc/, ''),
+      },
     },
   },
   base: '/research/',
