@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { equipmentApi } from '@cn-kis/api-client'
 import type { DetectionMethod, DetectionMethodDetail } from '@cn-kis/api-client'
@@ -164,10 +164,20 @@ function MethodDetailDrawer({ id, onClose }: { id: number; onClose: () => void }
               <div className="space-y-2 text-sm">
                 <div className="flex gap-4"><span className="text-slate-500 w-24">编号</span><span className="text-slate-800 font-mono">{m.code}</span></div>
                 <div className="flex gap-4"><span className="text-slate-500 w-24">英文名</span><span className="text-slate-800">{m.name_en || '-'}</span></div>
+                <div className="flex gap-4"><span className="text-slate-500 w-24">设备名称分类</span><span className="text-slate-800">{m.equipment_name_classification || '—'}</span></div>
                 <div className="flex gap-4"><span className="text-slate-500 w-24">类别</span><span className="text-slate-800">{m.category_display}</span></div>
                 <div className="flex gap-4"><span className="text-slate-500 w-24">检测时长</span><span className="text-slate-800">{m.estimated_duration_minutes} 分钟</span></div>
                 <div className="flex gap-4"><span className="text-slate-500 w-24">准备时长</span><span className="text-slate-800">{m.preparation_time_minutes} 分钟</span></div>
-                {m.description && <div className="flex gap-4"><span className="text-slate-500 w-24">说明</span><span className="text-slate-800">{m.description}</span></div>}
+                {m.description && <div className="flex gap-4"><span className="text-slate-500 w-24">说明</span><span className="text-slate-800 whitespace-pre-wrap">{m.description}</span></div>}
+                {m.qc_requirements && <div className="flex gap-4 items-start"><span className="text-slate-500 w-24 shrink-0">质控要求</span><span className="text-slate-800 whitespace-pre-wrap">{m.qc_requirements}</span></div>}
+                {m.sop_attachment_url && (
+                  <div className="flex gap-4 items-start">
+                    <span className="text-slate-500 w-24 shrink-0">SOP</span>
+                    <a href={m.sop_attachment_url} target="_blank" rel="noopener noreferrer" className="text-cyan-600 hover:underline text-sm break-all">
+                      打开附件
+                    </a>
+                  </div>
+                )}
               </div>
             </section>
 
@@ -250,17 +260,24 @@ function MethodDetailDrawer({ id, onClose }: { id: number; onClose: () => void }
 
 function CreateMethodModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [form, setForm] = useState({
-    code: '', name: '', name_en: '', category: 'skin_hydration',
-    description: '', estimated_duration_minutes: '30', preparation_time_minutes: '10',
+    code: '', name: '', name_en: '', equipment_name_classification: '', category: 'skin_hydration',
+    description: '', qc_requirements: '', estimated_duration_minutes: '30', preparation_time_minutes: '10',
     temperature_min: '', temperature_max: '', humidity_min: '', humidity_max: '',
   })
+  const [sopAttachmentUrl, setSopAttachmentUrl] = useState('')
+  const [sopFileLabel, setSopFileLabel] = useState('')
+  const [sopUploading, setSopUploading] = useState(false)
+  const sopInputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState('')
 
   const mutation = useMutation({
     mutationFn: () => equipmentApi.createDetectionMethod({
       code: form.code, name: form.name, category: form.category,
       name_en: form.name_en || undefined,
+      equipment_name_classification: form.equipment_name_classification || undefined,
       description: form.description || undefined,
+      qc_requirements: form.qc_requirements || undefined,
+      sop_attachment_url: sopAttachmentUrl || undefined,
       estimated_duration_minutes: Number(form.estimated_duration_minutes) || 30,
       preparation_time_minutes: Number(form.preparation_time_minutes) || 10,
       temperature_min: form.temperature_min ? Number(form.temperature_min) : undefined,
@@ -313,10 +330,66 @@ function CreateMethodModal({ onClose, onSuccess }: { onClose: () => void; onSucc
           </label>
 
           <label className="block">
+            <span className="text-sm font-medium text-slate-700">设备名称分类</span>
+            <input value={form.equipment_name_classification} onChange={e => set('equipment_name_classification', e.target.value)}
+              placeholder="如同规格设备统一类型：电子天平、glossymeter 等"
+              className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" />
+          </label>
+
+          <label className="block">
             <span className="text-sm font-medium text-slate-700">方法说明</span>
             <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={2}
               className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" />
           </label>
+
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700">质控要求</span>
+            <textarea value={form.qc_requirements} onChange={e => set('qc_requirements', e.target.value)} rows={3}
+              placeholder="质控与室内质控要求等"
+              className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" />
+          </label>
+
+          <div className="block">
+            <span className="text-sm font-medium text-slate-700">SOP 附件</span>
+            <input ref={sopInputRef} type="file" className="hidden" accept=".pdf,.doc,.docx,.xlsx,.xls,.ppt,.pptx,.png,.jpg,.jpeg,.zip"
+              onChange={async (e) => {
+                const f = e.target.files?.[0]
+                if (!f) return
+                setSopUploading(true)
+                setError('')
+                try {
+                  const res = await equipmentApi.uploadDetectionMethodSop(f) as {
+                    data?: { url?: string; original_filename?: string }
+                  }
+                  const payload = res?.data
+                  if (payload?.url) {
+                    setSopAttachmentUrl(payload.url)
+                    setSopFileLabel(payload.original_filename || f.name)
+                  } else {
+                    setError('上传未返回有效地址')
+                  }
+                } catch (err: unknown) {
+                  setError((err as Error)?.message || '上传失败')
+                } finally {
+                  setSopUploading(false)
+                  e.target.value = ''
+                }
+              }}
+            />
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => sopInputRef.current?.click()}
+                disabled={sopUploading}
+                className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+                {sopUploading ? '上传中…' : '选择文件'}
+              </button>
+              {sopFileLabel && <span className="text-xs text-slate-600 truncate max-w-[240px]" title={sopFileLabel}>{sopFileLabel}</span>}
+              {sopAttachmentUrl && (
+                <button type="button" onClick={() => { setSopAttachmentUrl(''); setSopFileLabel('') }}
+                  className="text-xs text-red-600 hover:underline">清除</button>
+              )}
+            </div>
+            <p className="text-xs text-slate-400 mt-1">支持 PDF、Word、Excel、PPT、图片、ZIP 等</p>
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <label className="block">

@@ -23,6 +23,29 @@ PERMISSION_CACHE_TTL = 300  # 5 分钟
 CACHE_PREFIX = "authz:"
 
 
+def _authz_cache_get(key: str):
+    """Redis 不可用时避免整站 500（profile / 权限校验均走 cache）"""
+    try:
+        return cache.get(key)
+    except Exception as e:
+        logger.warning('authz cache get failed key=%s: %s', key, e)
+        return None
+
+
+def _authz_cache_set(key: str, value, ttl: int) -> None:
+    try:
+        cache.set(key, value, ttl)
+    except Exception as e:
+        logger.warning('authz cache set failed key=%s: %s', key, e)
+
+
+def _authz_cache_delete(key: str) -> None:
+    try:
+        cache.delete(key)
+    except Exception as e:
+        logger.warning('authz cache delete failed key=%s: %s', key, e)
+
+
 class AuthzService:
     """
     授权服务
@@ -39,7 +62,7 @@ class AuthzService:
     def get_account_roles(self, account_id: int) -> List[Role]:
         """获取账号的所有启用角色"""
         cache_key = f"{CACHE_PREFIX}roles:{account_id}"
-        cached = cache.get(cache_key)
+        cached = _authz_cache_get(cache_key)
         if cached is not None:
             return cached
 
@@ -48,7 +71,7 @@ class AuthzService:
         ).select_related('role')
 
         roles = [ar.role for ar in account_roles if ar.role.is_active]
-        cache.set(cache_key, roles, PERMISSION_CACHE_TTL)
+        _authz_cache_set(cache_key, roles, PERMISSION_CACHE_TTL)
         return roles
 
     def get_account_role_names(self, account_id: int) -> Set[str]:
@@ -74,7 +97,7 @@ class AuthzService:
         避免了旧实现中后面的 project_id 覆盖前面的 bug。
         """
         cache_key = f"{CACHE_PREFIX}permissions:{account_id}"
-        cached = cache.get(cache_key)
+        cached = _authz_cache_get(cache_key)
         if cached is not None:
             return cached
 
@@ -103,7 +126,7 @@ class AuthzService:
                 if entry not in permissions[code]:
                     permissions[code].append(entry)
 
-        cache.set(cache_key, permissions, PERMISSION_CACHE_TTL)
+        _authz_cache_set(cache_key, permissions, PERMISSION_CACHE_TTL)
         return permissions
 
     def get_account_permission_codes(self, account_id: int) -> Set[str]:
@@ -118,7 +141,7 @@ class AuthzService:
             去重后的项目 ID 列表，不包含 None（全局角色）
         """
         cache_key = f"{CACHE_PREFIX}project_ids:{account_id}"
-        cached = cache.get(cache_key)
+        cached = _authz_cache_get(cache_key)
         if cached is not None:
             return cached
 
@@ -128,7 +151,7 @@ class AuthzService:
                 project_id__isnull=False,
             ).values_list('project_id', flat=True).distinct()
         )
-        cache.set(cache_key, project_ids, PERMISSION_CACHE_TTL)
+        _authz_cache_set(cache_key, project_ids, PERMISSION_CACHE_TTL)
         return project_ids
 
     # ------------------------------------------------------------------
@@ -218,9 +241,9 @@ class AuthzService:
     # ------------------------------------------------------------------
     def clear_cache(self, account_id: int) -> None:
         """清除指定账号的权限缓存"""
-        cache.delete(f"{CACHE_PREFIX}roles:{account_id}")
-        cache.delete(f"{CACHE_PREFIX}permissions:{account_id}")
-        cache.delete(f"{CACHE_PREFIX}project_ids:{account_id}")
+        _authz_cache_delete(f"{CACHE_PREFIX}roles:{account_id}")
+        _authz_cache_delete(f"{CACHE_PREFIX}permissions:{account_id}")
+        _authz_cache_delete(f"{CACHE_PREFIX}project_ids:{account_id}")
 
     # ------------------------------------------------------------------
     # 角色管理

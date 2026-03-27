@@ -1,0 +1,53 @@
+---
+description: 指导用户在终端操作时必须提供可完整复制粘贴的命令（含目录与 shell 区分）
+alwaysApply: true
+---
+
+# 终端与目录操作：可复制粘贴命令（强制）
+
+## 适用范围
+
+当回答需要用户在**本机终端**执行命令（含 `git`、`pnpm`、`python`、`cd`、激活虚拟环境等）时，**必须**遵守本节，降低非程序员用户因路径、shell 差异导致的失败。
+
+## 必须做到
+
+1. **写明工作目录**：使用本仓库绝对路径 **`D:\git_project\cn_kis_v1.0`**（或用户已说明的其他路径），并给出**完整** `cd` 步骤。
+2. **整段可复制**：给出**可直接复制粘贴**的命令块；避免让用户自己拼接路径。
+3. **少用一行链式**：在 **Windows CMD** 中避免依赖 `&&`（易因环境报错）；优先**一行一条命令**；PowerShell 可适当使用 `;`。
+4. **Windows CMD 与盘符**：用户在 **cmd.exe** 新开窗口时，若当前盘符为 **C:**，**必须先切换到 D: 再 cd**，否则 `cd D:\...` 仍在 C: 盘且路径无效。推荐两种写法（二选一）：
+   - 两行：`D:` 回车，再 `cd D:\git_project\cn_kis_v1.0\...`
+   - 一行：`cd /d D:\git_project\cn_kis_v1.0\...`（`/d` 同时切换盘符与目录）
+5. **区分 Shell**：若命令在 CMD / PowerShell / Git Bash 下**写法不同**，应**分别**给出对应块（至少标注「CMD」「PowerShell」「Git Bash」）。
+6. **虚拟环境**：涉及 `backend` 时，**单独一行**写出激活命令：
+   - CMD：`.venv\Scripts\activate.bat`
+   - PowerShell：`.\.venv\Scripts\Activate.ps1`
+   - Git Bash：`source .venv/Scripts/activate`
+7. **确认方式**：必要时用一句话说明如何确认成功（例如提示符出现 `(.venv)`、或终端输出关键字）。
+
+## 禁止
+
+- 仅写「在 backend 目录执行」而不给出可复制 `cd` 与完整命令。
+- 假定用户已激活虚拟环境却不写出 `activate` 行。
+
+## 项目路径速查
+
+| 场景 | 目录 |
+|------|------|
+| 仓库根（pnpm、git） | `D:\git_project\cn_kis_v1.0` |
+| Django 后端 | `D:\git_project\cn_kis_v1.0\backend` |
+| 采苓研究台前端 | `D:\git_project\cn_kis_v1.0\apps\research`（通常从根目录 `pnpm dev:research`） |
+
+## 后端启动（CMD 可复制块）
+
+研究台 Vite 将 `/api` 代理到 **`http://127.0.0.1:8001`**，需另开**第二个** cmd 窗口（前端窗口保持运行）：
+
+```cmd
+D:
+cd D:\git_project\cn_kis_v1.0\backend
+.venv\Scripts\activate.bat
+python manage.py runserver 8001
+```
+
+成功标志：出现 `Starting development server at http://127.0.0.1:8001/`。API 文档常见地址：`http://127.0.0.1:8001/api/v1/docs`（以项目为准）。
+
+**等价一行进入 backend（CMD）**：`cd /d D:\git_project\cn_kis_v1.0\backend`

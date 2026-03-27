@@ -310,7 +310,8 @@ export function useAuthProfile(
             || (err.response.data as { msg?: string; message?: string }).message
             || '')
           : ''
-      const isAuthError = status === 401 || status === 403
+      // 仅将 401 视为「需重新登录」。403 可能是网关/中间层策略，不应与 profile 的 401 混为一谈（否则会误触发 logout）
+      const isAuthError = status === 401
       const msg = isAuthError
         ? (backendMsg || '未授权，请重新登录')
         : (err instanceof Error ? err.message : '获取用户权限失败')

@@ -684,9 +684,15 @@ def feishu_callback(request, data: FeishuCallbackIn):
             'data': {'error_code': 'AUTH_APP_MISMATCH', 'trace_id': trace_id or ''},
         }
 
+    # 空串会触发 feishu_oauth_login 回退推导；须 strip，避免误用 /login 旧逻辑残留
+    callback_redirect_uri = (data.redirect_uri or '').strip() or None
     try:
         account = feishu_oauth_login(
-            data.code, app_id, app_secret, state_payload, redirect_uri=data.redirect_uri
+            data.code,
+            app_id,
+            app_secret,
+            state_payload,
+            redirect_uri=callback_redirect_uri,
         )
     except ValueError as e:
         logger.error(f'OAuth 回调失败 (app_id={app_id}): {e}')
@@ -1098,6 +1104,7 @@ def wechat_logout(request):
 
 def _ensure_subject_account_by_phone(phone: str):
     from .models import Account, AccountType
+    from .services import _ensure_subject_self_role
     from apps.subject.models import Subject, AuthLevel
     from apps.subject.services.subject_service import (
         generate_subject_no,
@@ -1155,6 +1162,9 @@ def _ensure_subject_account_by_phone(phone: str):
         if update_fields:
             update_fields.append('update_time')
             subject.save(update_fields=update_fields)
+
+    # 短信等渠道创建的受试者账号须具备 subject_self（含 my.*），否则 /my/* 报缺少 my.profile.read
+    _ensure_subject_self_role(account)
 
     return account, subject
 
