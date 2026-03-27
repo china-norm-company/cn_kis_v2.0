@@ -1262,7 +1262,7 @@ def consent_overview(
             if isinstance(auth_payload, dict):
                 uid = auth_payload.get('user_id')
             cache_key = (
-                f'protocol:consent_overview:v3:uid={uid or "-"}:'
+                f'protocol:consent_overview:v4:uid={uid or "-"}:'
                 f'p={req_page}:s={req_page_size}:kw={kw or ""}:ds={ds or ""}:de={de or ""}:cfg={cfg or ""}'
             )
             cached = cache.get(cache_key)
@@ -1450,6 +1450,7 @@ def consent_overview(
             'title': p.title,
             'create_time': p.create_time.isoformat() if p.create_time else None,
             'consent_last_update_at': p.update_time.isoformat() if getattr(p, 'update_time', None) else None,
+            'project_sync_at': p.project_sync_at.isoformat() if getattr(p, 'project_sync_at', None) else None,
             'consent_display_order': getattr(p, 'consent_display_order', 0),
             'icf_count': icf_count,
             'config_status': config_status_val,

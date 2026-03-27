@@ -103,6 +103,13 @@ class Protocol(models.Model):
     # 时间
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)
+    project_sync_at = models.DateTimeField(
+        '项目同步时间',
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text='执行订单上传/更新成功并同步至知情管理的时间',
+    )
     
     # 软删除
     is_deleted = models.BooleanField('已删除', default=False)

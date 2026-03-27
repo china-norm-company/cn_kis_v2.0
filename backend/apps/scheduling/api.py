@@ -1777,6 +1777,12 @@ def save_execution_order(request, payload: ExecutionOrderUploadIn):
                         sync_workorders_to_workstations(rec)
                     except Exception as e:
                         logger.warning('工单同步到招招/和序失败: %s', e)
+                    try:
+                        from .consent_sync import sync_execution_order_upload_to_consent
+
+                        sync_execution_order_upload_to_consent(rec)
+                    except Exception as e:
+                        logger.warning('执行订单同步知情管理失败: %s', e)
                     return {'code': 200, 'msg': f'已覆盖同项目编号，共 {len(new_rows)} 条', 'data': {'id': rec.id, 'count': len(new_rows)}}
 
         rec = ExecutionOrderUpload.objects.create(
@@ -1792,6 +1798,12 @@ def save_execution_order(request, payload: ExecutionOrderUploadIn):
             sync_workorders_to_workstations(rec)
         except Exception as e:
             logger.warning('工单同步到招招/和序失败: %s', e)
+        try:
+            from .consent_sync import sync_execution_order_upload_to_consent
+
+            sync_execution_order_upload_to_consent(rec)
+        except Exception as e:
+            logger.warning('执行订单同步知情管理失败: %s', e)
         return {'code': 200, 'msg': f'已保存，共 {len(new_rows)} 条', 'data': {'id': rec.id, 'count': len(new_rows)}}
     except Exception as e:
         logger.exception('save_execution_order failed')
@@ -1916,6 +1928,12 @@ def update_execution_order(request, order_id: int, payload: ExecutionOrderUpload
         sync_workorders_to_workstations(rec)
     except Exception as e:
         logger.warning('工单同步到招招/和序失败: %s', e)
+    try:
+        from .consent_sync import sync_execution_order_upload_to_consent
+
+        sync_execution_order_upload_to_consent(rec)
+    except Exception as e:
+        logger.warning('执行订单同步知情管理失败: %s', e)
     return {'code': 200, 'msg': '已更新', 'data': {'id': rec.id, 'count': len(new_rows)}}
 
 

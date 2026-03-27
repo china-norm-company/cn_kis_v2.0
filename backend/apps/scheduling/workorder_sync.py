@@ -80,6 +80,32 @@ def _parse_schedule_overall_start_end(raw_schedule: str) -> tuple[str | None, st
     )
 
 
+def parse_schedule_anchor_screening_range(raw_schedule: str) -> tuple[str | None, str | None]:
+    """
+    知情同步用：全表「最早执行日期」所在访视行（多行同最早日期时取文档序第一行）；
+    筛选开始 = 该行日期 min，筛选结束 = 该行日期 max。返回 (YYYY-MM-DD, YYYY-MM-DD)。
+    """
+    rows = _parse_schedule_visit_point_dates(raw_schedule or '')
+    if not rows:
+        return (None, None)
+    all_dates: list[date] = []
+    for _vp, ds in rows:
+        all_dates.extend(ds)
+    if not all_dates:
+        return (None, None)
+    global_min = min(all_dates)
+    anchor_ds: list[date] | None = None
+    for _vp, ds in rows:
+        if global_min in ds:
+            anchor_ds = ds
+            break
+    if not anchor_ds:
+        return (None, None)
+    lo = min(anchor_ds)
+    hi = max(anchor_ds)
+    return (lo.isoformat(), hi.isoformat())
+
+
 def _parse_schedule_visit_point_dates(raw_schedule: str) -> list[tuple[str, list[date]]]:
     """
     按行解析「执行排期」：每行「访视点: 日期…」，得到 (访视点, 该行列出的日期列表)。

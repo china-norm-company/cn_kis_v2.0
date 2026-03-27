@@ -5519,6 +5519,37 @@ export default function ConsentManagementPage() {
                       },
                     },
                     {
+                      key: 'project_sync_at',
+                      title: '项目同步时间',
+                      width: 122,
+                      headerClassName: '!px-1.5',
+                      cellClassName: '!px-1.5',
+                      cellVAlign: 'top' as const,
+                      render: (_, record) => {
+                        const raw = (record as { project_sync_at?: string | null }).project_sync_at
+                        let body: ReactNode
+                        if (!raw) {
+                          body = <span className="text-slate-400 text-sm">—</span>
+                        } else {
+                          try {
+                            body = (
+                              <span
+                                className="block min-w-0 truncate text-sm text-slate-700 tabular-nums"
+                                title={raw}
+                              >
+                                {new Date(raw).toLocaleString()}
+                              </span>
+                            )
+                          } catch {
+                            body = <span className="text-sm text-slate-700">{raw}</span>
+                          }
+                        }
+                        return (
+                          <div className={consentOverviewSideCellWrapperClass(record, 'start')}>{body}</div>
+                        )
+                      },
+                    },
+                    {
                       key: 'action',
                       title: '操作',
                       width: 168,
