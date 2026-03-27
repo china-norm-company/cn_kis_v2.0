@@ -6,8 +6,8 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('finance', '0016_invoice_request_invoice_type_choices'),
-        ('finance', '0017_merge_20260317_1408'),
+        ('finance', '0016_merge_20260320_1824'),
+        ('finance', '0017_rename_t_legacy_in_status_idx_t_legacy_in_status_afd4b8_idx_and_more'),
     ]
 
     operations = [

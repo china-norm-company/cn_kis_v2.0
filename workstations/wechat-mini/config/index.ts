@@ -95,6 +95,7 @@ export default defineConfig(async (merge) => {
         include: [subjectCoreRoot, consentPlaceholdersRoot],
       },
       webpackChain(chain) {
+        chain.resolve.alias.set('@cn-kis/subject-core/constants/copy', path.join(subjectCoreRoot, 'src/constants/copy.ts'))
         chain.resolve.alias.set('@cn-kis/subject-core', subjectCoreEntry)
         chain.resolve.alias.set('@cn-kis/consent-placeholders', consentPlaceholdersEntry)
         chain.resolve.alias.set('@', srcRoot)
@@ -138,6 +139,7 @@ export default defineConfig(async (merge) => {
         },
       },
       webpackChain(chain) {
+        chain.resolve.alias.set('@cn-kis/subject-core/constants/copy', path.join(subjectCoreRoot, 'src/constants/copy.ts'))
         chain.resolve.alias.set('@cn-kis/subject-core', subjectCoreEntry)
         chain.resolve.alias.set('@cn-kis/consent-placeholders', consentPlaceholdersEntry)
         chain.resolve.alias.set('@', srcRoot)

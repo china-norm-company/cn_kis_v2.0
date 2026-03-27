@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('project_full_link', '0002_rename_project_ful_executi_idx_project_ful_executi_924710_idx_and_more'),
-        ('subject', '0029_remove_subjectprojectsc_t_subject_project_sc_subject_project_uniq_and_more'),
+        ('subject', '0029_merge_20260320_1824'),
     ]
 
     operations = [
