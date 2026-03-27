@@ -125,6 +125,21 @@ export const productDistributionApi = {
   getExecutionOrder: (id: number) =>
     unwrap(api.get<KisBody<any>>(`/product/execution-orders/${id}`)),
 
+  /** 某日队列已「无需执行」结案项，用于待执行列表排除 */
+  getExecutionPendingSkips: (queueDate: string) =>
+    unwrap(
+      api.get<
+        KisBody<{
+          items: Array<{
+            work_order_id: number
+            subject_id: number
+            checkin_id: number | null
+            queue_date: string
+          }>
+        }>
+      >('/product/execution-orders/pending-skips', { params: { queue_date: queueDate.slice(0, 10) } }),
+    ),
+
   createExecutionOrder: (data: Record<string, unknown>) =>
     unwrap(api.post<KisBody<any>>('/product/execution-orders', data)),
 

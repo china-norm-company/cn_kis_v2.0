@@ -4,7 +4,7 @@
 import re
 from datetime import date, datetime, timezone, timedelta
 from decimal import Decimal
-from typing import Optional, Any, Tuple
+from typing import Optional, Any, Tuple, List, Dict
 
 # 东八区时间，用于操作时间等
 _TZ_UTC8 = timezone(timedelta(hours=8))
@@ -1108,6 +1108,57 @@ def project_products(related_project_no: str) -> dict:
 
 # ---------- 执行记录 ----------
 
+# 待执行工单「无需执行」结案标记，写入 remark 前缀；用于按队列日从待执行列表排除
+SKIP_PENDING_MARK = "__SKIP_PENDING__|"
+
+
+def _skip_pending_tag(qdate: str, work_order_id: int, subject_id: int, checkin_id: Optional[int]) -> str:
+    qd = (qdate or "").strip()[:10]
+    tag = f"{SKIP_PENDING_MARK}qdate={qd}|wo={int(work_order_id)}|sid={int(subject_id)}|"
+    if checkin_id is not None:
+        tag += f"cid={int(checkin_id)}|"
+    tag += "__"
+    return tag
+
+
+def _skip_pending_closure_exists(qdate: str, work_order_id: int, subject_id: int, checkin_id: Optional[int]) -> bool:
+    qd = (qdate or "").strip()[:10]
+    q = (
+        Q(is_delete=0)
+        & Q(remark__contains=SKIP_PENDING_MARK)
+        & Q(remark__contains=f"|qdate={qd}|")
+        & Q(remark__contains=f"|wo={int(work_order_id)}|")
+        & Q(remark__contains=f"|sid={int(subject_id)}|")
+    )
+    if checkin_id is not None:
+        q &= Q(remark__contains=f"|cid={int(checkin_id)}|")
+    return ProductDistributionExecution.objects.filter(q).exists()
+
+
+def pending_execution_skips_for_queue_date(queue_date: str) -> Dict[str, List[dict]]:
+    d = (queue_date or "").strip()[:10]
+    if len(d) < 10:
+        return {"items": []}
+    qs = ProductDistributionExecution.objects.filter(is_delete=0, remark__startswith=SKIP_PENDING_MARK)
+    items: List[dict] = []
+    for row in qs:
+        rmk = row.remark or ""
+        if f"|qdate={d}|" not in rmk:
+            continue
+        sid_m = re.search(r"\|sid=(\d+)\|", rmk)
+        wo_m = re.search(r"\|wo=(\d+)\|", rmk)
+        if not sid_m or not wo_m:
+            continue
+        cid_m = re.search(r"\|cid=(\d+)\|", rmk)
+        items.append({
+            "work_order_id": int(wo_m.group(1)),
+            "subject_id": int(sid_m.group(1)),
+            "checkin_id": int(cid_m.group(1)) if cid_m else None,
+            "queue_date": d,
+        })
+    return {"items": items}
+
+
 def execution_list(
     work_order_id: Optional[int] = None,
     subject_rd: Optional[str] = None,
@@ -1156,6 +1207,7 @@ def execution_list(
             "exception_type": row.exception_type,
             "remark": row.remark,
             "created_at": _dt_iso_utc8_stored(row.created_at),
+            "skip_execution": bool((row.remark or "").startswith(SKIP_PENDING_MARK)),
         }
         for row in items
     ]
@@ -1228,6 +1280,7 @@ def execution_detail(execution_id: int) -> Optional[dict]:
         "products": products,
         "created_at": _dt_iso_utc8_stored(row.created_at),
         "updated_at": _dt_iso_utc8_stored(row.updated_at),
+        "skip_execution": bool((row.remark or "").startswith(SKIP_PENDING_MARK)),
     }
 
 
@@ -1303,6 +1356,28 @@ def execution_create(data: dict, user_id: Optional[int] = None, user_name: Optio
     screening_sc = _opt_str(data.get("screening_no"))
     if not screening_sc:
         raise ValueError("请填写受试者SC号")
+    skip_execution = bool(data.get("skip_execution"))
+
+    pending_checkin_int: Optional[int] = None
+    pending_subject_int: Optional[int] = None
+    pending_qdate: Optional[str] = None
+    if skip_execution:
+        pending_qdate = (data.get("pending_queue_date") or "").strip()[:10]
+        if len(pending_qdate) < 10:
+            raise ValueError("缺少或无效的队列日期")
+        try:
+            pending_subject_int = int(data.get("pending_subject_id"))
+        except (TypeError, ValueError):
+            raise ValueError("缺少受试者标识")
+        raw_cid = data.get("pending_checkin_id")
+        if raw_cid is not None and raw_cid != "":
+            try:
+                pending_checkin_int = int(raw_cid)
+            except (TypeError, ValueError):
+                pending_checkin_int = None
+        if _skip_pending_closure_exists(pending_qdate, int(work_order_id), pending_subject_int, pending_checkin_int):
+            raise ValueError("该条待执行已标记为无需执行")
+
     # 同一项目下受试者 SC 号唯一
     if ProductDistributionExecution.objects.filter(
         related_project_no=related_project_no, screening_no=screening_sc, is_delete=0
@@ -1310,25 +1385,35 @@ def execution_create(data: dict, user_id: Optional[int] = None, user_name: Optio
         raise ValueError(f"受试者SC号：{screening_sc} 已存在于该项目中")
     subject_rd = (data.get("subject_rd") or "").strip()
     # 仅当填写了 RD 号时校验项目内唯一；未填则允许多条执行记录
-    if subject_rd and ProductDistributionExecution.objects.filter(
+    if not skip_execution and subject_rd and ProductDistributionExecution.objects.filter(
         related_project_no=related_project_no, subject_rd=subject_rd, is_delete=0
     ).exists():
         raise ValueError(f"RD号：{subject_rd} 已存在于项目中")
 
     operator_display_name = _opt_str(data.get("operator_name")) or user_name
     now = _now_naive_utc8()
+    user_remark = _opt_str(data.get("remark"))
+    merged_remark = user_remark
+    if skip_execution and pending_qdate is not None and pending_subject_int is not None:
+        tag = _skip_pending_tag(pending_qdate, int(work_order_id), pending_subject_int, pending_checkin_int)
+        merged_remark = tag + (f" {user_remark}" if user_remark else "")
+
+    exec_date_raw = data.get("execution_date")
+    if skip_execution and pending_qdate:
+        exec_date_raw = exec_date_raw or pending_qdate
+
     exec_row = ProductDistributionExecution(
         work_order_id=work_order_id,
         related_project_no=related_project_no,
         subject_rd=subject_rd,
         subject_initials=(data.get("subject_initials") or "").strip(),
         screening_no=screening_sc,
-        execution_date=data.get("execution_date"),
+        execution_date=exec_date_raw,
         operator_id=user_id,
         operator_name=operator_display_name,
         exception_type=_opt_str(data.get("exception_type")),
         exception_description=_opt_str(data.get("exception_description")),
-        remark=_opt_str(data.get("remark")),
+        remark=merged_remark,
         created_by=user_id,
         updated_by=user_id,
         created_at=now,
@@ -1337,7 +1422,7 @@ def execution_create(data: dict, user_id: Optional[int] = None, user_name: Optio
     exec_row.save(using="default")
     _raw_update_execution_times(exec_row.id, now, now)
 
-    products = data.get("products") or []
+    products = [] if skip_execution else (data.get("products") or [])
     for r in products:
         row = _product_create_to_dict(r)
         op = ProductDistributionOperation(

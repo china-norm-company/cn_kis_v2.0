@@ -142,6 +142,20 @@ export interface SampleLedgerItem {
   work_order_no?: string | null
 }
 
+/** 待执行工单：工单管理字段 + 和序工单执行队列（按项目编号拼接） */
+export interface PendingExecutionRow {
+  key: string
+  workOrder: WorkOrderListItem
+  subjectSc: string
+  subjectInitials: string
+  subjectRd: string
+  enrollmentStatus: string
+  queueStatus: string
+  subjectId: number
+  /** 和序队列签到记录，用于「无需执行」结案去重 */
+  checkinId: number | null
+}
+
 // ---------- 工单执行记录 ----------
 export interface ExecutionRecordListItem {
   id: string
@@ -155,6 +169,8 @@ export interface ExecutionRecordListItem {
   exception_type: string | null
   remark: string | null
   created_at: string
+  /** 后端：待执行「无需执行」结案 */
+  skip_execution?: boolean
 }
 
 export type ExceptionType =

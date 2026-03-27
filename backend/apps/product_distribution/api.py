@@ -306,6 +306,13 @@ def get_execution_orders(
     return JsonResponse(_kis_response(data=data))
 
 
+@router.get("/execution-orders/pending-skips")
+def get_execution_pending_skips(request, queue_date: str = Query(..., description="队列日期 YYYY-MM-DD")):
+    """当日已「无需执行」结案的待执行项，用于前端从待执行列表排除。"""
+    data = services.pending_execution_skips_for_queue_date(queue_date)
+    return JsonResponse(_kis_response(data=data))
+
+
 @router.get("/execution-orders/{id}")
 def get_execution_order(request, id: int):
     data = services.execution_detail(id)
@@ -348,6 +355,11 @@ class ExecutionCreateIn(Schema):
     exception_description: Optional[str] = None
     remark: Optional[str] = None
     products: List[ProductOperationItemIn] = []
+    # 待执行工单「无需执行」：无产品行，remark 内写入结案标记
+    skip_execution: bool = False
+    pending_queue_date: Optional[str] = None
+    pending_checkin_id: Optional[int] = None
+    pending_subject_id: Optional[int] = None
 
 
 @router.post("/execution-orders")

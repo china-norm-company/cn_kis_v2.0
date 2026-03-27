@@ -3,7 +3,7 @@
  */
 import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { productDistributionApi } from '@cn-kis/api-client'
+import { productDistributionApi, receptionApi, type QueueItem } from '@cn-kis/api-client'
 import { Card, Button, Modal, Badge } from '@cn-kis/ui-kit'
 import { Plus, Eye, Pencil, Trash2, Search, ChevronLeft, ChevronRight, Download, ChevronDown, Clock, Play, CheckCircle2 } from 'lucide-react'
 import { ExecutionRecordForm } from './ExecutionRecordForm'
@@ -13,6 +13,7 @@ import type {
   ExecutionRecordListItem,
   ExecutionRecordDetail,
   ExecutionRecordCreate,
+  PendingExecutionRow,
 } from './types'
 
 const DEFAULT_PAGE_SIZE = 20
@@ -22,6 +23,48 @@ function formatExecutionDate(v: string | null | undefined): string {
   if (v == null || v === '') return '—'
   const s = String(v).trim()
   return s.length >= 10 ? s.slice(0, 10) : s
+}
+
+/** 受试者产品记录列表：操作时间（created_at） */
+function formatOperationTime(v: string | null | undefined): string {
+  if (v == null || v === '') return '—'
+  const s = String(v).trim().replace('T', ' ')
+  if (s.length >= 19) return s.slice(0, 19)
+  if (s.length >= 16) return s.slice(0, 16)
+  return s.length >= 10 ? s.slice(0, 10) : s
+}
+
+function productOpLabel(p: any) {
+  const t = p?.product_operation_type
+  if (t === 'distribution') return '发放'
+  if (t === 'inspection') return '检查'
+  if (t === 'recovery') return '回收'
+  if (t === 'site_use') return '现场使用'
+  if (p?.product_distribution === 1) return '发放'
+  if (p?.product_inspection === 1) return '检查'
+  if (p?.product_recovery === 1) return '回收'
+  return '—'
+}
+
+function productDiaryLabel(p: any) {
+  if (p?.diary_distribution === 1) return '发放'
+  if (p?.diary_inspection === 1) return '检查'
+  if (p?.diary_recovery === 1) return '回收'
+  return '—'
+}
+
+function productWeightParts(p: any) {
+  const op = productOpLabel(p)
+  const diary = productDiaryLabel(p)
+  const fmt = (n: number | null | undefined) => (n != null ? Number(n).toFixed(2) : null)
+  const parts: string[] = []
+  if (op === '发放' && p?.distribution_weight != null) parts.push(`发放:${fmt(p.distribution_weight)}`)
+  if (op === '检查' && p?.inspection_weight != null) parts.push(`检查:${fmt(p.inspection_weight)}`)
+  if (op === '回收' && p?.recovery_weight != null) parts.push(`回收:${fmt(p.recovery_weight)}`)
+  if (diary === '发放' && p?.distribution_weight != null && !parts.some((s) => s.startsWith('发放:'))) parts.push(`发放:${fmt(p.distribution_weight)}`)
+  if (diary === '检查' && p?.inspection_weight != null && !parts.some((s) => s.startsWith('检查:'))) parts.push(`检查:${fmt(p.inspection_weight)}`)
+  if (diary === '回收' && p?.recovery_weight != null && !parts.some((s) => s.startsWith('回收:'))) parts.push(`回收:${fmt(p.recovery_weight)}`)
+  return parts.join(' ') || '—'
 }
 
 const EXCEPTION_LABELS: Record<string, string> = {
@@ -69,6 +112,42 @@ function ProgressBadge({ progress }: { progress: string }) {
   }
 }
 
+/** 和序·工单执行队列：已签到（含执行中未签出） */
+const PENDING_QUEUE_STATUSES = new Set(['checked_in', 'in_progress'])
+
+/** 入组情况筛选（与 SubjectProjectSC.enrollment_status 文案一致） */
+const PENDING_ENROLLMENT_STATUSES = new Set(['初筛合格', '正式入组', '复筛不合格', '退出'])
+
+const EXECUTION_QUEUE_STATUS_LABELS: Record<string, string> = {
+  checked_in: '已签到',
+  in_progress: '执行中',
+  checked_out: '已签出',
+  waiting: '等待中',
+  no_show: '缺席',
+}
+
+function localDateString(d: Date = new Date()): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function parseTodayQueueExportBody(raw: unknown): { items: QueueItem[]; date: string } {
+  if (!raw || typeof raw !== 'object') return { items: [], date: '' }
+  const o = raw as { data?: { items?: QueueItem[]; date?: string }; items?: QueueItem[]; date?: string }
+  if (o.data && typeof o.data === 'object') {
+    return {
+      items: Array.isArray(o.data.items) ? o.data.items : [],
+      date: typeof o.data.date === 'string' ? o.data.date : '',
+    }
+  }
+  return {
+    items: Array.isArray(o.items) ? o.items : [],
+    date: typeof o.date === 'string' ? o.date : '',
+  }
+}
+
 export function ExecutionTab() {
   const queryClient = useQueryClient()
   const [workOrderId, setWorkOrderId] = useState<string>('')
@@ -82,6 +161,15 @@ export function ExecutionTab() {
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [exportingWorkOrderId, setExportingWorkOrderId] = useState<string | null>(null)
   const [exportDropdownOpen, setExportDropdownOpen] = useState(false)
+  const [exportingPendingSheet, setExportingPendingSheet] = useState(false)
+  const [pendingExportDropdownOpen, setPendingExportDropdownOpen] = useState(false)
+  const [noExecuteBusyKey, setNoExecuteBusyKey] = useState<string | null>(null)
+  const [executionView, setExecutionView] = useState<'pending' | 'operations' | 'records'>('pending')
+  const [queueDate, setQueueDate] = useState(() => localDateString())
+  const [pendingKeyword, setPendingKeyword] = useState('')
+  const [pendingPage, setPendingPage] = useState(1)
+  const [pendingPageSize, setPendingPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const [prefillFromPending, setPrefillFromPending] = useState<PendingExecutionRow | null>(null)
 
   const { data: workOrdersData } = useQuery({
     queryKey: ['product-distribution', 'workorders-all'],
@@ -98,7 +186,29 @@ export function ExecutionTab() {
         page,
         pageSize,
       }),
-    enabled: mode === 'list',
+    enabled: mode === 'list' && (executionView === 'records' || executionView === 'operations'),
+  })
+
+  const {
+    data: queueExportParsed,
+    isLoading: queueExportLoading,
+    error: queueExportError,
+  } = useQuery({
+    queryKey: ['reception', 'today-queue-export', 'execution', queueDate],
+    queryFn: async () => {
+      const body = await receptionApi.todayQueueExport({
+        target_date: queueDate,
+        source: 'execution',
+      })
+      return parseTodayQueueExportBody(body)
+    },
+    enabled: mode === 'list' && executionView === 'pending',
+  })
+
+  const { data: pendingSkipsPayload } = useQuery({
+    queryKey: ['product-distribution', 'execution-pending-skips', queueDate],
+    queryFn: () => productDistributionApi.getExecutionPendingSkips(queueDate),
+    enabled: mode === 'list' && executionView === 'pending',
   })
 
   const listPayload = listData as { list?: ExecutionRecordListItem[]; total?: number } | undefined
@@ -112,6 +222,119 @@ export function ExecutionTab() {
     workOrders.forEach((wo) => m.set(String(wo.id), wo))
     return m
   }, [workOrders])
+  const { data: operationsDetailData, isLoading: operationsLoading, error: operationsError } = useQuery({
+    queryKey: ['product-distribution', 'execution-ops-details', records.map((r) => r.id).join(',')],
+    queryFn: async () => {
+      const details = await Promise.all(records.map((r) => productDistributionApi.getExecutionOrder(Number(r.id))))
+      return details as ExecutionRecordDetail[]
+    },
+    enabled: mode === 'list' && executionView === 'operations' && records.length > 0,
+  })
+  const operationRows = useMemo(() => {
+    const details = (operationsDetailData as ExecutionRecordDetail[] | undefined) ?? []
+    return details.flatMap((rec) => {
+      const wo = workOrderById.get(String(rec.work_order_id))
+      const recAny = rec as any
+      return (rec.products ?? []).map((p, i) => ({
+        key: `${rec.id}-${i}`,
+        workOrderNo: wo?.work_order_no ?? '—',
+        projectNo: rec.related_project_no || wo?.project_no || '—',
+        projectName: wo?.project_name ?? rec.project_name ?? '—',
+        subjectSc: rec.screening_no?.trim() || '—',
+        subjectInitials: rec.subject_initials || '—',
+        subjectRd: (rec.subject_rd || '').trim() || '—',
+        stage: STAGE_LABELS[p.stage] ?? p.stage ?? '—',
+        cycle: p.execution_cycle ?? '—',
+        product: `${p.product_code ?? ''} ${p.product_name ?? ''}`.trim() || '—',
+        bottleSequence: p.bottle_sequence ?? '—',
+        operation: productOpLabel(p),
+        weight: productWeightParts(p),
+        diary: productDiaryLabel(p),
+        operationTime: formatOperationTime((p as any).operation_time ?? recAny.updated_at ?? recAny.created_at ?? null),
+      }))
+    })
+  }, [operationsDetailData, workOrderById])
+
+  const workOrderByProjectNo = useMemo(() => {
+    const m = new Map<string, WorkOrderListItem>()
+    workOrders.forEach((wo) => {
+      const k = String(wo.project_no ?? '').trim().toLowerCase()
+      if (k) m.set(k, wo)
+    })
+    return m
+  }, [workOrders])
+
+  const queueItems: QueueItem[] = queueExportParsed?.items ?? []
+
+  const pendingRows = useMemo(() => {
+    const rows: PendingExecutionRow[] = []
+    for (const q of queueItems) {
+      if (!PENDING_QUEUE_STATUSES.has(q.status)) continue
+      const es = (q.enrollment_status ?? '').trim()
+      if (!PENDING_ENROLLMENT_STATUSES.has(es)) continue
+      const pc = String(q.project_code ?? '').trim().toLowerCase()
+      const wo = pc ? workOrderByProjectNo.get(pc) : undefined
+      if (!wo) continue
+      rows.push({
+        key: `${wo.id}-${q.subject_id}-${q.checkin_id ?? 'x'}-${q.appointment_id ?? 'x'}`,
+        workOrder: wo,
+        subjectSc: (q.sc_number ?? '').trim() || '—',
+        subjectInitials: (q.name_pinyin_initials ?? '').trim() || '—',
+        subjectRd: (q.rd_number ?? '').trim() || '—',
+        enrollmentStatus: es,
+        queueStatus: q.status,
+        subjectId: q.subject_id,
+        checkinId: q.checkin_id ?? null,
+      })
+    }
+    return rows
+  }, [queueItems, workOrderByProjectNo])
+
+  const pendingSkipItems = (pendingSkipsPayload as { items?: Array<{ work_order_id: number; subject_id: number; checkin_id: number | null; queue_date: string }> } | undefined)?.items ?? []
+
+  const pendingRowsVisible = useMemo(() => {
+    return pendingRows.filter((r) => {
+      return !pendingSkipItems.some((it) => {
+        if (String(it.queue_date) !== queueDate) return false
+        if (Number(it.work_order_id) !== Number(r.workOrder.id)) return false
+        if (it.checkin_id != null && r.checkinId != null) {
+          return Number(it.checkin_id) === Number(r.checkinId)
+        }
+        return Number(it.subject_id) === Number(r.subjectId)
+      })
+    })
+  }, [pendingRows, pendingSkipItems, queueDate])
+
+  const filteredPendingRows = useMemo(() => {
+    let rows = pendingRowsVisible
+    if (workOrderId) rows = rows.filter((r) => String(r.workOrder.id) === workOrderId)
+    const kw = pendingKeyword.trim().toLowerCase()
+    if (!kw) return rows
+    return rows.filter((r) => {
+      const wo = r.workOrder
+      const blob = [
+        wo.work_order_no,
+        wo.project_no,
+        wo.project_name,
+        wo.researcher,
+        wo.supervisor,
+        r.subjectSc,
+        r.subjectInitials,
+        r.subjectRd,
+        r.enrollmentStatus,
+      ]
+        .map((x) => String(x ?? '').toLowerCase())
+        .join(' ')
+      return blob.includes(kw)
+    })
+  }, [pendingRowsVisible, workOrderId, pendingKeyword])
+
+  const pendingTotal = filteredPendingRows.length
+  const pendingTotalPages = Math.max(1, Math.ceil(pendingTotal / pendingPageSize))
+  const paginatedPendingRows = useMemo(() => {
+    const start = (pendingPage - 1) * pendingPageSize
+    return filteredPendingRows.slice(start, start + pendingPageSize)
+  }, [filteredPendingRows, pendingPage, pendingPageSize])
 
   const { data: workOrderDetail } = useQuery({
     queryKey: ['product-distribution', 'workorder', workOrderId],
@@ -131,10 +354,17 @@ export function ExecutionTab() {
     enabled: !!viewingRecord?.id && mode === 'view',
   })
 
-  useEffect(() => setPage(1), [workOrderId, keyword])
+  useEffect(() => setPage(1), [workOrderId, keyword, executionView])
+  useEffect(() => setPendingPage(1), [queueDate, pendingKeyword, workOrderId, executionView])
+  useEffect(() => {
+    setPendingExportDropdownOpen(false)
+    setExportDropdownOpen(false)
+  }, [executionView])
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['product-distribution', 'execution-orders'] })
+    queryClient.invalidateQueries({ queryKey: ['product-distribution', 'execution-pending-skips'] })
+    queryClient.invalidateQueries({ queryKey: ['reception', 'today-queue-export'] })
     // 执行记录影响发放/回收数据，领用台账的 total_distributed/total_recovered 需同步更新
     queryClient.invalidateQueries({ queryKey: ['product-distribution', 'orders-ledger'] })
   }
@@ -143,6 +373,7 @@ export function ExecutionTab() {
     setSubmitError(null)
     try {
       await productDistributionApi.createExecutionOrder(payload as any)
+      setPrefillFromPending(null)
       refresh()
       setMode('list')
     } catch (e) {
@@ -187,6 +418,102 @@ export function ExecutionTab() {
     setWorkOrderId(rec.work_order_id)
     setSubmitError(null)
     setMode('edit')
+  }
+
+  const openRegisterFromPending = (row: PendingExecutionRow) => {
+    setSubmitError(null)
+    setPrefillFromPending(row)
+    setWorkOrderId(String(row.workOrder.id))
+    setMode('new')
+  }
+
+  const handleExportPendingList = async () => {
+    setPendingExportDropdownOpen(false)
+    if (filteredPendingRows.length === 0) {
+      setToastMessage({ type: 'error', text: '当前没有可导出的待执行数据' })
+      return
+    }
+    setExportingPendingSheet(true)
+    try {
+      const headers = [
+        '工单编号',
+        '项目编号',
+        '项目名称',
+        '启动日期',
+        '结束日期',
+        '访视',
+        '研究员',
+        '督导',
+        '受试者SC号',
+        '姓名首字母',
+        '受试者RD号',
+        '入组情况',
+        '队列状态',
+        '队列日期',
+      ]
+      const rows = filteredPendingRows.map((row) => {
+        const wo = row.workOrder
+        return [
+          wo.work_order_no,
+          wo.project_no,
+          wo.project_name,
+          wo.project_start_date ?? '',
+          wo.project_end_date ?? '',
+          wo.visit_count ?? '',
+          wo.researcher ?? '',
+          wo.supervisor ?? '',
+          row.subjectSc,
+          row.subjectInitials,
+          row.subjectRd,
+          row.enrollmentStatus,
+          EXECUTION_QUEUE_STATUS_LABELS[row.queueStatus] ?? row.queueStatus,
+          queueDate,
+        ]
+      })
+      await productDistributionApi.exportExcel({
+        sheet_name: '待执行工单',
+        filename: `待执行工单_${queueDate}.xlsx`,
+        headers,
+        rows,
+      })
+    } catch (e) {
+      setToastMessage({ type: 'error', text: e instanceof Error ? e.message : '导出失败，请稍后重试' })
+    } finally {
+      setExportingPendingSheet(false)
+    }
+  }
+
+  const handleNoExecute = async (row: PendingExecutionRow) => {
+    const sc = row.subjectSc.trim()
+    if (!sc || sc === '—') {
+      setToastMessage({ type: 'error', text: '缺少受试者SC号，无法标记无需执行' })
+      return
+    }
+    if (!confirm('确认无需执行？该记录将进入受试者产品记录，并记录操作时间。')) return
+    setNoExecuteBusyKey(row.key)
+    try {
+      const payload: Record<string, unknown> = {
+        work_order_id: Number(row.workOrder.id),
+        related_project_no: row.workOrder.project_no,
+        subject_rd: row.subjectRd === '—' ? '' : row.subjectRd,
+        subject_initials: row.subjectInitials === '—' ? '' : row.subjectInitials,
+        screening_no: sc,
+        execution_date: queueDate,
+        skip_execution: true,
+        pending_queue_date: queueDate,
+        pending_subject_id: row.subjectId,
+        products: [],
+      }
+      if (row.checkinId != null) payload.pending_checkin_id = row.checkinId
+      await productDistributionApi.createExecutionOrder(payload)
+      queryClient.invalidateQueries({ queryKey: ['product-distribution', 'execution-pending-skips'] })
+      refresh()
+      setToastMessage({ type: 'success', text: '已标记为无需执行' })
+    } catch (e) {
+      setToastMessage({ type: 'error', text: e instanceof Error ? e.message : '操作失败' })
+    } finally {
+      setNoExecuteBusyKey(null)
+    }
   }
 
   const handleDelete = async (id: string) => {
@@ -416,6 +743,26 @@ export function ExecutionTab() {
   }
 
   if (mode === 'new') {
+    const prefillInitial: ExecutionRecordDetail | undefined = prefillFromPending
+      ? {
+          id: '',
+          work_order_id: String(prefillFromPending.workOrder.id),
+          related_project_no: prefillFromPending.workOrder.project_no,
+          subject_rd: prefillFromPending.subjectRd === '—' ? '' : prefillFromPending.subjectRd,
+          subject_initials: prefillFromPending.subjectInitials === '—' ? '' : prefillFromPending.subjectInitials,
+          screening_no: prefillFromPending.subjectSc === '—' ? '' : prefillFromPending.subjectSc,
+          execution_date: localDateString(),
+          operator_name: null,
+          exception_type: null,
+          remark: null,
+          products: [],
+          project_name: prefillFromPending.workOrder.project_name,
+        }
+      : undefined
+    const leaveNew = () => {
+      setPrefillFromPending(null)
+      setMode('list')
+    }
     return (
       <div className="space-y-4">
         {toastMessage && (
@@ -438,7 +785,7 @@ export function ExecutionTab() {
               ))}
             </select>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setMode('list')}>返回列表</Button>
+          <Button variant="outline" size="sm" onClick={leaveNew}>返回列表</Button>
         </div>
         <ExecutionRecordForm
           workOrderId={workOrderId || undefined}
@@ -447,8 +794,9 @@ export function ExecutionTab() {
           usageMethod={(workOrderDetail as any)?.usage_method}
           usageFrequency={(workOrderDetail as any)?.usage_frequency}
           precautions={(workOrderDetail as any)?.precautions}
+          initialExecution={prefillInitial}
           onSave={handleSaveNew}
-          onCancel={() => setMode('list')}
+          onCancel={leaveNew}
           submitError={submitError}
         />
       </div>
@@ -501,6 +849,319 @@ export function ExecutionTab() {
           <button type="button" className="ml-2 underline" onClick={() => setToastMessage(null)}>关闭</button>
         </div>
       )}
+      <div className="flex gap-1 border-b border-slate-200">
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            executionView === 'pending'
+              ? 'border-indigo-600 text-indigo-700'
+              : 'border-transparent text-slate-600 hover:text-slate-800'
+          }`}
+          onClick={() => setExecutionView('pending')}
+        >
+          待执行工单
+        </button>
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            executionView === 'operations'
+              ? 'border-indigo-600 text-indigo-700'
+              : 'border-transparent text-slate-600 hover:text-slate-800'
+          }`}
+          onClick={() => setExecutionView('operations')}
+        >
+          产品操作记录
+        </button>
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            executionView === 'records'
+              ? 'border-indigo-600 text-indigo-700'
+              : 'border-transparent text-slate-600 hover:text-slate-800'
+          }`}
+          onClick={() => setExecutionView('records')}
+        >
+          受试者产品记录
+        </button>
+      </div>
+
+      {executionView === 'pending' ? (
+        <>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-sm text-slate-600 whitespace-nowrap">队列日期</label>
+                <input
+                  type="date"
+                  className="h-9 rounded-lg border border-slate-200 px-3 text-sm"
+                  value={queueDate}
+                  onChange={(e) => setQueueDate(e.target.value || localDateString())}
+                />
+                <select
+                  className="h-9 min-w-[200px] rounded-lg border border-slate-200 px-3 text-sm"
+                  value={workOrderId}
+                  onChange={(e) => setWorkOrderId(e.target.value)}
+                >
+                  <option value="">全部项目</option>
+                  {workOrders.map((wo) => (
+                    <option key={wo.id} value={wo.id}>{wo.project_no} - {wo.project_name}</option>
+                  ))}
+                </select>
+                <div className="relative flex-1 min-w-[200px] sm:min-w-[240px] sm:max-w-sm">
+                  <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="搜索工单、受试者、入组情况..."
+                    value={pendingKeyword}
+                    onChange={(e) => setPendingKeyword(e.target.value)}
+                    className="h-9 w-full pl-8 rounded-lg border border-slate-200 text-sm"
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <div className="relative">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!!exportingPendingSheet || filteredPendingRows.length === 0}
+                    onClick={() => setPendingExportDropdownOpen((v) => !v)}
+                  >
+                    <span className="inline-flex items-center whitespace-nowrap gap-1.5">
+                      <Download className="h-3.5 w-3.5 shrink-0" />
+                      导出待执行列表
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                    </span>
+                  </Button>
+                  {pendingExportDropdownOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setPendingExportDropdownOpen(false)} aria-hidden />
+                      <div className="absolute right-0 top-full mt-1 z-20 min-w-[240px] rounded-lg border border-slate-200 bg-white shadow-lg py-1">
+                        <button
+                          type="button"
+                          className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50 disabled:opacity-50"
+                          disabled={!!exportingPendingSheet}
+                          onClick={() => void handleExportPendingList()}
+                        >
+                          导出当前筛选结果（全部行）
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setSubmitError(null)
+                    setPrefillFromPending(null)
+                    setMode('new')
+                    setWorkOrderId('')
+                  }}
+                >
+                  <span className="inline-flex items-center whitespace-nowrap gap-1.5">
+                    <Plus className="h-3.5 w-3.5 shrink-0" />新建执行记录
+                  </span>
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-slate-500">
+              数据由工单管理与和序「工单执行」当日队列按项目编号匹配；仅含已签到/执行中且入组情况为初筛合格、正式入组、复筛不合格、退出。
+            </p>
+          </div>
+
+          <Card variant="elevated" className="overflow-hidden">
+            {queueExportError && (
+              <p className="px-2 py-1.5 text-red-600 text-sm">加载队列失败：{(queueExportError as Error).message}</p>
+            )}
+            {queueExportLoading && <p className="px-2 py-1.5 text-slate-500 text-sm">加载中…</p>}
+            {!queueExportLoading && !queueExportError && paginatedPendingRows.length === 0 && (
+              <p className="px-2 py-1.5 text-slate-500 text-sm">暂无待执行工单（请确认当日队列存在匹配工单的受试者）</p>
+            )}
+            {!queueExportLoading && !queueExportError && paginatedPendingRows.length > 0 && (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50">
+                        <th className="text-left px-2 py-1.5 font-medium">工单编号</th>
+                        <th className="text-left px-2 py-1.5 font-medium">项目编号</th>
+                        <th className="text-left px-2 py-1.5 font-medium">项目名称</th>
+                        <th className="text-left px-2 py-1.5 font-medium">启动日期</th>
+                        <th className="text-left px-2 py-1.5 font-medium">结束日期</th>
+                        <th className="text-left px-2 py-1.5 font-medium text-center">访视</th>
+                        <th className="text-left px-2 py-1.5 font-medium">研究员</th>
+                        <th className="text-left px-2 py-1.5 font-medium">督导</th>
+                        <th className="text-left px-2 py-1.5 font-medium">受试者SC号</th>
+                        <th className="text-left px-2 py-1.5 font-medium">姓名首字母</th>
+                        <th className="text-left px-2 py-1.5 font-medium">受试者RD号</th>
+                        <th className="text-left px-2 py-1.5 font-medium">入组情况</th>
+                        <th className="text-left px-2 py-1.5 font-medium">队列状态</th>
+                        <th className="text-right px-2 py-1.5 min-w-[140px] font-medium">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedPendingRows.map((row) => {
+                        const wo = row.workOrder
+                        return (
+                          <tr key={row.key} className="border-b border-slate-100 hover:bg-slate-50">
+                            <td className="px-2 py-1.5 font-medium">{wo.work_order_no}</td>
+                            <td className="px-2 py-1.5">{wo.project_no}</td>
+                            <td className="px-2 py-1.5 min-w-[120px] max-w-[160px] truncate" title={wo.project_name}>{wo.project_name}</td>
+                            <td className="px-2 py-1.5">{wo.project_start_date ?? '—'}</td>
+                            <td className="px-2 py-1.5">{wo.project_end_date ?? '—'}</td>
+                            <td className="px-2 py-1.5 text-center">{wo.visit_count != null ? wo.visit_count : '—'}</td>
+                            <td className="px-2 py-1.5">{wo.researcher ?? '—'}</td>
+                            <td className="px-2 py-1.5">{wo.supervisor ?? '—'}</td>
+                            <td className="px-2 py-1.5 font-medium">{row.subjectSc}</td>
+                            <td className="px-2 py-1.5">{row.subjectInitials}</td>
+                            <td className="px-2 py-1.5">{row.subjectRd}</td>
+                            <td className="px-2 py-1.5">{row.enrollmentStatus}</td>
+                            <td className="px-2 py-1.5">{EXECUTION_QUEUE_STATUS_LABELS[row.queueStatus] ?? row.queueStatus}</td>
+                            <td className="px-2 py-1.5 text-right">
+                              <div className="flex flex-wrap justify-end gap-1">
+                                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => openRegisterFromPending(row)}>
+                                  执行
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs text-slate-600"
+                                  disabled={noExecuteBusyKey === row.key}
+                                  onClick={() => void handleNoExecute(row)}
+                                >
+                                  无需执行
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {pendingTotal > 0 && (
+                  <div className="flex items-center justify-between px-2 py-1.5 border-t border-slate-200">
+                    <span className="text-sm text-slate-500">共 {pendingTotal} 条，第 {pendingPage} / {pendingTotalPages} 页</span>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={pendingPageSize}
+                        onChange={(e) => {
+                          setPendingPageSize(Number(e.target.value))
+                          setPendingPage(1)
+                        }}
+                        className="h-9 w-[100px] rounded-lg border border-slate-200 px-2 text-sm"
+                      >
+                        {PAGE_SIZE_OPTIONS.map((n) => (
+                          <option key={n} value={n}>{n} 条/页</option>
+                        ))}
+                      </select>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPendingPage((p) => Math.max(1, p - 1))}
+                        disabled={pendingPage === 1}
+                        className="border-slate-300 text-slate-900 hover:bg-slate-50 hover:border-slate-400 justify-center disabled:border-slate-200 disabled:text-slate-400"
+                      >
+                        <span className="inline-flex items-center whitespace-nowrap gap-1.5"><ChevronLeft className="h-4 w-4 shrink-0" />上一页</span>
+                      </Button>
+                      <span className="inline-flex items-center justify-center min-w-[2rem] h-8 px-2 text-sm text-slate-700 border border-slate-300 rounded">{pendingPage}</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPendingPage((p) => Math.min(pendingTotalPages, p + 1))}
+                        disabled={pendingPage === pendingTotalPages}
+                        className="border-slate-300 text-slate-900 hover:bg-slate-50 hover:border-slate-400 justify-center disabled:border-slate-200 disabled:text-slate-400"
+                      >
+                        <span className="inline-flex items-center whitespace-nowrap gap-1.5">下一页<ChevronRight className="h-4 w-4 shrink-0" /></span>
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </Card>
+        </>
+      ) : executionView === 'operations' ? (
+        <>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            className="h-9 min-w-[200px] rounded-lg border border-slate-200 px-3 text-sm"
+            value={workOrderId}
+            onChange={(e) => setWorkOrderId(e.target.value)}
+          >
+            <option value="">全部项目</option>
+            {workOrders.map((wo) => (
+              <option key={wo.id} value={wo.id}>{wo.project_no} - {wo.project_name}</option>
+            ))}
+          </select>
+          <div className="relative flex-1 sm:min-w-[300px] sm:max-w-sm">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="搜索受试者、项目..."
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              className="h-9 w-full pl-8 rounded-lg border border-slate-200 text-sm"
+            />
+          </div>
+        </div>
+      </div>
+
+      <Card variant="elevated" className="overflow-hidden">
+        {error && <p className="px-2 py-1.5 text-red-600 text-sm">加载失败：{(error as Error).message}</p>}
+        {operationsError && <p className="px-2 py-1.5 text-red-600 text-sm">加载产品操作记录失败：{(operationsError as Error).message}</p>}
+        {(isLoading || operationsLoading) && <p className="px-2 py-1.5 text-slate-500 text-sm">加载中…</p>}
+        {!isLoading && !operationsLoading && !error && !operationsError && operationRows.length === 0 && (
+          <p className="px-2 py-1.5 text-slate-500 text-sm">暂无产品操作记录</p>
+        )}
+        {!isLoading && !operationsLoading && !error && !operationsError && operationRows.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50">
+                  <th className="text-left px-2 py-1.5 font-medium">工单编号</th>
+                  <th className="text-left px-2 py-1.5 font-medium">项目编号</th>
+                  <th className="text-left px-2 py-1.5 font-medium">项目名称</th>
+                  <th className="text-left px-2 py-1.5 font-medium">受试者SC号</th>
+                  <th className="text-left px-2 py-1.5 font-medium">姓名首字母</th>
+                  <th className="text-left px-2 py-1.5 font-medium">受试者RD号</th>
+                  <th className="text-left px-2 py-1.5 font-medium">阶段</th>
+                  <th className="text-left px-2 py-1.5 font-medium">周期</th>
+                  <th className="text-left px-2 py-1.5 font-medium">产品编号/名称</th>
+                  <th className="text-left px-2 py-1.5 font-medium">瓶序</th>
+                  <th className="text-left px-2 py-1.5 font-medium">产品操作</th>
+                  <th className="text-left px-2 py-1.5 font-medium">称重(g)</th>
+                  <th className="text-left px-2 py-1.5 font-medium">日记</th>
+                  <th className="text-left px-2 py-1.5 font-medium whitespace-nowrap">操作时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                {operationRows.map((r) => (
+                  <tr key={r.key} className="border-b border-slate-100 hover:bg-slate-50">
+                    <td className="px-2 py-1.5 font-medium">{r.workOrderNo}</td>
+                    <td className="px-2 py-1.5">{r.projectNo}</td>
+                    <td className="px-2 py-1.5 min-w-[120px] max-w-[160px] truncate" title={r.projectName}>{r.projectName}</td>
+                    <td className="px-2 py-1.5">{r.subjectSc}</td>
+                    <td className="px-2 py-1.5">{r.subjectInitials}</td>
+                    <td className="px-2 py-1.5">{r.subjectRd}</td>
+                    <td className="px-2 py-1.5">{r.stage}</td>
+                    <td className="px-2 py-1.5">{r.cycle}</td>
+                    <td className="px-2 py-1.5 min-w-[180px]">{r.product}</td>
+                    <td className="px-2 py-1.5">{r.bottleSequence}</td>
+                    <td className="px-2 py-1.5">{r.operation}</td>
+                    <td className="px-2 py-1.5">{r.weight}</td>
+                    <td className="px-2 py-1.5">{r.diary}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap text-slate-600">{r.operationTime}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+        </>
+      ) : (
+        <>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <select
@@ -557,7 +1218,15 @@ export function ExecutionTab() {
               </>
             )}
           </div>
-          <Button size="sm" onClick={() => { setSubmitError(null); setMode('new'); setWorkOrderId('') }}>
+          <Button
+            size="sm"
+            onClick={() => {
+              setSubmitError(null)
+              setPrefillFromPending(null)
+              setMode('new')
+              setWorkOrderId('')
+            }}
+          >
             <span className="inline-flex items-center whitespace-nowrap gap-1.5">
               <Plus className="h-3.5 w-3.5 shrink-0" />新建执行记录
             </span>
@@ -586,6 +1255,7 @@ export function ExecutionTab() {
                     <th className="text-left px-2 py-1.5 font-medium">研究员</th>
                     <th className="text-left px-2 py-1.5 font-medium">督导</th>
                     <th className="text-left px-2 py-1.5 font-medium">进展</th>
+                    <th className="text-left px-2 py-1.5 font-medium whitespace-nowrap">操作时间</th>
                     <th className="text-left px-2 py-1.5 font-medium">受试者SC号</th>
                     <th className="text-left px-2 py-1.5 font-medium">姓名首字母</th>
                     <th className="text-left px-2 py-1.5 font-medium">受试者RD号</th>
@@ -605,7 +1275,14 @@ export function ExecutionTab() {
                         <td className="px-2 py-1.5 text-center">{wo?.visit_count != null ? wo.visit_count : '—'}</td>
                         <td className="px-2 py-1.5">{wo?.researcher ?? '—'}</td>
                         <td className="px-2 py-1.5">{wo?.supervisor ?? '—'}</td>
-                        <td className="px-2 py-1.5"><ProgressBadge progress={wo?.execution_progress ?? ''} /></td>
+                        <td className="px-2 py-1.5">
+                          {rec.skip_execution ? (
+                            <Badge variant="secondary" className="text-xs font-normal">无需执行</Badge>
+                          ) : (
+                            <ProgressBadge progress={wo?.execution_progress ?? ''} />
+                          )}
+                        </td>
+                        <td className="px-2 py-1.5 whitespace-nowrap text-slate-600">{formatOperationTime(rec.created_at)}</td>
                         <td className="px-2 py-1.5 font-medium">{rec.screening_no?.trim() || '—'}</td>
                         <td className="px-2 py-1.5">{rec.subject_initials}</td>
                         <td className="px-2 py-1.5">{(rec.subject_rd || '').trim() || '—'}</td>
@@ -645,6 +1322,8 @@ export function ExecutionTab() {
           </>
         )}
       </Card>
+        </>
+      )}
 
       {/* 查看详情 - 布局与 KIS 一致 */}
       <Modal
