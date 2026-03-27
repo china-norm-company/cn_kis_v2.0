@@ -60,6 +60,11 @@ export interface DataTableProps<T> {
    * 默认略宽；知情管理等宽表可传 `-mx-2 px-2 md:-mx-5 md:px-5` 让出横向像素。
    */
   desktopStickyScrollGutterClassName?: string
+  /**
+   * 为 true 时表体区域不占满父级剩余高度（去掉 flex-1），表格与下方分页条之间不留大块空白。
+   * 行数较少、外侧自带分页条时使用。
+   */
+  desktopBodyShrinkToContent?: boolean
 }
 
 export function DataTable<T extends object>({
@@ -79,6 +84,7 @@ export function DataTable<T extends object>({
   renderDesktopStickyCluster,
   density = 'default',
   desktopStickyScrollGutterClassName = '-mx-3 px-3 md:-mx-6 md:px-6',
+  desktopBodyShrinkToContent = false,
 }: DataTableProps<T>) {
   const compact = density === 'compact'
   const desktopHeadScrollRef = useRef<HTMLDivElement>(null)
@@ -225,7 +231,8 @@ export function DataTable<T extends object>({
 
   const rootClass = clsx(
     'w-full',
-    renderDesktopStickyCluster && 'flex min-h-0 flex-1 flex-col isolate',
+    renderDesktopStickyCluster &&
+      (desktopBodyShrinkToContent ? 'flex flex-col isolate' : 'flex min-h-0 flex-1 flex-col isolate'),
   )
 
   return (
@@ -290,7 +297,12 @@ export function DataTable<T extends object>({
       </div>
 
       {renderDesktopStickyCluster ? (
-        <div className="hidden min-h-0 flex-1 flex-col overflow-hidden md:flex md:min-h-0">
+        <div
+          className={clsx(
+            'hidden flex-col overflow-hidden md:flex',
+            desktopBodyShrinkToContent ? '' : 'min-h-0 flex-1 md:min-h-0',
+          )}
+        >
           <div className="relative z-10 shrink-0">
             {renderDesktopStickyCluster(
               <div ref={desktopHeadScrollRef} className="overflow-x-auto">
@@ -304,7 +316,8 @@ export function DataTable<T extends object>({
           <div
             ref={desktopBodyScrollRef}
             className={clsx(
-              'relative z-0 min-h-0 flex-1 overflow-auto',
+              'relative z-0 overflow-auto',
+              desktopBodyShrinkToContent ? 'flex-none' : 'min-h-0 flex-1',
               desktopStickyScrollGutterClassName,
             )}
           >

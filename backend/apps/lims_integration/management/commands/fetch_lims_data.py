@@ -205,7 +205,7 @@ class Command(BaseCommand):
         from apps.lims_integration.lims_fetcher import LimsFetcher
         from apps.lims_integration.lims_exporter import LimsExporter
         from apps.lims_integration.lims_dedup import LimsDedupReport
-        TM = TIER_MODULES  # TIER_MODULES 已在本文件顶部定义
+        TM = TIER_MODULES
 
         dry_run = options['dry_run']
         skip_inject = options.get('skip_inject', False)

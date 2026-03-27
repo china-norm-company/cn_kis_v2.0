@@ -12,6 +12,7 @@
     "lint": "tsc --noEmit",
     "build": "taro build --type weapp",
     "dev:weapp": "taro build --type weapp --watch",
+    "dev:weapp:local": "taro build --type weapp --watch",
     "prebuild:weapp": "pnpm --filter @cn-kis/subject-core run build",
     "build:weapp": "taro build --type weapp",
     "preview:qr": "./scripts/gen-preview-qr.sh",

@@ -1,4 +1,5 @@
 import { Outlet } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import {
   FileText,
   CalendarCheck,
@@ -18,8 +19,11 @@ import {
   GitPullRequest,
   SendHorizonal,
   CalendarDays,
+  Banknote,
   ShieldCheck,
+  Settings,
   Layers,
+  NotebookPen,
   Database,
   BarChart2,
   FileSpreadsheet,
@@ -33,6 +37,11 @@ import { MobileWorkstationLayout, type MobileWorkstationNavItem, type MobileWork
 import { NotificationBell } from '../components/NotificationBell'
 
 const FEISHU_CONFIG = createWorkstationFeishuConfig('research')
+
+// 方案检查台 menu-config API 地址
+const _rawQcUrlLayout = (import.meta.env.VITE_PROTOCOL_QC_URL as string)?.replace(/\/$/, '') || ''
+// 通过研究台后端代理，避免飞书 webview 拦截对 /protocol-qc/ 的请求
+const MENU_CONFIG_API = '/api/v1/menu-config/ping'
 
 /**
  * 研究经理工作台导航 — 全生命周期视图
@@ -54,6 +63,7 @@ interface NavItem {
   label: string
   permissions: string[]
   indent?: boolean
+  adminOnly?: boolean
 }
 
 const navSections: NavSection[] = [
@@ -110,6 +120,7 @@ const navSections: NavSection[] = [
     items: [
       { to: '/visits', icon: CalendarCheck, label: '我的访视', permissions: ['visit.plan.read'] },
       { to: '/subjects', icon: Users, label: '我的受试者', permissions: ['subject.subject.read'] },
+      { to: '/diary', icon: NotebookPen, label: '日记管理', permissions: ['subject.subject.read'] },
       { to: '/data-collection-monitor', icon: Database, label: '数据采集监察', permissions: ['subject.subject.read'] },
     ],
   },
@@ -122,28 +133,161 @@ const navSections: NavSection[] = [
       { to: '/overview', icon: BarChart3, label: '研究概览', permissions: ['protocol.protocol.read'] },
     ],
   },
+  {
+    title: '系统管理',
+    items: [
+      { to: '/admin/permissions', icon: Settings, label: '权限管理', permissions: [], adminOnly: true },
+    ],
+  },
 ]
+
+// 菜单 key → route path 的映射（与 ALL_MENU_KEYS 保持一致）
+const MENU_KEY_TO_PATH: Record<string, string> = {
+  'workbench': '/workbench',
+  'manager': '/manager',
+  'portfolio': '/portfolio',
+  'clients': '/clients',
+  'business': '/business',
+  'feasibility': '/feasibility',
+  'proposals': '/proposals',
+  'proposals/quality-check': '/proposals/quality-check',
+  'protocols': '/protocols',
+  'trial-initiation': '/trial-initiation',
+  'image-analysis': '/image-analysis',
+  'image-analysis/face': '/image-analysis/face',
+  'image-analysis/lip': '/image-analysis/lip',
+  'image-analysis/lip/scaliness': '/image-analysis/lip/scaliness',
+  'image-analysis/hand': '/image-analysis/hand',
+  'image-analysis/other': '/image-analysis/other',
+  'data-statistics': '/data-statistics',
+  'data-report-preparation': '/data-report-preparation',
+  'trial-report-preparation': '/trial-report-preparation',
+  'closeout': '/closeout',
+  'closeout/settlement': '/closeout/settlement',
+  'changes': '/changes',
+  'tasks': '/tasks',
+  'visits': '/visits',
+  'subjects': '/subjects',
+  'diary': '/diary',
+  'data-collection-monitor': '/data-collection-monitor',
+  'proposal-design': '/proposal-design',
+  'team': '/team',
+  'knowledge': '/knowledge',
+  'ai-assistant': '/ai-assistant',
+  'overview': '/overview',
+  'admin/permissions': '/admin/permissions',
+}
+
+/**
+ * 从方案检查台 menu-config API 获取当前用户的菜单权限。
+ * 同时上报 display_name / avatar，使管理员看板能识别用户。
+ * 返回该用户可见的菜单 path 集合，null 表示未获取到（降级为显示全部）。
+ */
+function useMenuPermissions(username: string | null | undefined, displayName?: string, avatar?: string) {
+  const [allowedPaths, setAllowedPaths] = useState<Set<string> | null>(null)
+
+  useEffect(() => {
+    if (!username) return
+    const params = new URLSearchParams({ username })
+    if (displayName) params.set('display_name', displayName)
+    if (avatar) params.set('avatar', avatar)
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null
+    fetch(`${MENU_CONFIG_API}?${params}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      credentials: 'include',
+    })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!data?.menus) return
+        const paths = new Set<string>(
+          (data.menus as string[]).map((key) => MENU_KEY_TO_PATH[key] || `/${key}`)
+        )
+        setAllowedPaths(paths)
+      })
+      .catch(() => {
+        // 网络失败时降级为全显示（宽松策略）
+      })
+  }, [username, displayName, avatar])
+
+  return allowedPaths
+}
 
 function useVisibleNavItems(): MobileWorkstationNavItem[] {
   const ctx = useFeishuContext()
-  if (ctx.getWorkstationMode('research') === 'blank') return []
+  const mode = ctx.getWorkstationMode('research')
+  const username = ctx.profile?.username || ctx.user?.name || null
+  const displayName = ctx.profile?.display_name || ctx.user?.name || ''
+  const avatar = ctx.profile?.avatar || ctx.user?.avatar || ''
+  const allowedPaths = useMenuPermissions(username, displayName, avatar)
+
+  if (mode === 'blank') return []
 
   return navSections.flatMap((section) =>
     section.items
-      .filter((item) => ctx.canSeeMenu('research', item.to.replace(/^\//, ''), item.permissions))
+      .filter((item) => {
+        if (item.adminOnly && !ctx.isAdmin) return false
+        // 管理员专属菜单（如权限管理）始终对 admin/superadmin 显示，不依赖 pilot 列表
+        if (item.adminOnly && ctx.isAdmin) return true
+
+        const isSettlement = item.to === '/closeout/settlement'
+        const canAccessSettlement = isSettlement ? canAccessPerformanceSettlement(ctx) : true
+        if (isSettlement && !canAccessSettlement) return false
+
+        if (allowedPaths !== null && !item.adminOnly) {
+          if (!ctx.isAdmin && !allowedPaths.has(item.to)) return false
+        }
+
+        const menuKey = item.to.replace(/^\//, '')
+        // 仅 pilot 模式下用 menu-config 结果过滤；研究员在研究台始终按权限显示全部菜单
+        const roleNames = (ctx.profile?.roles || []).map((r: { name?: string; code?: string }) => r?.name || r?.code).filter(Boolean) as string[]
+        if (mode === 'pilot' && !roleNames.includes('researcher')) {
+          const pilotMenus = ctx.profile?.visible_menu_items?.['research'] ?? []
+          if (isSettlement && canAccessSettlement) return true
+          return pilotMenus.includes(menuKey)
+        }
+        return ctx.canSeeMenu('research', menuKey, item.permissions)
+      })
       .map((item) => ({ to: item.to, label: item.label, icon: item.icon, indent: item.indent })),
   )
 }
 
 function useVisibleNavSections(): MobileWorkstationNavSection[] {
   const ctx = useFeishuContext()
-  if (ctx.getWorkstationMode('research') === 'blank') return []
+  const mode = ctx.getWorkstationMode('research')
+  const username = ctx.profile?.username || ctx.user?.name || null
+  const displayName = ctx.profile?.display_name || ctx.user?.name || ''
+  const avatar = ctx.profile?.avatar || ctx.user?.avatar || ''
+  const allowedPaths = useMenuPermissions(username, displayName, avatar)
+
+  if (mode === 'blank') return []
+
+  const filterItem = (item: NavItem) => {
+    if (item.adminOnly && !ctx.isAdmin) return false
+    if (item.adminOnly && ctx.isAdmin) return true
+
+    const isSettlement = item.to === '/closeout/settlement'
+    const canAccessSettlement = isSettlement ? canAccessPerformanceSettlement(ctx) : true
+    if (isSettlement && !canAccessSettlement) return false
+
+    if (allowedPaths !== null && !item.adminOnly) {
+      if (!ctx.isAdmin && !allowedPaths.has(item.to)) return false
+    }
+
+    const menuKey = item.to.replace(/^\//, '')
+    const roleNames = (ctx.profile?.roles || []).map((r: { name?: string; code?: string }) => r?.name || r?.code).filter(Boolean) as string[]
+    if (mode === 'pilot' && !roleNames.includes('researcher')) {
+      const pilotMenus = ctx.profile?.visible_menu_items?.['research'] ?? []
+      if (isSettlement && canAccessSettlement) return true
+      return pilotMenus.includes(menuKey)
+    }
+    return ctx.canSeeMenu('research', menuKey, item.permissions)
+  }
 
   return navSections
     .map((section) => ({
       title: section.title,
       items: section.items
-        .filter((item) => ctx.canSeeMenu('research', item.to.replace(/^\//, ''), item.permissions))
+        .filter(filterItem)
         .map((item) => ({ to: item.to, label: item.label, icon: item.icon, indent: item.indent })),
     }))
     .filter((section) => section.items.length > 0)

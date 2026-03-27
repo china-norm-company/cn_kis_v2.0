@@ -7,10 +7,82 @@ from django.db import migrations, models
 import django.db.models.deletion
 
 
+def _sqlite_column_exists(cursor, table: str, column: str) -> bool:
+    cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=%s", [table])
+    if cursor.fetchone() is None:
+        return False
+    cursor.execute(f'PRAGMA table_info("{table}")')
+    return any(row[1] == column for row in cursor.fetchall())
+
+
 def _apply_reception_v1_alignment(apps, schema_editor):
     """幂等：仅当对象不存在时创建/添加。"""
-    if schema_editor.connection.vendor != 'postgresql':
-        raise NotImplementedError('0030 幂等 SQL 仅针对 PostgreSQL；其它引擎请使用全新库或手工对齐。')
+    vendor = schema_editor.connection.vendor
+    if vendor == 'sqlite':
+        with schema_editor.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS "t_reception_board_checkin" (
+                    "id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    "checkin_date" date NOT NULL,
+                    "checkin_time" datetime NULL,
+                    "checkout_time" datetime NULL,
+                    "appointment_id" integer NULL,
+                    "create_time" datetime NOT NULL,
+                    "update_time" datetime NOT NULL,
+                    "subject_id" bigint NOT NULL REFERENCES "t_subject" ("id") ON DELETE CASCADE
+                )
+                """
+            )
+            cursor.execute(
+                'CREATE INDEX IF NOT EXISTS "t_reception_br_chk_subj_date_idx" '
+                'ON "t_reception_board_checkin" ("subject_id", "checkin_date")'
+            )
+            cursor.execute(
+                'CREATE UNIQUE INDEX IF NOT EXISTS "t_reception_board_checkin_uniq_subject_checkin_date" '
+                'ON "t_reception_board_checkin" ("subject_id", "checkin_date")'
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS "t_reception_board_project_sc" (
+                    "id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    "project_code" varchar(64) NOT NULL,
+                    "sc_number" varchar(20) NOT NULL DEFAULT '',
+                    "enrollment_status" varchar(32) NOT NULL DEFAULT '',
+                    "rd_number" varchar(20) NOT NULL DEFAULT '',
+                    "create_time" datetime NOT NULL,
+                    "update_time" datetime NOT NULL,
+                    "subject_id" bigint NOT NULL REFERENCES "t_subject" ("id") ON DELETE CASCADE
+                )
+                """
+            )
+            cursor.execute(
+                'CREATE INDEX IF NOT EXISTS "t_reception_br_sc_subj_pc_idx" '
+                'ON "t_reception_board_project_sc" ("subject_id", "project_code")'
+            )
+            cursor.execute(
+                'CREATE UNIQUE INDEX IF NOT EXISTS "t_reception_board_project_sc_uniq_subj_pc" '
+                'ON "t_reception_board_project_sc" ("subject_id", "project_code")'
+            )
+            if not _sqlite_column_exists(cursor, 't_subject_checkin', 'missed_call_at'):
+                cursor.execute(
+                    'ALTER TABLE "t_subject_checkin" ADD COLUMN "missed_call_at" datetime NULL'
+                )
+            if not _sqlite_column_exists(cursor, 't_subject_checkin', 'missed_after_sc_rank'):
+                cursor.execute(
+                    'ALTER TABLE "t_subject_checkin" ADD COLUMN "missed_after_sc_rank" smallint NULL'
+                )
+            if not _sqlite_column_exists(cursor, 't_subject_project_sc', 'enrollment_status'):
+                cursor.execute(
+                    'ALTER TABLE "t_subject_project_sc" ADD COLUMN "enrollment_status" '
+                    "varchar(20) NOT NULL DEFAULT ''"
+                )
+        return
+
+    if vendor != 'postgresql':
+        raise NotImplementedError(
+            '0030 幂等 SQL 仅支持 PostgreSQL 与 SQLite；其它引擎请使用全新库或手工对齐。'
+        )
 
     sql = """
     CREATE TABLE IF NOT EXISTS t_reception_board_checkin (

@@ -29,8 +29,8 @@ class SubjectRiskLevel(models.TextChoices):
 
 
 class SubjectStatus(models.TextChoices):
-    PRE_SCREENING = 'pre_screening', '粗筛中'
-    PRE_SCREENED = 'pre_screened', '粗筛通过'
+    PRE_SCREENING = 'pre_screening', '初筛中'
+    PRE_SCREENED = 'pre_screened', '初筛通过'
     SCREENING = 'screening', '筛选中'
     ENROLLED = 'enrolled', '已入组'
     ACTIVE = 'active', '进行中'
@@ -300,6 +300,7 @@ from .models_recruitment import *  # noqa: F401,F403
 from .models_execution import *  # noqa: F401,F403
 from .models_timeseries import *  # noqa: F401,F403
 from .models_loyalty import *  # noqa: F401,F403
+from .models_diary_config import *  # noqa: F401,F403
 from .models_identity import *  # noqa: F401,F403
 
 from .models_questionnaire import *  # noqa: F401,F403

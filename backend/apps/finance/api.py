@@ -38,6 +38,7 @@ from .api_legacy_invoices import (
     get_legacy_invoice,
     update_legacy_invoice,
     delete_legacy_invoice,
+    list_overdue_reminders_payload,
     LegacyInvoiceQueryParams,
     LegacyInvoiceCreateIn,
     LegacyInvoiceUpdateIn,
@@ -356,70 +357,6 @@ def delete_quote_item(request, item_id: int):
     return {'code': 200, 'msg': 'OK', 'data': None}
 
 
-@router.post('/quotes/{quote_id}/accept-inputs', summary='数字员工：采纳 AI 报价输入项写入明细')
-@require_permission('finance.quote.create')
-def accept_quote_inputs(request, quote_id: int):
-    """
-    数字员工流程内嵌：把编排产出的 quote_inputs 写入报价明细表。
-    前端动作卡片点击"全部采纳"时调用。
-    """
-    import json
-    from decimal import Decimal
-    from apps.finance.models import Quote, QuoteItem
-
-    quote = Quote.objects.filter(id=quote_id, is_deleted=False).first()
-    if not quote:
-        return 404, {'code': 404, 'msg': '报价不存在'}
-
-    body = {}
-    try:
-        body = json.loads(request.body) if request.body else {}
-    except Exception:
-        pass
-
-    items_data = body.get('items', [])
-    created = 0
-    for idx, item in enumerate(items_data):
-        item_name = item.get('item_name') or item.get('name') or f'报价项 {idx + 1}'
-        QuoteItem.objects.create(
-            quote=quote,
-            item_name=item_name,
-            specification=item.get('specification', ''),
-            unit=item.get('unit', '项'),
-            quantity=Decimal(str(item.get('quantity', 1))),
-            unit_price=Decimal(str(item.get('unit_price', 0))),
-            amount=Decimal(str(item.get('amount', 0))),
-            cost_estimate=Decimal(str(item.get('cost_estimate', 0))) if item.get('cost_estimate') else None,
-            sort_order=idx,
-        )
-        created += 1
-
-    if created > 0:
-        total = sum(qi.amount for qi in QuoteItem.objects.filter(quote=quote))
-        quote.total_amount = total
-        quote.save(update_fields=['total_amount', 'update_time'])
-
-    try:
-        from apps.secretary.runtime_plane import create_execution_task, finalize_execution_task
-        account = _get_account_from_request(request)
-        task_id = create_execution_task(
-            runtime_type='service',
-            name='accept-quote-inputs',
-            target='finance.accept_quote_inputs',
-            account_id=getattr(account, 'id', None),
-            input_payload={'quote_id': quote_id, 'items_count': created},
-            role_code='solution_designer',
-            workstation_key='finance',
-            business_object_type='opportunity',
-            business_object_id=str(quote_id),
-        )
-        finalize_execution_task(task_id, ok=True, output={'created': created})
-    except Exception:
-        pass
-
-    return {'code': 200, 'msg': 'OK', 'data': {'created': created, 'total_amount': str(quote.total_amount)}}
-
-
 @router.post('/quotes/{quote_id}/revise', summary='创建报价修订版')
 @require_permission('finance.quote.create')
 def revise_quote(request, quote_id: int):
@@ -618,19 +555,6 @@ def generate_payment_plans(request, contract_id: int):
 # ============================================================================
 # 发票 API（发票管理（新）与前端 GET /finance/invoices 对接，团队共享）
 # ============================================================================
-from .api_legacy_invoices import (
-    list_legacy_invoices,
-    create_legacy_invoice,
-    get_legacy_invoice,
-    update_legacy_invoice,
-    delete_legacy_invoice,
-    list_overdue_reminders_payload,
-    LegacyInvoiceQueryParams,
-    LegacyInvoiceCreateIn,
-    LegacyInvoiceUpdateIn,
-)
-from .models_legacy_invoice import LegacyInvoice
-
 
 @router.get('/invoices', summary='发票列表（新，团队共享）')
 @require_permission('finance.invoice.read')

@@ -71,7 +71,7 @@ export default function PreScreeningDetailPage() {
     queryKey: ['pre-screening', 'detail', id],
     queryFn: async () => {
       const res = await preScreeningApi.getDetail(Number(id))
-      if (!res?.data) throw new Error('获取粗筛详情失败')
+      if (!res?.data) throw new Error('获取初筛详情失败')
       return res.data
     },
     enabled: !!id,
@@ -124,7 +124,7 @@ export default function PreScreeningDetailPage() {
     mutationFn: (data: { result: string; fail_reasons?: string[]; notes?: string }) =>
       preScreeningApi.complete(Number(id), data),
     onSuccess: () => {
-      toast.success('粗筛判定已提交')
+      toast.success('初筛判定已提交')
       queryClient.invalidateQueries({ queryKey: ['pre-screening'] })
       navigate('/pre-screening')
     },
@@ -199,7 +199,7 @@ export default function PreScreeningDetailPage() {
         </button>
         <div>
           <h2 className="text-xl font-bold text-slate-800">
-            粗筛评估 — {record.subject_name}
+            初筛评估 — {record.subject_name}
           </h2>
           <p className="text-sm text-slate-500 mt-0.5">{record.pre_screening_no} · {record.protocol_title}</p>
         </div>

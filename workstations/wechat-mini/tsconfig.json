@@ -21,7 +21,8 @@
     "paths": {
       "@/*": ["./src/*"],
       "@cn-kis/consent-placeholders": ["../../packages/consent-placeholders/src/index.ts"],
-      "@cn-kis/subject-core": ["../../packages/subject-core/src/index.ts"]
+      "@cn-kis/subject-core": ["../../packages/subject-core/src/index.ts"],
+      "@cn-kis/subject-core/constants/copy": ["../../packages/subject-core/src/constants/copy.ts"]
     },
     "baseUrl": "."
   },

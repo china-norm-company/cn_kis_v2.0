@@ -14,6 +14,7 @@ const ProposalListPage = lazy(() => import('./pages/ProposalListPage'))
 const ProposalDetailPage = lazy(() => import('./pages/ProposalDetailPage'))
 const ProposalCreatePage = lazy(() => import('./pages/ProposalCreatePage'))
 const QualityCheckPage = lazy(() => import('./pages/QualityCheckPage'))
+const AdminPermissionsPage = lazy(() => import('./pages/AdminPermissionsPage'))
 const CloseoutPage = lazy(() => import('./pages/CloseoutPage'))
 const TeamPage = lazy(() => import('./pages/TeamPage'))
 const KnowledgeBasePage = lazy(() => import('./pages/KnowledgeBasePage'))
@@ -49,6 +50,7 @@ const FaceImageAnalysisPage = lazy(() => import('./pages/FaceImageAnalysisPage')
 const LipImageAnalysisPage = lazy(() => import('./pages/LipImageAnalysisPage'))
 const HandImageAnalysisPage = lazy(() => import('./pages/HandImageAnalysisPage'))
 const OtherImageAnalysisPage = lazy(() => import('./pages/OtherImageAnalysisPage'))
+const DiaryManagementPage = lazy(() => import('./pages/DiaryManagementPage'))
 
 /* 非新建页面保持直接 import（体积较小或共享频繁） */
 import { ProtocolListPage } from './pages/ProtocolListPage'
@@ -134,6 +136,7 @@ export default function App() {
               <Route path="/proposals/quality-check" element={<QualityCheckPage />} />
               <Route path="/proposals/:id" element={<ProposalDetailPage />} />
               {/* 管理员 */}
+              <Route path="/admin/permissions" element={<AdminPermissionsPage />} />
               <Route path="/protocols" element={<ProtocolListPage />} />
               <Route path="/protocols/:id" element={<ProtocolDetailPage />} />
               <Route path="/project-full-link" element={<ProjectFullLinkListPage />} />
@@ -144,6 +147,7 @@ export default function App() {
               {/* 执行管理 */}
               <Route path="/visits" element={<VisitListPage />} />
               <Route path="/subjects" element={<SubjectListPage />} />
+              <Route path="/diary" element={<DiaryManagementPage />} />
               {/* 客户与商务 */}
               <Route path="/clients" element={<ClientOverviewPage />} />
               <Route path="/clients/:id" element={<ClientDetailPage />} />

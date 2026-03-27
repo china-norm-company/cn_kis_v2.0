@@ -229,7 +229,7 @@ export function PreScreeningVerdict({ record, onSubmit, readonly }: PreScreening
       <ConfirmDialog
         open={showConfirm}
         title="确认提交判定"
-        message={`确定要将粗筛结果设为「${RESULT_OPTIONS.find((o) => o.value === result)?.label ?? result}」吗？提交后不可直接修改。`}
+        message={`确定要将初筛结果设为「${RESULT_OPTIONS.find((o) => o.value === result)?.label ?? result}」吗？提交后不可直接修改。`}
         variant="danger"
         confirmLabel="确认提交"
         onConfirm={handleSubmit}
