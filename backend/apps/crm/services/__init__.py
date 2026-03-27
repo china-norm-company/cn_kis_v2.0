@@ -100,22 +100,82 @@ def get_client_stats() -> dict:
 # ============================================================================
 # 商机管理
 # ============================================================================
+def _apply_opportunity_filters(
+    qs,
+    client_id: int = None,
+    stage: str = None,
+    stages: list = None,
+    owner: str = None,
+    owner_id: int = None,
+    research_group: str = None,
+    research_groups: list = None,
+    business_segment: str = None,
+    business_segments: list = None,
+    key_opportunity: str = None,
+):
+    if client_id:
+        qs = qs.filter(client_id=client_id)
+    if stages:
+        clean = [s for s in stages if s]
+        if clean:
+            qs = qs.filter(stage__in=clean)
+    elif stage:
+        qs = qs.filter(stage=stage)
+    if owner_id:
+        qs = qs.filter(owner_id=owner_id)
+    elif owner:
+        qs = qs.filter(owner__icontains=owner)
+    if research_groups:
+        clean_rg = [x for x in research_groups if x]
+        if clean_rg:
+            qs = qs.filter(research_group__in=clean_rg)
+    elif research_group:
+        qs = qs.filter(research_group=research_group)
+    if business_segments:
+        clean_bs = [x for x in business_segments if x]
+        if clean_bs:
+            qs = qs.filter(business_segment__in=clean_bs)
+    elif business_segment:
+        qs = qs.filter(business_segment=business_segment)
+    if key_opportunity is not None and str(key_opportunity).strip() != '':
+        ko = str(key_opportunity).strip().lower()
+        if ko in ('yes', 'true', '1', 'y'):
+            qs = qs.filter(key_opportunity=True)
+        elif ko in ('no', 'false', '0', 'n'):
+            qs = qs.filter(key_opportunity=False)
+    return qs
+
+
 def list_opportunities(
     client_id: int = None,
     stage: str = None,
+    stages: list = None,
     owner: str = None,
+    owner_id: int = None,
+    research_group: str = None,
+    research_groups: list = None,
+    business_segment: str = None,
+    business_segments: list = None,
+    key_opportunity: str = None,
     page: int = 1,
     page_size: int = 20,
     account=None,
 ) -> dict:
     qs = Opportunity.objects.filter(is_deleted=False).select_related('client')
     qs = _apply_data_scope(qs, account)
-    if client_id:
-        qs = qs.filter(client_id=client_id)
-    if stage:
-        qs = qs.filter(stage=stage)
-    if owner:
-        qs = qs.filter(owner__icontains=owner)
+    qs = _apply_opportunity_filters(
+        qs,
+        client_id=client_id,
+        stage=stage,
+        stages=stages,
+        owner=owner,
+        owner_id=owner_id,
+        research_group=research_group,
+        research_groups=research_groups,
+        business_segment=business_segment,
+        business_segments=business_segments,
+        key_opportunity=key_opportunity,
+    )
     total = qs.count()
     offset = (page - 1) * page_size
     items = list(qs[offset:offset + page_size])
@@ -208,27 +268,69 @@ def allocate_opportunity_code() -> str:
 
 
 def list_opportunity_owner_candidates(q: str = '', limit: int = 80) -> List[dict]:
-    """商务负责人下拉：活跃账号，按显示名搜索。"""
+    """商务负责人下拉：固定名单顺序；有账号用正 id，无账号用负 id 占位。"""
     from django.db.models import Q
+    from apps.crm.opportunity_constants import COMMERCIAL_OWNER_NAME_ORDER
     from apps.identity.models import Account
 
-    qs = Account.objects.filter(is_deleted=False, status='active').order_by('display_name', 'username')
-    if q and q.strip():
-        kw = q.strip()
-        qs = qs.filter(
-            Q(display_name__icontains=kw)
-            | Q(username__icontains=kw)
-            | Q(email__icontains=kw)
+    items = []
+    for i, name in enumerate(COMMERCIAL_OWNER_NAME_ORDER):
+        acc = (
+            Account.objects.filter(is_deleted=False, status='active')
+            .filter(Q(display_name=name) | Q(username=name))
+            .order_by('id')
+            .first()
         )
-    items = list(qs[: max(1, min(limit, 200))])
-    return [
-        {
-            'id': a.id,
-            'display_name': a.display_name or a.username,
-            'username': a.username,
-        }
-        for a in items
-    ]
+        oid = acc.id if acc else -(i + 1)
+        items.append(
+            {
+                'id': oid,
+                'display_name': name,
+                'username': acc.username if acc else '',
+            }
+        )
+    if q and q.strip():
+        kw = q.strip().lower()
+        items = [
+            x
+            for x in items
+            if kw in (x.get('display_name') or '').lower()
+            or kw in (x.get('username') or '').lower()
+        ]
+    return items[: max(1, min(limit, 200))]
+
+
+def resolve_commercial_owner_pick(commercial_owner_id: int) -> tuple:
+    """返回 (owner 展示名, owner_id, commercial_owner_name)。支持负 id 占位（名单顺序）。"""
+    from django.db.models import Q
+    from apps.crm.opportunity_constants import COMMERCIAL_OWNER_NAME_ORDER
+    from apps.identity.models import Account
+
+    names = COMMERCIAL_OWNER_NAME_ORDER
+    if commercial_owner_id is None:
+        raise ValueError('请选择商务负责人')
+    if commercial_owner_id > 0:
+        acc = Account.objects.filter(id=commercial_owner_id, is_deleted=False).first()
+        if not acc:
+            raise ValueError('商务负责人不存在')
+        nm = acc.display_name or acc.username
+        return nm, acc.id, nm
+    idx = -commercial_owner_id - 1
+    if idx < 0 or idx >= len(names):
+        raise ValueError('无效的商务负责人')
+    name = names[idx]
+    if name == '未确认':
+        return '未确认', None, '未确认'
+    acc = (
+        Account.objects.filter(is_deleted=False, status='active')
+        .filter(Q(display_name=name) | Q(username=name))
+        .order_by('id')
+        .first()
+    )
+    if acc:
+        nm = acc.display_name or acc.username
+        return nm, acc.id, name
+    return name, None, name
 
 
 def get_opportunity_form_meta() -> dict:
@@ -293,6 +395,7 @@ def create_opportunity(
     commercial_owner_name: str = '',
     research_group: str = '',
     business_segment: str = '',
+    business_type: str = '',
     key_opportunity: bool = False,
     client_pm: str = '',
     client_contact_info: str = '',
@@ -309,10 +412,9 @@ def create_opportunity(
     uniqueness_pct: int = None,
     cancel_reason: str = '',
     lost_reason: str = '',
+    created_by_id: int = None,
 ) -> Opportunity:
     """创建商机（自动生成商机编号），并同步飞书多维表格 / 编排。"""
-    from apps.identity.models import Account
-
     client = Client.objects.filter(id=client_id, is_deleted=False).first()
     if not client:
         raise ValueError('客户不存在')
@@ -322,12 +424,9 @@ def create_opportunity(
     resolved_commercial_name = commercial_owner_name or ''
 
     if commercial_owner_id is not None:
-        acc = Account.objects.filter(id=commercial_owner_id, is_deleted=False).first()
-        if not acc:
-            raise ValueError('商务负责人不存在')
-        resolved_owner = acc.display_name or acc.username
-        resolved_owner_id = acc.id
-        resolved_commercial_name = resolved_commercial_name or resolved_owner
+        resolved_owner, resolved_owner_id, resolved_commercial_name = resolve_commercial_owner_pick(
+            commercial_owner_id
+        )
 
     demand_stages = demand_stages if demand_stages is not None else []
 
@@ -348,6 +447,7 @@ def create_opportunity(
                 commercial_owner_name=resolved_commercial_name,
                 research_group=research_group or '',
                 business_segment=business_segment or '',
+                business_type=business_type or '',
                 key_opportunity=key_opportunity,
                 client_pm=client_pm or '',
                 client_contact_info=client_contact_info or '',
@@ -373,6 +473,7 @@ def create_opportunity(
                 lost_reason=lost_reason or '',
                 demand_version=demand_version or '',
                 source_mail_signal_id=source_mail_signal_id,
+                created_by_id=created_by_id,
             )
             _sync_opportunity_to_bitable(opp)
             _trigger_orchestration_if_needed(opp, stage)
@@ -404,13 +505,10 @@ def update_opportunity(opp_id: int, **kwargs) -> Optional[Opportunity]:
     if 'commercial_owner_id' in kwargs:
         cid_owner = kwargs.pop('commercial_owner_id', None)
         if cid_owner is not None:
-            acc = Account.objects.filter(id=cid_owner, is_deleted=False).first()
-            if not acc:
-                raise ValueError('商务负责人不存在')
-            resolved = acc.display_name or acc.username
-            kwargs['owner'] = resolved
-            kwargs['owner_id'] = acc.id
-            kwargs['commercial_owner_name'] = resolved
+            ow, ow_id, cname = resolve_commercial_owner_pick(cid_owner)
+            kwargs['owner'] = ow
+            kwargs['owner_id'] = ow_id
+            kwargs['commercial_owner_name'] = cname
 
     if 'sales_amount_total' in kwargs and kwargs.get('sales_amount_total') is not None:
         from decimal import Decimal as D
@@ -443,15 +541,75 @@ def delete_opportunity(opp_id: int) -> bool:
     return True
 
 
-def get_opportunity_stats() -> dict:
+def get_opportunity_stats(
+    account=None,
+    client_id: int = None,
+    stage: str = None,
+    stages: list = None,
+    owner: str = None,
+    owner_id: int = None,
+    research_group: str = None,
+    research_groups: list = None,
+    business_segment: str = None,
+    business_segments: list = None,
+    key_opportunity: str = None,
+) -> dict:
+    """商机列表/驾驶舱统计：按阶段计数、储备商机（阶段=deal 的预估金额）、本年与次年分年度销售额（sales_by_year）。"""
     from django.db.models import Count, Sum
+    from django.utils import timezone as dj_tz
+
     qs = Opportunity.objects.filter(is_deleted=False)
+    qs = _apply_data_scope(qs, account)
+    qs = _apply_opportunity_filters(
+        qs,
+        client_id=client_id,
+        stage=stage,
+        stages=stages,
+        owner=owner,
+        owner_id=owner_id,
+        research_group=research_group,
+        research_groups=research_groups,
+        business_segment=business_segment,
+        business_segments=business_segments,
+        key_opportunity=key_opportunity,
+    )
+
     by_stage = qs.values('stage').annotate(count=Count('id'))
-    pipeline_value = qs.exclude(stage__in=['won', 'lost', 'cancelled']).aggregate(total=Sum('estimated_amount'))['total'] or 0
+    by_stage_dict = {item['stage']: item['count'] for item in by_stage}
+    total_count = qs.count()
+
+    reserve_amount = qs.filter(stage='deal').aggregate(total=Sum('estimated_amount'))['total'] or 0
+    reserve_amount = float(reserve_amount)
+
+    y = dj_tz.now().year
+    cy_key = str(y)
+    ny_key = str(y + 1)
+    sales_cy = Decimal('0')
+    sales_ny = Decimal('0')
+    for o in qs.only('sales_by_year'):
+        d = o.sales_by_year
+        if not isinstance(d, dict):
+            continue
+        if cy_key in d and d[cy_key] not in (None, ''):
+            try:
+                sales_cy += Decimal(str(d[cy_key]))
+            except Exception:
+                pass
+        if ny_key in d and d[ny_key] not in (None, ''):
+            try:
+                sales_ny += Decimal(str(d[ny_key]))
+            except Exception:
+                pass
+
     return {
-        'by_stage': {item['stage']: item['count'] for item in by_stage},
-        'total': qs.count(),
-        'pipeline_value': float(pipeline_value),
+        'by_stage': by_stage_dict,
+        'total': total_count,
+        'reserve_amount': reserve_amount,
+        'pipeline_value': reserve_amount,
+        'stats_year': y,
+        'stats_next_year': y + 1,
+        'sales_current_year': float(sales_cy),
+        'sales_next_year': float(sales_ny),
     }
 
 

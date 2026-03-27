@@ -37,6 +37,9 @@ export interface StatCardProps {
   footer?: React.ReactNode
   className?: string
   compactOnMobile?: boolean
+  /** 与主值同卡、靠右展示（如「当前筛选」统计） */
+  sideLabel?: string
+  sideValue?: string | number
 }
 
 export function StatCard({
@@ -49,10 +52,13 @@ export function StatCard({
   footer,
   className,
   compactOnMobile = true,
+  sideLabel,
+  sideValue,
 }: StatCardProps) {
   const displayTitle = title ?? label ?? ''
   const isPositive = trend && trend.value >= 0
   const colorCfg = color ? COLOR_MAP[color] : null
+  const showSide = sideValue !== undefined && sideValue !== null
 
   return (
     <div
@@ -62,10 +68,24 @@ export function StatCard({
         className
       )}
     >
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <p className="text-xs text-slate-500 md:text-sm">{displayTitle}</p>
-          <p className="mt-1.5 text-xl font-bold text-slate-800 md:mt-2 md:text-2xl">{value}</p>
+          {showSide ? (
+            <div className="mt-1.5 flex min-h-[2.75rem] items-end justify-between gap-3 md:mt-2">
+              <p className="min-w-0 text-xl font-bold text-slate-800 md:text-2xl">{value}</p>
+              <div className="shrink-0 text-right">
+                <p className="text-[10px] leading-tight text-slate-400 md:text-xs">
+                  {sideLabel ?? '当前筛选'}
+                </p>
+                <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-600 md:text-base">
+                  {sideValue}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-1.5 text-xl font-bold text-slate-800 md:mt-2 md:text-2xl">{value}</p>
+          )}
           {trend && (
             <div className="flex items-center gap-1 mt-2">
               {isPositive ? (

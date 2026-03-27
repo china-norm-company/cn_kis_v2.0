@@ -1,7 +1,7 @@
 /**
  * DataTable - IBKD规范数据表格组件
  */
-import { useRef, useEffect, type ReactNode } from 'react'
+import { useRef, useEffect, type CSSProperties, type ReactNode } from 'react'
 import { clsx } from 'clsx'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from './Button'
@@ -13,7 +13,15 @@ export interface Column<T> {
   /** 自定义表头内容，优先于 title/header */
   headerRender?: React.ReactNode
   width?: string | number
+  minWidth?: string | number
+  /**
+   * 横向滚动时冻结列：left 贴左、right 贴右（需在宽表 + overflow-x 场景下使用）。
+   * 表头与表体单元格会加背景与浅阴影，避免与中间列重叠穿帮。
+   */
+  sticky?: 'left' | 'right'
   align?: 'left' | 'center' | 'right'
+  /** 表头文字对齐；未设置时与 align 一致 */
+  headerAlign?: 'left' | 'center' | 'right'
   /** 追加到表头 th（如压缩前几列与下一列的视觉间距） */
   headerClassName?: string
   /** 追加到数据 td（桌面端表格） */
@@ -87,6 +95,7 @@ export function DataTable<T extends object>({
   desktopBodyShrinkToContent = false,
 }: DataTableProps<T>) {
   const compact = density === 'compact'
+  const hasStickyColumn = columns.some((c) => c.sticky === 'left' || c.sticky === 'right')
   const desktopHeadScrollRef = useRef<HTMLDivElement>(null)
   const desktopBodyScrollRef = useRef<HTMLDivElement>(null)
 
@@ -133,14 +142,44 @@ export function DataTable<T extends object>({
     ? Math.ceil(resolvedPagination.total / resolvedPagination.pageSize)
     : 0
 
+  const columnWidthStyle = (col: Column<T>): CSSProperties | undefined => {
+    const w = col.width
+    const mw = col.minWidth
+    if (w == null && mw == null) return undefined
+    const style: CSSProperties = {}
+    if (w != null) {
+      style.width = w
+      style.minWidth = mw ?? w
+    } else if (mw != null) {
+      style.minWidth = mw
+    }
+    return style
+  }
+
+  const stickyHeaderClass = (col: Column<T>) =>
+    col.sticky === 'left'
+      ? 'sticky left-0 z-20 bg-slate-50 shadow-[4px_0_8px_-4px_rgba(15,23,42,0.12)]'
+      : col.sticky === 'right'
+        ? 'sticky right-0 z-20 bg-slate-50 shadow-[-4px_0_8px_-4px_rgba(15,23,42,0.12)]'
+        : ''
+
+  const stickyBodyClass = (col: Column<T>) =>
+    col.sticky === 'left'
+      ? 'sticky left-0 z-10 bg-white shadow-[4px_0_8px_-4px_rgba(15,23,42,0.12)] group-hover:bg-slate-50'
+      : col.sticky === 'right'
+        ? 'sticky right-0 z-10 bg-white shadow-[-4px_0_8px_-4px_rgba(15,23,42,0.12)] group-hover:bg-slate-50'
+        : ''
+
+  const headerTextAlign = (col: Column<T>) => col.headerAlign ?? col.align
+
   const headerCellClass = (col: Column<T>) =>
     clsx(
       compact ? 'px-2 py-2 text-xs font-semibold text-slate-700 whitespace-nowrap' : 'px-4 py-3 text-sm font-semibold text-slate-700 whitespace-nowrap',
       'border-b border-slate-200',
       col.cellVAlign === 'top' ? 'align-top' : 'align-middle',
-      col.align === 'center' && 'text-center',
-      col.align === 'right' && 'text-right',
-      (!col.align || col.align === 'left') && 'text-left',
+      headerTextAlign(col) === 'center' && 'text-center',
+      headerTextAlign(col) === 'right' && 'text-right',
+      (!headerTextAlign(col) || headerTextAlign(col) === 'left') && 'text-left',
     )
 
   const bodyCellClass = (col: Column<T>) =>
@@ -160,7 +199,7 @@ export function DataTable<T extends object>({
   const colgroup = (
     <colgroup>
       {columns.map((col) => (
-        <col key={String(col.key)} style={col.width != null ? { width: col.width } : undefined} />
+        <col key={String(col.key)} style={columnWidthStyle(col)} />
       ))}
     </colgroup>
   )
@@ -171,8 +210,8 @@ export function DataTable<T extends object>({
         {columns.map((col) => (
           <th
             key={String(col.key)}
-            className={clsx(headerCellClass(col), col.headerClassName)}
-            style={col.width != null ? { width: col.width, minWidth: col.width } : undefined}
+            className={clsx(headerCellClass(col), stickyHeaderClass(col), col.headerClassName)}
+            style={columnWidthStyle(col)}
           >
             {col.headerRender ?? col.title ?? col.header ?? String(col.key)}
           </th>
@@ -204,14 +243,17 @@ export function DataTable<T extends object>({
           <tr
             key={getRowKey(record, index)}
             className={clsx(
-              'hover:bg-slate-50 transition-colors',
+              'group hover:bg-slate-50 transition-colors',
               onRowClick && 'cursor-pointer',
               rowClassName?.(record, index)
             )}
             onClick={() => onRowClick?.(record)}
           >
             {columns.map((col) => (
-              <td key={String(col.key)} className={clsx(bodyCellClass(col), col.cellClassName)}>
+              <td
+                key={String(col.key)}
+                className={clsx(bodyCellClass(col), stickyBodyClass(col), col.cellClassName)}
+              >
                 {col.render
                   ? ((col.render as any).length <= 1
                     ? (col.render as (record: T) => React.ReactNode)(record)
@@ -331,7 +373,12 @@ export function DataTable<T extends object>({
         </div>
       ) : (
         <div className="hidden overflow-x-auto rounded-lg border border-slate-200 md:block">
-          <table className="w-full">
+          <table
+            className={clsx(
+              'w-full',
+              hasStickyColumn && 'table-fixed border-separate border-spacing-0',
+            )}
+          >
             {colgroup}
             {theadRow}
             {tbodySection}

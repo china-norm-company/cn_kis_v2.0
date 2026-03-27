@@ -134,9 +134,13 @@ export function DashboardPage() {
 
   const { data: oppsStats } = useQuery({
     queryKey: ['crm', 'opportunities', 'stats'],
-    queryFn: () => api.get<{
-      total: number; by_stage: Record<string, number>; pipeline_value: number
-    }>('/crm/opportunities/stats'),
+    queryFn: () =>
+      api.get<{
+        total: number
+        by_stage: Record<string, number>
+        pipeline_value: number
+        reserve_amount: number
+      }>('/crm/opportunities/stats'),
     retry: false,
   })
 
@@ -150,7 +154,7 @@ export function DashboardPage() {
   const totalClients = clientsStats?.data?.total ?? 0
   const avgScore = healthOverview?.data?.avg_score ?? 0
   const totalUnresolved = alertStats?.data?.total_unresolved ?? 0
-  const pipelineValue = oppsStats?.data?.pipeline_value ?? 0
+  const reserveAmount = oppsStats?.data?.reserve_amount ?? oppsStats?.data?.pipeline_value ?? 0
   const riskDist = healthOverview?.data?.risk_distribution ?? {}
   const alerts = alertsRes?.data?.items ?? []
   const overdue = (overdueRes?.data ?? []).slice(0, 8)
@@ -187,8 +191,8 @@ export function DashboardPage() {
           color={totalUnresolved > 5 ? 'red' : totalUnresolved > 0 ? 'amber' : 'green'}
         />
         <StatCard
-          title="管道价值"
-          value={`¥${Number(pipelineValue).toLocaleString()}`}
+          title="储备商机"
+          value={`¥${Number(reserveAmount).toLocaleString()}`}
           icon={<TrendingUp className="w-5 h-5" />}
           color="purple"
         />

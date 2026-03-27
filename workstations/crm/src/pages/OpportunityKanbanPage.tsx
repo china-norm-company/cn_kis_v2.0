@@ -6,6 +6,7 @@ import { PermissionGuard } from '@cn-kis/feishu-sdk'
 import { Kanban } from 'lucide-react'
 import { FALLBACK_SALES_STAGE_OPTIONS } from '../constants/opportunityFormFallback'
 import { opportunityStageLabel } from '../constants/opportunityStages'
+import { displayOwnerName } from '../utils/displayOwnerName'
 
 const KANBAN_STAGE_ORDER = FALLBACK_SALES_STAGE_OPTIONS.map((o) => o.value)
 const KNOWN_STAGES = new Set(KANBAN_STAGE_ORDER)
@@ -89,7 +90,8 @@ export function OpportunityKanbanPage() {
               </div>
               <div className="max-h-[calc(100vh-280px)] space-y-2 overflow-y-auto p-3">
                 {list.map((opp) => {
-                  const ownerName = opp.commercial_owner_name || opp.owner || '—'
+                  const ownerRaw = opp.commercial_owner_name || opp.owner || ''
+                  const ownerName = ownerRaw ? displayOwnerName(ownerRaw) : '—'
                   return (
                     <Card
                       key={opp.id}
@@ -109,7 +111,7 @@ export function OpportunityKanbanPage() {
                         <div className="text-sm font-medium leading-snug text-slate-800">{opp.title}</div>
                         <div className="mt-1 text-xs text-slate-500">{opp.client_name}</div>
                         {opp.demand_name ? (
-                          <div className="mt-1 line-clamp-2 text-xs text-slate-600">需求：{opp.demand_name}</div>
+                          <div className="mt-1 line-clamp-2 text-xs text-slate-600">商机：{opp.demand_name}</div>
                         ) : null}
                         <div className="mt-2 space-y-0.5 text-[11px] text-slate-600">
                           <div>

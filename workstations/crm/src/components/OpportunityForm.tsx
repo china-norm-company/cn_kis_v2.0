@@ -1,14 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@cn-kis/api-client'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { ChevronDown, Loader2 } from 'lucide-react'
+import { useFeishuContext } from '@cn-kis/feishu-sdk'
 import { SearchableSelect, type SearchableOption } from './SearchableSelect'
 import {
   FALLBACK_BUSINESS_SEGMENTS,
+  FALLBACK_BUSINESS_TYPE_OPTIONS,
   FALLBACK_DEMAND_STAGE_OPTIONS,
   FALLBACK_RESEARCH_GROUPS,
   FALLBACK_SALES_STAGE_OPTIONS,
 } from '../constants/opportunityFormFallback'
+import { commercialOwnerSelectValue } from '../constants/commercialOwnerNames'
+import { displayOwnerName } from '../utils/displayOwnerName'
 
 interface FormMeta {
   next_code_preview: string
@@ -38,9 +42,12 @@ interface OpportunityDetail {
   stage: string
   estimated_amount: string
   probability: number
+  owner: string
   owner_id: number | null
+  commercial_owner_name?: string
   research_group: string
   business_segment: string
+  business_type?: string
   key_opportunity: boolean
   client_pm: string
   client_contact_info: string
@@ -61,6 +68,7 @@ interface OpportunityDetail {
   remark: string
   cancel_reason: string
   lost_reason: string
+  created_by_id?: number | null
   create_time: string
 }
 
@@ -79,6 +87,7 @@ const MSG_SALES_SUM = '请重新填写，需等于下两项之和'
 /** 校验错误时按页面从上到下的滚动顺序 */
 const VALIDATION_FIELD_ORDER = [
   'clientId',
+  'demandName',
   'ownerId',
   'salesStage',
   'cancelReason',
@@ -89,13 +98,6 @@ const VALIDATION_FIELD_ORDER = [
   'salesTotal',
   'salesCurrentYear',
   'salesNextYear',
-  'actualDecisionMaker',
-  'actualDmDeptLine',
-  'actualDmLevel',
-  'demandName',
-  'productType',
-  'sampleName',
-  'sampleType',
 ] as const
 
 function fieldWrapId(key: string) {
@@ -110,13 +112,6 @@ function friendlyOpportunityWriteError(e: unknown): string {
     return '保存失败：服务器异常（未返回结构化错误）。请确认后端已执行数据库迁移并与前端 API 版本一致。'
   }
   return m
-}
-
-function formatIsoLocal(iso: string) {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString('zh-CN')
 }
 
 /** 预估金额 / 销售额：隐藏步进箭头；样式与 inputCls 一致 */
@@ -174,6 +169,7 @@ export function OpportunityForm({
   onCancel,
   onSaved,
 }: OpportunityFormProps) {
+  const { profile, user } = useFeishuContext()
   const qc = useQueryClient()
   const [clientId, setClientId] = useState('')
   const [ownerId, setOwnerId] = useState('')
@@ -182,16 +178,11 @@ export function OpportunityForm({
   const [lostReason, setLostReason] = useState('')
   const [researchGroup, setResearchGroup] = useState('')
   const [businessSegment, setBusinessSegment] = useState('')
+  const [businessType, setBusinessType] = useState('')
   /** 重点商机：下拉，默认否 */
   const [keyOpportunity, setKeyOpportunity] = useState<'yes' | 'no'>('no')
   const [clientPm, setClientPm] = useState('')
   const [clientContact, setClientContact] = useState('')
-  const [deptLine, setDeptLine] = useState('')
-  /** 是否为决策人：是 / 否 / 未知；选「否」时展示实际决策人相关字段 */
-  const [isDecisionMaker, setIsDecisionMaker] = useState('')
-  const [actualDecisionMaker, setActualDecisionMaker] = useState('')
-  const [actualDmDeptLine, setActualDmDeptLine] = useState('')
-  const [actualDmLevel, setActualDmLevel] = useState('')
   const [amount, setAmount] = useState('')
   /** 赢单时：销售额、分年度销售额（与后端 sales_by_year 年份一致） */
   const [salesTotal, setSalesTotal] = useState('')
@@ -224,7 +215,11 @@ export function OpportunityForm({
   const [testLocation, setTestLocation] = useState('')
   const [ethicsReq, setEthicsReq] = useState<'yes' | 'no' | ''>('')
   const [hgracReq, setHgracReq] = useState<'yes' | 'no' | ''>('')
+  /** 补充信息：默认收纳 */
+  const [supplementOpen, setSupplementOpen] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleteErrMsg, setDeleteErrMsg] = useState('')
 
   const amountInputRef = useRef<HTMLInputElement>(null)
   const salesTotalInputRef = useRef<HTMLInputElement>(null)
@@ -294,7 +289,7 @@ export function OpportunityForm({
     () =>
       (ownerPayload?.items ?? []).map((a) => ({
         id: a.id,
-        label: `${a.display_name}${a.username && a.username !== a.display_name ? ` (${a.username})` : ''}`,
+        label: displayOwnerName(a.display_name || '') || a.display_name || '',
       })),
     [ownerPayload?.items],
   )
@@ -325,6 +320,13 @@ export function OpportunityForm({
     ],
     [businessSegments],
   )
+  const businessTypeSelectOptions = useMemo(
+    () => [
+      { id: '', label: '不选' },
+      ...FALLBACK_BUSINESS_TYPE_OPTIONS.map((x) => ({ id: x, label: x })),
+    ],
+    [],
+  )
   const keyOpportunityOptions = useMemo(
     () => [
       { id: 'no', label: '否' },
@@ -340,16 +342,6 @@ export function OpportunityForm({
     ],
     [],
   )
-  const decisionMakerOptions = useMemo(
-    () => [
-      { id: '', label: '请选择' },
-      { id: 'yes', label: '是' },
-      { id: 'no', label: '否' },
-      { id: 'unknown', label: '未知' },
-    ],
-    [],
-  )
-
   const isTerminal = salesStage === 'cancelled' || salesStage === 'lost'
   const showSalesFields =
     salesStage === 'won' || (isTerminal && salesTouchedFromWon)
@@ -362,20 +354,22 @@ export function OpportunityForm({
     const by = o.sales_by_year || {}
 
     setClientId(String(o.client_id))
-    setOwnerId(o.owner_id != null ? String(o.owner_id) : '')
+    setOwnerId(
+      commercialOwnerSelectValue(
+        o.owner_id,
+        o.commercial_owner_name,
+        o.owner,
+      ),
+    )
     setSalesStage(o.stage || '')
     setCancelReason(o.cancel_reason || '')
     setLostReason(o.lost_reason || '')
     setResearchGroup(o.research_group || '')
     setBusinessSegment(o.business_segment || '')
+    setBusinessType(o.business_type || '')
     setKeyOpportunity(o.key_opportunity ? 'yes' : 'no')
     setClientPm(o.client_pm || '')
     setClientContact(o.client_contact_info || '')
-    setDeptLine(o.client_department_line || '')
-    setIsDecisionMaker(o.is_decision_maker || '')
-    setActualDecisionMaker(o.actual_decision_maker || '')
-    setActualDmDeptLine(o.actual_decision_maker_department_line || '')
-    setActualDmLevel(o.actual_decision_maker_level || '')
     setAmount(
       o.estimated_amount != null && o.estimated_amount !== '' ? String(o.estimated_amount) : '',
     )
@@ -452,6 +446,7 @@ export function OpportunityForm({
       payload.demand_name = ''
       payload.research_group = ''
       payload.business_segment = ''
+      payload.business_type = ''
       payload.key_opportunity = false
       payload.client_pm = ''
       payload.client_contact_info = ''
@@ -480,15 +475,15 @@ export function OpportunityForm({
       }
       payload.research_group = researchGroup
       payload.business_segment = businessSegment
+      payload.business_type = businessType.trim()
       payload.key_opportunity = keyOpportunity === 'yes'
       payload.client_pm = clientPm
       payload.client_contact_info = clientContact
-      payload.client_department_line = deptLine
-      payload.is_decision_maker = isDecisionMaker
-      payload.actual_decision_maker = isDecisionMaker === 'no' ? actualDecisionMaker.trim() : ''
-      payload.actual_decision_maker_department_line =
-        isDecisionMaker === 'no' ? actualDmDeptLine.trim() : ''
-      payload.actual_decision_maker_level = isDecisionMaker === 'no' ? actualDmLevel.trim() : ''
+      payload.client_department_line = ''
+      payload.is_decision_maker = ''
+      payload.actual_decision_maker = ''
+      payload.actual_decision_maker_department_line = ''
+      payload.actual_decision_maker_level = ''
       payload.demand_stages = demandStages
       payload.remark = remark.trim() || undefined
       payload.project_detail = {
@@ -550,17 +545,29 @@ export function OpportunityForm({
     },
   })
 
+  const deleteMut = useMutation({
+    mutationFn: async () => {
+      if (!opportunityId) throw new Error('无效 ID')
+      const res = await api.delete<any>(`/crm/opportunities/${opportunityId}`)
+      if (res.code !== 200) throw new Error(res.msg || '删除失败')
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['opportunities'] })
+      qc.invalidateQueries({ queryKey: ['opportunity-stats'] })
+      qc.invalidateQueries({ queryKey: ['crm', 'opportunity', opportunityId] })
+      qc.invalidateQueries({ queryKey: ['crm', 'opportunity', opportunityId, 'form'] })
+      qc.invalidateQueries({ queryKey: ['crm', 'opportunities', 'list', 'kanban'] })
+      if (variant === 'page') onCancel?.()
+      else onClose?.()
+    },
+    onError: (e: unknown) => {
+      setDeleteErrMsg(e instanceof Error ? e.message : '删除失败')
+    },
+  })
+
   useEffect(() => {
     qc.invalidateQueries({ queryKey: ['crm-opp-form-meta'] })
   }, [qc])
-
-  useEffect(() => {
-    if (isDecisionMaker !== 'no') {
-      setActualDecisionMaker('')
-      setActualDmDeptLine('')
-      setActualDmLevel('')
-    }
-  }, [isDecisionMaker])
 
   useEffect(() => {
     /** 编辑模式：保留数据库中的三项销售额，不因阶段切换自动清空 */
@@ -619,17 +626,7 @@ export function OpportunityForm({
       if (Number.isNaN(est) || est < 0) e.amount = MSG_REDO
     }
 
-    if (!productType.trim()) e.productType = MSG_FILL
-    if (hasSample === 'yes') {
-      if (!sampleName.trim()) e.sampleName = MSG_FILL
-      if (!sampleType.trim()) e.sampleType = MSG_FILL
-    }
-    if (isDecisionMaker === 'no') {
-      if (!actualDecisionMaker.trim()) e.actualDecisionMaker = MSG_FILL
-      if (!actualDmDeptLine.trim()) e.actualDmDeptLine = MSG_FILL
-      if (!actualDmLevel.trim()) e.actualDmLevel = MSG_FILL
-    }
-    if (!demandName.trim()) e.demandName = MSG_FILL
+    if (!demandName.trim()) e.demandName = '请填写商机名称'
 
     if (salesStage === 'won') {
       const st = salesTotal.trim()
@@ -692,6 +689,23 @@ export function OpportunityForm({
     (createMut.error as Error | undefined)?.message ||
     (updateMut.error as Error | undefined)?.message ||
     '保存失败'
+  const deleting = deleteMut.isPending
+  const currentUserId = useMemo(() => {
+    const pid = profile?.id
+    if (typeof pid === 'number' && Number.isFinite(pid)) return pid
+    if (typeof pid === 'string' && /^\d+$/.test(pid)) return Number(pid)
+    const uid = user?.id
+    if (typeof uid === 'number' && Number.isFinite(uid)) return uid
+    if (typeof uid === 'string' && /^\d+$/.test(uid)) return Number(uid)
+    return null
+  }, [profile?.id, user?.id])
+  const canDeleteOpportunity =
+    mode === 'edit' &&
+    !!opportunityId &&
+    !!opp &&
+    currentUserId !== null &&
+    typeof opp.created_by_id === 'number' &&
+    opp.created_by_id === currentUserId
 
   if (mode === 'edit' && oppLoading) {
     return variant === 'page' ? (
@@ -768,8 +782,22 @@ export function OpportunityForm({
           </div>
 
           <div className={sectionCls}>
-            <h4 className="mb-3 text-sm font-semibold text-slate-800">我方信息</h4>
+            <h4 className="mb-3 text-sm font-semibold text-slate-800">商机信息</h4>
             <div className="space-y-3">
+              <div id={fieldWrapId('demandName')}>
+                <label className={labelCls}>商机名称（必填）</label>
+                <input
+                  value={demandName}
+                  onChange={(e) => {
+                    setDemandName(e.target.value)
+                    clearFieldError('demandName')
+                  }}
+                  disabled={isTerminal}
+                  className={inputCls}
+                  placeholder="请填写商机名称"
+                />
+                {fieldErrors.demandName && <p className={errMsgCls}>{fieldErrors.demandName}</p>}
+              </div>
               <div className={grid2}>
                 <div id={fieldWrapId('ownerId')}>
                   <label className={labelCls}>商务负责人（必填）</label>
@@ -872,6 +900,65 @@ export function OpportunityForm({
                 </div>
               </div>
               <div className={grid2}>
+                <div>
+                  <label className={labelCls}>业务类型（选填）</label>
+                  <SearchableSelect
+                    value={businessType}
+                    onChange={(v) => setBusinessType(v)}
+                    options={businessTypeSelectOptions}
+                    placeholder="不选"
+                    emptyHint="无匹配项"
+                    disabled={isTerminal}
+                    searchable
+                    searchPlaceholder="输入关键字筛选业务类型…"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>重点商机</label>
+                  <SearchableSelect
+                    value={keyOpportunity}
+                    onChange={(v) => setKeyOpportunity((v === 'yes' ? 'yes' : 'no') as 'yes' | 'no')}
+                    options={keyOpportunityOptions}
+                    placeholder="请选择"
+                    disabled={isTerminal}
+                    searchable={false}
+                    clearable={false}
+                  />
+                </div>
+              </div>
+              <div className={grid2}>
+                <div>
+                  <label className={labelCls}>预计启动时间（选填）</label>
+                  <input
+                    type="date"
+                    value={plannedStart}
+                    onChange={(e) => setPlannedStart(e.target.value)}
+                    disabled={isTerminal}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>PM</label>
+                  <input
+                    value={clientPm}
+                    onChange={(e) => setClientPm(e.target.value)}
+                    disabled={isTerminal}
+                    className={inputCls}
+                    placeholder="选填"
+                  />
+                </div>
+              </div>
+              <div className={grid2}>
+                <div>
+                  <label className={labelCls}>联系方式</label>
+                  <input
+                    value={clientContact}
+                    onChange={(e) => setClientContact(e.target.value)}
+                    disabled={isTerminal}
+                    className={inputCls}
+                    placeholder="选填"
+                  />
+                </div>
                 <div id={fieldWrapId('amount')}>
                   <label className={labelCls}>预估金额（元，必填）</label>
                   <input
@@ -890,7 +977,9 @@ export function OpportunityForm({
                   />
                   {fieldErrors.amount && <p className={errMsgCls}>{fieldErrors.amount}</p>}
                 </div>
-                {showSalesFields ? (
+              </div>
+              {showSalesFields && (
+                <div className={grid2}>
                   <div id={fieldWrapId('salesTotal')}>
                     <label className={labelCls}>销售额（元，必填）</label>
                     <input
@@ -910,10 +999,9 @@ export function OpportunityForm({
                     />
                     {fieldErrors.salesTotal && <p className={errMsgCls}>{fieldErrors.salesTotal}</p>}
                   </div>
-                ) : (
                   <div aria-hidden className="hidden min-h-[2.5rem] sm:block" />
-                )}
-              </div>
+                </div>
+              )}
               {showSalesFields && (
                 <div className={grid2}>
                   <div id={fieldWrapId('salesCurrentYear')}>
@@ -964,188 +1052,47 @@ export function OpportunityForm({
                   </div>
                 </div>
               )}
-              <div className={grid2}>
-                <div>
-                  <label className={labelCls}>重点商机</label>
-                  <SearchableSelect
-                    value={keyOpportunity}
-                    onChange={(v) => setKeyOpportunity((v === 'yes' ? 'yes' : 'no') as 'yes' | 'no')}
-                    options={keyOpportunityOptions}
-                    placeholder="请选择"
-                    disabled={isTerminal}
-                    searchable={false}
-                    clearable={false}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>创建时间</label>
-                  <input
-                    readOnly
-                    value={
-                      mode === 'edit' && opp ? formatIsoLocal(opp.create_time) : '保存时自动生成'
-                    }
-                    className={`${inputCls} bg-slate-100 text-slate-600`}
-                  />
-                </div>
-              </div>
             </div>
           </div>
 
           <div className={`${sectionCls} ${isTerminal ? 'pointer-events-none opacity-50' : ''}`}>
-            <h4 className={subheading}>客户基础信息</h4>
-            <div className="space-y-3">
-              <div className={grid2}>
-                <div>
-                  <label className={labelCls}>PM</label>
-                  <input
-                    value={clientPm}
-                    onChange={(e) => setClientPm(e.target.value)}
-                    disabled={isTerminal}
-                    className={inputCls}
-                    placeholder="选填"
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>联系方式</label>
-                  <input
-                    value={clientContact}
-                    onChange={(e) => setClientContact(e.target.value)}
-                    disabled={isTerminal}
-                    className={inputCls}
-                    placeholder="选填"
-                  />
-                </div>
-              </div>
-              <div className={grid2}>
-                <div>
-                  <label className={labelCls}>部门 / 条线</label>
-                  <input
-                    value={deptLine}
-                    onChange={(e) => setDeptLine(e.target.value)}
-                    disabled={isTerminal}
-                    className={inputCls}
-                    placeholder="选填"
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>是否为决策人</label>
-                  <SearchableSelect
-                    value={isDecisionMaker}
-                    onChange={(v) => {
-                      setIsDecisionMaker(v)
-                      clearFieldError('actualDecisionMaker')
-                      clearFieldError('actualDmDeptLine')
-                      clearFieldError('actualDmLevel')
-                    }}
-                    options={decisionMakerOptions}
-                    placeholder="请选择"
-                    emptyHint="暂无选项"
-                    disabled={isTerminal}
-                    searchable={false}
-                  />
-                </div>
-              </div>
-              {isDecisionMaker === 'no' && !isTerminal && (
-                <>
-                  <div className={grid2}>
-                    <div id={fieldWrapId('actualDecisionMaker')}>
-                      <label className={labelCls}>实际决策人（必填）</label>
-                      <input
-                        value={actualDecisionMaker}
-                        onChange={(e) => {
-                          setActualDecisionMaker(e.target.value)
-                          clearFieldError('actualDecisionMaker')
-                        }}
-                        className={inputCls}
-                        placeholder="请填写姓名或称呼"
-                      />
-                      {fieldErrors.actualDecisionMaker && (
-                        <p className={errMsgCls}>{fieldErrors.actualDecisionMaker}</p>
-                      )}
-                    </div>
-                    <div id={fieldWrapId('actualDmDeptLine')}>
-                      <label className={labelCls}>实际决策人-部门/条线（必填）</label>
-                      <input
-                        value={actualDmDeptLine}
-                        onChange={(e) => {
-                          setActualDmDeptLine(e.target.value)
-                          clearFieldError('actualDmDeptLine')
-                        }}
-                        className={inputCls}
-                        placeholder="请填写部门或条线"
-                      />
-                      {fieldErrors.actualDmDeptLine && (
-                        <p className={errMsgCls}>{fieldErrors.actualDmDeptLine}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className={grid2}>
-                    <div id={fieldWrapId('actualDmLevel')}>
-                      <label className={labelCls}>实际决策人-职级（必填）</label>
-                      <input
-                        value={actualDmLevel}
-                        onChange={(e) => {
-                          setActualDmLevel(e.target.value)
-                          clearFieldError('actualDmLevel')
-                        }}
-                        className={inputCls}
-                        placeholder="PM/VP"
-                      />
-                      {fieldErrors.actualDmLevel && <p className={errMsgCls}>{fieldErrors.actualDmLevel}</p>}
-                    </div>
-                    <div aria-hidden className="hidden sm:block" />
-                  </div>
-                </>
-              )}
+            <h4 className={subheading}>商机评分</h4>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <PctRow label="必要性（选填）" value={nec} onChange={setNec} disabled={isTerminal} />
+              <PctRow label="紧迫性（选填）" value={urg} onChange={setUrg} disabled={isTerminal} />
+              <PctRow label="唯一性（选填）" value={uniq} onChange={setUniq} disabled={isTerminal} />
             </div>
           </div>
 
           <div className={`${sectionCls} ${isTerminal ? 'pointer-events-none opacity-50' : ''}`}>
-            <h4 className={subheading}>客户需求</h4>
-            <div className="space-y-3">
-              <div className={grid2}>
-                <div id={fieldWrapId('demandName')}>
-                  <label className={labelCls}>需求名称（必填）</label>
-                  <input
-                    value={demandName}
-                    onChange={(e) => {
-                      setDemandName(e.target.value)
-                      clearFieldError('demandName')
-                    }}
-                    disabled={isTerminal}
-                    className={inputCls}
-                    placeholder="请填写需求名称"
-                  />
-                  {fieldErrors.demandName && <p className={errMsgCls}>{fieldErrors.demandName}</p>}
-                </div>
-                <div>
-                  <label className={labelCls}>预计启动时间（选填）</label>
-                  <input
-                    type="date"
-                    value={plannedStart}
-                    onChange={(e) => setPlannedStart(e.target.value)}
-                    disabled={isTerminal}
-                    className={inputCls}
-                  />
-                </div>
-              </div>
-
+            <button
+              type="button"
+              onClick={() => setSupplementOpen((v) => !v)}
+              className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left transition hover:bg-slate-50"
+            >
+              <span className="text-sm font-semibold text-slate-800">补充信息</span>
+              <ChevronDown
+                className={`h-5 w-5 shrink-0 text-slate-500 transition ${supplementOpen ? 'rotate-180' : ''}`}
+                aria-hidden
+              />
+            </button>
+            {supplementOpen && (
+              <div className="mt-3 space-y-3">
               <div className={grid2}>
                 <div id={fieldWrapId('productType')}>
-                  <label className={labelCls}>产品类型（必填）</label>
+                  <label className={labelCls}>产品类型（选填）</label>
                   <input
                     value={productType}
                     onChange={(e) => {
                       setProductType(e.target.value)
-                      clearFieldError('productType')
                     }}
                     disabled={isTerminal}
                     className={inputCls}
+                    placeholder="选填"
                   />
-                  {fieldErrors.productType && <p className={errMsgCls}>{fieldErrors.productType}</p>}
                 </div>
                 <div>
-                  <label className={labelCls}>产品阶段</label>
+                  <label className={labelCls}>产品阶段（选填）</label>
                   <input
                     value={productStage}
                     onChange={(e) => setProductStage(e.target.value)}
@@ -1189,13 +1136,11 @@ export function OpportunityForm({
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>是否已有样品</label>
+                  <label className={labelCls}>是否已有样品（选填）</label>
                   <SearchableSelect
                     value={hasSample}
                     onChange={(v) => {
                       setHasSample(v as 'yes' | 'no' | '')
-                      clearFieldError('sampleName')
-                      clearFieldError('sampleType')
                     }}
                     options={ynTripleOptions}
                     placeholder="请选择"
@@ -1229,36 +1174,34 @@ export function OpportunityForm({
               {hasSample === 'yes' && (
                 <div className={grid2}>
                   <div id={fieldWrapId('sampleName')}>
-                    <label className={labelCls}>样品名称</label>
+                    <label className={labelCls}>样品名称（选填）</label>
                     <input
                       value={sampleName}
                       onChange={(e) => {
                         setSampleName(e.target.value)
-                        clearFieldError('sampleName')
                       }}
                       disabled={isTerminal}
                       className={inputCls}
+                      placeholder="选填"
                     />
-                    {fieldErrors.sampleName && <p className={errMsgCls}>{fieldErrors.sampleName}</p>}
                   </div>
                   <div id={fieldWrapId('sampleType')}>
-                    <label className={labelCls}>样品类型</label>
+                    <label className={labelCls}>样品类型（选填）</label>
                     <input
                       value={sampleType}
                       onChange={(e) => {
                         setSampleType(e.target.value)
-                        clearFieldError('sampleType')
                       }}
                       disabled={isTerminal}
                       className={inputCls}
+                      placeholder="选填"
                     />
-                    {fieldErrors.sampleType && <p className={errMsgCls}>{fieldErrors.sampleType}</p>}
                   </div>
                 </div>
               )}
               <div className={grid2}>
                 <div>
-                  <label className={labelCls}>随访周期</label>
+                  <label className={labelCls}>随访周期（选填）</label>
                   <input
                     value={followUp}
                     onChange={(e) => setFollowUp(e.target.value)}
@@ -1268,7 +1211,7 @@ export function OpportunityForm({
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>测试地点</label>
+                  <label className={labelCls}>测试地点（选填）</label>
                   <input
                     value={testLocation}
                     onChange={(e) => setTestLocation(e.target.value)}
@@ -1280,7 +1223,7 @@ export function OpportunityForm({
               </div>
               <div className={grid2}>
                 <div>
-                  <label className={labelCls}>是否需要伦理</label>
+                  <label className={labelCls}>是否需要伦理（选填）</label>
                   <SearchableSelect
                     value={ethicsReq}
                     onChange={(v) => setEthicsReq(v as 'yes' | 'no' | '')}
@@ -1291,7 +1234,7 @@ export function OpportunityForm({
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>是否需要人遗</label>
+                  <label className={labelCls}>是否需要人遗（选填）</label>
                   <SearchableSelect
                     value={hgracReq}
                     onChange={(v) => setHgracReq(v as 'yes' | 'no' | '')}
@@ -1304,7 +1247,7 @@ export function OpportunityForm({
               </div>
 
               <div>
-                <label className={labelCls}>需求阶段（可多选）</label>
+                <label className={labelCls}>需求阶段（选填，可多选）</label>
                 <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3">
                   {demandStageOptions.map((s) => (
                     <label key={s} className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
@@ -1321,15 +1264,7 @@ export function OpportunityForm({
                 </div>
               </div>
             </div>
-          </div>
-
-          <div className={`${sectionCls} ${isTerminal ? 'pointer-events-none opacity-50' : ''}`}>
-            <h4 className={subheading}>商机评分</h4>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <PctRow label="必要性（选填）" value={nec} onChange={setNec} disabled={isTerminal} />
-              <PctRow label="紧迫性（选填）" value={urg} onChange={setUrg} disabled={isTerminal} />
-              <PctRow label="唯一性（选填）" value={uniq} onChange={setUniq} disabled={isTerminal} />
-            </div>
+            )}
           </div>
 
           <div className={`${sectionCls} ${isTerminal ? 'pointer-events-none opacity-50' : ''}`}>
@@ -1348,23 +1283,77 @@ export function OpportunityForm({
           {saveError && <p className="text-sm text-red-600">{saveErrMsg}</p>}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
-          <button
-            type="button"
-            className="rounded-lg px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
-            onClick={variant === 'page' ? onCancel : onClose}
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            disabled={saving}
-            onClick={handleSave}
-            className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {saving ? '保存中…' : '保存'}
-          </button>
+        <div className="border-t border-slate-100 px-5 py-4">
+          {deleteErrMsg && <p className="mb-2 text-sm text-red-600">{deleteErrMsg}</p>}
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              {canDeleteOpportunity && (
+                <button
+                  type="button"
+                  disabled={saving || deleting}
+                  onClick={() => {
+                    setDeleteErrMsg('')
+                    setDeleteConfirmOpen(true)
+                  }}
+                  className="rounded-lg border border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+                >
+                  删除商机
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="rounded-lg px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+                onClick={variant === 'page' ? onCancel : onClose}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={saving || deleting}
+                onClick={handleSave}
+                className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {saving ? '保存中…' : '保存'}
+              </button>
+            </div>
+          </div>
         </div>
+        {deleteConfirmOpen && (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-3"
+            onClick={() => {
+              if (!deleting) setDeleteConfirmOpen(false)
+            }}
+          >
+            <div
+              className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h4 className="text-base font-semibold text-slate-900">确认删除商机？</h4>
+              <p className="mt-2 text-sm text-slate-600">删除后该商机会从列表中移除，此操作不可撤销。</p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={deleting}
+                  className="rounded-lg px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+                  onClick={() => setDeleteConfirmOpen(false)}
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  disabled={deleting}
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  onClick={() => deleteMut.mutate()}
+                >
+                  {deleting ? '删除中…' : '确认删除'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   )
 

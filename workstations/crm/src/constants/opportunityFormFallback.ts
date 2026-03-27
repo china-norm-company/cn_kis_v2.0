@@ -45,6 +45,27 @@ export const FALLBACK_BUSINESS_SEGMENTS = [
   '孵化',
 ]
 
+/** 业务类型（单选、选填）；与 backend opportunity_constants.BUSINESS_TYPE_OPTIONS 一致 */
+export const FALLBACK_BUSINESS_TYPE_OPTIONS = [
+  '皮肤',
+  '彩妆',
+  '医美',
+  '母婴',
+  '特化',
+  '头发/头皮',
+  '离体发束',
+  '消费者研究',
+  '感官',
+  '情绪研究',
+  '医学CRO',
+  '口腔护理',
+  '新技术研究',
+  '美容仪器',
+  '体外',
+  '功能型食品',
+  '其他',
+] as const
+
 export const FALLBACK_DEMAND_STAGE_OPTIONS = [
   '早期，只是先来问问可行性和大致的成本',
   '已经有初步的计划了，在比方案的过程中',

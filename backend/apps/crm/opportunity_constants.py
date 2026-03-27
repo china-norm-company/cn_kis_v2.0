@@ -1,5 +1,20 @@
 """商机新建表单：研究组、业务板块、需求阶段（可后续改为配置表）"""
 
+# 商务负责人下拉固定顺序（与 Account 按姓名匹配；无账号时用负 id 占位）
+COMMERCIAL_OWNER_NAME_ORDER = [
+    '马蓓丽',
+    '顾雯雯',
+    '孙华',
+    '蒋艳雯',
+    '李韶',
+    '杨管晟',
+    '顾晶',
+    '卫婷婷',
+    '伍虹宇',
+    '张红霞',
+    '未确认',
+]
+
 # 销售阶段（单选，与 models.OpportunityStage 中 lead/deal/won/cancelled/lost 对应）
 SALES_STAGE_OPTIONS = [
     {'value': 'lead', 'label': '线索'},
@@ -44,6 +59,27 @@ BUSINESS_SEGMENTS = [
     'Y-CRO',
     'F-功能食品',
     '孵化',
+]
+
+# 业务类型（单选、选填；与前端 FALLBACK_BUSINESS_TYPE_OPTIONS 一致）
+BUSINESS_TYPE_OPTIONS = [
+    '皮肤',
+    '彩妆',
+    '医美',
+    '母婴',
+    '特化',
+    '头发/头皮',
+    '离体发束',
+    '消费者研究',
+    '感官',
+    '情绪研究',
+    '医学CRO',
+    '口腔护理',
+    '新技术研究',
+    '美容仪器',
+    '体外',
+    '功能型食品',
+    '其他',
 ]
 
 # 需求阶段（多选，与管道阶段 stage 区分）

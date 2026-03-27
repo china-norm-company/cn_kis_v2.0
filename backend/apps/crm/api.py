@@ -28,6 +28,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from . import services
+from .opportunity_constants import BUSINESS_TYPE_OPTIONS
 from .models import (
     Client, Opportunity, Ticket,
     ClientContact, ClientOrgMap,
@@ -41,6 +42,49 @@ from apps.identity.decorators import _get_account_from_request, require_permissi
 from apps.identity.filters import get_visible_object
 
 logger = logging.getLogger(__name__)
+
+BUSINESS_TYPE_SET = frozenset(BUSINESS_TYPE_OPTIONS)
+DEFAULT_OPPORTUNITY_CREATOR_EMAIL = 'yaosiyu@china-norm.com'
+
+
+def _default_opportunity_creator_id() -> Optional[int]:
+    """创建人缺失时，回退到固定兜底账号（姚思妤）。"""
+    from apps.identity.models import Account
+    acc = Account.objects.filter(email__iexact=DEFAULT_OPPORTUNITY_CREATOR_EMAIL, is_deleted=False).first()
+    return acc.id if acc else None
+
+
+def _effective_opportunity_creator_id(o) -> Optional[int]:
+    """优先真实创建人；为空时兜底固定账号（不再使用商务负责人）。"""
+    created_by_id = getattr(o, 'created_by_id', None)
+    if created_by_id is not None:
+        return created_by_id
+    return _default_opportunity_creator_id()
+
+
+def _csv_opt(s: Optional[str]) -> Optional[list]:
+    """逗号分隔查询参数 → 字符串列表；空则 None。"""
+    if not s or not str(s).strip():
+        return None
+    return [x.strip() for x in str(s).split(',') if x.strip()]
+
+
+def _query_csv_list(request, key: str, schema_val: Optional[str]) -> Optional[list]:
+    """
+    从 Query 解析逗号分隔或多 key 重复的列表（如 stages=lead&stages=deal）。
+    优先用 Django 原始 GET，避免 Ninja/Pydantic 对 stages 只取单值导致阶段筛选失效。
+    """
+    parts = request.GET.getlist(key)
+    if parts:
+        out: List[str] = []
+        for p in parts:
+            for x in str(p).split(','):
+                t = x.strip()
+                if t:
+                    out.append(t)
+        return out if out else None
+    return _csv_opt(schema_val)
+
 
 router = Router()
 
@@ -156,9 +200,30 @@ class OrgMapUpdateIn(Schema):
 class OpportunityQueryParams(Schema):
     client_id: Optional[int] = None
     stage: Optional[str] = None
+    stages: Optional[str] = None
     owner: Optional[str] = None
+    owner_id: Optional[int] = None
+    research_group: Optional[str] = None
+    research_groups: Optional[str] = None
+    business_segment: Optional[str] = None
+    business_segments: Optional[str] = None
+    key_opportunity: Optional[str] = None
     page: int = 1
     page_size: int = 20
+
+
+class OpportunityStatsQueryParams(Schema):
+    """与列表筛选一致，用于统计卡片「按当前筛选」。"""
+    client_id: Optional[int] = None
+    stage: Optional[str] = None
+    stages: Optional[str] = None
+    owner: Optional[str] = None
+    owner_id: Optional[int] = None
+    research_group: Optional[str] = None
+    research_groups: Optional[str] = None
+    business_segment: Optional[str] = None
+    business_segments: Optional[str] = None
+    key_opportunity: Optional[str] = None
 
 
 class ProjectDetailIn(Schema):
@@ -200,6 +265,7 @@ class OpportunityCreateIn(Schema):
     commercial_owner_id: int
     research_group: Optional[str] = ''
     business_segment: Optional[str] = ''
+    business_type: Optional[str] = ''
     key_opportunity: bool = False
     client_pm: Optional[str] = ''
     client_contact_info: Optional[str] = ''
@@ -523,6 +589,7 @@ def _contact_to_dict(c) -> dict:
 
 
 def _opportunity_to_dict(o) -> dict:
+    effective_creator_id = _effective_opportunity_creator_id(o)
     return {
         'id': o.id,
         'code': o.code or '',
@@ -537,6 +604,7 @@ def _opportunity_to_dict(o) -> dict:
         'commercial_owner_name': getattr(o, 'commercial_owner_name', '') or '',
         'research_group': getattr(o, 'research_group', '') or '',
         'business_segment': getattr(o, 'business_segment', '') or '',
+        'business_type': getattr(o, 'business_type', '') or '',
         'client_pm': getattr(o, 'client_pm', '') or '',
         'client_contact_info': getattr(o, 'client_contact_info', '') or '',
         'client_department_line': getattr(o, 'client_department_line', '') or '',
@@ -561,6 +629,7 @@ def _opportunity_to_dict(o) -> dict:
         'remark': getattr(o, 'remark', '') or '',
         'cancel_reason': getattr(o, 'cancel_reason', '') or '',
         'lost_reason': getattr(o, 'lost_reason', '') or '',
+        'created_by_id': effective_creator_id,
         'create_time': o.create_time.isoformat(),
     }
 
@@ -1104,9 +1173,22 @@ def resolve_alert(request, alert_id: int, data: AlertResolveIn):
 @require_permission('crm.opportunity.read')
 def list_opportunities(request, params: OpportunityQueryParams = Query(...)):
     account = _get_account_from_request(request)
+    stages_list = _query_csv_list(request, 'stages', params.stages)
+    research_groups_list = _query_csv_list(request, 'research_groups', params.research_groups)
+    business_segments_list = _query_csv_list(request, 'business_segments', params.business_segments)
     result = services.list_opportunities(
-        client_id=params.client_id, stage=params.stage,
-        owner=params.owner, page=params.page, page_size=params.page_size,
+        client_id=params.client_id,
+        stage=params.stage if not stages_list else None,
+        stages=stages_list,
+        owner=params.owner,
+        owner_id=params.owner_id,
+        research_group=(params.research_group or '').strip() or None,
+        research_groups=research_groups_list,
+        business_segment=(params.business_segment or '').strip() or None,
+        business_segments=business_segments_list,
+        key_opportunity=params.key_opportunity,
+        page=params.page,
+        page_size=params.page_size,
         account=account,
     )
     return {
@@ -1118,17 +1200,37 @@ def list_opportunities(request, params: OpportunityQueryParams = Query(...)):
     }
 
 
-@router.get('/opportunities/stats', summary='管道分析统计')
+@router.get('/opportunities/stats', summary='商机统计（按阶段、储备商机、分年度销售额；可选与列表相同筛选条件）')
 @require_permission('crm.opportunity.read')
-def opportunity_stats(request):
+def opportunity_stats(request, params: OpportunityStatsQueryParams = Query(...)):
     try:
-        return {'code': 200, 'msg': 'OK', 'data': services.get_opportunity_stats()}
+        account = _get_account_from_request(request)
+        stages_list = _query_csv_list(request, 'stages', params.stages)
+        research_groups_list = _query_csv_list(request, 'research_groups', params.research_groups)
+        business_segments_list = _query_csv_list(request, 'business_segments', params.business_segments)
+        return {
+            'code': 200,
+            'msg': 'OK',
+            'data': services.get_opportunity_stats(
+                account=account,
+                client_id=params.client_id,
+                stage=params.stage if not stages_list else None,
+                stages=stages_list,
+                owner=params.owner,
+                owner_id=params.owner_id,
+                research_group=(params.research_group or '').strip() or None,
+                research_groups=research_groups_list,
+                business_segment=(params.business_segment or '').strip() or None,
+                business_segments=business_segments_list,
+                key_opportunity=params.key_opportunity,
+            ),
+        }
     except Exception as e:
         return 500, {'code': 500, 'msg': f'商机统计加载失败: {e!s}', 'data': None}
 
 
 @router.get('/opportunities/form-meta', summary='新建商机表单元数据（编号预览、下拉选项）')
-@require_any_permission(['crm.opportunity.create', 'crm.opportunity.update'])
+@require_any_permission(['crm.opportunity.create', 'crm.opportunity.update', 'crm.opportunity.read'])
 def opportunity_form_meta(request):
     try:
         return {'code': 200, 'msg': 'OK', 'data': services.get_opportunity_form_meta()}
@@ -1146,7 +1248,7 @@ def opportunity_form_meta(request):
 
 
 @router.get('/opportunities/owner-candidates', summary='商务负责人候选（可搜索）')
-@require_any_permission(['crm.opportunity.create', 'crm.opportunity.update'])
+@require_any_permission(['crm.opportunity.create', 'crm.opportunity.update', 'crm.opportunity.read'])
 def opportunity_owner_candidates(request, q: str = '', limit: int = 80):
     return {
         'code': 200,
@@ -1171,6 +1273,14 @@ def _prepare_opportunity_fields_for_write(data: OpportunityCreateIn) -> dict:
             return 'no'
         return ''
 
+    def _normalize_business_type(val: Optional[str]) -> str:
+        s = (val or '').strip()
+        if not s:
+            return ''
+        if s not in BUSINESS_TYPE_SET:
+            raise ValueError('无效的业务类型')
+        return s
+
     stage_raw = (data.stage or 'lead').strip().lower()
     allowed_sale = {'lead', 'deal', 'won', 'cancelled', 'lost'}
     if stage_raw not in allowed_sale:
@@ -1191,8 +1301,6 @@ def _prepare_opportunity_fields_for_write(data: OpportunityCreateIn) -> dict:
         est = data.estimated_amount if data.estimated_amount is not None else Decimal('0')
     else:
         pd = data.project_detail or ProjectDetailIn()
-        if not (pd.product_type or '').strip():
-            raise ValueError('项目要素：产品类型为必填')
         if data.estimated_amount is None:
             raise ValueError('请填写预估金额')
         if not (data.research_group or '').strip():
@@ -1206,9 +1314,6 @@ def _prepare_opportunity_fields_for_write(data: OpportunityCreateIn) -> dict:
             hs_norm = 'no'
         else:
             hs_norm = ''
-        if hs_norm == 'yes':
-            if not (pd.sample_name or '').strip() or not (pd.sample_type or '').strip():
-                raise ValueError('已有样品为「是」时，请填写样品名称与样品类型')
         if dm == 'no':
             if not (data.actual_decision_maker or '').strip():
                 raise ValueError('选择「是否为决策人」为否时，请填写实际决策人')
@@ -1217,7 +1322,7 @@ def _prepare_opportunity_fields_for_write(data: OpportunityCreateIn) -> dict:
             if not (data.actual_decision_maker_level or '').strip():
                 raise ValueError('选择「是否为决策人」为否时，请填写实际决策人-职级')
         if not (data.demand_name or '').strip():
-            raise ValueError('请填写需求名称')
+            raise ValueError('请填写商机名称')
         if stage_raw == 'won':
             if data.sales_amount_total is None or data.sales_amount_current_year is None or data.sales_amount_next_year is None:
                 raise ValueError('赢单时须填写销售额、本年销售额、跨年销售额')
@@ -1269,6 +1374,7 @@ def _prepare_opportunity_fields_for_write(data: OpportunityCreateIn) -> dict:
         'commercial_owner_id': data.commercial_owner_id,
         'research_group': '' if is_terminal else (data.research_group or ''),
         'business_segment': '' if is_terminal else (data.business_segment or ''),
+        'business_type': '' if is_terminal else _normalize_business_type(data.business_type),
         'key_opportunity': False if is_terminal else bool(data.key_opportunity),
         'client_pm': '' if is_terminal else (data.client_pm or ''),
         'client_contact_info': '' if is_terminal else (data.client_contact_info or ''),
@@ -1305,8 +1411,10 @@ def _prepare_opportunity_fields_for_write(data: OpportunityCreateIn) -> dict:
 @router.post('/opportunities/create', summary='创建商机')
 @require_permission('crm.opportunity.create')
 def create_opportunity(request, data: OpportunityCreateIn):
+    account = _get_account_from_request(request)
     try:
         kwargs = _prepare_opportunity_fields_for_write(data)
+        kwargs['created_by_id'] = account.id if account else _default_opportunity_creator_id()
         o = services.create_opportunity(**kwargs)
     except ValueError as e:
         return 400, {'code': 400, 'msg': str(e), 'data': None}
@@ -1356,8 +1464,12 @@ def update_opportunity(request, opp_id: int, data: OpportunityUpdateIn):
 @require_permission('crm.opportunity.update')
 def delete_opportunity(request, opp_id: int):
     account = _get_account_from_request(request)
-    if not get_visible_object(Opportunity.objects.filter(id=opp_id), account):
+    o = get_visible_object(Opportunity.objects.filter(id=opp_id), account)
+    if not o:
         return 404, {'code': 404, 'msg': '商机不存在'}
+    creator_id = _effective_opportunity_creator_id(o)
+    if not account or creator_id != account.id:
+        return 403, {'code': 403, 'msg': '仅商机创建人可删除'}
     ok = services.delete_opportunity(opp_id)
     if not ok:
         return 404, {'code': 404, 'msg': '商机不存在'}

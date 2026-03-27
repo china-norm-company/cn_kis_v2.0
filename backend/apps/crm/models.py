@@ -389,6 +389,7 @@ class Opportunity(models.Model):
     commercial_owner_name = models.CharField('商务负责人', max_length=100, blank=True, default='')
     research_group = models.CharField('研究组', max_length=100, blank=True, default='')
     business_segment = models.CharField('业务板块', max_length=100, blank=True, default='')
+    business_type = models.CharField('业务类型', max_length=50, blank=True, default='')
     key_opportunity = models.BooleanField('重点商机', default=False)
     client_pm = models.CharField('客户PM', max_length=200, blank=True, default='')
     client_contact_info = models.CharField('客户联系方式', max_length=200, blank=True, default='')
@@ -432,6 +433,7 @@ class Opportunity(models.Model):
     demand_version = models.CharField('需求版本', max_length=50, blank=True, default='', help_text='需求规格版本号，如 v1.0')
     feishu_project_id = models.CharField('飞书项目ID(废弃)', max_length=100, blank=True, default='')
     source_mail_signal_id = models.IntegerField('来源邮件信号ID', null=True, blank=True, db_index=True)
+    created_by_id = models.IntegerField('创建人ID', null=True, blank=True, db_index=True, help_text='Account ID')
 
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)

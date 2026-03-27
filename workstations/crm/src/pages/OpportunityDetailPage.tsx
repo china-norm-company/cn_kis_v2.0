@@ -6,6 +6,7 @@ import { api } from '@cn-kis/api-client'
 import { PermissionGuard } from '@cn-kis/feishu-sdk'
 import { ArrowLeft, Pencil } from 'lucide-react'
 import { opportunityStageLabel } from '../constants/opportunityStages'
+import { displayOwnerName } from '../utils/displayOwnerName'
 
 type OpportunityDetail = {
   id: number
@@ -20,6 +21,7 @@ type OpportunityDetail = {
   commercial_owner_name: string
   research_group: string
   business_segment: string
+  business_type?: string
   client_pm: string
   client_contact_info: string
   client_department_line: string
@@ -131,10 +133,18 @@ export function OpportunityDetailPage() {
             <Badge variant={stageVariant}>{stageLabel}</Badge>
           </Field>
           <Field label="业务板块" value={opp.business_segment || '—'} />
+          <Field label="业务类型" value={opp.business_type || '—'} />
           <Field label="研究组" value={opp.research_group || '—'} />
           <Field label="重点商机" value={opp.key_opportunity ? '是' : '否'} />
-          <Field label="商务负责人" value={opp.commercial_owner_name || opp.owner || '—'} />
-          <Field label="需求名称" value={opp.demand_name || '—'} />
+          <Field
+            label="商务负责人"
+            value={
+              opp.commercial_owner_name || opp.owner
+                ? displayOwnerName(opp.commercial_owner_name || opp.owner || '')
+                : '—'
+            }
+          />
+          <Field label="商机名称" value={opp.demand_name || '—'} />
           <Field label="预估金额" value={money(opp.estimated_amount)} />
           <Field label="销售额（赢单）" value={money(opp.sales_amount_total)} />
           <Field label="预计成交日" value={opp.expected_close_date ? String(opp.expected_close_date).slice(0, 10) : '—'} />
