@@ -12,6 +12,7 @@ import { AuditManagementPage } from './pages/AuditManagementPage'
 import { AuditDetailPage } from './pages/AuditDetailPage'
 import { SOPListPage } from './pages/SOPListPage'
 import { QueryListPage } from './pages/QueryListPage'
+import { ProjectSupervisionPage } from './pages/ProjectSupervisionPage'
 import { ChangeControlPage } from './pages/ChangeControlPage'
 import { ProjectQualityReportPage } from './pages/ProjectQualityReportPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
@@ -37,6 +38,7 @@ function App() {
             <Route path="capa" element={<CAPAListPage />} />
             <Route path="capa/:id" element={<CAPADetailPage />} />
             <Route path="queries" element={<QueryListPage />} />
+            <Route path="project-supervision" element={<ProjectSupervisionPage />} />
             <Route path="audit-management" element={<AuditManagementPage />} />
             <Route path="audit-management/:id" element={<AuditDetailPage />} />
             <Route path="audit-logs" element={<AuditLogPage />} />

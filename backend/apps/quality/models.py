@@ -370,3 +370,72 @@ class ChangeRequest(models.Model):
 
     def __str__(self):
         return f'{self.code} - {self.title}'
+
+
+# ============================================================================
+# 项目监察（与临床试验协议一对一）
+# ============================================================================
+class ProtocolProjectSupervision(models.Model):
+    """协议项目监察记录：计划 + 实际执行"""
+
+    class Meta:
+        db_table = 't_quality_protocol_supervision'
+        verbose_name = '协议项目监察'
+        indexes = [
+            models.Index(fields=['execution_start_date']),
+            models.Index(fields=['plan_submitted_at']),
+            models.Index(fields=['actual_submitted_at']),
+        ]
+
+    protocol = models.OneToOneField(
+        'protocol.Protocol',
+        on_delete=models.CASCADE,
+        related_name='quality_supervision',
+        verbose_name='协议',
+    )
+    execution_start_date = models.DateField('执行周期开始', null=True, blank=True, db_index=True)
+    execution_end_date = models.DateField('执行周期结束', null=True, blank=True)
+    plan_content = models.TextField('监察计划（监察内容）', blank=True, default='')
+    plan_submitted_at = models.DateTimeField('监察计划提交时间', null=True, blank=True)
+    actual_content = models.TextField('实际监察内容', blank=True, default='')
+    actual_submitted_at = models.DateTimeField('实际监察提交时间', null=True, blank=True)
+    updated_by_id = models.IntegerField('最后更新人', null=True, blank=True)
+    create_time = models.DateTimeField('创建时间', auto_now_add=True)
+    update_time = models.DateTimeField('更新时间', auto_now=True)
+
+    def __str__(self):
+        return f'Supervision#{self.id} protocol={self.protocol_id}'
+
+
+class QualityProjectRegistry(models.Model):
+    """
+    质量台「项目管理」来源登记：维周执行台新建协议自动登记为 weizhou；
+    质量台本地测试创建可标记为 quality_manual（仅项目监察测试，不出现在项目管理页签）。
+    """
+
+    class Meta:
+        db_table = 't_quality_project_registry'
+        verbose_name = '质量台项目来源登记'
+
+    class Source(models.TextChoices):
+        WEIZHOU = 'weizhou', '维周执行台'
+        QUALITY_MANUAL = 'quality_manual', '质量台本地测试'
+
+    protocol = models.OneToOneField(
+        'protocol.Protocol',
+        on_delete=models.CASCADE,
+        related_name='quality_project_registry',
+        verbose_name='协议',
+    )
+    source = models.CharField(
+        '来源',
+        max_length=32,
+        choices=Source.choices,
+        default=Source.WEIZHOU,
+        db_index=True,
+    )
+    create_time = models.DateTimeField('登记时间', auto_now_add=True)
+    update_time = models.DateTimeField('更新时间', auto_now=True)
+
+    def __str__(self):
+        return f'Registry#{self.id} protocol={self.protocol_id} {self.source}'

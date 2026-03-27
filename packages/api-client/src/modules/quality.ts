@@ -11,7 +11,49 @@ import type {
   CAPA,
   CAPAActionItem,
   SOP,
+  ProtocolCreateIn,
 } from '../types'
+
+/** 项目监察列表行 */
+export interface ProjectSupervisionItem {
+  protocol_id: number
+  project_code: string
+  project_title: string
+  protocol_status: string
+  execution_start_date: string | null
+  execution_end_date: string | null
+  group_label: string
+  backup_label: string
+  visits_label: string
+  period_label: string
+  researcher_label: string
+  sample_size_label: string
+  plan_content: string
+  plan_submitted_at: string | null
+  actual_content: string
+  actual_submitted_at: string | null
+  supervision_status: 'pending_plan' | 'abnormal' | 'pending_execution' | 'completed'
+  supervision_status_label: string
+  record_summary: string
+  plan_preview: string
+  actual_preview: string
+}
+
+/** 项目监察详情（含完整正文） */
+export interface ProjectSupervisionDetail extends ProjectSupervisionItem {
+  plan_content_full: string
+  actual_content_full: string
+}
+
+/** 与当前列表筛选（年月、关键词）一致的监察数量聚合 */
+export interface ProjectSupervisionListStats {
+  /** 已提交监察计划、尚未提交实际监察 */
+  pending_supervision: number
+  /** 已提交实际监察 */
+  supervised: number
+  /** 监察计划与实际均未提交（无监察记录） */
+  no_supervision_record: number
+}
 
 export const qualityApi = {
   // ===== 仪表盘 =====
@@ -154,5 +196,58 @@ export const qualityApi = {
   /** 更新 SOP */
   updateSOP(id: number, data: Partial<SOP>) {
     return api.put<SOP>(`/quality/sops/${id}`, data)
+  },
+
+  // ===== 项目监察 =====
+
+  /** 项目监察 / 项目管理列表（list_mode=management 为仅维周项目） */
+  listProjectSupervision(params?: {
+    year_month?: string
+    keyword?: string
+    /** 研究员姓名等 */
+    researcher_keyword?: string
+    /** supervision | management */
+    list_mode?: string
+    page?: number
+    page_size?: number
+  }) {
+    return api.get<{
+      items: ProjectSupervisionItem[]
+      total: number
+      page: number
+      page_size: number
+      stats: ProjectSupervisionListStats
+      list_mode?: string
+    }>('/quality/project-supervision/list', { params })
+  },
+
+  /** 项目监察详情（弹窗预填） */
+  getProjectSupervision(protocolId: number) {
+    return api.get<ProjectSupervisionDetail>(`/quality/project-supervision/${protocolId}`)
+  },
+
+  /**
+   * 项目监察：创建协议（与维周执行台同源数据）
+   * 需 quality.deviation.create；无需 protocol.protocol.create。
+   */
+  createProtocolForSupervision(data: ProtocolCreateIn) {
+    return api.post<{ id: number; title: string; status: string }>(
+      '/quality/project-supervision/create-protocol',
+      data,
+    )
+  },
+
+  /** 提交监察计划 */
+  submitSupervisionPlan(protocolId: number, plan_content: string) {
+    return api.post<ProjectSupervisionDetail>(`/quality/project-supervision/${protocolId}/submit-plan`, {
+      plan_content,
+    })
+  },
+
+  /** 提交实际监察 */
+  submitSupervisionActual(protocolId: number, actual_content: string) {
+    return api.post<ProjectSupervisionDetail>(`/quality/project-supervision/${protocolId}/submit-actual`, {
+      actual_content,
+    })
   },
 }

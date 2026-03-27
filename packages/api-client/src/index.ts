@@ -124,6 +124,11 @@ export type {
 } from './modules/protocol'
 export { resourceApi } from './modules/resource'
 export { qualityApi } from './modules/quality'
+export type {
+  ProjectSupervisionItem,
+  ProjectSupervisionDetail,
+  ProjectSupervisionListStats,
+} from './modules/quality'
 export { auditApi } from './modules/audit'
 export { identityApi } from './modules/identity'
 export { visitApi } from './modules/visit'

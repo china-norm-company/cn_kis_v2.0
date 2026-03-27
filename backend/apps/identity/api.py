@@ -380,6 +380,7 @@ def _compute_visible_menus(perm_codes: list, workbenches: list) -> dict:
             'capa': ['quality.capa.read'],
             'changes': ['quality.change.read'],
             'queries': ['edc.record.read', 'edc.query.read'],
+            'project-supervision': ['quality.deviation.read'],
             'audit-management': ['quality.audit.read'],
             'report': ['quality.deviation.read'],
             'analytics': ['quality.deviation.read'],

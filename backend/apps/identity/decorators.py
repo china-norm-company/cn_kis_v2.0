@@ -259,6 +259,11 @@ def require_any_permission(
     def decorator(view_func: Callable) -> Callable:
         @wraps(view_func)
         def wrapper(request: HttpRequest, *args, **kwargs):
+            from .phone_session import get_phone_from_request
+            phone = get_phone_from_request(request)
+            if phone:
+                return view_func(request, *args, **kwargs)
+
             account = _get_account_from_request(request)
             if not account:
                 return _forbidden('请先登录', {'error_code': 'AUTH_REQUIRED'})
@@ -271,13 +276,29 @@ def require_any_permission(
             if _is_dev_test_account(account):
                 return view_func(request, *args, **kwargs)
 
-            authz = get_authz_service()
+            try:
+                authz = get_authz_service()
+            except Exception as e:
+                logger.exception('require_any_permission get_authz_service failed: %s', e)
+                return JsonResponse(
+                    {'code': 500, 'msg': f'权限服务不可用: {e!s}', 'data': None},
+                    status=500,
+                )
 
             pid: Optional[int] = None
             if project_param:
                 pid = _extract_project_id(kwargs, project_param)
 
-            if not authz.has_any_permission(account, permission_codes, project_id=pid):
+            try:
+                allowed = authz.has_any_permission(account, permission_codes, project_id=pid)
+            except Exception as e:
+                logger.exception('require_any_permission has_any_permission failed: %s', e)
+                return JsonResponse(
+                    {'code': 500, 'msg': f'权限校验失败: {e!s}', 'data': None},
+                    status=500,
+                )
+
+            if not allowed:
                 error_msg = message or f'缺少权限: {", ".join(permission_codes)}'
                 if getattr(settings, 'AUTH_TRACE_ENABLED', False):
                     auth_logger.warning(

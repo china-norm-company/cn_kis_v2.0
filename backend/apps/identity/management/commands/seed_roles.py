@@ -425,7 +425,7 @@ ROLE_PERMISSION_MAP = {
     ],
     'quality_manager': [
         'dashboard.overview.read', 'dashboard.stats.read', 'dashboard.feishu_scan.read',
-        'dashboard.activities.read', 'quality.*', 'protocol.protocol.read',
+        'dashboard.activities.read', 'quality.*', 'protocol.protocol.read', 'protocol.protocol.create',
         'safety.ae.read', 'safety.ae.create',
         'signature.*', 'assistant.context.read', 'assistant.summary.generate',
         'knowledge.*', 'agent.chat.use', 'agent.session.read',
@@ -596,7 +596,7 @@ ROLE_PERMISSION_MAP = {
     ],
     'qa': [
         'dashboard.overview.read', 'dashboard.stats.read', 'dashboard.activities.read',
-        'quality.deviation.read', 'quality.deviation.create',
+        'quality.deviation.read', 'quality.deviation.create', 'protocol.protocol.create',
         'quality.capa.read', 'quality.sop.read',
         'quality.change.read', 'quality.audit.read', 'edc.record.read',
         'safety.ae.read', 'safety.ae.create',

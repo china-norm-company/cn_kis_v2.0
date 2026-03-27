@@ -1,5 +1,5 @@
 import { Outlet } from 'react-router-dom'
-import { LayoutDashboard, AlertTriangle, ShieldCheck, FileSearch, BookOpen, MessageSquare, ClipboardCheck, GitBranch, FileText, BarChart3, Activity } from 'lucide-react'
+import { LayoutDashboard, AlertTriangle, ShieldCheck, FileSearch, BookOpen, MessageSquare, ClipboardCheck, GitBranch, FileText, BarChart3, Activity, Binoculars } from 'lucide-react'
 import { FeishuAuthProvider, useFeishuContext, LoginFallback, createWorkstationFeishuConfig } from '@cn-kis/feishu-sdk'
 import { MobileWorkstationLayout, type MobileWorkstationNavItem } from '@cn-kis/ui-kit'
 
@@ -12,6 +12,7 @@ const navItems = [
   { path: '/capa', label: 'CAPA跟踪', icon: ShieldCheck, permissions: ['quality.capa.read'] },
   { path: '/changes', label: '变更控制', icon: GitBranch, permissions: ['quality.change.read'] },
   { path: '/queries', label: '数据质疑', icon: MessageSquare, permissions: ['edc.record.read'] },
+  { path: '/project-supervision', label: '项目监察', icon: Binoculars, permissions: ['quality.deviation.read'] },
   { path: '/audit-management', label: '审计管理', icon: ClipboardCheck, permissions: ['quality.audit.read'] },
   { path: '/audit-logs', label: '审计日志', icon: FileSearch, permissions: ['system.audit.read'] },
   { path: '/sop', label: 'SOP管理', icon: BookOpen, permissions: ['quality.sop.read'] },

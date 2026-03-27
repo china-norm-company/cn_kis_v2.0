@@ -148,9 +148,11 @@ export function createApiClient(config: ApiClientConfig = {}): AxiosInstance {
           return Promise.reject(err)
         }
 
-        // 5xx: retry once
+        // 5xx: 仅对幂等请求重试一次（GET/HEAD），避免 POST 创建类接口重复提交
         const config = error.config as (AxiosRequestConfig & { _retried?: boolean }) | undefined
-        if (status >= 500 && !config?._retried && config) {
+        const method = (config?.method || 'get').toUpperCase()
+        const allow5xxRetry = method === 'GET' || method === 'HEAD'
+        if (status >= 500 && allow5xxRetry && !config?._retried && config) {
           config._retried = true
           try {
             return await retryRequest(instance, config)
@@ -159,6 +161,11 @@ export function createApiClient(config: ApiClientConfig = {}): AxiosInstance {
             err.response = error.response
             return Promise.reject(err)
           }
+        }
+        if (status >= 500 && !allow5xxRetry) {
+          const err = new Error(backendMsg || `请求失败 (${status})`) as Error & { response: typeof error.response }
+          err.response = error.response
+          return Promise.reject(err)
         }
       } else {
         // Network error (no response) — attach friendly message

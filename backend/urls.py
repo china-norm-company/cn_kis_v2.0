@@ -92,6 +92,7 @@ if not is_registration_done():
     from apps.quality.api import router as quality_router
     from apps.quality.api_audit import router as quality_audit_router
     from apps.quality.api_change import router as quality_change_router
+    from apps.quality.api_project_supervision import router as quality_project_supervision_router
     from apps.finance.api import router as finance_router
     from apps.hr.api import router as hr_router
     from apps.crm.api import router as crm_router
@@ -101,6 +102,7 @@ if not is_registration_done():
     _safe_add_router(api, '/quality/', quality_router, tags=['质量合规'])
     _safe_add_router(api, '/quality/', quality_audit_router, tags=['审计管理'])
     _safe_add_router(api, '/quality/', quality_change_router, tags=['变更控制'])
+    _safe_add_router(api, '/quality/', quality_project_supervision_router, tags=['项目监察'])
     _safe_add_router(api, '/finance/', finance_router, tags=['财务管理'])
     _safe_add_router(api, '/hr/', hr_router, tags=['人事能力'])
     _safe_add_router(api, '/crm/', crm_router, tags=['客户服务'])

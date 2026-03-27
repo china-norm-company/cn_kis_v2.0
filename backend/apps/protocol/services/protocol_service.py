@@ -17,6 +17,7 @@ import subprocess
 import tempfile
 import uuid
 from urllib.parse import quote
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
@@ -253,6 +254,78 @@ def _generate_cosmetic_project_code() -> str:
     return f'{prefix}{seq:03d}001'
 
 
+def _normalize_optional_iso_date(field_label: str, val: Optional[str]) -> Optional[str]:
+    if val is None or not str(val).strip():
+        return None
+    # 兼容「2026/03/27」与粘贴含斜杠的日期
+    s = str(val).strip().replace('/', '-')[:10]
+    if len(s) < 10:
+        raise ValueError(f'{field_label}须为 YYYY-MM-DD 格式')
+    try:
+        datetime.strptime(s, '%Y-%m-%d')
+    except ValueError as e:
+        raise ValueError(f'{field_label}须为 YYYY-MM-DD 格式') from e
+    return s
+
+
+def apply_protocol_onboarding_metadata(
+    protocol: Protocol,
+    *,
+    group_label: Optional[str] = None,
+    backup_sample_label: Optional[str] = None,
+    visits_summary: Optional[str] = None,
+    execution_start: Optional[str] = None,
+    execution_end: Optional[str] = None,
+    principal_investigator: Optional[str] = None,
+    quality_origin: Optional[str] = None,
+) -> None:
+    """
+    将质量台/测试用的项目扩展字段写入 parsed_data 与 team_members，
+    与项目监察列表 enrich 逻辑使用的键一致。
+    quality_origin=manual_test：质量台本地测试创建，不进入「项目管理」维周视图。
+    """
+    es = _normalize_optional_iso_date('执行开始时间', execution_start)
+    ee = _normalize_optional_iso_date('执行结束时间', execution_end)
+
+    pd = dict(protocol.parsed_data) if isinstance(protocol.parsed_data, dict) else {}
+    touched = False
+    if quality_origin is not None and str(quality_origin).strip():
+        pd['quality_origin'] = str(quality_origin).strip()
+        touched = True
+
+    if group_label is not None and str(group_label).strip():
+        pd['组别'] = str(group_label).strip()
+        touched = True
+    if backup_sample_label is not None and str(backup_sample_label).strip():
+        pd['备份样本量'] = str(backup_sample_label).strip()
+        touched = True
+    if visits_summary is not None and str(visits_summary).strip():
+        parts = [p.strip() for p in re.split(r'[；;，,\n\r]+', str(visits_summary)) if p.strip()]
+        if parts:
+            pd['visits'] = [{'name': p} for p in parts]
+            touched = True
+    if es is not None:
+        pd['execution_start'] = es
+        touched = True
+    if ee is not None:
+        pd['execution_end'] = ee
+        touched = True
+
+    update_fields: List[str] = []
+    if touched:
+        protocol.parsed_data = pd
+        update_fields.append('parsed_data')
+
+    if principal_investigator is not None and str(principal_investigator).strip():
+        protocol.team_members = [
+            {'id': 0, 'name': str(principal_investigator).strip(), 'role': '主要研究者'},
+        ]
+        update_fields.append('team_members')
+
+    if update_fields:
+        protocol.save(update_fields=update_fields)
+
+
 def create_protocol(
     title: str,
     code: str = '',
@@ -263,8 +336,19 @@ def create_protocol(
     screening_schedule: Optional[List[Dict[str, Any]]] = None,
     consent_config_account_id: Optional[int] = None,
     consent_signing_staff_name: Optional[str] = None,
+    group_label: Optional[str] = None,
+    backup_sample_label: Optional[str] = None,
+    visits_summary: Optional[str] = None,
+    execution_start: Optional[str] = None,
+    execution_end: Optional[str] = None,
+    principal_investigator: Optional[str] = None,
+    quality_manual_test: bool = False,
 ) -> Protocol:
-    """创建协议并同步到飞书多维表格。code 为空时自动生成化妆品项目编号（C26001001 格式）"""
+    """
+    创建协议；code 为空时自动生成化妆品项目编号（C26001001 格式）。
+    quality_manual_test=True：质量台手动补录（与维周推送无关），不触发飞书多维表格同步、项目群创建、双签配置种子，
+    仅写入业务字段与 parsed_data.quality_origin=manual_test；仍校验项目编号全局唯一。
+    """
     from django.db.models import Min
     code = normalize_protocol_code(code)
     if not code:
@@ -281,6 +365,10 @@ def create_protocol(
         consent_config_account_id = None
     if consent_config_account_id is not None:
         assert_consent_config_account_allowed(int(consent_config_account_id))
+    if execution_start is not None and str(execution_start).strip():
+        _normalize_optional_iso_date('执行开始时间', execution_start)
+    if execution_end is not None and str(execution_end).strip():
+        _normalize_optional_iso_date('执行结束时间', execution_end)
     # 知情管理列表按 consent_display_order 升序：新建协议取当前最小序 -1，保证出现在第一行
     min_order = Protocol.objects.filter(is_deleted=False).aggregate(
         m=Min('consent_display_order')
@@ -308,16 +396,31 @@ def create_protocol(
         parsed['consent_settings'] = cs
         protocol.parsed_data = parsed
         protocol.save(update_fields=['parsed_data'])
-    _sync_protocol_to_bitable(protocol)
+    apply_protocol_onboarding_metadata(
+        protocol,
+        group_label=group_label,
+        backup_sample_label=backup_sample_label,
+        visits_summary=visits_summary,
+        execution_start=execution_start,
+        execution_end=execution_end,
+        principal_investigator=principal_investigator,
+        quality_origin='manual_test' if quality_manual_test else None,
+    )
+    if quality_manual_test:
+        logger.info(
+            '质量台手动协议#%s 已创建，已跳过飞书多维表格/项目群/双签种子（非维周推送链路）',
+            protocol.id,
+        )
+    else:
+        _sync_protocol_to_bitable(protocol)
+        # S3-5：自动创建飞书项目群
+        _create_project_chat(protocol)
+        try:
+            from apps.protocol.services.dual_sign_project_sync import seed_dual_sign_for_new_protocol
 
-    # S3-5：自动创建项目群
-    _create_project_chat(protocol)
-    try:
-        from apps.protocol.services.dual_sign_project_sync import seed_dual_sign_for_new_protocol
-
-        seed_dual_sign_for_new_protocol(protocol)
-    except Exception:
-        logger.exception('新建协议后复用双签配置失败 protocol_id=%s', protocol.id)
+            seed_dual_sign_for_new_protocol(protocol)
+        except Exception:
+            logger.exception('新建协议后复用双签配置失败 protocol_id=%s', protocol.id)
     if consent_signing_staff_name and str(consent_signing_staff_name).strip():
         from apps.protocol.api import _get_consent_settings, _save_consent_settings
         from apps.protocol.consent_signing_names import normalize_consent_signing_staff_storage, split_consent_signing_staff_names

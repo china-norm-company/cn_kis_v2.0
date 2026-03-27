@@ -25,6 +25,7 @@ from ninja.files import UploadedFile
 from typing import Optional, List, Any
 from datetime import date, datetime
 from django.conf import settings as django_settings
+from django.db import IntegrityError
 from django.http import FileResponse
 from django.utils import timezone
 from . import services
@@ -80,6 +81,15 @@ class ProtocolCreateIn(Schema):
     # 治理台账号 ID（全局角色 qa）；每项目至多一人
     consent_config_account_id: Optional[int] = None
     consent_signing_staff_name: Optional[str] = None
+    # 质量台项目监察/测试：与列表展示字段对齐，写入 parsed_data / team_members
+    group_label: Optional[str] = None
+    backup_sample_label: Optional[str] = None
+    visits_summary: Optional[str] = None
+    execution_start: Optional[str] = None
+    execution_end: Optional[str] = None
+    principal_investigator: Optional[str] = None
+    # True：质量台本地测试项目，parsed_data.quality_origin=manual_test，不进入「项目管理」维周列表
+    quality_manual_test: Optional[bool] = False
 
 
 class ProtocolBasicUpdateIn(Schema):
@@ -171,6 +181,7 @@ def _protocol_to_dict(p) -> dict:
         'parsed_data': p.parsed_data,
         'efficacy_type': p.efficacy_type,
         'sample_size': p.sample_size,
+        'team_members': getattr(p, 'team_members', None) or [],
         'consent_config_account_id': getattr(p, 'consent_config_account_id', None),
         'create_time': p.create_time.isoformat(),
         'update_time': p.update_time.isoformat(),
@@ -205,10 +216,12 @@ def list_protocols(request, params: ProtocolQueryParams = Query(...)):
     }
 
 
-@router.post('/create', summary='创建协议', response={200: dict, 400: dict})
-@require_permission('protocol.protocol.create')
+@router.post('/create', summary='创建协议', response={200: dict, 400: dict, 500: dict})
+@require_any_permission(['protocol.protocol.create', 'quality.deviation.create'])
 def create_protocol(request, data: ProtocolCreateIn):
-    """创建新协议"""
+    """创建新协议（质量台项目监察与维周执行台同源；具备其一即可）"""
+    account = _get_account_from_request(request)
+    created_by_id = getattr(account, 'id', None) if account else None
     sched = None
     if getattr(data, 'screening_schedule', None):
         from apps.subject.services.consent_service import (
@@ -216,7 +229,12 @@ def create_protocol(request, data: ProtocolCreateIn):
             validate_screening_schedule_test_rules,
         )
 
-        sched = _norm_ss([x.dict() for x in data.screening_schedule])
+        sched = _norm_ss(
+            [
+                x.model_dump() if hasattr(x, 'model_dump') else x.dict()
+                for x in data.screening_schedule
+            ]
+        )
         verr = validate_screening_schedule_test_rules(sched)
         if verr:
             return 400, {'code': 400, 'msg': verr, 'data': None}
@@ -235,9 +253,24 @@ def create_protocol(request, data: ProtocolCreateIn):
             screening_schedule=sched,
             consent_config_account_id=getattr(data, 'consent_config_account_id', None),
             consent_signing_staff_name=getattr(data, 'consent_signing_staff_name', None),
+            group_label=getattr(data, 'group_label', None),
+            backup_sample_label=getattr(data, 'backup_sample_label', None),
+            visits_summary=getattr(data, 'visits_summary', None),
+            execution_start=getattr(data, 'execution_start', None),
+            execution_end=getattr(data, 'execution_end', None),
+            principal_investigator=getattr(data, 'principal_investigator', None),
+            created_by_id=created_by_id,
+            quality_manual_test=bool(getattr(data, 'quality_manual_test', False)),
         )
     except ValueError as e:
         return 400, {'code': 400, 'msg': str(e), 'data': None}
+    except IntegrityError as e:
+        logger.warning('创建协议唯一约束冲突: %s', e)
+        return 400, {'code': 400, 'msg': '项目编号可能已被占用，请更换后重试', 'data': None}
+    except Exception as e:
+        logger.exception('创建协议失败: %s', e)
+        detail = str(e)[:500] if getattr(django_settings, 'DEBUG', False) else '创建协议失败，请查看服务端日志或稍后重试'
+        return 500, {'code': 500, 'msg': detail, 'data': None}
     return {
         'code': 200,
         'msg': 'OK',

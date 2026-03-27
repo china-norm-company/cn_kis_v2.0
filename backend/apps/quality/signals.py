@@ -10,6 +10,45 @@ from django.dispatch import receiver
 logger = logging.getLogger(__name__)
 
 
+@receiver(post_save, sender='protocol.Protocol')
+def on_protocol_saved_for_supervision(sender, instance, created, **kwargs):
+    """新建协议时自动创建项目监察行并写入解析得到的执行周期。"""
+    try:
+        if getattr(instance, 'is_deleted', False):
+            return
+        from apps.quality.services.project_supervision_service import ensure_supervision_row
+
+        ensure_supervision_row(instance)
+    except Exception as e:
+        logger.warning('协议创建监察行失败 protocol_id=%s: %s', getattr(instance, 'id', None), e)
+
+
+@receiver(post_save, sender='protocol.Protocol')
+def on_protocol_saved_for_quality_registry(sender, instance, **kwargs):
+    """维周/其他工作台新建协议 → 登记质量台项目来源（项目管理页签数据源，每次保存同步 parsed_data 中的 manual 标记）。"""
+    try:
+        if getattr(instance, 'is_deleted', False):
+            return
+        from apps.quality.models import QualityProjectRegistry
+
+        pd = instance.parsed_data or {}
+        src = (
+            QualityProjectRegistry.Source.QUALITY_MANUAL
+            if isinstance(pd, dict) and pd.get('quality_origin') == 'manual_test'
+            else QualityProjectRegistry.Source.WEIZHOU
+        )
+        QualityProjectRegistry.objects.update_or_create(
+            protocol=instance,
+            defaults={'source': src},
+        )
+    except Exception as e:
+        logger.warning(
+            '质量台项目来源登记失败 protocol_id=%s: %s',
+            getattr(instance, 'id', None),
+            e,
+        )
+
+
 @receiver(post_save, sender='quality.Deviation')
 def on_deviation_saved(sender, instance, created, **kwargs):
     """偏差创建或状态变更时通知 QA 经理"""

@@ -528,6 +528,19 @@ export interface ProtocolCreateIn {
   consent_config_account_id?: number
   /** 项目级知情签署工作人员姓名（须为双签名单中的姓名；创建后写入 consent_settings） */
   consent_signing_staff_name?: string
+  /** 质量台项目监察等：与列表字段对齐，写入 parsed_data / team_members */
+  group_label?: string
+  backup_sample_label?: string
+  /** 访视时间点，多节点可用分号或换行分隔 */
+  visits_summary?: string
+  /** YYYY-MM-DD */
+  execution_start?: string
+  /** YYYY-MM-DD */
+  execution_end?: string
+  /** 写入 team_members 作为主要研究者 */
+  principal_investigator?: string
+  /** true：质量台本地测试项目，不进入「项目管理」维周列表 */
+  quality_manual_test?: boolean
 }
 
 /** 更新协议基本信息（执行台知情管理「编辑项目信息」） */
