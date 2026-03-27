@@ -51,6 +51,7 @@ const FaceImageAnalysisPage = lazy(() => import('./pages/FaceImageAnalysisPage')
 const LipImageAnalysisPage = lazy(() => import('./pages/LipImageAnalysisPage'))
 const HandImageAnalysisPage = lazy(() => import('./pages/HandImageAnalysisPage'))
 const OtherImageAnalysisPage = lazy(() => import('./pages/OtherImageAnalysisPage'))
+const DiaryManagementPage = lazy(() => import('./pages/DiaryManagementPage'))
 
 /* 非新建页面保持直接 import（体积较小或共享频繁） */
 import { ProtocolListPage } from './pages/ProtocolListPage'
@@ -148,6 +149,7 @@ export default function App() {
               {/* 执行管理 */}
               <Route path="/visits" element={<VisitListPage />} />
               <Route path="/subjects" element={<SubjectListPage />} />
+              <Route path="/diary" element={<DiaryManagementPage />} />
               {/* 客户与商务 */}
               <Route path="/clients" element={<ClientOverviewPage />} />
               <Route path="/clients/:id" element={<ClientDetailPage />} />
