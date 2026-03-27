@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@cn-kis/api-client'
-import { getWorkstationUrl } from '@cn-kis/feishu-sdk'
 import {
   Card,
   Badge,
@@ -10,7 +9,6 @@ import {
   DataTable,
   Modal,
   Input,
-  DigitalWorkerActionCard,
   type Column,
 } from '@cn-kis/ui-kit'
 import {
@@ -334,23 +332,6 @@ export function QuoteDetailPage() {
           </div>
         </div>
       </Card>
-
-      {/* 数字员工动作卡片：AI 报价明细建议 */}
-      {quote && quote.status === 'draft' && items.length === 0 && (
-        <DigitalWorkerActionCard
-          roleCode="solution_designer"
-          roleName="报价助手"
-          title="AI 报价输入项已就绪"
-          description="报价助手从编排结果中提取了报价输入项。确认后可一键写入报价明细，也可手动修改后再采纳。"
-          items={[
-            { key: 'hint', label: '提示', value: '您可以先在秘书台或研究台触发编排（客户需求 → 方案 → 报价），编排完成后这里将自动展示可采纳的报价明细。' },
-          ]}
-          onTrigger={() => {
-            window.open(getWorkstationUrl('digital-workforce', '#/chat?skill=auto-quotation'), '_blank')
-          }}
-          triggerLabel="前往编排生成报价输入"
-        />
-      )}
 
       {/* Items table */}
       <Card>
