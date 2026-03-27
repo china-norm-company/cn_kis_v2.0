@@ -300,6 +300,7 @@ from .models_recruitment import *  # noqa: F401,F403
 from .models_execution import *  # noqa: F401,F403
 from .models_timeseries import *  # noqa: F401,F403
 from .models_loyalty import *  # noqa: F401,F403
+from .models_diary_config import *  # noqa: F401,F403
 from .models_identity import *  # noqa: F401,F403
 
 from .models_questionnaire import *  # noqa: F401,F403

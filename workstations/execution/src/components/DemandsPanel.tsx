@@ -35,12 +35,13 @@ function ClippedBadgesWithTooltip({
 }) {
   const [open, setOpen] = useState(false)
   const anchorRef = useRef<HTMLDivElement>(null)
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** 浏览器环境用 number，避免与 NodeJS.Timeout 混用导致赋值报错 */
+  const hideTimerRef = useRef<number | null>(null)
   const [coords, setCoords] = useState({ top: 0, left: 0 })
 
   const clearHideTimer = useCallback(() => {
     if (hideTimerRef.current != null) {
-      clearTimeout(hideTimerRef.current)
+      window.clearTimeout(hideTimerRef.current)
       hideTimerRef.current = null
     }
   }, [])
@@ -65,7 +66,7 @@ function ClippedBadgesWithTooltip({
 
   const scheduleClose = useCallback(() => {
     clearHideTimer()
-    hideTimerRef.current = setTimeout(() => setOpen(false), TOOLTIP_HIDE_DELAY_MS)
+    hideTimerRef.current = window.setTimeout(() => setOpen(false), TOOLTIP_HIDE_DELAY_MS)
   }, [clearHideTimer])
 
   useLayoutEffect(() => {

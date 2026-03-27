@@ -1045,6 +1045,7 @@ def wechat_logout(request):
 
 def _ensure_subject_account_by_phone(phone: str):
     from .models import Account, AccountType
+    from .services import _ensure_subject_self_role
     from apps.subject.models import Subject, AuthLevel
     from apps.subject.services.subject_service import (
         generate_subject_no,
@@ -1102,6 +1103,9 @@ def _ensure_subject_account_by_phone(phone: str):
         if update_fields:
             update_fields.append('update_time')
             subject.save(update_fields=update_fields)
+
+    # 短信等渠道创建的受试者账号须具备 subject_self（含 my.*），否则 /my/* 报缺少 my.profile.read
+    _ensure_subject_self_role(account)
 
     return account, subject
 
@@ -1186,6 +1190,8 @@ def sms_verify(request, data: SmsVerifyIn):
 @router.post('/wechat/bind-phone', summary='绑定受试者手机号')
 def wechat_bind_phone(request, data: WechatBindPhoneIn):
     """微信小程序首次登录后，按手机号绑定 Subject"""
+    from .services import verify_jwt_token
+    from .models import Account
     from apps.subject.models import Subject
 
     account = _get_account_from_request(request)
@@ -1576,7 +1582,7 @@ def list_accounts(
 # 工作台配置管理 API（渐进上线支持）
 # ============================================================================
 
-# 19 个工作台的合法标识（来自 workstations.yaml）
+# 18 个工作台的合法标识（来自 workstation-independence.mdc）
 VALID_WORKSTATION_KEYS = {
     'secretary',
     'finance',
@@ -1596,7 +1602,6 @@ VALID_WORKSTATION_KEYS = {
     'control-plane',
     'admin',
     'digital-workforce',
-    'data-platform',
 }
 
 VALID_MODES = {'blank', 'pilot', 'full'}

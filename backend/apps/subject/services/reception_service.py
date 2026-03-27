@@ -374,6 +374,22 @@ def _build_full_execution_queue_uncached(today: date) -> list[dict]:
     return queue
 
 
+def _name_pinyin_initials(name: str) -> str:
+    """
+    中文/混合姓名 → 拼音首字母（大写），与预约表 name_pinyin_initials 展示习惯一致。
+    consent_service 补全列表字段时依赖此函数；勿删或改名。
+    """
+    raw = (name or '').strip()
+    if not raw:
+        return ''
+    try:
+        from pypinyin import Style, lazy_pinyin
+
+        return ''.join(lazy_pinyin(raw, style=Style.FIRST_LETTER)).upper()[:50]
+    except Exception:
+        return ''
+
+
 def _get_cached_full_execution_queue(today: date) -> list[dict]:
     """读取缓存的当日全日排序队列；返回每行浅拷贝，避免调用方原地修改污染缓存。"""
     from django.core.cache import cache

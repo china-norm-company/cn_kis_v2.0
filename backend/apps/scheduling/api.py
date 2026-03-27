@@ -31,6 +31,7 @@ _LAB_SCHEDULE_READ_PERMS = [
     'visit.plan.read',
 ]
 
+from . import services as sched_services
 
 logger = logging.getLogger(__name__)
 
@@ -357,6 +358,7 @@ def cross_project_overview(request):
     CRC主管/排程专员可查看所有项目的排程状态、完成率、冲突数
     """
     from .models import SchedulePlan, ScheduleSlot
+    from django.db.models import Count, Q
 
     plans = SchedulePlan.objects.filter(
         status__in=['draft', 'published'],
@@ -1703,7 +1705,7 @@ def get_schedule_core(request, order_id: int):
 @require_permission_or_anon_in_debug('scheduling.plan.create')
 def update_schedule_core(request, order_id: int, payload: TimelineScheduleUpdateIn):
     """更新时间线排程或 payload（草稿或时间线已发布时可更新 payload 中的行政/评估/技术）。"""
-    from .models import ExecutionOrderUpload, TimelineSchedule
+    from .models import ExecutionOrderUpload, TimelineSchedule, TimelineScheduleStatus
     order = ExecutionOrderUpload.objects.filter(id=order_id).first()
     if not order:
         return {'code': 404, 'msg': '未找到该执行订单', 'data': None}

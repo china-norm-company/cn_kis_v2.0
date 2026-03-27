@@ -21,7 +21,7 @@ Usage:
 """
 from datetime import datetime
 from django.core.management.base import BaseCommand
-from django.db import transaction
+from django.db import transaction, models
 from django.utils import timezone
 
 from apps.protocol.models import Protocol

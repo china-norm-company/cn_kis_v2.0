@@ -7,6 +7,11 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // 与 workstations/wechat-mini 一致：开发/打包直接解析源码，不依赖先 tsc 出 dist（package 仍导出 dist 供 Node/发布）
+      '@cn-kis/consent-placeholders': path.resolve(
+        __dirname,
+        '../../packages/consent-placeholders/src/index.ts',
+      ),
     },
   },
   server: {

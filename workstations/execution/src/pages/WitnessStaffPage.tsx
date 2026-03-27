@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { protocolApi } from '@cn-kis/api-client'
@@ -11,6 +11,7 @@ import {
   peekWitnessStaffListFocusId,
 } from '../utils/witnessStaffListFocusStorage'
 import { witnessStaffFocusLog } from '../utils/witnessStaffListFocusDebug'
+import { WitnessStaffBatchImportModal } from '../components/WitnessStaffBatchImportModal'
 
 export default function WitnessStaffPage() {
   const qc = useQueryClient()
@@ -54,13 +55,15 @@ export default function WitnessStaffPage() {
   const [search, setSearch] = useState('')
   const [applied, setApplied] = useState('')
   const [page, setPage] = useState(1)
-  const pageSize = 20
+  const [pageSize, setPageSize] = useState(20)
+  const [jumpPageInput, setJumpPageInput] = useState('')
   const [verifyOpen, setVerifyOpen] = useState(false)
   const [verifyTarget, setVerifyTarget] = useState<WitnessStaffRecord | null>(null)
   const [verifyNotify, setVerifyNotify] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<WitnessStaffRecord | null>(null)
 
   const [createOpen, setCreateOpen] = useState(false)
+  const [batchImportOpen, setBatchImportOpen] = useState(false)
   const [ptName, setPtName] = useState('')
   const [ptEmail, setPtEmail] = useState('')
   /** 勾选行 id（可跨页累积；表头为「本页全选/取消全选」） */
@@ -68,7 +71,7 @@ export default function WitnessStaffPage() {
 
   /** 与知情管理 consent-overview 一致：queryFn 直接返回 ApiResponse，用 res.data.items / res.data.page */
   const { data: staffListRes, isLoading, error } = useQuery({
-    queryKey: ['witness-staff', applied, page, focusWitnessStaffIdNum ?? '', focusStateId ?? ''],
+    queryKey: ['witness-staff', applied, page, pageSize, focusWitnessStaffIdNum ?? '', focusStateId ?? ''],
     queryFn: () =>
       protocolApi.listWitnessStaff({
         search: applied || undefined,
@@ -81,6 +84,20 @@ export default function WitnessStaffPage() {
   })
   const items = staffListRes?.data?.items ?? []
   const total = staffListRes?.data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  const handleJumpPage = useCallback(() => {
+    const n = parseInt(jumpPageInput, 10)
+    if (!Number.isNaN(n) && n >= 1 && n <= totalPages) {
+      setPage(n)
+      setJumpPageInput('')
+    }
+  }, [jumpPageInput, totalPages])
+
+  /** 删除或搜索后当前页可能超出总页数，回退到最后一页或第 1 页 */
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages)
+  }, [totalPages, page])
 
   /** 深链定位：服务端分页后同步页码、高亮行并去掉 query/state（对齐 ConsentManagementPage focusProtocolId） */
   useEffect(() => {
@@ -209,8 +226,7 @@ export default function WitnessStaffPage() {
           <p className="text-sm text-slate-500 mt-2">
             包含<strong className="text-slate-700">无治理台账号、由执行台手工录入</strong>的人员，与
             <strong className="text-slate-700"> 鹿鸣·治理台（3008）</strong>关联人员（具备全局角色
-            <strong className="text-slate-700"> admin</strong> / <strong className="text-slate-700">crc</strong> /
-            <strong className="text-slate-700">crc_supervisor</strong>
+            <strong className="text-slate-700"> QA质量管理</strong>
             ）。治理台侧请维护账号与角色后「同步」；无账号者请点「添加」在弹窗内填写姓名与工作邮箱。「核验」邮件中的人脸环节由本人填写身份证、手机号等实名信息并回写档案。
           </p>
         </div>
@@ -260,6 +276,15 @@ export default function WitnessStaffPage() {
                 onClick={() => syncMut.mutate()}
               >
                 从治理台同步
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                className="min-h-10 whitespace-nowrap gap-1.5"
+                onClick={() => setBatchImportOpen(true)}
+              >
+                批量导入
               </Button>
               <Button
                 type="button"
@@ -452,8 +477,79 @@ export default function WitnessStaffPage() {
             },
           ]}
         />
-        <div className="px-4 py-3 border-t border-slate-100 text-sm text-slate-500">共 {total} 条</div>
+        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 bg-white px-4 py-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm text-slate-500">共 {total} 条</span>
+            <span className="text-slate-300 hidden sm:inline">|</span>
+            <span className="text-sm text-slate-500">每页</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value))
+                setPage(1)
+              }}
+              className="h-8 px-2 text-sm border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-primary-500/30"
+              aria-label="每页条数"
+            >
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+            <span className="text-sm text-slate-500">条</span>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1 || totalPages <= 1}
+              className="px-3 py-1.5 text-sm rounded border border-slate-200 disabled:opacity-50 hover:bg-slate-50"
+            >
+              上一页
+            </button>
+            <span className="text-sm text-slate-600">
+              第 {page} / {totalPages} 页
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages || totalPages <= 1}
+              className="px-3 py-1.5 text-sm rounded border border-slate-200 disabled:opacity-50 hover:bg-slate-50"
+            >
+              下一页
+            </button>
+            <span className="text-sm text-slate-500">跳转至</span>
+            <input
+              type="number"
+              min={1}
+              max={totalPages}
+              value={jumpPageInput}
+              onChange={(e) => setJumpPageInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleJumpPage()}
+              className="w-14 px-2 py-1 text-sm border border-slate-200 rounded text-center"
+              placeholder="页"
+              disabled={totalPages <= 1}
+              aria-label="跳转页码"
+            />
+            <button
+              type="button"
+              onClick={handleJumpPage}
+              disabled={totalPages <= 1}
+              className="px-2 py-1 text-sm rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
+            >
+              跳转
+            </button>
+          </div>
+        </div>
       </div>
+
+      <WitnessStaffBatchImportModal
+        open={batchImportOpen}
+        onClose={() => setBatchImportOpen(false)}
+        onImported={() => {
+          qc.invalidateQueries({ queryKey: ['witness-staff'] })
+          setPage(1)
+        }}
+      />
 
       <Modal
         open={createOpen}
