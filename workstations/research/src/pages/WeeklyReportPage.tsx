@@ -39,6 +39,17 @@ function badgeClass(task: WeeklyReportTask) {
   return 'bg-slate-100 text-slate-600'
 }
 
+function derivedStatusLabel(task: WeeklyReportTask, adjustedProgress: number) {
+  if (adjustedProgress >= 100) return statusLabel('done')
+  if (task.status === 'blocked') return statusLabel('blocked')
+  if (adjustedProgress > 0) return statusLabel('doing')
+  return statusLabel('todo')
+}
+
+function projectStatusLabel(status?: string) {
+  return status === 'completed' ? '已完成' : '未完成'
+}
+
 export default function WeeklyReportPage() {
   const cur = useMemo(() => getCurrentISOWeek(), [])
   const [year, setYear] = useState(cur.year)
@@ -269,7 +280,7 @@ export default function WeeklyReportPage() {
     enabled: !isViewingOthers,
   })
   const projectsPayload = (projectsRes as any)?.data
-  const projectList: { id: number; name: string; [k: string]: unknown }[] = Array.isArray(projectsPayload?.items)
+  const projectList: { id: number; name: string; status?: string; [k: string]: unknown }[] = Array.isArray(projectsPayload?.items)
     ? projectsPayload.items
     : Array.isArray(projectsPayload)
     ? projectsPayload
@@ -311,8 +322,9 @@ export default function WeeklyReportPage() {
     for (const t of tasks.filter((x) => selected[x.id])) {
       const it = itById.get(t.id)
       const proj = t.project_name ? `[${t.project_name}] ` : ''
+      const adjustedProgress = progressAfter[t.id] ?? t.progress ?? 0
       lines.push(
-        `- ${proj}${t.title} [${statusLabel(t.status)}] ${it?.progress_before ?? t.progress}% → ${progressAfter[t.id] ?? t.progress}% / 工时 ${hours[t.id] ?? 0}`
+        `- ${proj}${t.title} [${derivedStatusLabel(t, adjustedProgress)}] ${it?.progress_before ?? t.progress}% → ${adjustedProgress}% / 工时 ${hours[t.id] ?? 0}`
       )
       const delta = completionNotes[t.id] ?? ''
       if (delta) {
@@ -339,7 +351,7 @@ export default function WeeklyReportPage() {
     <div className="space-y-5 md:space-y-6">
       <div>
         <h2 className="text-lg font-semibold text-slate-800 md:text-xl">周报填写</h2>
-        <p className="text-sm text-slate-500 mt-1">用任务卡片更新替代长文本，默认带出本周有变更任务</p>
+        <p className="text-sm text-slate-500 mt-1">用任务卡片更新替代长文本；选任务步骤请自行勾选要纳入本周周报的任务</p>
       </div>
 
       {isAdmin && usersList.length > 0 && (
@@ -489,13 +501,24 @@ export default function WeeklyReportPage() {
                     const projectTasks = tasksByProjectId[proj.id as number] ?? []
                     return (
                       <div key={proj.id} className="rounded-lg border border-slate-200 bg-slate-50/30 overflow-hidden">
-                        <div className="bg-slate-100/80 px-4 py-2 text-sm font-medium text-slate-700">
-                          {proj.name as string}
-                          {projectTasks.length > 0 && (
-                            <span className="ml-2 text-slate-500 font-normal">
-                              （{projectTasks.length} 个任务）
-                            </span>
-                          )}
+                        <div className="flex items-center justify-between gap-2 bg-slate-100/80 px-4 py-2 text-sm font-medium text-slate-700">
+                          <div>
+                            {proj.name as string}
+                            {projectTasks.length > 0 && (
+                              <span className="ml-2 text-slate-500 font-normal">
+                                （{projectTasks.length} 个任务）
+                              </span>
+                            )}
+                          </div>
+                          <span
+                            className={`rounded px-2 py-0.5 text-xs font-medium ${
+                              proj.status === 'completed'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-slate-200 text-slate-700'
+                            }`}
+                          >
+                            {projectStatusLabel(proj.status)}
+                          </span>
                         </div>
                         <div className="p-3 space-y-2">
                           {projectTasks.length === 0 ? (
@@ -573,14 +596,7 @@ export default function WeeklyReportPage() {
                   .filter((t) => selected[t.id])
                   .map((t) => {
                     const adjustedProgress = progressAfter[t.id] ?? t.progress ?? 0
-                    const displayStatus =
-                      t.status === 'blocked'
-                        ? statusLabel('blocked')
-                        : adjustedProgress >= 100
-                        ? statusLabel('done')
-                        : adjustedProgress > 0
-                        ? statusLabel('doing')
-                        : statusLabel('todo')
+                    const displayStatus = derivedStatusLabel(t, adjustedProgress)
                     return (
                     <div key={t.id} className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
                       <div className="flex items-center justify-between gap-2">

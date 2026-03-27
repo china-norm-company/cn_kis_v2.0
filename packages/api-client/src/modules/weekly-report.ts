@@ -228,6 +228,16 @@ export const weeklyReportApi = {
     return api.put<unknown>(`${BASE}/projects/${projectId}`, payload)
   },
 
+  /** 将项目及其任务标记为已完成 */
+  completeProject(projectId: number) {
+    return api.post<unknown>(`${BASE}/projects/${projectId}/complete`)
+  },
+
+  /** 将项目恢复为未完成 */
+  activateProject(projectId: number) {
+    return api.post<unknown>(`${BASE}/projects/${projectId}/activate`)
+  },
+
   /** 用户列表 */
   listUsers() {
     return api.get<{ id: number; name: string }[]>(`${BASE}/users`)
