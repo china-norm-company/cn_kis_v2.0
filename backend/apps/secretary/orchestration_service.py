@@ -16,7 +16,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
-from django.conf import settings
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)

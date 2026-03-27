@@ -36,14 +36,33 @@ LIMS 数据注入器（P0 增强版）
 
 其余模块 -> KnowledgeEntry（知识库通用存储）
 """
+import contextvars
 import json
 import logging
+import re
+
+from datetime import date as date_cls, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from django.db import transaction
-from django.utils import timezone
 
 logger = logging.getLogger('cn_kis.lims.injector')
+
+# 当前注入批次上下文（供 _inject_equipment 写入 _lims_synced_at / 批次号）
+_lims_inject_context: contextvars.ContextVar[Optional[Dict[str, str]]] = contextvars.ContextVar(
+    'lims_inject_context', default=None
+)
+
+
+def _lims_inject_meta() -> Dict[str, str]:
+    """返回本次 LIMS 写入的同步时间与批次号（无上下文时仍给同步时间）"""
+    ctx = _lims_inject_context.get()
+    if ctx:
+        return dict(ctx)
+    return {
+        'synced_at': timezone.now().isoformat(),
+        'batch_no': '',
+    }
 
 
 # ============================================================================
@@ -81,6 +100,64 @@ FIELD_ALIASES = {
 }
 
 
+def _parse_lims_date(val: Any) -> Optional[date_cls]:
+    """解析 LIMS 日期字符串为 date（YYYY-MM-DD / YYYY/MM/DD）"""
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s:
+        return None
+    s = s[:19].replace('T', ' ')[:10]
+    for fmt in ('%Y-%m-%d', '%Y/%m/%d', '%Y.%m.%d'):
+        try:
+            return datetime.strptime(s[:10], fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _lims_first_nonempty_str(raw: dict, keys: tuple) -> str:
+    """按候选键顺序取第一个非空字符串（LIMS 列名兼容）"""
+    for k in keys:
+        v = raw.get(k)
+        if v is None:
+            continue
+        s = str(v).strip()
+        if s:
+            return s
+    return ''
+
+
+def _infer_unified_name_type(display_name: str) -> str:
+    """
+    LIMS 未单列「名称分类」时，从展示用设备名推断统一规格类型。
+    例：温湿度记录仪 16 → 温湿度记录仪；电子天平 01 → 电子天平。
+    """
+    if not display_name or not str(display_name).strip():
+        return ''
+    s = str(display_name).strip()
+    t = re.sub(r'\s+\d+$', '', s)
+    if t != s:
+        return t.strip()
+    t = re.sub(r'[-_#]\d+$', '', s, flags=re.IGNORECASE)
+    return (t.strip() if t.strip() else s)
+
+
+def _parse_cycle_days(val: Any) -> Optional[int]:
+    """从「365」「365天」「12 个月」等提取周期天数"""
+    if val is None or val == '':
+        return None
+    if isinstance(val, int) and val > 0:
+        return val
+    if isinstance(val, float) and val > 0:
+        return int(val)
+    m = re.match(r'^(\d+)', str(val).strip())
+    if m:
+        n = int(m.group(1))
+        return n if n > 0 else None
+    return None
+
+
 def _extract_field(raw_data: dict, field_key: str, default: str = '') -> str:
     """从原始数据中按字段别名提取值"""
     aliases = FIELD_ALIASES.get(field_key, [field_key])
@@ -89,6 +166,67 @@ def _extract_field(raw_data: dict, field_key: str, default: str = '') -> str:
         if val and str(val).strip():
             return str(val).strip()
     return default
+
+
+def _parse_lims_date(val: Any) -> Optional[date_cls]:
+    """尽量宽松地把 LIMS 日期解析为 date。"""
+    if val in (None, ''):
+        return None
+    if isinstance(val, date_cls):
+        return val
+    text = str(val).strip()
+    if not text:
+        return None
+    text = text.replace('/', '-')
+    for fmt in ('%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y%m%d'):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text).date()
+    except ValueError:
+        return None
+
+
+def _lims_first_nonempty_str(raw: dict, keys: tuple) -> str:
+    """按候选键顺序返回第一个非空字符串。"""
+    for key in keys:
+        val = raw.get(key)
+        if val is None:
+            continue
+        text = str(val).strip()
+        if text:
+            return text
+    return ''
+
+
+def _infer_unified_name_type(display_name: str) -> str:
+    """从设备展示名粗略推断名称分类，避免完全空值。"""
+    text = (display_name or '').strip()
+    if not text:
+        return ''
+    normalized = ''.join(ch for ch in text if not ch.isdigit()).strip(' -_/')
+    return normalized or text
+
+
+def _parse_cycle_days(val: Any) -> Optional[int]:
+    """解析 LIMS 周期字段，统一返回天数。"""
+    if val in (None, ''):
+        return None
+    if isinstance(val, int):
+        return val if val > 0 else None
+    text = str(val).strip()
+    if not text:
+        return None
+    digits = ''.join(ch for ch in text if ch.isdigit())
+    if not digits:
+        return None
+    try:
+        parsed = int(digits)
+    except ValueError:
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _similarity(s1: str, s2: str) -> float:
@@ -283,6 +421,17 @@ class LimsInjector:
             'failed': 0,
         }
 
+    def _call_module_injector(self, injector_fn, raw_data):
+        """在上下文中调用模块注入器，写入批次号与同步时间戳（attributes._lims_synced_at）"""
+        token = _lims_inject_context.set({
+            'synced_at': timezone.now().isoformat(),
+            'batch_no': getattr(self.batch, 'batch_no', '') or '',
+        })
+        try:
+            return injector_fn(raw_data)
+        finally:
+            _lims_inject_context.reset(token)
+
     def inject_module(self, module: str) -> Dict[str, int]:
         """注入指定模块的所有待注入记录"""
         from apps.lims_integration.models import RawLimsRecord
@@ -333,7 +482,7 @@ class LimsInjector:
     def _inject_one(self, raw_rec):
         """注入单条记录"""
         from apps.lims_integration.models import (
-            LimsConflict, LimsInjectionLog, ConflictType, ConflictResolution
+            LimsConflict, LimsInjectionLog, ConflictResolution
         )
         module = raw_rec.module
         raw_data = raw_rec.raw_data
@@ -358,7 +507,7 @@ class LimsInjector:
                     from django.db import transaction as db_transaction
                     try:
                         with db_transaction.atomic():
-                            result = injector_fn(raw_data)
+                            result = self._call_module_injector(injector_fn, raw_data)
                             if result:
                                 target_obj, action, before_data = result
                                 LimsInjectionLog.objects.create(
@@ -428,7 +577,7 @@ class LimsInjector:
 
         try:
             with transaction.atomic():
-                result = injector_fn(raw_data)
+                result = self._call_module_injector(injector_fn, raw_data)
             if result:
                 target_obj, action, before_data = result
                 LimsInjectionLog.objects.create(
@@ -571,21 +720,38 @@ def _inject_equipment(raw_data: dict):
     - SBZT（设备状态）= 设备状态（启用/停用/报废等）→ 影响 is_active
     - SYBM（归属部门）= 使用部门 → 设备所属部门标注
     - XCJZSJ（下次校准时间）= 下次校准到期日 → next_calibration_date
+    - 名称分类（与 ResourceCategory「设备类别」不同）= 同规格设备统一类型名
+      （如 电子天平、glossymeter）→ attributes.name_classification；
+      资源类别仍由 SBLB/SBFL/设备分类 等推断。
     """
     try:
-        from apps.resource.models import ResourceItem, ResourceCategory, EquipmentAuthorization
+        from apps.resource.models import ResourceItem, EquipmentAuthorization
         from apps.identity.models import Account
 
-        # colConfigInfo 修复后：SBMC = 设备编号，ZBMC = 设备名称
-        # 同时保留旧列名兼容（修复前数据）
-        code = (raw_data.get('SBMC')
-                or raw_data.get('设备名称')
-                or '').strip()
-        name = (raw_data.get('ZBMC')
-                or raw_data.get('组别名称')
-                or '').strip()
+        # 格式检测：新格式有 col_X 列（LIMS BPM 已修复列偏移）
+        # 新格式：设备编号 = 真实设备编号，设备名称 = 真实设备名称
+        # 旧格式（colConfigInfo bug）：设备名称 列实际存储设备编号，组别名称 列存储设备名称
+        is_new_format = any(k.startswith('col_') for k in raw_data)
 
-        # 兼容旧格式
+        if is_new_format:
+            # 新格式：字段含义已正确（LIMS BPM 修复后）
+            code = (raw_data.get('设备编号') or raw_data.get('col_0') or '').strip()
+            name = (raw_data.get('设备名称') or raw_data.get('col_1') or '').strip()
+            # 无效占位符编号（'/' 或 '-'）视为无编号
+            if code in ('/', '-', '\\', ''):
+                code = ''
+        else:
+            # 旧格式：colConfigInfo bug 导致列偏移
+            # SBMC/设备名称 列 = 真正的设备编号（如 FSD0405113）
+            # ZBMC/组别名称 列 = 设备通用名称
+            code = (raw_data.get('SBMC')
+                    or raw_data.get('设备名称')
+                    or '').strip()
+            name = (raw_data.get('ZBMC')
+                    or raw_data.get('组别名称')
+                    or '').strip()
+
+        # 兜底：旧格式补充字段
         if not code:
             for field in ['SBBH', 'equipmentCode', '仪器编号']:
                 code = raw_data.get(field, '').strip()
@@ -604,6 +770,10 @@ def _inject_equipment(raw_data: dict):
         if not code and name:
             code = name[:50]
 
+        # 截断到字段最大长度（ResourceItem.code max_length=50，name max_length=200）
+        code = code[:50]
+        name = name[:200]
+
         # 状态映射
         # SBLYZT = 使用状态（空闲/使用登记），SBZT = 设备状态（启用/停用/报废）
         raw_usage_status = raw_data.get('SBLYZT', raw_data.get('使用状态', '空闲')).strip()
@@ -616,10 +786,19 @@ def _inject_equipment(raw_data: dict):
         # 综合判断：使用中优先，然后设备状态
         status = status_map.get(raw_usage_status) or status_map.get(raw_equip_status, 'idle')
 
-        # 查找合适的设备分类（从"设备名称分类"SBLB 或"设备分类"SBFL 推断）
-        category_name = (raw_data.get('SBLB') or raw_data.get('设备名称分类')
-                         or raw_data.get('SBFL') or raw_data.get('设备分类') or '').strip()
-        category = _find_or_create_equipment_category(category_name)
+        # 资源类别（设备大类/实验室分类）— 勿与「名称分类」混用
+        category_name_raw = _lims_first_nonempty_str(raw_data, (
+            'SBLB', 'SBFL', '设备分类', '资源类别', '设备大类',
+            'labCategory', 'equipmentCategory',
+        ))
+        category = _find_or_create_equipment_category(category_name_raw)
+
+        # 名称分类：LIMS 对同规格设备的统一类型，独立于 ResourceCategory
+        name_classification_raw = _lims_first_nonempty_str(raw_data, (
+            '名称分类', '设备名称分类', 'MCFL', '标准设备名称', '统一名称', 'TYMC',
+            'instrumentType', 'instrumentTypeName', 'typeName', '统一设备名称',
+            'standardInstrumentName', 'unifiedName',
+        )) or _infer_unified_name_type(name)
 
         # 设备字段
         model_number = (raw_data.get('YQXH') or raw_data.get('设备规格/型号')
@@ -636,9 +815,27 @@ def _inject_equipment(raw_data: dict):
         # 借用人字段（SBLYR = 设备当前借用人姓名）
         borrower_name = (raw_data.get('SBLYR') or raw_data.get('设备当前借用人') or '').strip()
 
-        # 校准/核查日期
-        next_cal = (raw_data.get('XCJZSJ') or raw_data.get('下次校准时间')
-                    or raw_data.get('下次核查时间') or '').strip()
+        # 校准 / 核查 / 维护计划字段
+        d_next_cal = _parse_lims_date(
+            raw_data.get('XCJZSJ') or raw_data.get('下次校准时间') or raw_data.get('下次校准日期')
+        )
+        d_next_ver = _parse_lims_date(
+            raw_data.get('XCHCSJ') or raw_data.get('下次核查时间') or raw_data.get('下次核查日期')
+        )
+        d_next_maint = _parse_lims_date(
+            raw_data.get('XCWHSJ') or raw_data.get('下次维护时间')
+            or raw_data.get('下次维护日期') or raw_data.get('下次保养时间')
+        )
+        cal_cycle = _parse_cycle_days(
+            raw_data.get('JZZQ') or raw_data.get('校准周期') or raw_data.get('校准周期(天)')
+        )
+        ver_cycle = _parse_cycle_days(
+            raw_data.get('HCZQ') or raw_data.get('核查周期') or raw_data.get('核查周期(天)')
+        )
+        maint_cycle = _parse_cycle_days(
+            raw_data.get('WHZQ') or raw_data.get('维护周期')
+            or raw_data.get('维护周期(天)') or raw_data.get('保养周期')
+        )
 
         # 查找责任人 Account（使用姓名查找已注入的人员）
         manager_account = None
@@ -648,6 +845,18 @@ def _inject_equipment(raw_data: dict):
                 or Account.objects.filter(username=manager_name, is_deleted=False).first()
             )
 
+        meta = _lims_inject_meta()
+        lims_attr = {
+            '_lims_source': True,
+            '_lims_dept': department,
+            '_lims_manager': manager_name,
+            '_lims_borrower': borrower_name,
+            'name_classification': name_classification_raw,
+            '_lims_synced_at': meta['synced_at'],
+        }
+        if meta.get('batch_no'):
+            lims_attr['_lims_sync_batch_no'] = meta['batch_no']
+
         defaults = {
             'name': name,
             'manufacturer': manufacturer or '',
@@ -655,25 +864,24 @@ def _inject_equipment(raw_data: dict):
             'serial_number': serial_number or '',
             'status': status,
             'location': f'{department}/{location}' if department and location else (department or location),
-            'attributes': {
-                '_lims_source': True,
-                '_lims_dept': department,
-                '_lims_manager': manager_name,
-                '_lims_borrower': borrower_name,
-            },
+            'attributes': lims_attr,
         }
         if category:
             defaults['category'] = category
         if manager_account:
             defaults['manager_id'] = manager_account.id
-        if next_cal:
-            try:
-                from datetime import datetime
-                defaults['next_calibration_date'] = datetime.strptime(
-                    next_cal, '%Y-%m-%d'
-                ).date()
-            except (ValueError, TypeError):
-                pass
+        if d_next_cal:
+            defaults['next_calibration_date'] = d_next_cal
+        if d_next_ver:
+            defaults['next_verification_date'] = d_next_ver
+        if d_next_maint:
+            defaults['next_maintenance_date'] = d_next_maint
+        if cal_cycle:
+            defaults['calibration_cycle_days'] = cal_cycle
+        if ver_cycle:
+            defaults['verification_cycle_days'] = ver_cycle
+        if maint_cycle:
+            defaults['maintenance_cycle_days'] = maint_cycle
 
         if code:
             obj, created = ResourceItem.objects.get_or_create(
@@ -683,6 +891,35 @@ def _inject_equipment(raw_data: dict):
             if not created and manager_account and not obj.manager_id:
                 obj.manager_id = manager_account.id
                 obj.save(update_fields=['manager_id'])
+            # 已存在的 LIMS 设备：再次同步时以 LIMS 为准刷新台账与扩展字段
+            if not created:
+                prev_attrs = obj.attributes or {}
+                if prev_attrs.get('_lims_source'):
+                    merged_attr = {**prev_attrs, **(defaults.get('attributes') or {})}
+                    obj.attributes = merged_attr
+                    save_fields = ['attributes', 'update_time']
+                    for fld, val in (
+                        ('next_calibration_date', defaults.get('next_calibration_date')),
+                        ('next_verification_date', defaults.get('next_verification_date')),
+                        ('next_maintenance_date', defaults.get('next_maintenance_date')),
+                        ('calibration_cycle_days', defaults.get('calibration_cycle_days')),
+                        ('verification_cycle_days', defaults.get('verification_cycle_days')),
+                        ('maintenance_cycle_days', defaults.get('maintenance_cycle_days')),
+                    ):
+                        if val is not None:
+                            setattr(obj, fld, val)
+                            save_fields.append(fld)
+                    for fld in ('name', 'manufacturer', 'model_number', 'serial_number', 'status'):
+                        if fld in defaults:
+                            setattr(obj, fld, defaults[fld])
+                            save_fields.append(fld)
+                    if 'location' in defaults:
+                        obj.location = defaults['location']
+                        save_fields.append('location')
+                    if defaults.get('category'):
+                        obj.category = defaults['category']
+                        save_fields.append('category_id')
+                    obj.save(update_fields=list(dict.fromkeys(save_fields)))
         else:
             obj = ResourceItem.objects.create(**defaults)
             created = True
@@ -769,13 +1006,16 @@ def _inject_personnel(raw_data: dict):
     Step 5: EquipmentAuthorization（后续由设备注入阶段完成，此处标记pending）
     Step 6: MethodQualification（默认创建 instrument_operator 基础资质）
 
-    字段说明（colConfigInfo 修复后已正确对应）：
-    - "姓名"字段 = 真实姓名（修复后）
-    - "性别"字段 = 性别（修复后）
+    字段说明（兼容两种 LIMS 格式）：
+    - 新格式（有 col_X 字段）：字段名含义已正确，姓名='姓名',性别='性别'
+    - 旧格式（列偏移 bug）：'姓名'存行号，真实姓名在'性别'列
     - "组别名称"字段 = 组别（始终正确）
-    - "上次考核时间"字段 = 岗位状态（在岗/试用期/已离职等）
+    - "上次考核时间"字段 = 岗位状态（旧格式）或上次考核日期（新格式）
+
+    注意：DB 异常不在此处捕获，由上层 _inject_one 的 transaction.atomic() 处理，
+    保证事务隔离和正确回滚。
     """
-    try:
+    if True:  # 不用 try/except 包裹，让 DB 异常传播到 _inject_one 的事务处理
         from apps.identity.models import Account, AccountRole
         from apps.hr.models import Staff
         from apps.lims_integration.p0_mapping import (
@@ -822,13 +1062,20 @@ def _inject_personnel(raw_data: dict):
                 account.save(update_fields=['display_name', 'status'])
 
         # ─── Step 2: Staff ────────────────────────────────────────────────
+        # feishu_open_id 字段 unique=True 且 NOT NULL，LIMS 导入记录用唯一占位符
+        # 格式 'lims_XXXXXX'（飞书真实 open_id 以 'ou_' 开头，不会冲突）
+        # 当用户后续通过飞书 OAuth 登录时，该值会被自动覆盖为真实 open_id
+        import hashlib as _hashlib
+        _seed = f"{name}|{department or ''}|{employee_no or ''}"
+        lims_feishu_placeholder = f"lims_{_hashlib.md5(_seed.encode()).hexdigest()[:20]}"
+
         staff_defaults = {
             'name': name,
             'position': job_status.get('training_status', '在岗'),
             'department': department or '',
             'account_fk': account,
             'account_id': account.id,
-            'feishu_open_id': None,  # 避免空字符串唯一约束冲突
+            'feishu_open_id': lims_feishu_placeholder,
             'training_status': job_status.get('training_status', ''),
         }
 
@@ -842,10 +1089,14 @@ def _inject_personnel(raw_data: dict):
             if existing_staff:
                 staff, staff_created = existing_staff, False
             else:
+                # 用 savepoint 保护 create，避免唯一约束失败污染外层事务
+                from django.db import transaction as _txn
                 try:
-                    staff = Staff.objects.create(**staff_defaults)
+                    with _txn.atomic():
+                        staff = Staff.objects.create(**staff_defaults)
                     staff_created = True
                 except Exception:
+                    # 已有同名记录（可能并发写入），回退到查找
                     staff = Staff.objects.filter(name=name).first()
                     staff_created = False
                     if not staff:
@@ -933,10 +1184,6 @@ def _inject_personnel(raw_data: dict):
         logger.info('  人员注入: %s | 组别: %s | 角色: %s | 状态: %s',
                     name, department, role_names, job_status.get('training_status', ''))
         return staff, action, before
-
-    except Exception as ex:
-        logger.error('人员注入失败: %s | data=%s', ex, str(raw_data)[:200])
-        return None
 
 
 def _inject_client(raw_data: dict):
@@ -1062,7 +1309,6 @@ def _inject_commission(raw_data: dict):
             test_methods_raw = raw_data.get('检测项目', raw_data.get('检测方法', ''))
             if test_methods_raw and not obj.test_methods:
                 try:
-                    import json as json_mod
                     if isinstance(test_methods_raw, str):
                         obj.test_methods = [m.strip() for m in test_methods_raw.split(',') if m.strip()]
                     else:
@@ -1406,7 +1652,7 @@ def _inject_training_record(raw_data: dict):
 def _inject_competency_record(raw_data: dict):
     """注入能力考核记录 -> lab_personnel.MethodQualification"""
     try:
-        from apps.lab_personnel.models import MethodQualification, LabStaffProfile
+        from apps.lab_personnel.models import MethodQualification
         from apps.hr.models import Staff
         from apps.resource.models import DetectionMethodTemplate
 
@@ -1541,7 +1787,6 @@ def _inject_equipment_maintenance(raw_data: dict):
     """注入设备维护/维修记录 -> EquipmentMaintenance"""
     try:
         from apps.resource.models import EquipmentMaintenance, ResourceItem
-        from apps.hr.models import Staff
 
         equipment_code = _extract_field(raw_data, 'equipment_code') or raw_data.get('设备编号', '')
         if not equipment_code:
@@ -1613,4 +1858,3 @@ def _inject_sample_transfer(raw_data: dict):
         return None
 
 
-import json

@@ -13,11 +13,11 @@ from django.db import transaction
 from apps.protocol.models import Protocol
 from apps.visit.models import (
     VisitPlan, VisitNode, VisitActivity,
-    ResourceDemand, ResourceDemandStatus,
+    ResourceDemand,
 )
 from apps.visit.services.generation_service import VisitGenerationService
 from apps.visit.services.resource_demand_service import ResourceDemandService
-from apps.scheduling.models import SchedulePlan, ScheduleSlot, SchedulePlanStatus
+from apps.scheduling.models import SchedulePlan, SchedulePlanStatus
 from apps.scheduling.services import IntelligentSchedulingService
 
 logger = logging.getLogger(__name__)
@@ -253,7 +253,7 @@ class StartupPackService:
 
     @classmethod
     def _build_recruitment_pack(cls, protocol: Protocol, parsed_data: dict) -> Dict[str, Any]:
-        """招募准备包：入排口径、FAQ、粗筛问卷、渠道文案、海报文案（由 recruitment_prep_service 生成）。"""
+        """招募准备包：入排口径、FAQ、初筛问卷、渠道文案、海报文案（由 recruitment_prep_service 生成）。"""
         try:
             from apps.subject.services.recruitment_prep_service import generate_recruitment_prep_draft
             out = generate_recruitment_prep_draft(protocol_id=protocol.id)

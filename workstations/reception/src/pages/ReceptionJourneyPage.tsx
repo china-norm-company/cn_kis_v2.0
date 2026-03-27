@@ -5,7 +5,7 @@ import { Button, Card, Empty, Input } from '@cn-kis/ui-kit'
 
 const STAGE_LABEL: Record<string, string> = {
   registration: '报名',
-  pre_screening: '粗筛',
+  pre_screening: '初筛',
   screening: '筛选',
   enrollment: '入组',
   appointment: '预约',

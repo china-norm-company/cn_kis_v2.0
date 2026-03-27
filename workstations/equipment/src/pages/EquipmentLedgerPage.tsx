@@ -1,7 +1,13 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { equipmentApi } from '@cn-kis/api-client'
-import type { EquipmentItem, EquipmentDetail } from '@cn-kis/api-client'
+import type {
+  EquipmentItem,
+  EquipmentDetail,
+  EquipmentDashboard,
+  EquipmentCategoryLedgerItem,
+  EquipmentNameClassificationLedgerItem,
+} from '@cn-kis/api-client'
 import { Monitor, Plus, Search, Filter, ChevronLeft, ChevronRight, X, Eye, Trash2 } from 'lucide-react'
 import { PermissionGuard } from '@cn-kis/feishu-sdk'
 
@@ -43,8 +49,28 @@ function StatusBadge({ status, display }: { status: string; display: string }) {
   )
 }
 
+function fmtPlanDate(s: string | null | undefined) {
+  if (!s) return '—'
+  const t = String(s).slice(0, 10)
+  return t || '—'
+}
+
+function fmtCycleDays(n: number | null | undefined) {
+  if (n == null || n <= 0) return '—'
+  return `${n} 天`
+}
+
+function fmtLimsSynced(iso: string | null | undefined) {
+  if (!iso) return '—'
+  const s = String(iso)
+  return s.length >= 16 ? s.slice(0, 16).replace('T', ' ') : s
+}
+
+type LedgerTab = 'equipment' | 'categories' | 'nameClassifications'
+
 export function EquipmentLedgerPage() {
   const queryClient = useQueryClient()
+  const [tab, setTab] = useState<LedgerTab>('equipment')
   const [keyword, setKeyword] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [calFilter, setCalFilter] = useState('')
@@ -57,7 +83,7 @@ export function EquipmentLedgerPage() {
     queryFn: () => equipmentApi.dashboard(),
   })
 
-  const { data: listData, isLoading } = useQuery({
+  const { data: listData, isLoading: equipmentLoading } = useQuery({
     queryKey: ['equipment', 'ledger', { keyword, statusFilter, calFilter, page }],
     queryFn: () => equipmentApi.listLedger({
       keyword: keyword || undefined,
@@ -66,18 +92,71 @@ export function EquipmentLedgerPage() {
       page,
       page_size: 20,
     }),
+    enabled: tab === 'equipment',
   })
 
-  const db = (dashData as any)?.data as EquipmentDetail | undefined
-  const summary = (db as any)?.summary
+  const { data: categoryLedgerData, isLoading: categoryLoading } = useQuery({
+    queryKey: ['equipment', 'ledger', 'categories', { keyword, page }],
+    queryFn: () => equipmentApi.listCategoryLedger({
+      keyword: keyword || undefined,
+      page,
+      page_size: 20,
+    }),
+    enabled: tab === 'categories',
+  })
+
+  const { data: nameClassificationLedgerData, isLoading: nameClassificationLoading } = useQuery({
+    queryKey: ['equipment', 'ledger', 'name-classifications', { keyword, page }],
+    queryFn: () => equipmentApi.listNameClassificationLedger({
+      keyword: keyword || undefined,
+      page,
+      page_size: 20,
+    }),
+    enabled: tab === 'nameClassifications',
+  })
+
+  const dashboard = (dashData as any)?.data as EquipmentDashboard | undefined
+  const summary = dashboard?.summary
   const list = (listData as any)?.data as { items: EquipmentItem[]; total: number; page: number; page_size: number } | undefined
+  const categoryList = (categoryLedgerData as any)?.data as { items: EquipmentCategoryLedgerItem[]; total: number; page: number; page_size: number } | undefined
+  const nameClassificationList = (nameClassificationLedgerData as any)?.data as { items: EquipmentNameClassificationLedgerItem[]; total: number; page: number; page_size: number } | undefined
   const items = list?.items ?? []
-  const totalPages = Math.ceil((list?.total ?? 0) / 20)
+  const categoryItems = categoryList?.items ?? []
+  const nameClassificationItems = nameClassificationList?.items ?? []
+  const activeLoading = tab === 'equipment'
+    ? equipmentLoading
+    : tab === 'categories'
+      ? categoryLoading
+      : nameClassificationLoading
+  const activeTotal = tab === 'equipment'
+    ? (list?.total ?? 0)
+    : tab === 'categories'
+      ? (categoryList?.total ?? 0)
+      : (nameClassificationList?.total ?? 0)
+  const totalPages = Math.max(1, Math.ceil(activeTotal / 20))
+  const searchPlaceholder = tab === 'equipment'
+    ? '搜索设备名称、编号、型号...'
+    : tab === 'categories'
+      ? '搜索设备类别名称、编码...'
+      : '搜索设备名称分类、设备类别...'
+  const emptyText = tab === 'equipment'
+    ? '暂无设备数据'
+    : tab === 'categories'
+      ? '暂无设备类别台账数据'
+      : '暂无设备细分类别台账数据'
+
+  const handleTabChange = (nextTab: LedgerTab) => {
+    setTab(nextTab)
+    setKeyword('')
+    setStatusFilter('')
+    setCalFilter('')
+    setPage(1)
+  }
 
   const stats = [
     { label: '设备总数', value: summary?.total ?? '--', color: 'text-blue-700' },
     { label: '正常运行', value: summary?.active ?? '--', color: 'text-green-700' },
-    { label: '校准到期', value: (dashData as any)?.data?.calibration_alerts?.due_in_30_days ?? '--', color: 'text-amber-700' },
+    { label: '校准到期', value: dashboard?.calibration_alerts?.due_in_30_days ?? '--', color: 'text-amber-700' },
     { label: '维修中', value: summary?.maintenance ?? '--', color: 'text-red-600' },
   ]
 
@@ -109,109 +188,201 @@ export function EquipmentLedgerPage() {
         ))}
       </div>
 
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {[
+          { key: 'equipment', label: '设备台账' },
+          { key: 'categories', label: '设备类别台账' },
+          { key: 'nameClassifications', label: '设备细分类别台账' },
+        ].map((item) => (
+          <button
+            key={item.key}
+            onClick={() => handleTabChange(item.key as LedgerTab)}
+            className={`shrink-0 rounded-lg px-4 py-2 text-sm transition-colors ${
+              tab === item.key
+                ? 'bg-cyan-600 text-white'
+                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
       {/* 搜索与筛选 */}
       <div className="flex gap-3 overflow-x-auto pb-1">
         <div className="relative min-w-[220px] flex-1">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="搜索设备名称、编号、型号..."
+            placeholder={searchPlaceholder}
             value={keyword}
             onChange={(e) => { setKeyword(e.target.value); setPage(1) }}
             className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
           />
         </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
-          className="shrink-0 min-h-11 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-          aria-label="设备状态筛选"
-        >
-          <option value="">全部状态</option>
-          <option value="active">在用</option>
-          <option value="idle">闲置</option>
-          <option value="maintenance">维护中</option>
-          <option value="calibrating">校准中</option>
-          <option value="retired">已报废</option>
-        </select>
-        <select
-          value={calFilter}
-          onChange={(e) => { setCalFilter(e.target.value); setPage(1) }}
-          className="shrink-0 min-h-11 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-          aria-label="校准状态筛选"
-        >
-          <option value="">校准状态</option>
-          <option value="overdue">已逾期</option>
-          <option value="expiring">30天内到期</option>
-          <option value="valid">有效</option>
-        </select>
+        {tab === 'equipment' && (
+          <>
+            <select
+              value={statusFilter}
+              onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
+              className="shrink-0 min-h-11 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              aria-label="设备状态筛选"
+            >
+              <option value="">全部状态</option>
+              <option value="active">在用</option>
+              <option value="idle">闲置</option>
+              <option value="maintenance">维护中</option>
+              <option value="calibrating">校准中</option>
+              <option value="retired">已报废</option>
+            </select>
+            <select
+              value={calFilter}
+              onChange={(e) => { setCalFilter(e.target.value); setPage(1) }}
+              className="shrink-0 min-h-11 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              aria-label="校准状态筛选"
+            >
+              <option value="">校准状态</option>
+              <option value="overdue">已逾期</option>
+              <option value="expiring">30天内到期</option>
+              <option value="valid">有效</option>
+            </select>
+          </>
+        )}
       </div>
 
       {/* 设备表格 */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        {isLoading ? (
+        {activeLoading ? (
           <div className="p-8 text-center text-slate-400">加载中...</div>
-        ) : items.length === 0 ? (
+        ) : tab === 'equipment' && items.length === 0 ? (
           <div className="p-8 text-center text-slate-400">
             <Monitor className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p className="text-sm">暂无设备数据</p>
+            <p className="text-sm">{emptyText}</p>
             <button onClick={() => setShowCreate(true)} className="mt-2 text-cyan-600 text-sm hover:underline">点击新增设备</button>
+          </div>
+        ) : tab === 'categories' && categoryItems.length === 0 ? (
+          <div className="p-8 text-center text-slate-400">
+            <Monitor className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p className="text-sm">{emptyText}</p>
+          </div>
+        ) : tab === 'nameClassifications' && nameClassificationItems.length === 0 ? (
+          <div className="p-8 text-center text-slate-400">
+            <Monitor className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p className="text-sm">{emptyText}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="text-left px-4 py-3 font-medium text-slate-600">设备编号</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">名称</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">类别</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">状态</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">位置</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">校准</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">30天使用</th>
-                <th className="text-right px-4 py-3 font-medium text-slate-600">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 font-mono text-xs text-slate-600">{item.code}</td>
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-slate-800">{item.name}</div>
-                    {item.manufacturer && (
-                      <div className="text-xs text-slate-400">{item.manufacturer} {item.model_number}</div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">{item.category_name}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={item.status} display={item.status_display} />
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">{item.location || '-'}</td>
-                  <td className="px-4 py-3">
-                    <CalibrationBadge info={item.calibration_info} />
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">{item.usage_count_30d} 次</td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => setDetailId(item.id)}
-                      className="p-1 text-slate-400 hover:text-cyan-600 transition-colors"
-                      title="查看详情"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            {tab === 'equipment' ? (
+              <table className="w-full min-w-[1520px] text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50">
+                    <th className="text-left px-3 py-3 font-medium text-slate-600 whitespace-nowrap">设备编号</th>
+                    <th className="text-left px-3 py-3 font-medium text-slate-600 whitespace-nowrap">名称</th>
+                    <th className="text-left px-3 py-3 font-medium text-slate-600 whitespace-nowrap">名称分类</th>
+                    <th className="text-left px-3 py-3 font-medium text-slate-600 whitespace-nowrap">类别</th>
+                    <th className="text-left px-3 py-3 font-medium text-slate-600 whitespace-nowrap">状态</th>
+                    <th className="text-left px-3 py-3 font-medium text-slate-600 whitespace-nowrap">位置</th>
+                    <th className="text-left px-3 py-3 font-medium text-slate-600 whitespace-nowrap">下次校准</th>
+                    <th className="text-left px-3 py-3 font-medium text-slate-600 whitespace-nowrap">下次核查</th>
+                    <th className="text-left px-3 py-3 font-medium text-slate-600 whitespace-nowrap">下次维护</th>
+                    <th className="text-left px-3 py-3 font-medium text-slate-600 whitespace-nowrap">校准周期</th>
+                    <th className="text-left px-3 py-3 font-medium text-slate-600 whitespace-nowrap">核查周期</th>
+                    <th className="text-left px-3 py-3 font-medium text-slate-600 whitespace-nowrap">维护周期</th>
+                    <th className="text-left px-3 py-3 font-medium text-slate-600 whitespace-nowrap">校准</th>
+                    <th className="text-left px-3 py-3 font-medium text-slate-600 whitespace-nowrap">30天使用</th>
+                    <th className="text-right px-3 py-3 font-medium text-slate-600 whitespace-nowrap">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item) => (
+                    <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                      <td className="px-3 py-3 font-mono text-xs text-slate-600 whitespace-nowrap">{item.code}</td>
+                      <td className="px-3 py-3 min-w-[120px]">
+                        <div className="font-medium text-slate-800">{item.name}</div>
+                        {item.manufacturer && (
+                          <div className="text-xs text-slate-400">{item.manufacturer} {item.model_number}</div>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-slate-600 text-xs max-w-[140px]" title={item.name_classification || ''}>
+                        {item.name_classification || '—'}
+                      </td>
+                      <td className="px-3 py-3 text-slate-600 text-xs whitespace-nowrap">{item.category_name || '—'}</td>
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        <StatusBadge status={item.status} display={item.status_display} />
+                      </td>
+                      <td className="px-3 py-3 text-slate-600 text-xs max-w-[100px]">{item.location || '—'}</td>
+                      <td className="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtPlanDate(item.next_calibration_date)}</td>
+                      <td className="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtPlanDate(item.next_verification_date)}</td>
+                      <td className="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtPlanDate(item.next_maintenance_date)}</td>
+                      <td className="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtCycleDays(item.calibration_cycle_days)}</td>
+                      <td className="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtCycleDays(item.verification_cycle_days)}</td>
+                      <td className="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtCycleDays(item.maintenance_cycle_days)}</td>
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        <CalibrationBadge info={item.calibration_info} />
+                      </td>
+                      <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{item.usage_count_30d} 次</td>
+                      <td className="px-3 py-3 text-right">
+                        <button
+                          onClick={() => setDetailId(item.id)}
+                          className="p-1 text-slate-400 hover:text-cyan-600 transition-colors"
+                          title="查看详情"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : tab === 'categories' ? (
+              <table className="w-full min-w-[880px] text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50">
+                    <th className="text-left px-4 py-3 font-medium text-slate-600 whitespace-nowrap">设备类别</th>
+                    <th className="text-left px-4 py-3 font-medium text-slate-600 whitespace-nowrap">类别编码</th>
+                    <th className="text-left px-4 py-3 font-medium text-slate-600 whitespace-nowrap">类别路径</th>
+                    <th className="text-right px-4 py-3 font-medium text-slate-600 whitespace-nowrap">设备数量</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {categoryItems.map((item) => (
+                    <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{item.category_name}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-600 whitespace-nowrap">{item.category_code}</td>
+                      <td className="px-4 py-3 text-slate-600 text-xs">{item.category_path}</td>
+                      <td className="px-4 py-3 text-right text-slate-800 font-medium whitespace-nowrap">{item.equipment_count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <table className="w-full min-w-[760px] text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50">
+                    <th className="text-left px-4 py-3 font-medium text-slate-600 whitespace-nowrap">设备名称分类</th>
+                    <th className="text-left px-4 py-3 font-medium text-slate-600 whitespace-nowrap">设备类别</th>
+                    <th className="text-right px-4 py-3 font-medium text-slate-600 whitespace-nowrap">同类别设备数量</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {nameClassificationItems.map((item, idx) => (
+                    <tr key={`${item.category_id ?? 'none'}-${item.name_classification}-${idx}`} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{item.name_classification || '未分类'}</td>
+                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{item.category_name || '—'}</td>
+                      <td className="px-4 py-3 text-right text-slate-800 font-medium whitespace-nowrap">{item.equipment_count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
       </div>
 
       {/* 分页 */}
-      {totalPages > 1 && (
+      {activeTotal > 0 && totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <span className="text-sm text-slate-500">共 {list?.total ?? 0} 条记录</span>
+          <span className="text-sm text-slate-500">共 {activeTotal} 条记录</span>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setPage(p => Math.max(1, p - 1))}
@@ -258,7 +429,10 @@ function CreateEquipmentDrawer({ onClose, onSuccess }: { onClose: () => void; on
   const [form, setForm] = useState({
     name: '', code: '', category_id: 0, location: '',
     manufacturer: '', model_number: '', serial_number: '',
-    purchase_date: '', warranty_expiry: '', calibration_cycle_days: '',
+    name_classification: '',
+    purchase_date: '', warranty_expiry: '',
+    next_calibration_date: '', next_verification_date: '', next_maintenance_date: '',
+    calibration_cycle_days: '', verification_cycle_days: '', maintenance_cycle_days: '',
   })
   const [error, setError] = useState('')
 
@@ -272,7 +446,13 @@ function CreateEquipmentDrawer({ onClose, onSuccess }: { onClose: () => void; on
     mutationFn: () => equipmentApi.createEquipment({
       ...form,
       category_id: form.category_id,
+      name_classification: form.name_classification || undefined,
+      next_calibration_date: form.next_calibration_date || undefined,
+      next_verification_date: form.next_verification_date || undefined,
+      next_maintenance_date: form.next_maintenance_date || undefined,
       calibration_cycle_days: form.calibration_cycle_days ? Number(form.calibration_cycle_days) : undefined,
+      verification_cycle_days: form.verification_cycle_days ? Number(form.verification_cycle_days) : undefined,
+      maintenance_cycle_days: form.maintenance_cycle_days ? Number(form.maintenance_cycle_days) : undefined,
       purchase_date: form.purchase_date || undefined,
       warranty_expiry: form.warranty_expiry || undefined,
     }),
@@ -314,6 +494,13 @@ function CreateEquipmentDrawer({ onClose, onSuccess }: { onClose: () => void; on
             </select>
           </label>
 
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700">名称分类</span>
+            <input value={form.name_classification} onChange={e => set('name_classification', e.target.value)}
+              placeholder="如 电子天平、glossymeter"
+              className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" />
+          </label>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="text-sm font-medium text-slate-700">制造商</span>
@@ -352,12 +539,47 @@ function CreateEquipmentDrawer({ onClose, onSuccess }: { onClose: () => void; on
             </label>
           </div>
 
-          <label className="block">
-            <span className="text-sm font-medium text-slate-700">校准周期（天）</span>
-            <input type="number" value={form.calibration_cycle_days} onChange={e => set('calibration_cycle_days', e.target.value)}
-              placeholder="如 90"
-              className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" />
-          </label>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">下次校准</span>
+              <input type="date" value={form.next_calibration_date} onChange={e => set('next_calibration_date', e.target.value)}
+                className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">校准周期（天）</span>
+              <input type="number" value={form.calibration_cycle_days} onChange={e => set('calibration_cycle_days', e.target.value)}
+                placeholder="如 90"
+                className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">下次核查</span>
+              <input type="date" value={form.next_verification_date} onChange={e => set('next_verification_date', e.target.value)}
+                className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">核查周期（天）</span>
+              <input type="number" value={form.verification_cycle_days} onChange={e => set('verification_cycle_days', e.target.value)}
+                placeholder="如 180"
+                className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">下次维护</span>
+              <input type="date" value={form.next_maintenance_date} onChange={e => set('next_maintenance_date', e.target.value)}
+                className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">维护周期（天）</span>
+              <input type="number" value={form.maintenance_cycle_days} onChange={e => set('maintenance_cycle_days', e.target.value)}
+                placeholder="如 365"
+                className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" />
+            </label>
+          </div>
 
           <div className="pt-4 flex gap-3">
             <button onClick={onClose} className="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50">取消</button>
@@ -424,6 +646,9 @@ function EquipmentDetailDrawer({ id, onClose }: { id: number; onClose: () => voi
           ) : tab === 'info' ? (
             <div className="space-y-4">
               <InfoRow label="设备编号" value={detail.code} />
+              <InfoRow label="名称分类" value={detail.name_classification || '—'} />
+              <InfoRow label="LIMS同步时间" value={fmtLimsSynced(detail.lims_synced_at)} />
+              <InfoRow label="LIMS批次" value={detail.lims_sync_batch_no || '—'} />
               <InfoRow label="类别路径" value={detail.category_path} />
               <InfoRow label="状态" value={detail.status_display} />
               <InfoRow label="存放位置" value={detail.location || '-'} />
@@ -432,7 +657,12 @@ function EquipmentDetailDrawer({ id, onClose }: { id: number; onClose: () => voi
               <InfoRow label="序列号" value={detail.serial_number || '-'} />
               <InfoRow label="购入日期" value={detail.purchase_date || '-'} />
               <InfoRow label="保修到期" value={detail.warranty_expiry || '-'} />
+              <InfoRow label="下次校准" value={fmtPlanDate(detail.next_calibration_date)} />
+              <InfoRow label="下次核查" value={fmtPlanDate(detail.next_verification_date)} />
+              <InfoRow label="下次维护" value={fmtPlanDate(detail.next_maintenance_date)} />
               <InfoRow label="校准周期" value={detail.calibration_cycle_days ? `${detail.calibration_cycle_days} 天` : '-'} />
+              <InfoRow label="核查周期" value={detail.verification_cycle_days ? `${detail.verification_cycle_days} 天` : '-'} />
+              <InfoRow label="维护周期" value={detail.maintenance_cycle_days ? `${detail.maintenance_cycle_days} 天` : '-'} />
               <InfoRow label="校准状态" value={
                 detail.calibration_info.status === 'overdue' ? '❌ 已逾期' :
                 detail.calibration_info.status === 'urgent' ? `⚠️ ${detail.calibration_info.days_remaining}天后到期` :

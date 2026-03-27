@@ -55,6 +55,10 @@ class Command(BaseCommand):
             '--delay', type=float, default=0.5,
             help='账号间延迟秒数（默认 0.5）',
         )
+        parser.add_argument(
+            '--user-limit', type=int, default=0,
+            help='只处理前 N 个用户（0=全部，用于测试）',
+        )
 
     def handle(self, *args, **options):
         lookback_hours = options['lookback_hours']
@@ -62,6 +66,7 @@ class Command(BaseCommand):
         force_full = options['force_full']
         dry_run = options['dry_run']
         delay = options['delay']
+        user_limit = options['user_limit']
 
         cutoff_time = timezone.now() - timedelta(hours=lookback_hours)
         batch_id = f'incr-{timezone.now().strftime("%Y%m%d%H%M%S")}'
@@ -106,6 +111,12 @@ class Command(BaseCommand):
                 self.stdout.write(f'  {uid[:20]}: {list(src_map.keys())}')
             return
 
+        # 支持 --user-limit 单用户测试
+        users_iter = list(user_sources_map.items())
+        if user_limit > 0:
+            users_iter = users_iter[:user_limit]
+            self.stdout.write(f'[user-limit={user_limit}] 仅处理前 {user_limit} 个用户')
+
         total_stats = {s: 0 for s in sources}
         total_stats['errors'] = 0
 
@@ -117,7 +128,7 @@ class Command(BaseCommand):
             )
         }
 
-        for i, (open_id, src_lookback_map) in enumerate(user_sources_map.items(), 1):
+        for i, (open_id, src_lookback_map) in enumerate(users_iter, 1):
             account = accounts.get(open_id)
             if not account:
                 continue
@@ -146,7 +157,7 @@ class Command(BaseCommand):
                 logger.error('增量采集失败 %s: %s', account.display_name, e)
                 total_stats['errors'] += 1
 
-            if i < len(user_sources_map):
+            if i < len(users_iter):
                 time.sleep(delay)
 
         self.stdout.write('\n=== 增量采集完成 ===')

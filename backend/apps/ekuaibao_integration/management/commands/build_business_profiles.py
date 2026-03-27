@@ -63,7 +63,6 @@ class Command(BaseCommand):
         from apps.hr.models import Staff
         from apps.finance.models_expense import ExpenseRequest
         from apps.secretary.models import PersonalContext
-        from apps.knowledge.models import KnowledgeEntity
         from apps.knowledge.ingestion_pipeline import RawKnowledgeInput, run_pipeline
         from django.db.models import Sum, Count
 
@@ -190,7 +189,7 @@ class Command(BaseCommand):
         from apps.finance.models import ProjectBudget
         from apps.knowledge.ingestion_pipeline import RawKnowledgeInput, run_pipeline
         from apps.knowledge.models import KnowledgeRelation
-        from django.db.models import Sum, Count
+        from django.db.models import Sum
 
         stats = {'created': 0, 'skipped': 0}
 
@@ -277,7 +276,7 @@ class Command(BaseCommand):
         from apps.finance.models_expense import ExpenseRequest
         from apps.knowledge.models import KnowledgeRelation
         from apps.knowledge.ingestion_pipeline import RawKnowledgeInput, run_pipeline
-        from django.db.models import Sum, Count
+        from django.db.models import Sum
 
         stats = {'created': 0, 'skipped': 0}
 

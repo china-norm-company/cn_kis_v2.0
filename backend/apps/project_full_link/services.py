@@ -3,8 +3,8 @@
 
 提供项目与方案的 CRUD 及列表查询。
 """
-from typing import Optional, Any
-from django.db.models import Q, QuerySet
+from typing import Optional
+from django.db.models import Q
 from django.core.files.uploadedfile import UploadedFile
 import os
 from django.conf import settings

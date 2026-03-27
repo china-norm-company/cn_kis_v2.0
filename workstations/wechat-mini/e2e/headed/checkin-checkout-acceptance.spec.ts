@@ -130,8 +130,8 @@ test.describe('首页入组信息展示', () => {
             items: [], has_appointment: true,
             pending_appointment: {
               appointment_date: '2026-03-10', appointment_time: '09:00',
-              project_name: '粗筛研究项目', project_code: 'PROJ-003',
-              visit_point: '粗筛', status: 'confirmed',
+              project_name: '初筛研究项目', project_code: 'PROJ-003',
+              visit_point: '初筛', status: 'confirmed',
             },
           },
         },
@@ -143,7 +143,7 @@ test.describe('首页入组信息展示', () => {
     const pendingCard = page.locator('[data-testid="pending-appointment-card"]')
     await expect(pendingCard).toBeVisible({ timeout: 12000 })
     await expect(pendingCard).toContainText('预约待确认')
-    await expect(pendingCard).toContainText('粗筛研究项目')
+    await expect(pendingCard).toContainText('初筛研究项目')
     await expect(pendingCard).toContainText('2026-03-10')
   })
 

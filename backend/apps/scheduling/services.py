@@ -398,7 +398,7 @@ class IntelligentSchedulingService:
                 if slot.status == SlotStatus.CONFLICT:
                     continue
                 try:
-                    from datetime import datetime, timezone
+                    from datetime import datetime
                     start_dt = datetime.combine(
                         slot.scheduled_date,
                         slot.start_time or time_type(9, 0),

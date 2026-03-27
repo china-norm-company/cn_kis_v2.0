@@ -2,6 +2,10 @@
 """Django's command-line utility for administrative tasks."""
 import os
 import sys
+import warnings
+
+# macOS 系统 Python + urllib3 v2：LibreSSL 提示（不影响功能；StatReloader 子进程会再次执行本文件，过滤仍生效）
+warnings.filterwarnings('ignore', module='urllib3')
 
 # 确保 backend 目录在 path 中（便携版 Python 等场景）
 _BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))

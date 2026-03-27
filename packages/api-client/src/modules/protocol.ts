@@ -38,6 +38,10 @@ export interface ConsentRecord {
   subject_id: number
   subject_no: string
   subject_name: string
+  /** 手机号（默认脱敏展示：132****1234） */
+  phone?: string
+  /** 身份证号（默认脱敏展示：310110********3920） */
+  id_card?: string
   /** 接待台队列同步的筛选号（如 SC001） */
   sc_number?: string
   /** 拼音首字母 */
@@ -125,7 +129,7 @@ export interface ConsentStats {
   returned_resign_row_count?: number
 }
 
-/** 按现场粗筛/到场日（PreScreeningRecord.pre_screening_date）拆分的批次进度 */
+/** 按现场初筛/到场日（PreScreeningRecord.pre_screening_date）拆分的批次进度 */
 export interface ScreeningBatchConsent {
   /** ISO 日期 YYYY-MM-DD */
   screening_date: string
@@ -137,7 +141,7 @@ export interface ScreeningBatchConsent {
   icf_count: number
   /** cohort_subject_count × icf_count，用于判断尚未生成签署任务 */
   expected_consent_rows: number
-  /** 来自知情配置「计划现场日」且当日尚无粗筛/筛选受试者映射时为 true */
+  /** 来自知情配置「计划现场日」且当日尚无初筛/筛选受试者映射时为 true */
   is_planned_placeholder?: boolean
   /** 该批次为测试筛选计划日（与正式筛选区分展示） */
   is_test_screening?: boolean
@@ -194,7 +198,7 @@ export interface ProtocolConsentOverview {
   screening_batch_count?: number
   earliest_screening_date?: string | null
   latest_screening_date?: string | null
-  /** screening=粗筛/正式筛选；consent_activity_fallback=无现场数据时按首条知情记录创建日拆分；none=无分日数据 */
+  /** screening=初筛/正式筛选；consent_activity_fallback=无现场数据时按首条知情记录创建日拆分；none=无分日数据 */
   screening_batch_source?: 'screening' | 'consent_activity_fallback' | 'none' | 'planned_config'
   /** 协议知情配置中登记的计划现场日（最多 4 天），供列表展示 */
   planned_screening_dates?: string[]
@@ -396,7 +400,7 @@ export const protocolApi = {
   },
 
   // ---------- 知情管理（执行台） ----------
-  /** 知情配置负责人候选（治理台全局角色 CRC / CRC主管） */
+  /** 知情配置负责人候选（治理台全局角色 QA质量管理） */
   listConsentConfigAssignees() {
     return api.get<{ items: Array<{ id: number; display_name: string; username: string; email: string }> }>(
       '/protocol/consent-config-assignees',
@@ -671,7 +675,7 @@ export const protocolApi = {
     )
   },
 
-  /** 具备管理员/CRC/CRC主管 角色的治理台账号（用于建档） */
+  /** 具备 QA质量管理 全局角色的治理台账号（用于建档） */
   listWitnessEligibleAccounts(params?: {
     search?: string
     page?: number

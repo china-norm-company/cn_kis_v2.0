@@ -25,4 +25,5 @@ app.autodiscover_tasks([
     'apps.hr',
     'apps.quality',
     'apps.subject',
+    'apps.lims_integration',
 ])

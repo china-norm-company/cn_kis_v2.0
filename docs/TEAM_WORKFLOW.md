@@ -91,6 +91,7 @@ develop 分支 push → GitHub Actions → Aliyun test-guide.data-infact.com
 - [ ] 阅读 `docs/V2_MIGRATION_CHARTER.md`（必读，四条红线）
 - [ ] 阅读本文件 `docs/TEAM_WORKFLOW.md`
 - [ ] 阅读 `docs/CURSOR_COLLABORATION_ONBOARDING.md`
+- [ ] 运行 `python3 ops/scripts/workstation_consistency_check.py` 确认本地代码工作台注册表一致
 - [ ] 完成一次标准 PR 演练（含 Issue 关联与测试说明）
 - [ ] 确认已加入 GitHub 仓库协作者
 
@@ -106,3 +107,35 @@ develop 分支 push → GitHub Actions → Aliyun test-guide.data-infact.com
 - 测试 `.env` 通过 GitHub Secrets 注入（`BACKEND_DOT_ENV`）
 - 生产 `.env` 存储在 `deploy/secrets.env`（已 .gitignore）
 - 生产凭证轮换前，禁止执行正式对外分发
+
+## 11. 工作台注册表变更规范
+
+**系统共有 19 个工作台。唯一真相源：`backend/configs/workstations.yaml`**
+
+### 任何涉及工作台列表的变更，必须同时完成以下四步：
+
+| 步骤 | 操作 | 文件 |
+|------|------|------|
+| 1 | 修改注册表 | `backend/configs/workstations.yaml` |
+| 2 | 同步后端合法标识 | `backend/apps/identity/api.py` → `VALID_WORKSTATION_KEYS` |
+| 3 | 同步超管角色权限 | `backend/apps/identity/management/commands/seed_roles.py` |
+| 4 | 同步 nginx 路由 | 服务器 `/etc/nginx/sites-enabled/cn-kis-v2` |
+
+### 验收命令（每次变更后必须运行，全部通过才能提交）：
+
+```bash
+python3 ops/scripts/workstation_consistency_check.py
+```
+
+期望输出：`✅ 所有检查通过！工作台注册表一致性验收成功。当前工作台数量：19 个`
+
+### CI 自动检查
+
+每次 PR 和推送到 main/staging 时，CI 会自动运行此检查（见 `.github/workflows/ci.yml` → `workstation-check` 步骤）。检查失败则 PR 无法合并。
+
+### 废弃标识（绝对禁止用作工作台标识）
+
+| 废弃词 | 原因 | 正确替代 |
+|--------|------|---------|
+| `governance` | 旧名，已重命名 | `admin`（鹿鸣·治理台） |
+| `iam` | 已合并入鹿鸣·治理台 | `admin` |

@@ -66,7 +66,7 @@ export const PAGE_COPY = {
   screeningStatus: {
     empty: {
       title: '暂无报名记录',
-      description: '先完成项目报名，系统会自动展示粗筛、正式筛选和入组进度。',
+      description: '先完成项目报名，系统会自动展示初筛、正式筛选和入组进度。',
       icon: '🧬',
       actionText: '去发现项目',
     },
@@ -105,6 +105,7 @@ export const PAGE_COPY = {
       icon: '📔',
       actionText: '填写今日日记',
     },
+    noAdverseLabel: '是否发生任何不良情况',
   },
   questionnaire: {
     empty: {

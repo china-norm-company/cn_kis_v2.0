@@ -69,22 +69,18 @@ export function DashboardPage() {
   const inProgressCount = maintStats.in_progress ?? maintOverview.in_progress ?? 0
   const completedCount = maintStats.completed_this_month ?? maintOverview.completed_this_month ?? 0
 
+  /** 与后端 POST /equipment/calibrations/create-work-orders 一致：写入 EquipmentMaintenance（calibration），出现在维护工单列表 */
   const createCalibrationMaintenanceMutation = useMutation({
-    mutationFn: async (payload: Array<{ equipment_id: number; title: string }>) =>
-      Promise.all(
-        payload.map((item) =>
-          equipmentApi.createMaintenance({
-            equipment_id: item.equipment_id,
-            maintenance_type: 'calibration',
-            title: item.title,
-            description: '由数字员工建议创建的校准维护工单',
-            maintenance_date: new Date().toISOString().slice(0, 10),
-          }),
-        ),
-      ),
+    mutationFn: async (equipmentIds: number[]) => {
+      const res = await equipmentApi.createCalibrationWorkOrders(equipmentIds)
+      return res.data
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['equipment', 'maintenance-list'] })
       queryClient.invalidateQueries({ queryKey: ['equipment', 'maintenance-stats'] })
+      queryClient.invalidateQueries({ queryKey: ['equipment', 'dashboard'] })
+      queryClient.invalidateQueries({ queryKey: ['equipment', 'calibration-plan'] })
+      queryClient.invalidateQueries({ queryKey: ['equipment', 'maintenance'] })
     },
   })
 
@@ -209,12 +205,9 @@ export function DashboardPage() {
               value: `${item.date} · ${item.days < 0 ? `逾期 ${Math.abs(item.days)} 天` : `剩余 ${item.days} 天`}`,
             }))}
           onAccept={() => {
-            const payload = calItems.slice(0, 5).map((item) => ({
-              equipment_id: item.id,
-              title: `设备 ${item.name} 校准安排`,
-            }))
-            if (payload.length === 0) return
-            createCalibrationMaintenanceMutation.mutate(payload)
+            const ids = [...new Set(calItems.slice(0, 5).map((item) => item.id))]
+            if (ids.length === 0) return
+            createCalibrationMaintenanceMutation.mutate(ids)
           }}
           loading={createCalibrationMaintenanceMutation.isPending}
           acceptLabel="批量创建校准工单"

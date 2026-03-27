@@ -26,8 +26,6 @@ Usage:
 import os
 import re
 import logging
-from datetime import date
-from decimal import Decimal
 from collections import defaultdict
 
 from django.core.management.base import BaseCommand
@@ -338,9 +336,8 @@ class Command(BaseCommand):
         return records
 
     def _upsert_qualified(self, records):
-        from apps.subject.models import Subject, Enrollment
+        from apps.subject.models import Subject
         from apps.subject.models_execution import SubjectProjectSC
-        from apps.protocol.models import Protocol
 
         proto_cache = {}
         for rec in records:
@@ -690,9 +687,7 @@ class Command(BaseCommand):
     # 6. 生成全景知识档案
     # ==================================================================
     def phase_profile(self):
-        from apps.subject.models import Subject, Enrollment
-        from apps.subject.models_timeseries import SkinMeasurementRecord
-        from apps.subject.models_execution import SubjectQuestionnaire, ComplianceRecord
+        from apps.subject.models import Subject
         from apps.knowledge.models import KnowledgeEntry
 
         subjects = Subject.objects.filter(is_deleted=False)

@@ -4,7 +4,6 @@ import logging
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
-from django.db import models
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)

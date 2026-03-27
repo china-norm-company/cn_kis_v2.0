@@ -351,7 +351,7 @@ function WorkOrderViewContent({
                 <Card key={ex.id} variant="elevated" className="p-4 border-l-4 border-l-blue-400">
                   <p className="text-sm font-medium text-slate-800">执行记录 #{recordNum}（共{total}条）</p>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    执行日期：{dateStr ?? '—'} · 受试者：{ex.subject_rd}（{ex.subject_initials}）· 筛选编号：{fullRecord?.screening_no?.trim() || '—'} · 操作人：{(ex as { operator_name?: string }).operator_name ?? '—'} · 产品数：{productCount}
+                    执行日期：{dateStr ?? '—'} · 受试者SC号：{fullRecord?.screening_no?.trim() || '—'} · 首字母：{ex.subject_initials} · 受试者RD：{(ex.subject_rd || '').trim() || '—'} · 操作人：{(ex as { operator_name?: string }).operator_name ?? '—'} · 产品数：{productCount}
                   </p>
                   <div className="mt-3 text-sm">
                     {fullRecord == null ? (

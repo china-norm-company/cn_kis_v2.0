@@ -21,10 +21,8 @@ def run_daily_health_summary():
     2. 检测数据异常趋势
     3. 推送健康摘要到研究经理飞书
     """
-    from apps.protocol.models import Protocol
     from apps.secretary.alert_service import generate_all_alerts
     from apps.secretary.trend_service import get_workorder_trend
-    from apps.notification.card_template_service import build_alert_card
 
     today = date.today()
     alerts = generate_all_alerts()
@@ -96,7 +94,7 @@ def run_weekly_insights():
                 logger.warning(f'客户洞察失败: client={client.id}, error={e}')
 
         if insights:
-            summary = f"📋 每周客户洞察摘要\n\n"
+            summary = "📋 每周客户洞察摘要\n\n"
             for ins in insights:
                 summary += f"• {ins.get('client_name', '未知')}\n"
                 analysis = ins.get('analysis', '')
@@ -118,7 +116,7 @@ def run_daily_dropout_risk_scan():
     对风险评分 >= 60 的受试者推送预警给 CRC 主管。
     """
     try:
-        from apps.subject.models import Subject, SubjectStatus, Enrollment
+        from apps.subject.models import Subject, SubjectStatus, Enrollment  # noqa: F401
         from apps.subject.services.dropout_prediction import predict_dropout_risk
     except ImportError:
         logger.info('dropout_prediction 服务未就绪，跳过脱落风险扫描')

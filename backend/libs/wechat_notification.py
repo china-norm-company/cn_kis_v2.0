@@ -11,7 +11,6 @@
 """
 import os
 import logging
-from typing import Optional
 
 import httpx
 from django.conf import settings
@@ -174,8 +173,8 @@ def notify_registration_confirmed(registration) -> bool:
     )
 
 
-def notify_screening_result_to_subject(registration, result: str, stage: str = '粗筛') -> bool:
-    """筛选/粗筛结果通知（发送给受试者）"""
+def notify_screening_result_to_subject(registration, result: str, stage: str = '初筛') -> bool:
+    """筛选/初筛结果通知（发送给受试者）"""
     openid = _get_subject_openid_by_registration(registration)
     if not openid or not TEMPLATE_SCREENING_RESULT:
         return False

@@ -55,15 +55,6 @@ function getRecentDays(n: number): string[] {
 /** 补填允许的天数（GCP：在规定时间内补填） */
 const MAKEUP_DAYS_LIMIT = 7
 
-function buildNotes(severity: string, symptomStart: string, symptomDuration: string, notesOther: string): string {
-  const parts: string[] = []
-  if (severity) parts.push(`程度：${severity}`)
-  if (symptomStart) parts.push(`开始时间：${symptomStart}`)
-  if (symptomDuration) parts.push(`持续时长：${symptomDuration}`)
-  if (notesOther) parts.push(notesOther)
-  return parts.join('；')
-}
-
 export default function DiaryPage() {
   const { items: entriesFromApi, reload: fetchEntries } = useDiaryList(taroApiClient)
   const entries = entriesFromApi.length > 0 ? entriesFromApi : getSampleDiaryEntries()
@@ -106,21 +97,27 @@ export default function DiaryPage() {
     setShowSubmitConfirm(false)
     const mood = hasAdverse ? '不适' : '良好'
     const symptomsVal = hasAdverse ? symptoms : ''
-    const notesVal = buildNotes(severity, symptomStart, symptomDuration, '')
-    try {
-      const ok = await submit({ mood, symptoms: symptomsVal, medication_taken: medTaken, notes: notesVal, entry_date: fillDate })
-      if (ok) {
-        Taro.showToast({ title: '记录成功', icon: 'success' })
-        setShowForm(false)
-        setSymptoms('')
-        setSeverity('')
-        setSymptomStart('')
-        setSymptomDuration('')
-        setHasAdverse(false)
-        fetchEntries()
-      }
-    } catch {
-      Taro.showToast({ title: '记录失败', icon: 'none' })
+    const result = await submit({
+      mood,
+      symptoms: symptomsVal,
+      medication_taken: medTaken,
+      symptom_severity: hasAdverse ? severity : '',
+      symptom_onset: hasAdverse ? symptomStart : '',
+      symptom_duration: hasAdverse ? symptomDuration : '',
+      notes: '',
+      entry_date: fillDate,
+    })
+    if (result.ok) {
+      Taro.showToast({ title: '记录成功', icon: 'success' })
+      setShowForm(false)
+      setSymptoms('')
+      setSeverity('')
+      setSymptomStart('')
+      setSymptomDuration('')
+      setHasAdverse(false)
+      fetchEntries()
+    } else {
+      Taro.showToast({ title: result.msg, icon: 'none' })
     }
   }
 

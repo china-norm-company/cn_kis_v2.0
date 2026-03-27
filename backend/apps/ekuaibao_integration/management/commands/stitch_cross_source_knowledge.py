@@ -19,7 +19,6 @@ stitch_cross_source_knowledge — 跨源知识图谱融合命令
 """
 import logging
 import re
-from typing import Dict, List, Optional, Set
 
 from django.core.management.base import BaseCommand
 
@@ -205,8 +204,6 @@ class Command(BaseCommand):
         import json
         from apps.knowledge.models import KnowledgeEntity, KnowledgeRelation
         from apps.identity.models import Account
-        from apps.protocol.models import Protocol
-        from apps.crm.models import Client
 
         stats = {'relations_created': 0, 'skipped': 0}
 
@@ -219,39 +216,59 @@ class Command(BaseCommand):
             return stats
 
         # 构建查找映射
+        # build_operations_graph 创建的实体使用 namespace='operations_graph_2026Q1'
+        # person 实体的 properties 包含 feishu_open_id，project 实体的 label 就是项目编号
+        OPS_NS = 'operations_graph_2026Q1'
+
         feishu_to_ekb = {
             acc.feishu_open_id: acc.ekuaibao_staff_id
             for acc in Account.objects.filter(
                 is_deleted=False, feishu_open_id__gt='', ekuaibao_staff_id__gt=''
             )
         }
+        # 项目实体：label 即项目编号（如 M25076001），properties.project_no 同值
         proto_code_to_entity = {
-            e.properties.get('code', ''): e
+            e.label: e
             for e in KnowledgeEntity.objects.filter(
-                entity_type='project', namespace='cnkis', is_deleted=False
+                entity_type='project', namespace=OPS_NS, is_deleted=False
             )
+            if e.label
         }
+        # 客户实体：label 是客户名
         client_name_to_entity = {
             e.label: e
             for e in KnowledgeEntity.objects.filter(
-                entity_type='client', namespace='cnkis', is_deleted=False
+                entity_type='client', namespace=OPS_NS, is_deleted=False
             )
+            if e.label
         }
-        ekb_id_to_person_entity = {
-            e.properties.get('ekuaibao_staff_id', ''): e
+        # 人员实体：properties.feishu_open_id → entity
+        # 注意：feishu_to_ekb 的 key 是 feishu_open_id，Step3 的聚合 key 是 ekb_id
+        # 因此需要 feishu_open_id → person_entity 的映射
+        feishu_id_to_person_entity = {
+            e.properties.get('feishu_open_id', ''): e
             for e in KnowledgeEntity.objects.filter(
-                entity_type='person', namespace='cnkis', is_deleted=False
+                entity_type='person', namespace=OPS_NS, is_deleted=False
             )
+            if e.properties.get('feishu_open_id', '')
         }
 
-        # 聚合：(person_ekb_id, ref_type, ref_value) → mention 次数
+        self.stdout.write(f'  查找映射：project={len(proto_code_to_entity)}, client={len(client_name_to_entity)}, person={len(feishu_id_to_person_entity)}')
+
+        # 聚合：(feishu_open_id, ref_type, ref_value) → mention 次数
+        # 使用 feishu_open_id 作为 key（因为 person_entity 用 feishu_open_id 索引）
         from collections import Counter
         mention_agg = Counter()
         for m in mentions:
-            ekb_id = feishu_to_ekb.get(m.get('user_id', ''), '')
-            if not ekb_id:
+            feishu_id = m.get('user_id', '')
+            if not feishu_id:
                 continue
-            mention_agg[(ekb_id, m['ref_type'], m['ref_value'])] += 1
+            # 只处理已缝合账号（有对应易快报 ID）
+            if feishu_id not in feishu_to_ekb:
+                continue
+            mention_agg[(feishu_id, m['ref_type'], m['ref_value'])] += 1
+
+        self.stdout.write(f'  有效 mention 聚合：{len(mention_agg)} 组（{sum(mention_agg.values())} 次）')
 
         def _upsert_relation(subject_entity, object_entity, predicate_uri: str, properties: dict = None):
             rel, created = KnowledgeRelation.objects.get_or_create(
@@ -269,8 +286,8 @@ class Command(BaseCommand):
             return created
 
         # 建立关系
-        for (ekb_id, ref_type, ref_value), count in mention_agg.items():
-            person_entity = ekb_id_to_person_entity.get(ekb_id)
+        for (feishu_id, ref_type, ref_value), count in mention_agg.items():
+            person_entity = feishu_id_to_person_entity.get(feishu_id)
             if not person_entity:
                 stats['skipped'] += 1
                 continue

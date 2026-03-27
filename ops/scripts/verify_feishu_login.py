@@ -20,7 +20,7 @@ from urllib.parse import urlparse, parse_qs
 import urllib.request
 import urllib.error
 
-PRIMARY_APP_ID = "cli_a98b0babd020500e"
+PRIMARY_APP_ID = "cli_a907f21f0723dbce"
 
 
 def check_health(base_url: str) -> bool:
@@ -140,7 +140,7 @@ def print_summary(results: dict):
         print("  常见问题排查：")
         print("  1. 后端未启动 → 检查 Docker 容器状态：docker ps --filter publish=9001")
         print("  2. Migration 未运行 → docker exec <container_id> python manage.py migrate")
-        print("  3. 飞书 App ID 错误 → 检查 .env 中 FEISHU_PRIMARY_APP_ID=cli_a98b0babd020500e")
+        print("  3. 飞书 App ID 错误 → 检查 .env 中 FEISHU_PRIMARY_APP_ID=cli_a907f21f0723dbce")
         print("  4. redirect_uri 错误 → 检查 .env 中 FEISHU_REDIRECT_URI")
     print()
 

@@ -1,0 +1,230 @@
+[
+  {
+    "id": "485cc1c1-00bd-4e47-854a-005765bc3f97",
+    "created_at": "2026-03-15T16:31:11Z",
+    "action": "feedback",
+    "module_id": "",
+    "document_filename": "",
+    "user_id": null,
+    "username": "",
+    "extra": {
+      "issue_key": "005|smoke_test.pdf|0"
+    }
+  },
+  {
+    "id": "b92ae28e-da4c-4191-8d6f-02f10e848e88",
+    "created_at": "2026-03-15T16:31:11Z",
+    "action": "download_log",
+    "module_id": "005",
+    "document_filename": "smoke_test.pdf",
+    "user_id": null,
+    "username": "",
+    "extra": {
+      "saved_as": "smoke_test_log.txt"
+    }
+  },
+  {
+    "id": "782b5262-053d-441e-887c-62fdfcd8de68",
+    "created_at": "2026-03-15T16:31:09Z",
+    "action": "analyze",
+    "module_id": "104",
+    "document_filename": "3-研究方案_V1.0_ 1款精华产品4周抗皱及改善肤质功效研究_C26005025_20260309.pdf",
+    "user_id": null,
+    "username": "",
+    "extra": {
+      "issues_count": 28
+    }
+  },
+  {
+    "id": "7daef869-bc61-4d13-98ec-70aa299de46d",
+    "created_at": "2026-03-15T16:30:43Z",
+    "action": "analyze",
+    "module_id": "047",
+    "document_filename": "V1.0_25-0331_MT4229543_Protocol_M25047027_20251110_-fully Signed.pdf",
+    "user_id": null,
+    "username": "",
+    "extra": {
+      "issues_count": 52
+    }
+  },
+  {
+    "id": "36831877-0532-461e-b586-95611b56cbc0",
+    "created_at": "2026-03-15T16:28:54Z",
+    "action": "analyze",
+    "module_id": "005",
+    "document_filename": "25-07562 Protocol_Lotion 909515 23A Efficacy Study_C25005109-clean.pdf",
+    "user_id": null,
+    "username": "",
+    "extra": {
+      "issues_count": 90
+    }
+  },
+  {
+    "id": "37ade901-7c32-485e-b88f-d0289fa48682",
+    "created_at": "2026-03-15T16:27:13Z",
+    "action": "feedback",
+    "module_id": "",
+    "document_filename": "",
+    "user_id": null,
+    "username": "",
+    "extra": {
+      "issue_key": "005|quick.pdf|0"
+    }
+  },
+  {
+    "id": "83e1ad83-af96-4a1e-a2b1-bff01d86a73b",
+    "created_at": "2026-03-15T16:27:13Z",
+    "action": "download_log",
+    "module_id": "005",
+    "document_filename": "quick.pdf",
+    "user_id": null,
+    "username": "",
+    "extra": {
+      "saved_as": "quick_test.txt"
+    }
+  },
+  {
+    "id": "211e52e2-e54d-4300-b153-e0efc03668c5",
+    "created_at": "2026-03-15T16:27:09Z",
+    "action": "analyze",
+    "module_id": "047",
+    "document_filename": "V1.0_25-0331_MT4229543_Protocol_M25047027_20251110_-fully Signed.pdf",
+    "user_id": null,
+    "username": "",
+    "extra": {
+      "issues_count": 52
+    }
+  },
+  {
+    "id": "da518c84-914e-416e-96b5-b301fe144b12",
+    "created_at": "2026-03-15T16:26:32Z",
+    "action": "analyze",
+    "module_id": "047",
+    "document_filename": "V1.0_25-0331_MT4229543_Protocol_M25047027_20251110_-fully Signed.pdf",
+    "user_id": null,
+    "username": "",
+    "extra": {
+      "issues_count": 71
+    }
+  },
+  {
+    "id": "6f422527-d14e-48f3-b702-09fac537a320",
+    "created_at": "2026-03-15T16:26:04Z",
+    "action": "analyze",
+    "module_id": "005",
+    "document_filename": "25-07562 Protocol_Lotion 909515 23A Efficacy Study_C25005109-clean.pdf",
+    "user_id": null,
+    "username": "",
+    "extra": {
+      "issues_count": 87
+    }
+  },
+  {
+    "id": "fde722ff-2c8b-4141-bfb1-66027a0ff1a6",
+    "created_at": "2026-03-15T16:25:01Z",
+    "action": "analyze",
+    "module_id": "005",
+    "document_filename": "25-07562 Protocol_Lotion 909515 23A Efficacy Study_C25005109-clean.pdf",
+    "user_id": null,
+    "username": "",
+    "extra": {
+      "issues_count": 87
+    }
+  },
+  {
+    "id": "8465b3d1-e294-4486-b262-3f97d8f81ce8",
+    "created_at": "2026-03-15T16:03:44Z",
+    "action": "download_log",
+    "module_id": "005",
+    "document_filename": "3-研究方案_V1.0_ 1款精华产品4周抗皱及改善肤质功效研究_C26005025_20260309.pdf",
+    "user_id": null,
+    "username": "",
+    "extra": {
+      "saved_as": "protocol_qc_2026-03-151603_005.txt"
+    }
+  },
+  {
+    "id": "4f8771cd-dc36-4726-899e-a42f94c2458b",
+    "created_at": "2026-03-15T16:03:13Z",
+    "action": "analyze",
+    "module_id": "005",
+    "document_filename": "3-研究方案_V1.0_ 1款精华产品4周抗皱及改善肤质功效研究_C26005025_20260309.pdf",
+    "user_id": null,
+    "username": "",
+    "extra": {
+      "issues_count": 21
+    }
+  },
+  {
+    "id": "5825d8be-57cb-4c99-814a-91c429f91c34",
+    "created_at": "2026-03-15T16:02:58Z",
+    "action": "analyze",
+    "module_id": "005",
+    "document_filename": "3-研究方案_V1.0_ 1款精华产品4周抗皱及改善肤质功效研究_C26005025_20260309.pdf",
+    "user_id": null,
+    "username": "",
+    "extra": {
+      "issues_count": 25
+    }
+  },
+  {
+    "id": "a6f40f15-4e86-4c69-930e-5a54feac9b76",
+    "created_at": "2026-03-15T15:18:29Z",
+    "action": "download_log",
+    "module_id": "047",
+    "document_filename": "25-0266_M25047024_Final Protocol_20250916_V1.0 fully signed.docx.pdf",
+    "user_id": null,
+    "username": "",
+    "extra": {
+      "saved_as": "protocol_qc_2026-03-151518_047.txt"
+    }
+  },
+  {
+    "id": "f51be9ca-51a9-4e59-bba1-28d5908de7f3",
+    "created_at": "2026-03-15T15:12:34Z",
+    "action": "analyze",
+    "module_id": "047",
+    "document_filename": "25-0266_M25047024_Final Protocol_20250916_V1.0 fully signed.docx.pdf",
+    "user_id": null,
+    "username": "",
+    "extra": {
+      "issues_count": 52
+    }
+  },
+  {
+    "id": "2919e543-5ede-4de0-b271-3aa3917fc7fa",
+    "created_at": "2026-03-15T15:04:49Z",
+    "action": "analyze",
+    "module_id": "005",
+    "document_filename": "V2.0_25-14192 Protocol_12-week Product 2076503 92 Efficacy Study_C26005009-clean.pdf",
+    "user_id": null,
+    "username": "",
+    "extra": {
+      "issues_count": 158
+    }
+  },
+  {
+    "id": "ba88e35e-3a65-4aff-99eb-b9c61a0e15c9",
+    "created_at": "2026-03-15T15:04:41Z",
+    "action": "analyze",
+    "module_id": "104",
+    "document_filename": "V2.0_25-14192 Protocol_12-week Product 2076503 92 Efficacy Study_C26005009-clean.pdf",
+    "user_id": null,
+    "username": "",
+    "extra": {
+      "issues_count": 146
+    }
+  },
+  {
+    "id": "aaafbaa1-9610-4c9a-8672-8a95ec460c78",
+    "created_at": "2026-03-15T14:19:42Z",
+    "action": "analyze",
+    "module_id": "104",
+    "document_filename": "25-07562 Protocol_Lotion 909515 23A Efficacy Study_C25005109-clean.pdf",
+    "user_id": null,
+    "username": "",
+    "extra": {
+      "issues_count": 79
+    }
+  }
+]

@@ -27,12 +27,12 @@ from apps.protocol.models import Protocol, ProtocolStatus, ProtocolParseLog
 
 logger = logging.getLogger(__name__)
 
-# 知情配置负责人：治理台全局角色（与 witness_staff_service 中双签可选角色区分，此处不含 admin）
-CONSENT_CONFIG_ROLE_NAMES = ('crc', 'crc_supervisor')
+# 知情配置负责人：治理台全局角色（与 witness_staff_service 中双签可选角色区分）
+CONSENT_CONFIG_ROLE_NAMES = ('qa',)
 
 
 def consent_config_assignee_account_ids() -> set:
-    """具备「知情配置人员」候选资格的治理台账号 ID（全局角色 crc / crc_supervisor）。"""
+    """具备「知情配置人员」候选资格的治理台账号 ID（全局角色 qa）。"""
     from apps.identity.models import AccountRole, Role
 
     rids = Role.objects.filter(name__in=CONSENT_CONFIG_ROLE_NAMES, is_active=True).values_list('id', flat=True)
@@ -45,11 +45,11 @@ def assert_consent_config_account_allowed(account_id: int) -> None:
     if not account_id:
         raise ValueError('知情配置人员账号无效')
     if account_id not in consent_config_assignee_account_ids():
-        raise ValueError('知情配置人员须为治理台中具备全局角色「CRC」或「CRC主管」的账号')
+        raise ValueError('知情配置人员须为治理台中具备全局角色「QA质量管理」的账号')
 
 
 def list_consent_config_assignee_accounts():
-    """供执行台下拉：姓名、账号、邮箱（仅 crc / crc_supervisor 全局角色）。"""
+    """供执行台下拉：姓名、账号、邮箱（仅 qa 全局角色）。"""
     from apps.identity.models import Account
 
     ids = sorted(consent_config_assignee_account_ids())
@@ -1360,6 +1360,25 @@ def evaluate_archive_readiness(protocol_id: int) -> Dict[str, object]:
     }
 
 
+def bump_consent_overview_cache_generation() -> None:
+    """
+    知情概览 GET 使用短 TTL 缓存；软删除/变更列表后递增世代号，使旧 cache_key 全部失效。
+    兼容 LocMem / Redis，不依赖 delete_pattern。
+    """
+    try:
+        from django.core.cache import cache
+
+        k = 'protocol:consent_overview:cache_gen'
+        raw = cache.get(k) or 0
+        try:
+            n = int(raw)
+        except (TypeError, ValueError):
+            n = 0
+        cache.set(k, n + 1, timeout=None)
+    except Exception:
+        pass
+
+
 def delete_protocol(protocol_id: int) -> bool:
     """软删除协议"""
     protocol = get_protocol(protocol_id)
@@ -1367,6 +1386,7 @@ def delete_protocol(protocol_id: int) -> bool:
         return False
     protocol.is_deleted = True
     protocol.save(update_fields=['is_deleted', 'update_time'])
+    bump_consent_overview_cache_generation()
     return True
 
 

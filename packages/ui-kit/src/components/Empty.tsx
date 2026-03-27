@@ -11,6 +11,7 @@ export interface EmptyProps {
   description?: string
   action?: React.ReactNode
   className?: string
+  children?: React.ReactNode
 }
 
 export function Empty({
@@ -19,6 +20,7 @@ export function Empty({
   message,
   description,
   action,
+  children,
   className,
 }: EmptyProps) {
   const resolvedDescription = description ?? message
@@ -37,6 +39,7 @@ export function Empty({
         <p className="mt-2 max-w-sm text-sm text-slate-500 dark:text-slate-400">{resolvedDescription}</p>
       )}
       {action && <div className="mt-6">{action}</div>}
+      {children && <div className="mt-6">{children}</div>}
     </div>
   )
 }

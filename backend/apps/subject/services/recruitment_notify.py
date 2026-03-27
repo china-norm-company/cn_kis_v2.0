@@ -6,7 +6,6 @@
 """
 import logging
 import os
-from typing import Optional
 
 from libs.notification import _safe_send, _build_card, _build_card_with_actions, NOTIFICATION_CHAT_ID
 from libs.time_format import format_local_hhmm
@@ -200,7 +199,7 @@ def notify_no_show(subject, appointment, chat_id: str = None) -> bool:
 
 def notify_pre_screening_result(record, chat_id: str = None) -> bool:
     """
-    粗筛结果通知：通过=绿色，不通过=红色，待复核=橙色。
+    初筛结果通知：通过=绿色，不通过=红色，待复核=橙色。
 
     Args:
         record: PreScreeningRecord 模型实例
@@ -208,20 +207,20 @@ def notify_pre_screening_result(record, chat_id: str = None) -> bool:
     """
     target = chat_id or _get_chat_id()
     if not target:
-        logger.warning("粗筛通知跳过：未配置通知群聊 ID (ps=%s)", record.pre_screening_no)
+        logger.warning("初筛通知跳过：未配置通知群聊 ID (ps=%s)", record.pre_screening_no)
         return False
 
     result = record.result
     if result == 'pass':
-        title = "✅ 粗筛通过"
+        title = "✅ 初筛通过"
         color = "green"
         extra_msg = "建议安排正式筛选"
     elif result == 'pending':
-        title = "🔍 粗筛需 PI 复核"
+        title = "🔍 初筛需 PI 复核"
         color = "orange"
         extra_msg = "请 PI 尽快复核"
     else:
-        title = "❌ 粗筛未通过"
+        title = "❌ 初筛未通过"
         color = "red"
         reasons = ', '.join(record.fail_reasons) if record.fail_reasons else '未说明'
         extra_msg = f"原因：{reasons}"
@@ -230,19 +229,19 @@ def notify_pre_screening_result(record, chat_id: str = None) -> bool:
         title=title,
         color=color,
         fields=[
-            {"name": "粗筛编号", "value": record.pre_screening_no},
+            {"name": "初筛编号", "value": record.pre_screening_no},
             {"name": "受试者", "value": record.subject.name if record.subject else ""},
             {"name": "结果", "value": record.get_result_display()},
             {"name": "说明", "value": extra_msg},
         ],
-        note="招招·招募台 - 粗筛评估结果",
+        note="招招·招募台 - 初筛评估结果",
     )
     return _safe_send(target, 'interactive', card)
 
 
 def notify_pre_screening_review_needed(record, chat_id: str = None) -> bool:
     """
-    粗筛 PI 复核通知（橙色卡片），发送给 PI/研究者。
+    初筛 PI 复核通知（橙色卡片），发送给 PI/研究者。
 
     Args:
         record: PreScreeningRecord 模型实例
@@ -254,14 +253,14 @@ def notify_pre_screening_review_needed(record, chat_id: str = None) -> bool:
         return False
 
     card = _build_card(
-        title="🔬 粗筛需 PI 复核",
+        title="🔬 初筛需 PI 复核",
         color="orange",
         fields=[
-            {"name": "粗筛编号", "value": record.pre_screening_no},
+            {"name": "初筛编号", "value": record.pre_screening_no},
             {"name": "受试者", "value": record.subject.name if record.subject else ""},
             {"name": "评估员备注", "value": record.notes or "无"},
         ],
-        note="招招·招募台 - 请 PI 审核粗筛结果",
+        note="招招·招募台 - 请 PI 审核初筛结果",
     )
     return _safe_send(target, 'interactive', card)
 

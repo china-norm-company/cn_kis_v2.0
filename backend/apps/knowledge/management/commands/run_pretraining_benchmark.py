@@ -16,11 +16,10 @@
 """
 import json
 import logging
-import os
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 from django.core.management.base import BaseCommand
 
@@ -548,7 +547,6 @@ class Command(BaseCommand):
         # 快速模式采样
         if quick:
             from collections import defaultdict
-            import random
             domain_groups = defaultdict(list)
             for q in benchmark:
                 domain_groups[q.get('domain', '其他')].append(q)

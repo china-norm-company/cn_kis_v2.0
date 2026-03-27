@@ -676,6 +676,35 @@
   box-sizing: border-box;
 }
 
+.action-icon-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-icon-badge {
+  position: absolute;
+  top: -6rpx;
+  right: -6rpx;
+  min-width: 32rpx;
+  height: 32rpx;
+  padding: 0 8rpx;
+  border-radius: 16rpx;
+  background: #e53e3e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.action-icon-badge__text {
+  font-size: 20rpx;
+  color: #fff;
+  font-weight: 600;
+  line-height: 1;
+}
+
 .action-icon {
   width: 100rpx;
   height: 100rpx;

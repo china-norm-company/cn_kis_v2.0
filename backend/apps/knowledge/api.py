@@ -388,7 +388,7 @@ def list_entities(
 @require_permission('knowledge.entry.read')
 def entity_relations(request, entity_id: int):
     """查询指定实体的所有关系（出边 + 入边）"""
-    from .models import KnowledgeRelation, KnowledgeEntity
+    from .models import KnowledgeRelation
 
     outgoing = KnowledgeRelation.objects.filter(
         subject_id=entity_id, is_deleted=False,

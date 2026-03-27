@@ -1,0 +1,68 @@
+---
+description: 向量化嵌入治理规范：公司内网 Qwen3 是唯一授权通道，禁止任何降级或兜底
+alwaysApply: true
+---
+
+# 向量嵌入治理规范（强制）
+
+## 实际部署架构（2026-03-25 确认）
+
+系统当前部署了两个 embedding 通道，均来自 `apps.agent_gateway.services`：
+
+| 函数 | 后端 | 维度 | 适用场景 |
+|---|---|---|---|
+| `get_ark_embedding(text)` | 火山引擎 ARK API | 视 endpoint 而定 | 默认 embedding 通道，有网络延迟 |
+| `get_local_embedding(text)` | 本机 jina-embeddings-v3 | 1024 维 | 零延迟本地推理，多语言语义 |
+
+**注意**：`get_qwen3_embedding` 函数**不存在**，任何代码/文档引用此名称均为错误。
+
+## 主通道调用规范
+
+```python
+# ✅ 正确：使用 ARK embedding
+from apps.agent_gateway.services import get_ark_embedding
+embedding, trace = get_ark_embedding(text)   # 返回 (list|None, trace_list)
+if embedding is None:
+    raise RuntimeError(f"ARK embedding 失败，trace={trace}")
+
+# ✅ 正确：使用本地 jina embedding（低延迟场景）
+from apps.agent_gateway.services import get_local_embedding
+embedding = get_local_embedding(text)   # 返回 list|None
+if embedding is None:
+    raise RuntimeError("本地 embedding 推理失败")
+
+# ❌ 错误：引用不存在的函数
+from apps.agent_gateway.services import get_qwen3_embedding   # 函数不存在！
+
+# ❌ 错误：捕获后静默降级
+try:
+    embedding, _ = get_ark_embedding(text)
+except Exception:
+    embedding = get_local_embedding(text)   # 禁止！两者向量空间不兼容
+```
+
+## 绝对禁止
+
+- ❌ 引用 `get_qwen3_embedding`（此函数不存在）
+- ❌ 在 ARK embedding 失败时静默切换到 local embedding（向量空间不兼容）
+- ❌ 捕获 embedding 异常后返回 `None` 或写入空向量
+- ❌ 使用 `KNOWLEDGE_EMBEDDING_STRATEGY` 环境变量切换 embedding 引擎
+- ❌ 在任何 embedding 函数中出现"降级"、"fallback"、"backup"逻辑
+
+## 必须遵守
+
+- ✅ `get_ark_embedding()` 返回 `None` 时必须 **抛出 RuntimeError**，不继续执行
+- ✅ Celery 向量化任务失败时记录错误 + 触发重试，不写入错误向量
+- ✅ 检索路径 embedding 失败时返回空结果集 + 记录错误
+
+## 根本原因
+
+ARK embedding 和 local embedding 生成的向量空间不兼容：
+1. 混合写入索引 → 语义检索结果完全错误
+2. 错误静默 → 问题难以发现，只表现为检索质量下降
+
+## 维度升级路径（待办）
+
+- 当前：ARK embedding（维度由 endpoint 决定）；local jina 1024 维
+- 待升级：`TODO[vec-2048]`，待内网 GPU 部署统一 embedding 服务后统一迁移
+- 升级时搜索所有 `TODO[vec-2048]` 标记统一处理，同时新建迁移 `0016_resize_embedding_vector_2048.py`

@@ -5,7 +5,6 @@ S3-4：对接 contact/v3 自动同步部门和人员到系统。
 """
 import logging
 import hashlib
-from typing import List, Dict
 
 from django.utils import timezone
 

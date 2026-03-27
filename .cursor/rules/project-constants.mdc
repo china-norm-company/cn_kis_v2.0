@@ -1,0 +1,76 @@
+---
+description: CN KIS V2.0 项目永久常量——这里的信息不需要每次重新确认，直接使用。
+globs:
+alwaysApply: true
+---
+
+# CN KIS V2.0 项目永久常量
+
+## ⚠️ 重要：以下信息已确认，AI 必须直接使用，禁止重复询问
+
+---
+
+## 飞书群聊
+
+| 群名称 | chat_id | 用途 |
+|--------|---------|------|
+| CN_KIS_PLATFORM开发小组 | `oc_cdfad80d9deb950414e8b4033f5ac1ff` | 开发迭代协作主群，早晚报、GitHub 通知、代码协作 |
+| CN KIS 用户反馈群 | `oc_8209b7f720368b6e5a70968c334db05c` | 用户 Bug/建议/疑问，子衿 Bot 自动分类处理 |
+
+- **`CN_KIS_PLATFORM开发小组` 就是唯一的开发/实施/运维协作群**，所有开发通知均发送到此群。
+
+## 飞书应用
+
+| 应用 | App ID | 用途 |
+|------|--------|------|
+| 子衿（主授权） | `cli_a907f21f0723dbce` | **19 个工作台**统一 OAuth，Bot 发消息 |
+| 鹿鸣·治理台 | `cli_a937515668b99cc9` | 独立授权 |
+| 洞明·数据台 | `cli_a93753da2c381cef` | 独立授权 |
+
+- 子衿 Bot open_id：`ou_75d1606a2b65b11c7102f4bafe2c01d3`
+
+## GitHub
+
+| 项目 | 值 |
+|------|-----|
+| 仓库 owner | `china-norm-company` |
+| 仓库名 | `cn_kis_v2.0` |
+| 完整路径 | `https://github.com/china-norm-company/cn_kis_v2.0` |
+| GitHub PAT Secret 名称 | `GH_TOKEN_ISSUES`（Actions 中不能用 `GITHUB_` 前缀） |
+
+## 服务器
+
+| 环境 | 地址 | 路径 | SSH 密钥 |
+|------|------|------|---------|
+| 火山云（生产） | `118.196.64.48` | `/opt/cn-kis-v2/` | `~/.ssh/openclaw1.1.pem` |
+
+## 飞书知识库
+
+| 知识库 | Space ID |
+|--------|---------|
+| CN_KIS_PLATFORM 技术知识库 | `7620061838125862113` |
+
+**知识库访问机制（重要）**：
+- 飞书知识库 API 只接受 `user_access_token`，不接受 `tenant_access_token`
+- **飞书不支持将 App/Bot（appid）添加为知识库成员**，此操作路径不存在
+- ✅ 正确做法：管理员的 `user_access_token` 持久化在 `backend/data/feishu_user_tokens.json`，系统以该用户身份代理读写
+- ❌ **禁止再提出「在飞书开放平台手动将应用加为知识库成员」的建议**
+
+## 环境变量速查（已配置到服务器 .env 和本地 .env）
+
+```bash
+FEISHU_DEV_GROUP_CHAT_ID=oc_cdfad80d9deb950414e8b4033f5ac1ff
+FEISHU_FEEDBACK_GROUP_CHAT_ID=oc_8209b7f720368b6e5a70968c334db05c
+GITHUB_REPO_OWNER=china-norm-company
+GITHUB_REPO_NAME=cn_kis_v2.0
+```
+
+## AI 行为规范
+
+- ❌ 禁止询问「开发小组群的 chat_id 是什么」
+- ❌ 禁止询问「GitHub 仓库是哪个」
+- ❌ 禁止猜测或搜索已知的 chat_id、App ID
+- ❌ **禁止建议「在飞书开放平台/手动将 App/Bot 添加为知识库编辑成员」——此操作飞书不支持**
+- ✅ 直接使用上面的常量
+- ✅ 需要执行飞书 API 时，先从服务器运行（避免 IP 白名单问题）
+- ✅ 知识库操作通过持久化的 `user_access_token` 代理执行，无需额外配置

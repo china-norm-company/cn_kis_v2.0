@@ -3,7 +3,6 @@
 
 提供统一的审计记录接口，所有业务模块通过此服务记录操作日志。
 """
-from typing import Optional
 from .models import AuditLog, AuditAction
 
 

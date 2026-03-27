@@ -11,6 +11,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.db import connection
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from pathlib import Path
 import re
 from datetime import date, datetime, time as dt_time
@@ -24,6 +25,29 @@ from reportlab.pdfgen import canvas
 from ..models import Enrollment, ICFVersion, Subject, SubjectConsent
 
 logger = logging.getLogger(__name__)
+
+
+def safe_subject_consent_icf_version(consent: SubjectConsent) -> Optional[ICFVersion]:
+    """
+    安全读取 consent.icf_version。FK 目标缺失或数据不一致时 Django 会抛 RelatedObjectDoesNotExist，
+    直接访问会导致执行台签署列表等接口 500。
+    """
+    if not getattr(consent, 'icf_version_id', None):
+        return None
+    try:
+        return consent.icf_version
+    except ObjectDoesNotExist:
+        return None
+
+
+def safe_icf_protocol(icf: Optional[ICFVersion]):
+    """安全读取 icf.protocol，避免协议行缺失时抛错。"""
+    if not icf:
+        return None
+    try:
+        return icf.protocol
+    except ObjectDoesNotExist:
+        return None
 
 # 执行台工作人员审核（与 staff_audit_status 字段一致）
 STAFF_AUDIT_PENDING_REVIEW = 'pending_review'
@@ -448,7 +472,7 @@ def _merge_date_subject_map(*maps: dict) -> dict:
 
 
 def _subject_map_from_pre_screening(protocol_id: int) -> dict:
-    """粗筛到场日 -> 受试者集合（主数据源）。"""
+    """初筛到场日 -> 受试者集合（主数据源）。"""
     try:
         from apps.subject.models_recruitment import PreScreeningRecord
     except Exception:
@@ -651,7 +675,7 @@ def get_screening_batch_consent_stats(
     按「现场筛选相关日期」分批次统计知情签署进度。
 
     数据来源（依次合并同日受试者并集）：
-    1. 粗筛 PreScreeningRecord.pre_screening_date
+    1. 初筛 PreScreeningRecord.pre_screening_date
     2. 正式筛选 ScreeningRecord（到场日=screened_at/创建日）+ registration 关联受试者
     3. 若仍无任何日期：兜底为各受试者首条 SubjectConsent.create_time 所在日
 
@@ -677,7 +701,7 @@ def get_screening_batch_consent_stats(
     planned_date_strs = [x['date'] for x in sched]
     sched_by_date = {x['date']: x for x in sched}
 
-    # 无粗筛/正式筛选数据时跳过全表扫描，直接走兜底（知情首活日），显著降低列表页 N 协议成本。
+    # 无初筛/正式筛选数据时跳过全表扫描，直接走兜底（知情首活日），显著降低列表页 N 协议成本。
     from apps.subject.models_recruitment import PreScreeningRecord, ScreeningRecord
 
     pre_map: dict = {}
@@ -918,6 +942,77 @@ def subject_name_display_for_consent(c: SubjectConsent) -> str:
     return ''
 
 
+def _mask_phone(s: str) -> str:
+    """手机号脱敏：132****1234。"""
+    raw = (s or '').strip()
+    if not raw:
+        return ''
+    if len(raw) < 7:
+        return raw
+    return f'{raw[:3]}****{raw[-4:]}'
+
+
+def _mask_id_card(s: str) -> str:
+    """身份证脱敏：310110********3920（前6后4，中间按原长度补 *）。"""
+    raw = (s or '').strip()
+    if not raw:
+        return ''
+    if len(raw) < 10:
+        return raw
+    return f'{raw[:6]}{"*" * (len(raw) - 10)}{raw[-4:]}'
+
+
+def subject_phone_display_for_consent(c: SubjectConsent) -> str:
+    """列表手机号优先主表，缺失时回退签署镜像字段。"""
+    subj = getattr(c, 'subject', None)
+    if subj is not None:
+        phone = (getattr(subj, 'phone', None) or '').strip()
+        if phone:
+            return phone
+    sig = c.signature_data if isinstance(c.signature_data, dict) else {}
+    mc = sig.get('mini_sign_confirm') or {}
+    if isinstance(mc, dict):
+        for key in ('phone', 'mobile'):
+            v = mc.get(key)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+    rs = sig.get('reception_sync') or {}
+    if isinstance(rs, dict):
+        for key in ('phone', 'mobile'):
+            v = rs.get(key)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+    for key in ('phone', 'mobile', 'subject_phone'):
+        v = sig.get(key)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return ''
+
+
+def subject_id_card_display_for_consent(c: SubjectConsent) -> str:
+    """列表身份证优先签署镜像，其次尝试解密主表。"""
+    sig = c.signature_data if isinstance(c.signature_data, dict) else {}
+    cti = sig.get('consent_test_scan_identity') if isinstance(sig.get('consent_test_scan_identity'), dict) else {}
+    if (cti.get('declared_id_card') or '').strip():
+        return (cti.get('declared_id_card') or '').strip()
+    mc = sig.get('mini_sign_confirm') or {}
+    if isinstance(mc, dict):
+        for key in ('id_card', 'idCard'):
+            v = mc.get(key)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+    subj = getattr(c, 'subject', None)
+    enc = (getattr(subj, 'id_card_encrypted', None) or '').strip() if subj is not None else ''
+    if not enc:
+        return ''
+    try:
+        from apps.subject.services.profile_service import decrypt_id_card
+
+        return (decrypt_id_card(enc) or '').strip()
+    except Exception:
+        return ''
+
+
 CONSENT_LIST_SORT_FIELDS = frozenset({
     'signed_at',
     'create_time',
@@ -942,6 +1037,7 @@ def _consent_row_search_blob(c: SubjectConsent) -> str:
     sig = (c.signature_data or {}).get('investigator_sign') or {}
     subj = getattr(c, 'subject', None)
     phone_for_search = (getattr(subj, 'phone', None) or '').strip() if subj is not None else ''
+    icfv = safe_subject_consent_icf_version(c)
     parts = [
         subject_no_display_for_consent(c),
         subject_name_display_for_consent(c),
@@ -951,8 +1047,8 @@ def _consent_row_search_blob(c: SubjectConsent) -> str:
         ex.get('signing_result') or '',
         ex.get('signing_type') or '',
         c.receipt_no or '',
-        getattr(c.icf_version, 'node_title', None) or '',
-        str(c.icf_version.version) if c.icf_version else '',
+        (getattr(icfv, 'node_title', None) or '') if icfv else '',
+        str(icfv.version) if icfv else '',
         consent_staff_display_status(c),
         getattr(c, 'staff_audit_status', '') or '',
         sig.get('staff_name') or '',
@@ -1028,9 +1124,11 @@ def _consent_sort_tuple(c: SubjectConsent, field: str) -> tuple:
     if f == 'signing_type':
         return ((ex.get('signing_type') or '正式').lower(), sid)
     if f == 'node_title':
-        return ((getattr(c.icf_version, 'node_title', None) or '').lower(), sid)
+        icfv = safe_subject_consent_icf_version(c)
+        return ((getattr(icfv, 'node_title', None) or '').lower(), sid)
     if f == 'icf_version':
-        return ((c.icf_version.version if c.icf_version else '').lower(), sid)
+        icfv = safe_subject_consent_icf_version(c)
+        return ((icfv.version if icfv else '').lower(), sid)
     if f == 'consent_status':
         return (consent_staff_display_status(c), sid)
     if f == 'staff_audit_status':
@@ -1179,13 +1277,15 @@ def consent_list_api_rows_from_subject_groups(
             node_title = f'共 {n_nodes} 个知情节点'
             ver_labels: List[str] = []
             for c in grp:
-                v = c.icf_version.version if c.icf_version else ''
+                icfv = safe_subject_consent_icf_version(c)
+                v = icfv.version if icfv else ''
                 if v and v not in ver_labels:
                     ver_labels.append(v)
             icf_version_str = '、'.join(ver_labels)
         else:
-            node_title = getattr(c0.icf_version, 'node_title', None) or '' if c0.icf_version else ''
-            icf_version_str = c0.icf_version.version if c0.icf_version else ''
+            ic0 = safe_subject_consent_icf_version(c0)
+            node_title = (getattr(ic0, 'node_title', None) or '') if ic0 else ''
+            icf_version_str = ic0.version if ic0 else ''
         if single_ref_date:
             ref_day = single_ref_date
         else:
@@ -1228,6 +1328,8 @@ def consent_list_api_rows_from_subject_groups(
                 'subject_id': c0.subject_id,
                 'subject_no': subject_no_display_for_consent(c0),
                 'subject_name': subject_name_display_for_consent(c0),
+                'phone': extra.get('phone_masked') or '-',
+                'id_card': extra.get('id_card_masked') or '-',
                 'sc_number': extra.get('sc_number') or '-',
                 'name_pinyin_initials': extra.get('name_pinyin_initials') or '-',
                 'signing_result': extra.get('signing_result') or '-',
@@ -1366,7 +1468,16 @@ def _subject_id_card_plain_for_export(subject: Subject, consent: SubjectConsent)
 
     enc = (getattr(subject, 'id_card_encrypted', None) or '').strip()
     if enc:
-        return decrypt_id_card(enc) or ''
+        try:
+            return decrypt_id_card(enc) or ''
+        except Exception as e:
+            logger.warning(
+                'consent_export: 身份证解密失败，已回退为空（subject_id=%s, consent_id=%s）: %s',
+                getattr(subject, 'id', None),
+                getattr(consent, 'id', None),
+                e,
+            )
+            return ''
     sig = consent.signature_data or {}
     cti = sig.get('consent_test_scan_identity') if isinstance(sig.get('consent_test_scan_identity'), dict) else {}
     return (cti.get('declared_id_card') or '').strip()
@@ -1410,14 +1521,40 @@ def get_subjects_basic_export_rows(
     for _sid, group in by_subj.items():
         group.sort(key=lambda x: x.signed_at or x.create_time, reverse=True)
         rep = _pick_representative_consent_for_export(group)
-        subj = rep.subject
-        extra = consent_list_display_fields(rep, None)
-        sc = (extra.get('sc_number') or '').strip()
-        if sc == '-':
+        try:
+            subj = rep.subject
+        except Exception:
+            subj = None
+
+        try:
+            extra = consent_list_display_fields(rep, None) or {}
+        except Exception as e:
+            logger.warning('consent_export: 解析扩展字段失败，已回退为空（consent_id=%s）: %s', getattr(rep, 'id', None), e)
+            extra = {}
+
+        try:
+            sc = (extra.get('sc_number') or '').strip()
+            if sc == '-':
+                sc = ''
+        except Exception:
             sc = ''
-        name = subject_name_display_for_consent(rep)
-        phone = (getattr(subj, 'phone', None) or '').strip()
-        idc = _subject_id_card_plain_for_export(subj, rep)
+
+        try:
+            name = subject_name_display_for_consent(rep)
+        except Exception as e:
+            logger.warning('consent_export: 解析姓名失败，已回退为空（consent_id=%s）: %s', getattr(rep, 'id', None), e)
+            name = ''
+
+        try:
+            phone = (getattr(subj, 'phone', None) or '').strip() if subj is not None else ''
+        except Exception:
+            phone = ''
+
+        try:
+            idc = _subject_id_card_plain_for_export(subj, rep) if subj is not None else ''
+        except Exception as e:
+            logger.warning('consent_export: 解析身份证号失败，已回退为空（consent_id=%s）: %s', getattr(rep, 'id', None), e)
+            idc = ''
         rows.append(
             {
                 'sc_number': sc,
@@ -1513,7 +1650,8 @@ def zip_consent_receipt_pdfs_for_protocol(
                 abs_path = os.path.join(settings.MEDIA_ROOT, rel_s)
                 if not os.path.isfile(abs_path):
                     continue
-                node_title = (getattr(c.icf_version, 'node_title', None) or '').strip() or '知情节点'
+                icfv_zip = safe_subject_consent_icf_version(c)
+                node_title = (getattr(icfv_zip, 'node_title', None) or '').strip() or '知情节点'
                 pdf_base = '_'.join(
                     [
                         _sanitize_zip_path_component(node_title, 120),
@@ -2236,7 +2374,8 @@ def consent_list_display_fields(consent: SubjectConsent, aggregate_signing_resul
                     from apps.subject.services.reception_service import _name_pinyin_initials
 
                     py = _name_pinyin_initials(dn)
-    prot = consent.icf_version.protocol if consent.icf_version_id else None
+    icfv = safe_subject_consent_icf_version(consent)
+    prot = safe_icf_protocol(icfv)
     pcode = (rs.get('project_code') or (getattr(prot, 'code', None) or '')).strip()
     sid = consent.subject_id
     if (not sc or not py) and pcode and sid:
@@ -2264,6 +2403,8 @@ def consent_list_display_fields(consent: SubjectConsent, aggregate_signing_resul
             logger.warning('consent_list_display_fields: 补全 SC/拼音首字母失败（已跳过）: %s', e)
     signing_kind = (sig.get('signing_kind') or '').strip()
     signing_type = '测试' if signing_kind == 'test' else '正式'
+    phone_masked = _mask_phone(subject_phone_display_for_consent(consent))
+    id_card_masked = _mask_id_card(subject_id_card_display_for_consent(consent))
     sr = (
         aggregate_signing_result
         if aggregate_signing_result is not None
@@ -2274,6 +2415,8 @@ def consent_list_display_fields(consent: SubjectConsent, aggregate_signing_resul
         'name_pinyin_initials': py or '-',
         'signing_result': sr,
         'signing_type': signing_type,
+        'phone_masked': phone_masked or '-',
+        'id_card_masked': id_card_masked or '-',
     }
 
 
@@ -2447,8 +2590,8 @@ def get_consent_preview_for_execution(protocol_id: int, consent_id: int) -> Opti
     )
     if not c:
         return None
-    icf = c.icf_version
-    protocol = getattr(icf, 'protocol', None) if icf else None
+    icf = safe_subject_consent_icf_version(c)
+    protocol = safe_icf_protocol(icf)
     from apps.protocol.services.protocol_service import resolve_icf_body_html_for_execution
 
     content = resolve_icf_body_html_for_execution(icf) if icf else ''

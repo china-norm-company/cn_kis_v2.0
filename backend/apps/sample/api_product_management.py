@@ -27,7 +27,6 @@ from .services.product_management_service import (
     list_kits,
     get_kit,
     create_dispensing,
-    check_existing_active_dispensing,
     prepare_dispensing,
     execute_dispensing,
     confirm_dispensing,

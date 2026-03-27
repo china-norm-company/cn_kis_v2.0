@@ -20,9 +20,9 @@ const todayQueue = {
     },
     {
       appointment_id: 2, subject_id: 102, subject_name: '李四', subject_no: 'SUB-202602-0002',
-      appointment_time: '09:30', purpose: '粗筛', task_type: 'pre_screening',
+      appointment_time: '09:30', purpose: '初筛', task_type: 'pre_screening',
       status: 'waiting', checkin_id: null, checkin_time: null, checkout_time: null, enrollment_id: null,
-      visit_point: '粗筛', project_code: 'PROJ-001', project_name: '测试项目一',
+      visit_point: '初筛', project_code: 'PROJ-001', project_name: '测试项目一',
     },
     {
       appointment_id: 3, subject_id: 103, subject_name: '王五', subject_no: 'SUB-202602-0003',
@@ -238,8 +238,8 @@ test.describe('场景 R1-R5: 接待台看板流程', () => {
     await page.goto(RECEPTION_DASHBOARD_URL)
     await page.waitForLoadState('networkidle')
     const preScreeningPopup = page.waitForEvent('popup')
-    await expect(page.getByRole('button', { name: '发起粗筛' })).toBeVisible()
-    await page.getByRole('button', { name: '发起粗筛' }).first().click()
+    await expect(page.getByRole('button', { name: '发起初筛' })).toBeVisible()
+    await page.getByRole('button', { name: '发起初筛' }).first().click()
     const popup = await preScreeningPopup
     await expect(popup).toHaveURL(/\/recruitment\/#\/prescreening/)
     await popup.close()

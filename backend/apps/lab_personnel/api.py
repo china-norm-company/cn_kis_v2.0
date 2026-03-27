@@ -14,7 +14,7 @@
 from ninja import Router, Schema, Query
 from pydantic import ConfigDict
 from typing import Optional, List
-from datetime import date, time
+from datetime import date
 
 from apps.identity.decorators import require_permission
 
