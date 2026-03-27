@@ -64,12 +64,16 @@ export function createApiClient(config: ApiClientConfig = {}): AxiosInstance {
       if (response.config.responseType === 'blob' || response.config.responseType === 'arraybuffer') {
         return response
       }
-      const body = response.data as { code?: number; msg?: string; data?: unknown } | undefined
-      if (body && typeof body === 'object' && body.code != null && body.code !== 0 && body.code !== 200) {
-        const msg = body.msg || '请求失败'
-        const err = new Error(msg) as Error & { response: typeof response }
-        err.response = response
-        return Promise.reject(err)
+      const body = response.data as { code?: number | string; msg?: string; data?: unknown } | undefined
+      // 兼容 code 为字符串 "200" 或数字 200（严格相等曾误判为业务失败；且部分代理/中间层会改类型）
+      if (body && typeof body === 'object' && !Array.isArray(body) && body.code != null) {
+        const c = Number(body.code)
+        if (!Number.isNaN(c) && c !== 0 && c !== 200) {
+          const msg = body.msg || '请求失败'
+          const err = new Error(msg) as Error & { response: typeof response }
+          err.response = response
+          return Promise.reject(err)
+        }
       }
       return response
     },

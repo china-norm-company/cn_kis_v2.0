@@ -49,6 +49,8 @@ export interface WorkOrderDetail extends WorkOrderListItem {
   precautions: string | null
   project_requirements: string | null
   executions: ExecutionItemSummary[]
+  /** 执行记录总条数（include_executions=false 时仍有值） */
+  executions_total?: number
   schedule_plan?: SchedulePlanData | null
 }
 

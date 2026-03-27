@@ -12,8 +12,14 @@ import {
   getLocalRouteTarget,
   needsPhoneBind,
   refreshRolesFromProfile,
-  refreshUserInfo,
 } from '../../utils/auth'
+import {
+  computeDiaryPendingBadgeCount,
+  getDiaryExplicitProjectIdFromEnv,
+  getLocalTodayYmd,
+  parseDiaryPeriodBounds,
+  parseRetrospectiveDaysMax,
+} from '../../utils/diaryRules'
 import './index.scss'
 
 const LOGIN_PAGE_BUILD = 'login-build-2026-02-28-hero-css-hi-fi'
@@ -181,6 +187,16 @@ const GUEST_ACTIONS: Array<{ title: string; sub: string; url: string }> = [
 const subjectApi = buildSubjectEndpoints(taroApiClient)
 const SHOW_DEBUG_INFO = process.env.NODE_ENV !== 'production'
 
+/** 日记 2.0：本地/预览时指定全链路 project_id，首页「每日日记」会带上参数 */
+function getDiaryPagePath(): string {
+  const pid =
+    typeof process !== 'undefined' && process.env?.TARO_APP_DIARY_PROJECT_ID
+      ? String(process.env.TARO_APP_DIARY_PROJECT_ID).trim()
+      : ''
+  if (pid) return `/pages/diary/index?project_id=${encodeURIComponent(pid)}`
+  return '/pages/diary/index'
+}
+
 export default function IndexPage() {
   const [loggedIn, setLoggedIn] = useState(false)
   const [loginSubmitting, setLoginSubmitting] = useState(false)
@@ -198,6 +214,7 @@ export default function IndexPage() {
   const [enrollmentsData, setEnrollmentsData] = useState<MyEnrollmentsData | null>(null)
   const [homeDashboard, setHomeDashboard] = useState<HomeDashboardData | null>(null)
   const [moreProjectsExpanded, setMoreProjectsExpanded] = useState(false)
+  const [diaryBadgeCount, setDiaryBadgeCount] = useState(0)
 
   // 使用 ref 防止并发重复请求（避免 useDidShow 和 handleLogin 同时触发）
   const isFetchingHomeDataRef = useRef(false)
@@ -275,6 +292,7 @@ export default function IndexPage() {
       // 检查手机号绑定状态，未绑定则跳转绑定页
       const bindRes = await getMyBindingStatus()
       if (bindRes.code === 200 && bindRes.data && !bindRes.data.is_bound) {
+        setDiaryBadgeCount(0)
         Taro.navigateTo({ url: '/pages/bind-phone/index' })
         return
       }
@@ -336,9 +354,42 @@ export default function IndexPage() {
       } else {
         setQueueInfo(null)
       }
+
+      try {
+        const pid = getDiaryExplicitProjectIdFromEnv()
+        const diaryRes = await subjectApi.getMyDiary(pid > 0 ? pid : undefined)
+        if (diaryRes.code === 200 && diaryRes.data) {
+          const d = diaryRes.data as {
+            items?: Array<{ entry_date: string }>
+            diary_period?: { start?: string; end?: string } | null
+            retrospective_days_max?: number
+          }
+          const diaryItems = Array.isArray(d.items) ? d.items : []
+          const rawDp = d.diary_period
+          const ruleForBounds: Record<string, unknown> =
+            rawDp && typeof rawDp === 'object' && (rawDp.start || rawDp.end)
+              ? { diary_period: rawDp as Record<string, unknown> }
+              : {}
+          const { start: periodStart, end: periodEnd } = parseDiaryPeriodBounds(ruleForBounds)
+          const retro = parseRetrospectiveDaysMax(undefined, d.retrospective_days_max ?? null)
+          const n = computeDiaryPendingBadgeCount({
+            todayYmd: getLocalTodayYmd(),
+            periodStart,
+            periodEnd,
+            entries: diaryItems,
+            retrospectiveDaysMax: retro,
+          })
+          setDiaryBadgeCount(n)
+        } else {
+          setDiaryBadgeCount(0)
+        }
+      } catch {
+        setDiaryBadgeCount(0)
+      }
     } catch {
       setQueueInfo(null)
       setHomeDashboard(null)
+      setDiaryBadgeCount(0)
       setHomeDataError('首页信息刷新失败，可点击重试')
     } finally {
       isFetchingHomeDataRef.current = false
@@ -357,6 +408,7 @@ export default function IndexPage() {
       setNextVisit(null)
       setQueueInfo(null)
       setHomeDashboard(null)
+      setDiaryBadgeCount(0)
       return
     }
 
@@ -370,6 +422,7 @@ export default function IndexPage() {
       setNextVisit(null)
       setQueueInfo(null)
       setHomeDashboard(null)
+      setDiaryBadgeCount(0)
       return
     }
     setNeedsBind(false)
@@ -913,10 +966,19 @@ export default function IndexPage() {
           </View>
           <View
             className='action-item'
-            onClick={() => navigateTo('/pages/diary/index')}
+            onClick={() => navigateTo(getDiaryPagePath())}
           >
-            <View className='action-icon action-icon-diary'>
-              <Text className='action-icon-text'>记</Text>
+            <View className='action-icon-wrap'>
+              <View className='action-icon action-icon-diary'>
+                <Text className='action-icon-text'>记</Text>
+              </View>
+              {diaryBadgeCount > 0 ? (
+                <View className='action-icon-badge'>
+                  <Text className='action-icon-badge__text'>
+                    {diaryBadgeCount > 99 ? '99+' : String(diaryBadgeCount)}
+                  </Text>
+                </View>
+              ) : null}
             </View>
             <Text className='action-label'>每日日记</Text>
           </View>

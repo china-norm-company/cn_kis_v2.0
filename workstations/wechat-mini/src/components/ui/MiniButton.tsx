@@ -6,6 +6,7 @@ interface MiniButtonProps {
   onClick?: () => void
   disabled?: boolean
   variant?: 'primary' | 'secondary' | 'danger'
+  className?: string
 }
 
 export default function MiniButton({
@@ -13,8 +14,9 @@ export default function MiniButton({
   onClick,
   disabled = false,
   variant = 'primary',
+  className = '',
 }: MiniButtonProps) {
-  const cls = `mini-btn mini-btn--${variant}${disabled ? ' mini-btn--disabled' : ''}`
+  const cls = `mini-btn mini-btn--${variant}${disabled ? ' mini-btn--disabled' : ''}${className ? ` ${className}` : ''}`
   return (
     <View className={cls} onClick={disabled ? undefined : onClick}>
       <Text className='mini-btn__text'>{children}</Text>

@@ -3,7 +3,7 @@
  * 不依赖登录、API，仅渲染组件本身
  */
 import { View } from '@tarojs/components'
-import HeroBrandAnimation from '../../components/ui/HeroBrandAnimation'
+import HeroBrandAnimation from '@/components/ui/HeroBrandAnimation'
 import './index.scss'
 
 export default function DemoHeroPage() {

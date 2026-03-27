@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { View, Text, Input, Textarea, Picker } from '@tarojs/components'
 import Taro, { useRouter } from '@tarojs/taro'
 import { buildSubjectEndpoints } from '@cn-kis/subject-core'
-import { taroApiClient } from '../../adapters/subject-core'
+import { taroApiClient } from '@/adapters/subject-core'
 
 const subjectApi = buildSubjectEndpoints(taroApiClient)
 import './index.scss'

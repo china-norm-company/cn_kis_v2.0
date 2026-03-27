@@ -1,9 +1,10 @@
 """
 样品发放（产品发放）业务逻辑 — 读写 cn_kis default 库，表与 KIS 结构一致。
 """
+import re
 from datetime import date, datetime, timezone, timedelta
 from decimal import Decimal
-from typing import Optional, Any
+from typing import Optional, Any, Tuple
 
 # 东八区时间，用于操作时间等
 _TZ_UTC8 = timezone(timedelta(hours=8))
@@ -101,6 +102,399 @@ def _execution_progress(project_start: date, project_end: date) -> str:
     return "completed"
 
 
+def _chinese_date_to_iso(s: str) -> Optional[str]:
+    """将「YYYY年M月D日」转为 YYYY-MM-DD，用于日期匹配。"""
+    if not s or not isinstance(s, str):
+        return None
+    m = re.match(r"(\d{4})年(\d{1,2})月(\d{1,2})日", s.strip())
+    if not m:
+        return None
+    try:
+        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if 1 <= mo <= 12 and 1 <= d <= 31:
+            return f"{y}-{mo:02d}-{d:02d}"
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
+def _eo_row_to_dict(headers: list, row) -> dict:
+    """执行订单一行与表头对齐（与 scheduling.workorder_sync 一致）。"""
+    if not headers:
+        return row if isinstance(row, dict) else {}
+    if isinstance(row, list):
+        vals = list(row) + [""] * max(0, len(headers) - len(row))
+        return {headers[i]: vals[i] for i in range(len(headers))}
+    if isinstance(row, dict):
+        return row
+    return {}
+
+
+def _last_match_row_for_project_in_upload(rec, project_no: str) -> Optional[dict]:
+    """单条上传记录内，该项目编号对应的最后一行（与历史扫描逻辑一致）。"""
+    if not rec or not getattr(rec, "data", None):
+        return None
+    data = rec.data if isinstance(rec.data, dict) else {}
+    headers = data.get("headers") or []
+    rows = data.get("rows") or []
+    pno = (project_no or "").strip()
+    if not pno:
+        return None
+    last_match = None
+    for row in rows:
+        d = _eo_row_to_dict(headers, row)
+        if (d.get("项目编号") or "").strip() == pno:
+            last_match = d
+    return last_match
+
+
+def _load_execution_order_uploads(limit: int = 50):
+    """单次查询执行订单上传表，供概览接口复用，避免每个工单重复扫表。"""
+    from apps.scheduling.models import ExecutionOrderUpload
+
+    return list(ExecutionOrderUpload.objects.order_by("-update_time", "-id")[:limit])
+
+
+def get_project_row_from_execution_orders(project_no: str) -> Optional[dict]:
+    """
+    按项目编号从执行台 t_execution_order_upload 取项目信息（研究员、督导、项目名称等）。
+    与 cn_kis_v1.0 一致：与执行台项目管理同源，不依赖仅写入样品工单的同步链路。
+    """
+    pno = (project_no or "").strip()
+    if not pno:
+        return None
+    try:
+        for rec in _load_execution_order_uploads(120):
+            lm = _last_match_row_for_project_in_upload(rec, pno)
+            if lm is not None:
+                return lm
+    except Exception:
+        return None
+    return None
+
+
+def _parse_schedule_plan_raw(text: str) -> Optional[dict]:
+    """
+    解析「执行排期」文本为结构化数据，与执行台详情页排期计划展示一致。
+    """
+    if not text or not str(text).strip():
+        return None
+    text = str(text).strip()
+    rows = []
+    all_dates = []
+    for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        colon_idx = line.find(":")
+        if colon_idx < 0:
+            colon_idx = line.find("：")
+        if colon_idx < 0:
+            continue
+        visit_point = line[:colon_idx].strip()
+        date_part = line[colon_idx + 1 :].strip()
+        if not visit_point or not date_part:
+            continue
+        dates = []
+        last_y, last_m, last_d = None, None, None
+        segments = re.split(r"[、，]\s*", date_part)
+        for seg in segments:
+            seg = re.sub(r"\s*\([^)]*\)\s*", "", re.sub(r"\s*（[^）]*）\s*", "", seg)).strip()
+            if not seg or "\u0335" in seg or "\u0336" in seg:
+                continue
+            found = False
+            for m in re.finditer(r"(\d{4})年(\d{1,2})月(\d{1,2})日", seg):
+                try:
+                    y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                    if 1 <= mo <= 12 and 1 <= d <= 31:
+                        d_obj = date(y, mo, d)
+                        dates.append(f"{y}年{mo}月{d}日")
+                        all_dates.append(d_obj)
+                        last_y, last_m, last_d = y, mo, d
+                        found = True
+                except (ValueError, TypeError):
+                    pass
+            if found:
+                continue
+            for m in re.finditer(r"(\d{4})[/\-](\d{1,2})[/\-](\d{1,2})", seg):
+                try:
+                    y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                    if 1 <= mo <= 12 and 1 <= d <= 31:
+                        dates.append(f"{y}年{mo}月{d}日")
+                        all_dates.append(date(y, mo, d))
+                        last_y, last_m, last_d = y, mo, d
+                        found = True
+                except (ValueError, TypeError):
+                    pass
+            if found:
+                continue
+            md = re.match(r"^(\d{1,2})/(\d{1,2})$", seg)
+            if md and last_y is not None:
+                try:
+                    mo, d = int(md.group(1)), int(md.group(2))
+                    if 1 <= mo <= 12 and 1 <= d <= 31:
+                        d_obj = date(last_y, mo, d)
+                        dates.append(f"{last_y}年{mo}月{d}日")
+                        all_dates.append(d_obj)
+                        last_m, last_d = mo, d
+                        continue
+                except (ValueError, TypeError):
+                    pass
+            day_only = re.match(r"^(\d{1,2})$", seg)
+            if day_only and last_y is not None and last_m is not None:
+                try:
+                    d = int(day_only.group(1))
+                    if 1 <= d <= 31:
+                        d_obj = date(last_y, last_m, d)
+                        dates.append(f"{last_y}年{last_m}月{d}日")
+                        all_dates.append(d_obj)
+                        last_d = d
+                except (ValueError, TypeError):
+                    pass
+        if dates:
+            rows.append({"visitPoint": visit_point, "dates": dates})
+    if not rows:
+        return None
+    overall_start = ""
+    overall_end = ""
+    if all_dates:
+        d_min, d_max = min(all_dates), max(all_dates)
+        overall_start = f"{d_min.year}年{d_min.month}月{d_min.day}日"
+        overall_end = f"{d_max.year}年{d_max.month}月{d_max.day}日"
+    return {
+        "rows": rows,
+        "overall_start": overall_start,
+        "overall_end": overall_end,
+    }
+
+
+def get_schedule_plan_from_execution_order(project_no: str) -> Optional[dict]:
+    """按 project_no 从执行台 ExecutionOrderUpload 获取排期计划（与 v1 一致）。"""
+    if not project_no or not str(project_no).strip():
+        return None
+    pno = str(project_no).strip()
+    try:
+        for rec in _load_execution_order_uploads(50):
+            lm = _last_match_row_for_project_in_upload(rec, pno)
+            if lm is None:
+                continue
+            raw = lm.get("执行排期") or lm.get("测试具体排期") or ""
+            parsed = _parse_schedule_plan_raw(str(raw).strip())
+            if parsed:
+                parsed["raw"] = raw
+            return parsed
+    except Exception:
+        pass
+    return None
+
+
+def _eo_row_and_schedule_from_execution_orders(project_no: str) -> Tuple[Optional[dict], Optional[dict]]:
+    """
+    一次读取 execution_order_upload（最多 120 条），同时得到执行台同步行与排期解析结果。
+    原先 work_order_detail 内两次独立查询（排期 50 条 + 项目行 120 条），热路径合并为单次查询。
+    """
+    pno = (project_no or "").strip()
+    if not pno:
+        return None, None
+    try:
+        uploads = _load_execution_order_uploads(120)
+    except Exception:
+        return None, None
+    eo_row = None
+    for rec in uploads:
+        lm = _last_match_row_for_project_in_upload(rec, pno)
+        if lm is not None:
+            eo_row = lm
+            break
+    schedule_plan = None
+    for rec in uploads[:50]:
+        lm = _last_match_row_for_project_in_upload(rec, pno)
+        if lm is None:
+            continue
+        raw = lm.get("执行排期") or lm.get("测试具体排期") or ""
+        parsed = _parse_schedule_plan_raw(str(raw).strip())
+        if parsed:
+            parsed["raw"] = raw
+        schedule_plan = parsed
+        break
+    return eo_row, schedule_plan
+
+
+def _display_str_from_eo(eo_row: Optional[dict], key: str, db_val: Optional[str]) -> Optional[str]:
+    """执行订单有非空值则优先，否则用工单表字段。"""
+    if eo_row:
+        raw = eo_row.get(key)
+        if raw is not None and str(raw).strip():
+            return str(raw).strip()
+    return db_val
+
+
+def _overview_date_to_iso(d_str: str) -> Optional[str]:
+    """
+    排期单元格中的日期可能是「YYYY年M月D日」、YYYY-MM-DD 或 YYYY/M/D。
+    与 counts / by-date 必须使用同一规则，否则会出现月历有角标、当日表格为空。
+    """
+    s = (d_str or "").strip()
+    if not s:
+        return None
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        try:
+            y, mo, d = int(s[0:4]), int(s[5:7]), int(s[8:10])
+            if 1 <= mo <= 12 and 1 <= d <= 31:
+                return f"{y}-{mo:02d}-{d:02d}"
+        except (ValueError, TypeError):
+            pass
+    m = re.match(r"^(\d{4})[/\-](\d{1,2})[/\-](\d{1,2})$", s)
+    if m:
+        try:
+            y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if 1 <= mo <= 12 and 1 <= d <= 31:
+                return f"{y}-{mo:02d}-{d:02d}"
+        except (ValueError, TypeError):
+            pass
+    return _chinese_date_to_iso(s)
+
+
+def _plans_index_from_uploads(uploads: list) -> dict[str, Optional[dict]]:
+    """
+    按项目编号建立排期解析结果索引：与 get_schedule_plan_from_execution_order(pno) 单项目语义一致
+    （按上传记录顺序，每条记录内同一项目编号取最后一行）。
+    """
+    result: dict[str, Optional[dict]] = {}
+    for rec in uploads:
+        if not rec or not getattr(rec, "data", None):
+            continue
+        data = rec.data if isinstance(rec.data, dict) else {}
+        headers = data.get("headers") or []
+        rows = data.get("rows") or []
+        last_by_pno: dict[str, dict] = {}
+        for row in rows:
+            d = _eo_row_to_dict(headers, row)
+            pno = (d.get("项目编号") or "").strip()
+            if pno:
+                last_by_pno[pno] = d
+        for pno, last_match in last_by_pno.items():
+            if pno in result:
+                continue
+            raw = last_match.get("执行排期") or last_match.get("测试具体排期") or ""
+            parsed = _parse_schedule_plan_raw(str(raw).strip())
+            if parsed:
+                parsed["raw"] = raw
+            result[pno] = parsed
+    return result
+
+
+def _sample_size_for_project_from_uploads(uploads: list, pno: str, default: int) -> int:
+    """与 v1 一致：取首条上传记录的首行匹配项目编号时的样本量。"""
+    for rec in uploads:
+        if not rec or not getattr(rec, "data", None):
+            continue
+        data = rec.data if isinstance(rec.data, dict) else {}
+        headers = data.get("headers") or []
+        rows = data.get("rows") or []
+        first = rows[0] if rows else []
+        if isinstance(first, list) and headers:
+            first_d = dict(zip(headers, first))
+        else:
+            first_d = first if isinstance(first, dict) else {}
+        if (first_d.get("项目编号") or "").strip() != pno:
+            continue
+        val = first_d.get("样本量") or first_d.get("样本数量") or first_d.get("最低样本量")
+        if val is not None and str(val).strip():
+            try:
+                return max(0, int(float(str(val).replace(",", ""))))
+            except (ValueError, TypeError):
+                pass
+        break
+    return default
+
+
+def execution_overview_by_date(target_date: str) -> list[dict]:
+    """
+    按日期返回项目执行概览条目（接待台「项目执行概览」日历）。
+    target_date: YYYY-MM-DD。
+    返回 [{ project_no, project_name, visit_point, sample_size, visit_sequence, daily_progress }]
+    """
+    if not target_date or len(target_date) < 10:
+        return []
+    target_date = target_date[:10]
+    items: list[dict] = []
+    uploads = _load_execution_order_uploads()
+    plans_index = _plans_index_from_uploads(uploads)
+    work_orders = list(ProductDistributionWorkOrder.objects.filter(is_delete=0).order_by("-created_at"))
+    for wo in work_orders:
+        pno = (wo.project_no or "").strip()
+        if not pno:
+            continue
+        plan = plans_index.get(pno)
+        if not plan or not plan.get("rows"):
+            continue
+        default_vc = wo.visit_count or 0
+        try:
+            sample_size: str | int = _sample_size_for_project_from_uploads(uploads, pno, default_vc)
+        except Exception:
+            sample_size = default_vc
+        for idx, row in enumerate(plan["rows"]):
+            dates = row.get("dates") or []
+            for d_str in dates:
+                iso = _overview_date_to_iso(d_str)
+                if iso == target_date:
+                    seq = f"V{idx + 1}"
+                    items.append({
+                        "project_no": pno,
+                        "project_name": (wo.project_name or "").strip() or "—",
+                        "visit_point": (row.get("visitPoint") or "").strip() or "—",
+                        "sample_size": sample_size,
+                        "visit_sequence": seq,
+                        "daily_progress": "",
+                    })
+                    break
+    return items
+
+
+def execution_overview_counts_by_month(month_key: str) -> dict[str, int]:
+    """
+    按月份返回每日项目执行数量（月历角标）。
+    month_key: YYYY-MM，如 2026-03
+    返回: {"2026-03-01": 3, ...}，仅包含有项目的日期
+    """
+    if not month_key or len(month_key) < 7:
+        return {}
+    parts = month_key.split("-")
+    if len(parts) < 2:
+        return {}
+    try:
+        y, m = int(parts[0]), int(parts[1])
+        if m < 1 or m > 12:
+            return {}
+    except (ValueError, TypeError):
+        return {}
+    from calendar import monthrange
+
+    _, last_day = monthrange(y, m)
+    prefix = f"{y}-{m:02d}-"
+    counts: dict[str, int] = {}
+    uploads = _load_execution_order_uploads()
+    plans_index = _plans_index_from_uploads(uploads)
+    work_orders = list(ProductDistributionWorkOrder.objects.filter(is_delete=0).order_by("-created_at"))
+    for wo in work_orders:
+        pno = (wo.project_no or "").strip()
+        if not pno:
+            continue
+        plan = plans_index.get(pno)
+        if not plan or not plan.get("rows"):
+            continue
+        for row in plan["rows"]:
+            dates = row.get("dates") or []
+            for d_str in dates:
+                iso = _overview_date_to_iso(d_str)
+                if iso and iso.startswith(prefix) and len(iso) >= 10:
+                    day = iso[8:10]
+                    if day.isdigit() and 1 <= int(day) <= last_day:
+                        counts[iso] = counts.get(iso, 0) + 1
+    return counts
+
+
 # ---------- 工单 ----------
 
 def work_order_list(
@@ -150,18 +544,36 @@ def work_order_list(
     return {"list": list_data, "total": total, "page": page, "pageSize": page_size}
 
 
-def work_order_detail(work_order_id: int) -> Optional[dict]:
+def _execution_queryset_for_work_order_row(row: ProductDistributionWorkOrder):
+    """与工单关联的执行记录：work_order_id 或 related_project_no=项目编号（历史数据）。"""
+    project_no = (row.project_no or "").strip()
+    q = Q(work_order_id=row.id)
+    if project_no:
+        q |= Q(related_project_no=project_no)
+    pk_list = list(
+        ProductDistributionExecution.objects.filter(is_delete=0)
+        .filter(q)
+        .values_list("id", flat=True)
+        .distinct()
+    )
+    if not pk_list:
+        return ProductDistributionExecution.objects.none()
+    return ProductDistributionExecution.objects.filter(id__in=pk_list, is_delete=0).order_by("-created_at")
+
+
+def work_order_executions_page(work_order_id: int, page: int = 1, page_size: int = 10) -> Optional[dict]:
+    """工单下执行记录分页（摘要列表），供接待台分页拉取详情。"""
     try:
         row = ProductDistributionWorkOrder.objects.get(id=work_order_id, is_delete=0)
     except ProductDistributionWorkOrder.DoesNotExist:
         return None
-    execs = (
-        ProductDistributionExecution.objects.filter(
-            work_order_id=work_order_id, is_delete=0
-        )
-        .order_by("-created_at")
-    )
-    executions = [
+    qs = _execution_queryset_for_work_order_row(row)
+    total = qs.count()
+    page = max(1, page)
+    page_size = min(max(1, page_size), 100)
+    start = (page - 1) * page_size
+    chunk = list(qs[start : start + page_size])
+    list_data = [
         {
             "id": e.id,
             "execution_date": str(e.execution_date) if e.execution_date else None,
@@ -171,24 +583,81 @@ def work_order_detail(work_order_id: int) -> Optional[dict]:
             "remark": e.remark,
             "created_at": _dt_iso_utc8_stored(e.created_at),
         }
-        for e in execs
+        for e in chunk
     ]
+    return {"list": list_data, "total": total, "page": page, "pageSize": page_size}
+
+
+def work_order_detail(work_order_id: int, include_executions: bool = True) -> Optional[dict]:
+    try:
+        row = ProductDistributionWorkOrder.objects.get(id=work_order_id, is_delete=0)
+    except ProductDistributionWorkOrder.DoesNotExist:
+        return None
+    execs = _execution_queryset_for_work_order_row(row)
+    exec_total = execs.count()
+    if include_executions:
+        executions = [
+            {
+                "id": e.id,
+                "execution_date": str(e.execution_date) if e.execution_date else None,
+                "subject_rd": e.subject_rd,
+                "subject_initials": e.subject_initials,
+                "operator_name": e.operator_name,
+                "remark": e.remark,
+                "created_at": _dt_iso_utc8_stored(e.created_at),
+            }
+            for e in execs
+        ]
+    else:
+        executions = []
+    # 与 cn_kis_v1.0 一致：排期/项目主数据来自执行台 ExecutionOrderUpload，不替代 executions（后者仍来自 product_distribution_execution）
+    eo, schedule_plan = _eo_row_and_schedule_from_execution_orders(row.project_no or "")
+    start_date = row.project_start_date
+    end_date = row.project_end_date
+    if schedule_plan and schedule_plan.get("overall_start") and schedule_plan.get("overall_end"):
+        exec_start = _chinese_date_to_iso(str(schedule_plan["overall_start"]))
+        exec_end = _chinese_date_to_iso(str(schedule_plan["overall_end"]))
+        if exec_start and exec_end:
+            start_date = date.fromisoformat(exec_start)
+            end_date = date.fromisoformat(exec_end)
+            if (row.project_start_date != start_date or row.project_end_date != end_date) and row.project_no:
+                update_fields = []
+                if row.project_start_date != start_date:
+                    row.project_start_date = start_date
+                    update_fields.append("project_start_date")
+                if row.project_end_date != end_date:
+                    row.project_end_date = end_date
+                    update_fields.append("project_end_date")
+                if update_fields:
+                    row.save(update_fields=update_fields + ["updated_at"])
+
+    visit_count_out = row.visit_count or 0
+    if eo:
+        vc = eo.get("访视次数") or eo.get("访视数")
+        if vc is not None and str(vc).strip():
+            try:
+                visit_count_out = max(0, int(float(str(vc).replace(",", ""))))
+            except (ValueError, TypeError):
+                pass
+
     return {
         "id": row.id,
         "work_order_no": row.work_order_no,
         "project_no": row.project_no,
-        "project_name": row.project_name,
-        "project_start_date": str(row.project_start_date),
-        "project_end_date": str(row.project_end_date),
-        "visit_count": row.visit_count or 0,
-        "researcher": row.researcher,
-        "supervisor": row.supervisor,
+        "project_name": _display_str_from_eo(eo, "项目名称", row.project_name) or row.project_name,
+        "project_start_date": str(start_date),
+        "project_end_date": str(end_date),
+        "visit_count": visit_count_out,
+        "researcher": _display_str_from_eo(eo, "研究员", row.researcher),
+        "supervisor": _display_str_from_eo(eo, "督导", row.supervisor),
         "usage_method": row.usage_method,
         "usage_frequency": row.usage_frequency,
         "precautions": row.precautions,
         "project_requirements": row.project_requirements,
-        "execution_progress": _execution_progress(row.project_start_date, row.project_end_date),
+        "execution_progress": _execution_progress(start_date, end_date),
         "executions": executions,
+        "executions_total": exec_total,
+        "schedule_plan": schedule_plan,
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
@@ -258,6 +727,24 @@ def work_order_create(data: dict, user_id: Optional[int] = None, user_name: Opti
     }
 
 
+def work_order_upsert_by_project_no(data: dict) -> dict:
+    """
+    按 project_no 创建或更新工单，供执行台→接待台同步使用。
+    若 project_no 已存在则更新，否则新建。返回工单 id 与是否更新。
+    """
+    project_no = (data.get("project_no") or "").strip()
+    if not project_no:
+        raise ValueError("project_no 不能为空")
+    existing = ProductDistributionWorkOrder.objects.filter(
+        project_no=project_no, is_delete=0
+    ).first()
+    if existing:
+        work_order_update(existing.id, data)
+        return {"id": existing.id, "updated": True}
+    result = work_order_create(data)
+    return {"id": result["id"], "updated": False}
+
+
 @transaction.atomic(using="default")
 def work_order_update(work_order_id: int, data: dict, user_id: Optional[int] = None) -> dict:
     try:
@@ -295,8 +782,9 @@ def work_order_update(work_order_id: int, data: dict, user_id: Optional[int] = N
     if "project_requirements" in data:
         row.project_requirements = _opt_str(data["project_requirements"])
 
-    if row.project_start_date and row.project_end_date and row.project_end_date <= row.project_start_date:
-        raise ValueError("项目结束日期必须大于启动日期")
+    # 与 work_order_create 一致：允许开始日=结束日（单日项目）；仅禁止结束早于开始
+    if row.project_start_date and row.project_end_date and row.project_end_date < row.project_start_date:
+        raise ValueError("项目结束日期不能早于启动日期")
     row.updated_by = user_id
     row.updated_at = datetime.now()
     row.save(using="default", update_fields=[
@@ -812,8 +1300,17 @@ def execution_create(data: dict, user_id: Optional[int] = None, user_name: Optio
     if not ProductDistributionWorkOrder.objects.filter(id=work_order_id, is_delete=0).exists():
         raise ValueError("工单不存在")
     related_project_no = (data.get("related_project_no") or "").strip()
-    subject_rd = (data.get("subject_rd") or "").strip()
+    screening_sc = _opt_str(data.get("screening_no"))
+    if not screening_sc:
+        raise ValueError("请填写受试者SC号")
+    # 同一项目下受试者 SC 号唯一
     if ProductDistributionExecution.objects.filter(
+        related_project_no=related_project_no, screening_no=screening_sc, is_delete=0
+    ).exists():
+        raise ValueError(f"受试者SC号：{screening_sc} 已存在于该项目中")
+    subject_rd = (data.get("subject_rd") or "").strip()
+    # 仅当填写了 RD 号时校验项目内唯一；未填则允许多条执行记录
+    if subject_rd and ProductDistributionExecution.objects.filter(
         related_project_no=related_project_no, subject_rd=subject_rd, is_delete=0
     ).exists():
         raise ValueError(f"RD号：{subject_rd} 已存在于项目中")
@@ -825,7 +1322,7 @@ def execution_create(data: dict, user_id: Optional[int] = None, user_name: Optio
         related_project_no=related_project_no,
         subject_rd=subject_rd,
         subject_initials=(data.get("subject_initials") or "").strip(),
-        screening_no=_opt_str(data.get("screening_no")),
+        screening_no=screening_sc,
         execution_date=data.get("execution_date"),
         operator_id=user_id,
         operator_name=operator_display_name,
@@ -893,18 +1390,35 @@ def execution_update(
 
     if "related_project_no" in data and data["related_project_no"] is not None:
         row.related_project_no = (data["related_project_no"] or "").strip()
+        # 项目变更后，当前 SC 号在新项目下仍需唯一
+        sc_cur = _opt_str(row.screening_no)
+        if sc_cur:
+            dup = ProductDistributionExecution.objects.filter(
+                related_project_no=row.related_project_no, screening_no=sc_cur, is_delete=0
+            ).exclude(id=execution_id).first()
+            if dup:
+                raise ValueError(f"受试者SC号：{sc_cur} 已存在于该项目中")
     if "subject_rd" in data and data["subject_rd"] is not None:
         new_rd = (data["subject_rd"] or "").strip()
-        other = ProductDistributionExecution.objects.filter(
-            related_project_no=row.related_project_no, subject_rd=new_rd, is_delete=0
-        ).exclude(id=execution_id).first()
-        if other:
-            raise ValueError(f"RD号：{new_rd} 已存在于项目中")
+        if new_rd:
+            other = ProductDistributionExecution.objects.filter(
+                related_project_no=row.related_project_no, subject_rd=new_rd, is_delete=0
+            ).exclude(id=execution_id).first()
+            if other:
+                raise ValueError(f"RD号：{new_rd} 已存在于项目中")
         row.subject_rd = new_rd
     if "subject_initials" in data and data["subject_initials"] is not None:
         row.subject_initials = (data["subject_initials"] or "").strip()
     if "screening_no" in data:
-        row.screening_no = _opt_str(data.get("screening_no"))
+        v = _opt_str(data.get("screening_no"))
+        if not v:
+            raise ValueError("请填写受试者SC号")
+        other = ProductDistributionExecution.objects.filter(
+            related_project_no=row.related_project_no, screening_no=v, is_delete=0
+        ).exclude(id=execution_id).first()
+        if other:
+            raise ValueError(f"受试者SC号：{v} 已存在于该项目中")
+        row.screening_no = v
     if "execution_date" in data:
         row.execution_date = data["execution_date"]
     if "exception_type" in data:

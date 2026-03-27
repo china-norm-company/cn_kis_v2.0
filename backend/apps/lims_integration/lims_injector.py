@@ -40,6 +40,7 @@ import contextvars
 import json
 import logging
 import re
+
 from datetime import date as date_cls, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -166,6 +167,67 @@ def _extract_field(raw_data: dict, field_key: str, default: str = '') -> str:
         if val and str(val).strip():
             return str(val).strip()
     return default
+
+
+def _parse_lims_date(val: Any) -> Optional[date_cls]:
+    """尽量宽松地把 LIMS 日期解析为 date。"""
+    if val in (None, ''):
+        return None
+    if isinstance(val, date_cls):
+        return val
+    text = str(val).strip()
+    if not text:
+        return None
+    text = text.replace('/', '-')
+    for fmt in ('%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y%m%d'):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text).date()
+    except ValueError:
+        return None
+
+
+def _lims_first_nonempty_str(raw: dict, keys: tuple) -> str:
+    """按候选键顺序返回第一个非空字符串。"""
+    for key in keys:
+        val = raw.get(key)
+        if val is None:
+            continue
+        text = str(val).strip()
+        if text:
+            return text
+    return ''
+
+
+def _infer_unified_name_type(display_name: str) -> str:
+    """从设备展示名粗略推断名称分类，避免完全空值。"""
+    text = (display_name or '').strip()
+    if not text:
+        return ''
+    normalized = ''.join(ch for ch in text if not ch.isdigit()).strip(' -_/')
+    return normalized or text
+
+
+def _parse_cycle_days(val: Any) -> Optional[int]:
+    """解析 LIMS 周期字段，统一返回天数。"""
+    if val in (None, ''):
+        return None
+    if isinstance(val, int):
+        return val if val > 0 else None
+    text = str(val).strip()
+    if not text:
+        return None
+    digits = ''.join(ch for ch in text if ch.isdigit())
+    if not digits:
+        return None
+    try:
+        parsed = int(digits)
+    except ValueError:
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _similarity(s1: str, s2: str) -> float:
@@ -714,7 +776,7 @@ def _inject_equipment(raw_data: dict):
         ))
         category = _find_or_create_equipment_category(category_name_raw)
 
-        # 名称分类：LIMS 对同规格设备的统一类型（如 电子天平、glossymeter），独立于 ResourceCategory
+        # 名称分类：LIMS 对同规格设备的统一类型，独立于 ResourceCategory
         name_classification_raw = _lims_first_nonempty_str(raw_data, (
             '名称分类', '设备名称分类', 'MCFL', '标准设备名称', '统一名称', 'TYMC',
             'instrumentType', 'instrumentTypeName', 'typeName', '统一设备名称',
@@ -736,7 +798,7 @@ def _inject_equipment(raw_data: dict):
         # 借用人字段（SBLYR = 设备当前借用人姓名）
         borrower_name = (raw_data.get('SBLYR') or raw_data.get('设备当前借用人') or '').strip()
 
-        # 校准 / 核查 / 维护 计划字段（与 ResourceItem 模型及设备台账列一致）
+        # 校准 / 核查 / 维护计划字段
         d_next_cal = _parse_lims_date(
             raw_data.get('XCJZSJ') or raw_data.get('下次校准时间') or raw_data.get('下次校准日期')
         )

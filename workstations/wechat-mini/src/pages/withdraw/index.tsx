@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { View, Text, Picker, Textarea, CheckboxGroup, Checkbox } from '@tarojs/components'
 import Taro from '@tarojs/taro'
-import { taroApiClient } from '../../adapters/subject-core'
-import { MiniPage, MiniCard, MiniButton } from '../../components/ui'
+import { taroApiClient } from '@/adapters/subject-core'
+import { MiniPage, MiniCard, MiniButton } from '@/components/ui'
 import './index.scss'
 
 const REASON_OPTIONS = ['个人原因', '搬迁', '不良反应', '时间冲突', '其他']

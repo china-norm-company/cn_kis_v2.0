@@ -88,6 +88,18 @@ class Protocol(models.Model):
     # 权限相关
     created_by_id = models.IntegerField('创建人ID', null=True, blank=True, db_index=True, help_text='Account ID')
 
+    # 知情管理：展示与签署顺序（越小越靠前）
+    consent_display_order = models.IntegerField('知情管理展示顺序', default=0, db_index=True)
+
+    # 知情管理：配置负责人（治理台账号，全局角色 qa）
+    consent_config_account_id = models.IntegerField(
+        '知情配置负责人账号ID',
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text='治理台 Account.id，须具备全局角色 qa（QA质量管理）；每项目至多一人',
+    )
+
     # 时间
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)
@@ -122,3 +134,104 @@ class ProtocolParseLog(models.Model):
 
     def __str__(self):
         return f'{self.protocol.title} - {self.status}'
+
+
+class ConsentConfigMode(models.TextChoices):
+    GLOBAL = 'global', '全局配置'
+    PER_PROTOCOL = 'per_protocol', '按协议配置'
+
+
+class ConsentGlobalConfig(models.Model):
+    """知情全局配置（单例，仅保留一条记录）"""
+
+    class Meta:
+        db_table = 't_consent_global_config'
+        verbose_name = '知情全局配置'
+
+    config_mode = models.CharField(
+        '配置模式',
+        max_length=20,
+        choices=ConsentConfigMode.choices,
+        default=ConsentConfigMode.PER_PROTOCOL,
+    )
+    settings = models.JSONField('全局配置内容', default=dict, blank=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+
+class WitnessStaff(models.Model):
+    """双签/见证工作人员档案（执行台知情管理，与协议配置引用）"""
+
+    class Meta:
+        db_table = 't_witness_staff'
+        ordering = ['-priority', '-id']
+        indexes = [
+            models.Index(fields=['name']),
+            models.Index(fields=['is_deleted', 'update_time']),
+        ]
+
+    account = models.OneToOneField(
+        'identity.Account',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='witness_staff_profile',
+        verbose_name='治理台账号',
+    )
+    name = models.CharField('姓名', max_length=100)
+    gender = models.CharField('性别', max_length=10, blank=True, default='')
+    id_card_no = models.CharField('身份证号', max_length=24, blank=True, default='')
+    phone = models.CharField('手机号', max_length=20, blank=True, default='')
+    email = models.EmailField('工作邮箱')
+    priority = models.IntegerField('优先', default=0, help_text='数值越大越靠前展示')
+    face_order_id = models.CharField('人脸识别订单号', max_length=128, blank=True, default='')
+    face_verified_at = models.DateTimeField('人脸识别时间', null=True, blank=True)
+    signature_file = models.CharField('签名文件路径', max_length=500, blank=True, default='')
+    signature_at = models.DateTimeField('签名时间', null=True, blank=True)
+    identity_verified = models.BooleanField('身份已核验', default=False)
+    is_deleted = models.BooleanField('已删除', default=False)
+    create_time = models.DateTimeField('创建时间', auto_now_add=True)
+    update_time = models.DateTimeField('更新时间', auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+
+class WitnessDualSignAuthToken(models.Model):
+    """双签身份验证邮件中的令牌（默认发信当日 23:59:59 前有效，与业务时区一致）"""
+
+    class Meta:
+        db_table = 't_witness_dual_sign_auth_token'
+        indexes = [
+            models.Index(fields=['token']),
+            models.Index(fields=['expires_at']),
+        ]
+
+    token = models.CharField(max_length=96, unique=True, db_index=True)
+    witness_staff = models.ForeignKey(WitnessStaff, on_delete=models.CASCADE, related_name='auth_tokens')
+    # 空表示「档案核验」邮件（仅人脸+手写签名登记，不绑定具体协议）
+    protocol_id = models.IntegerField('协议ID', db_index=True, null=True, blank=True)
+    icf_version_id = models.IntegerField('签署节点 ICF 版本 ID', null=True, blank=True)
+    notify_email = models.EmailField('通知邮箱')
+    expires_at = models.DateTimeField('过期时间')
+    face_byted_token = models.CharField(
+        '火山人脸核身 byted_token',
+        max_length=512,
+        blank=True,
+        default='',
+        help_text='邮件公开链接触发核身后暂存，核验通过后清空',
+    )
+    signature_auth_decision = models.CharField(
+        '签名授权决策',
+        max_length=16,
+        blank=True,
+        default='',
+        help_text='人脸通过后：agreed=同意项目使用签名信息；refused=拒绝；空=未选择',
+    )
+    signature_auth_at = models.DateTimeField('签名授权时间', null=True, blank=True)
+    staff_signature_registered_at = models.DateTimeField(
+        '档案手写签名登记完成时间',
+        null=True,
+        blank=True,
+        help_text='档案核验邮件流：人脸通过后提交手写签名成功时回写',
+    )
+    create_time = models.DateTimeField('创建时间', auto_now_add=True)

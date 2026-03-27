@@ -1051,6 +1051,7 @@ def wechat_logout(request):
 
 def _ensure_subject_account_by_phone(phone: str):
     from .models import Account, AccountType
+    from .services import _ensure_subject_self_role
     from apps.subject.models import Subject, AuthLevel
     from apps.subject.services.subject_service import (
         generate_subject_no,
@@ -1108,6 +1109,9 @@ def _ensure_subject_account_by_phone(phone: str):
         if update_fields:
             update_fields.append('update_time')
             subject.save(update_fields=update_fields)
+
+    # 短信等渠道创建的受试者账号须具备 subject_self（含 my.*），否则 /my/* 报缺少 my.profile.read
+    _ensure_subject_self_role(account)
 
     return account, subject
 

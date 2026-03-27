@@ -1,9 +1,9 @@
 /**
- * 主包仅保留 Tab 三页，其余在 subpackages/pkg，满足主包体积与代码质量扫描。
+ * 页面统一收敛到主包 `src/pages`，避免 pages 与 subpackages 双份源码分叉。
  */
 const mainPages = ['pages/index/index', 'pages/visit/index', 'pages/profile/index'] as const
 
-const subPackagePages = [
+const businessPages = [
   'pages/phone-login/index',
   'pages/bind-phone/index',
   'pages/identity-verify/index',
@@ -44,23 +44,18 @@ const subPackagePages = [
 ] as const
 
 export default defineAppConfig({
-  pages: [...mainPages],
+  pages: [...mainPages, ...businessPages],
   // 代码质量：需开启「组件按需注入」。单独开启可能导致 Taro 根渲染组件 comp 未参与注入链而白屏，故在 app 级登记 `./comp`（与 dist/comp 一致，见微信文档 usingComponents + lazyCodeLoading）。
   lazyCodeLoading: 'requiredComponents',
   usingComponents: {
     comp: './comp',
   },
-  subPackages: [
-    {
-      root: 'subpackages/pkg',
-      pages: [...subPackagePages],
-    },
-  ],
   window: {
     backgroundTextStyle: 'light',
     navigationBarBackgroundColor: '#2B6CB0',
     navigationBarTitleText: 'UTest',
     navigationBarTextStyle: 'white',
+    backgroundColor: '#f7fafc',
   },
   tabBar: {
     color: '#999999',

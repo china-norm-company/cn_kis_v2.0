@@ -1,7 +1,11 @@
 import { useState } from 'react'
 import { View, Text } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
-import { AUTH_LEVEL, type AuthLevel } from '@cn-kis/subject-core'
+import { AUTH_LEVEL, type AuthLevel, useIdentityStatus, useProfileAuth } from '@cn-kis/subject-core'
+import { MiniEmpty } from '../../components/ui'
+import { PAGE_COPY } from '../../constants/copy'
+import { taroApiClient, taroAuthProvider } from '../../adapters/subject-core'
+import './index.scss'
 
 function getAuthLevelLabel(authLevel: AuthLevel | string): string {
   const labels: Record<string, string> = {
@@ -11,11 +15,6 @@ function getAuthLevelLabel(authLevel: AuthLevel | string): string {
   }
   return labels[authLevel] || '未认证'
 }
-import { MiniEmpty } from '../../components/ui'
-import { PAGE_COPY } from '../../constants/copy'
-import { useIdentityStatus, useProfileAuth } from '@cn-kis/subject-core'
-import { taroApiClient, taroAuthProvider } from '../../adapters/subject-core'
-import './index.scss'
 
 interface MenuItem {
   id: string
@@ -27,27 +26,27 @@ interface MenuItem {
 }
 
 const MENU_ITEMS: MenuItem[] = [
-  { id: 'identity', label: '实名认证', desc: '身份证+人脸核验，解锁签署与礼金', icon: '🔐', url: '/subpackages/pkg/pages/identity-verify/index' },
-  { id: 'myqrcode', label: '我的二维码', desc: '现场核验与签到', icon: '🔲', url: '/subpackages/pkg/pages/myqrcode/index' },
-  { id: 'consent', label: '知情同意记录', desc: '查看签署状态', icon: '📋', url: '/subpackages/pkg/pages/consent/index' },
+  { id: 'identity', label: '实名认证', desc: '身份证+人脸核验，解锁签署与礼金', icon: '🔐', url: '/pages/identity-verify/index' },
+  { id: 'myqrcode', label: '我的二维码', desc: '现场核验与签到', icon: '🔲', url: '/pages/myqrcode/index' },
+  { id: 'consent', label: '知情同意记录', desc: '查看签署状态', icon: '📋', url: '/pages/consent/index' },
   { id: 'visits', label: '访视记录', desc: '时间线与窗口期', icon: '📅', url: '/pages/visit/index' },
-  { id: 'questionnaires', label: '问卷记录', desc: '填写与历史记录', icon: '📝', url: '/subpackages/pkg/pages/questionnaire/index' },
-  { id: 'appointment', label: '我的预约', desc: '预约与改期管理', icon: '📅', url: '/subpackages/pkg/pages/appointment/index' },
-  { id: 'payment', label: '我的礼金', desc: '补贴发放明细', icon: '💰', url: '/subpackages/pkg/pages/payment/index' },
-  { id: 'products', label: '我的产品', desc: '领用、使用、归还', icon: '🧴', url: '/subpackages/pkg/pages/products/index' },
-  { id: 'support', label: '客服咨询', desc: '问题咨询与反馈', icon: '💬', url: '/subpackages/pkg/pages/support/index' },
-  { id: 'ai-chat', label: 'AI 助手', desc: '异步智能问答', icon: '🤖', url: '/subpackages/pkg/pages/ai-chat/index' },
-  { id: 'register', label: '自助报名', desc: '新项目报名入口', icon: '✍️', url: '/subpackages/pkg/pages/register/index' },
-  { id: 'report', label: '不良反应上报', desc: '异常情况快速上报', icon: '⚠️', url: '/subpackages/pkg/pages/report/index' },
-  { id: 'sample-confirm', label: '样品签收', desc: '研究样品签收确认', icon: '📦', url: '/subpackages/pkg/pages/sample-confirm/index' },
+  { id: 'questionnaires', label: '问卷记录', desc: '填写与历史记录', icon: '📝', url: '/pages/questionnaire/index' },
+  { id: 'appointment', label: '我的预约', desc: '预约与改期管理', icon: '📅', url: '/pages/appointment/index' },
+  { id: 'payment', label: '我的礼金', desc: '补贴发放明细', icon: '💰', url: '/pages/payment/index' },
+  { id: 'products', label: '我的产品', desc: '领用、使用、归还', icon: '🧴', url: '/pages/products/index' },
+  { id: 'support', label: '客服咨询', desc: '问题咨询与反馈', icon: '💬', url: '/pages/support/index' },
+  { id: 'ai-chat', label: 'AI 助手', desc: '异步智能问答', icon: '🤖', url: '/pages/ai-chat/index' },
+  { id: 'register', label: '自助报名', desc: '新项目报名入口', icon: '✍️', url: '/pages/register/index' },
+  { id: 'report', label: '不良反应上报', desc: '异常情况快速上报', icon: '⚠️', url: '/pages/report/index' },
+  { id: 'sample-confirm', label: '样品签收', desc: '研究样品签收确认', icon: '📦', url: '/pages/sample-confirm/index' },
   { id: 'withdraw', label: '退出研究', icon: '🚪', danger: true },
 ]
 
 const PRIMARY_ACTIONS: Array<{ id: string; label: string; sub: string; url: string }> = [
-  { id: 'appointment', label: '预约管理', sub: '预约与改期', url: '/subpackages/pkg/pages/appointment/index' },
-  { id: 'products', label: '我的产品', sub: '领用与归还', url: '/subpackages/pkg/pages/products/index' },
-  { id: 'myqrcode', label: '现场签到', sub: '二维码与核验', url: '/subpackages/pkg/pages/myqrcode/index' },
-  { id: 'report', label: '情况反馈', sub: '不良反应与问题', url: '/subpackages/pkg/pages/report/index' },
+  { id: 'appointment', label: '预约管理', sub: '预约与改期', url: '/pages/appointment/index' },
+  { id: 'products', label: '我的产品', sub: '领用与归还', url: '/pages/products/index' },
+  { id: 'myqrcode', label: '现场签到', sub: '二维码与核验', url: '/pages/myqrcode/index' },
+  { id: 'report', label: '情况反馈', sub: '不良反应与问题', url: '/pages/report/index' },
 ]
 
 export default function ProfilePage() {
@@ -158,7 +157,7 @@ export default function ProfilePage() {
       {loggedIn && !isL2 && !authLoading ? (
         <View
           className='profile-l2-cta'
-          onClick={() => Taro.navigateTo({ url: '/subpackages/pkg/pages/identity-verify/index' })}
+          onClick={() => Taro.navigateTo({ url: '/pages/identity-verify/index' })}
         >
           <Text className='profile-l2-cta__title'>完成实名认证</Text>
           <Text className='profile-l2-cta__desc'>可解锁签署知情同意书与礼金发放</Text>

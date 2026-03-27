@@ -7,6 +7,14 @@ import { getDefaultFinanceLandingPath } from '../navigation/financeNavConfig'
  */
 export function FinanceHomeRedirect() {
   const ctx = useFeishuContext()
+  // 等画像加载完成再算默认落地页，避免在 canSeeMenu 仍「宽判」时跳到仪表板并立刻打 /finance/dashboard 引发竞态或 403
+  if (ctx.profileLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[40vh] text-slate-500 text-sm">
+        正在加载权限…
+      </div>
+    )
+  }
   const mode = ctx.getWorkstationMode('finance')
   const to = getDefaultFinanceLandingPath(mode, ctx.profile, ctx.canSeeMenu)
   return <Navigate to={to} replace />

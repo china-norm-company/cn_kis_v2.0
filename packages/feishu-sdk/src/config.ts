@@ -21,16 +21,18 @@ export function createWorkstationFeishuConfig(workstation: string): FeishuAuthCo
     throw new Error('[FeishuConfig] workstation 不能为空')
   }
 
-  // 生产构建：浏览器内始终用当前页 origin，避免部署域名与构建时 env 不一致。
-  // 本地 dev：若设置 VITE_FEISHU_REDIRECT_BASE，则固定用该值拼 redirect_uri，与飞书「重定向 URL」登记一致，
-  // 避免因 127.0.0.1 vs localhost、Vite 端口漂移（3010→3011）导致授权页 20029。
   const envBase = (import.meta.env.VITE_FEISHU_REDIRECT_BASE as string)?.trim()
-  const inBrowser = typeof window !== 'undefined' && Boolean(window.location?.origin)
-  const base = inBrowser
-    ? import.meta.env.DEV && envBase
-      ? envBase
-      : window.location!.origin
-    : envBase || VOLCENGINE_REDIRECT_BASE
+  const isDev = Boolean(import.meta.env.DEV)
+  /** 仅 Vite dev server 为 true；Vitest/生产构建为 false。勿用 isDev 单独区分本地 /login，因 env.DEV 在测试里无法可靠 stub。 */
+  const isViteDevServer = Boolean(import.meta.hot)
+  const useFixedRedirectOrigin =
+    isDev && !!envBase && /^https?:\/\//i.test(envBase)
+  const base =
+    useFixedRedirectOrigin
+      ? envBase.replace(/\/+$/, '')
+      : (typeof window !== 'undefined' && window.location?.origin)
+        ? window.location.origin
+        : (envBase || VOLCENGINE_REDIRECT_BASE)
   const baseNorm = base.replace(/\/+$/, '')
 
   const redirectOverride = (import.meta.env.VITE_FEISHU_REDIRECT_URI as string)?.trim()
@@ -40,6 +42,19 @@ export function createWorkstationFeishuConfig(workstation: string): FeishuAuthCo
   } else if (redirectOverride && redirectOverride.startsWith('/')) {
     // 路径形式：与 base 拼接，便于本地开发配置（如 base=localhost:3001, uri=/secretary/）
     redirectUri = `${baseNorm}${redirectOverride.startsWith('/') ? '' : '/'}${redirectOverride}`
+  } else if (normalized === 'secretary') {
+    // 生产：nginx 将域名根路径 /login 映射到秘书台 SPA（deploy/nginx.conf location = /login）。
+    // 本地 Vite：vite.config base 为 /secretary/，回调必须是 /secretary/login；若用 /login 会触发
+    // "The server is configured with a public base URL of /secretary/ …"
+    if (isViteDevServer) {
+      const pathFromBase = (import.meta.env.BASE_URL || '/secretary/')
+        .replace(/^\/+|\/+$/g, '')
+        .replace(/\/+/g, '/')
+      const seg = pathFromBase || 'secretary'
+      redirectUri = `${baseNorm}/${seg}/login`
+    } else {
+      redirectUri = `${baseNorm}/login`
+    }
   } else {
     // 须与 Vite `base`（如 /secretary/）及飞书开放平台「重定向 URL」完全一致，否则授权页报 20029
     redirectUri = `${baseNorm}/${normalized}/`

@@ -29,6 +29,7 @@ const MENU_LABELS: Record<string, string> = {
   'tasks': '任务委派',
   'visits': '我的访视',
   'subjects': '我的受试者',
+  'diary': '日记管理',
   'team': '团队全景',
   'knowledge': '知识库',
   'ai-assistant': 'AI 助手',
@@ -42,7 +43,7 @@ const MENU_GROUPS = [
   { label: '客户与商务', keys: ['clients', 'business'] },
   { label: '项目生命周期', keys: ['feasibility', 'proposals', 'proposals/quality-check', 'protocols', 'closeout', 'closeout/settlement'] },
   { label: '变更与协调', keys: ['changes', 'tasks'] },
-  { label: '执行管理', keys: ['visits', 'subjects'] },
+  { label: '执行管理', keys: ['visits', 'subjects', 'diary'] },
   { label: '团队与知识', keys: ['team', 'knowledge', 'ai-assistant', 'overview'] },
 ]
 

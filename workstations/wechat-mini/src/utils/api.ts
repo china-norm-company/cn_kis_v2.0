@@ -5,7 +5,12 @@ const CLOUDRUN_ENV_ID = 'prod-3gfhkz1551e76534'
 const CLOUDRUN_SERVICE = 'utest'
 const CLOUDRUN_API_PREFIX = '/api/v1'
 
-let cloudRunAvailable: boolean | null = null
+const USE_DIRECT_API =
+  typeof process !== 'undefined' &&
+  process?.env &&
+  String(process.env.TARO_APP_USE_DIRECT_API || '').toLowerCase() === 'true'
+
+let cloudRunAvailable: boolean | null = USE_DIRECT_API ? false : null
 type CloudContainerResponse = {
   statusCode?: number
   errCode?: number
@@ -379,7 +384,10 @@ async function request<T = unknown>(
   }
 
   // localhost 或显式 http 基址：直连后端，不先走云托管 utest
-  const useDirectHttpRequest = isLocalhostBase(currentApiBaseUrl) || isPlainHttpApiBase(currentApiBaseUrl)
+  const useDirectHttpRequest =
+    (USE_DIRECT_API && isAbsoluteApiBaseUrl(currentApiBaseUrl)) ||
+    isLocalhostBase(currentApiBaseUrl) ||
+    isPlainHttpApiBase(currentApiBaseUrl)
   const cloud = (typeof wx !== 'undefined' ? resolveWxCloud(wx?.cloud) : undefined) ?? resolveWxCloud(Taro.cloud)
   if (!useDirectHttpRequest && cloudRunAvailable !== false && cloud?.callContainer) {
     try {

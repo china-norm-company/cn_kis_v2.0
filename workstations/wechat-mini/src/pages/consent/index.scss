@@ -9,6 +9,7 @@ $primary: #2B6CB0;
 
 .consent-content {
   flex: 1;
+  min-height: 0;
   padding: 32px;
 }
 
@@ -55,8 +56,25 @@ $primary: #2B6CB0;
   line-height: 1.8;
 }
 
+.icf-plain-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.icf-rich-html {
+  font-size: 28px;
+  color: #4a5568;
+  line-height: 1.75;
+  word-break: break-word;
+}
+
+.icf-doc-body {
+  display: block;
+}
+
 /* 底部操作区 */
 .consent-footer {
+  flex-shrink: 0;
   padding: 24px 32px;
   padding-bottom: calc(24px + env(safe-area-inset-bottom));
   background: #ffffff;
@@ -64,6 +82,50 @@ $primary: #2B6CB0;
 }
 
 /* 签名区域 */
+.signature-date-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding: 12px 0;
+}
+
+.signature-date-label {
+  font-size: 28px;
+  color: #4a5568;
+  font-weight: 500;
+}
+
+.signature-date-value {
+  font-size: 28px;
+  color: #1a202c;
+  font-weight: 600;
+}
+
+.consent-other-info {
+  margin-bottom: 24px;
+}
+
+.consent-other-info-hint {
+  font-size: 24px;
+  color: #718096;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.consent-other-info-textarea {
+  width: 100%;
+  min-height: 160px;
+  padding: 16px;
+  font-size: 28px;
+  line-height: 1.5;
+  color: #1a202c;
+  background: #fafafa;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  box-sizing: border-box;
+}
+
 .signature-area {
   margin-bottom: 24px;
 }
@@ -94,6 +156,13 @@ $primary: #2B6CB0;
   border: 2px dashed #cbd5e0;
   border-radius: 12px;
   background: #fafafa;
+  position: relative;
+}
+
+.signature-canvas-inner {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .signature-hint {

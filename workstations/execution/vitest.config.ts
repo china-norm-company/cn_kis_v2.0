@@ -20,6 +20,10 @@ export default defineConfig({
     alias: {
       '@cn-kis/api-client': resolve(__dirname, '../../packages/api-client/src'),
       '@cn-kis/ui-kit': resolve(__dirname, '../../packages/ui-kit/src'),
+      '@cn-kis/consent-placeholders': resolve(
+        __dirname,
+        '../../packages/consent-placeholders/src/index.ts',
+      ),
     },
   },
 })
