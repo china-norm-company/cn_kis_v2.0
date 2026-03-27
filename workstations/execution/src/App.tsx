@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route } from 'react-router-dom'
 import { ErrorBoundary, OfflineBanner, HealthPage } from '@cn-kis/ui-kit'
 import { useNetworkStatus, getWorkstationUrl } from '@cn-kis/feishu-sdk'
 import { AppLayout } from './layouts/AppLayout'
@@ -31,6 +31,7 @@ import WitnessStaffPage from './pages/WitnessStaffPage'
 import WitnessFaceVerifyPage from './pages/WitnessFaceVerifyPage'
 import WitnessConsentDevPage from './pages/WitnessConsentDevPage'
 import ConsentTestScanPage from './pages/ConsentTestScanPage'
+import { ExecutionHomeRedirect } from './components/ExecutionHomeRedirect'
 
 /** 接待台 URL：本地开发时 execution(3007) 与 reception(3016) 不同端口，需用完整 URL */
 function getReceptionUrl(hashPath: string): string {
@@ -64,7 +65,7 @@ export default function App() {
             element={<LegacyReceptionRedirect target={getWorkstationUrl('reception', '#/display')} />}
           />
           <Route path="/" element={<AppLayout />}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route index element={<ExecutionHomeRedirect />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="project-management" element={<ProjectManagementPage />} />
             <Route path="project-management/resource-demand/detail" element={<ResourceDemandDetailPage />} />

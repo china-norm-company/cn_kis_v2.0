@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   isConsentScanUrlHttpIpv4ImplicitPort80,
   isConsentScanUrlUnreachableFromPhone,
+  normalizeConsentReceiptPdfUrlForBrowser,
   normalizePrivateLanHttpIpv4ImplicitPort8001,
   rewriteConsentTestScanUrlForBrowserClient,
 } from './consentScanUrl'
@@ -78,6 +79,27 @@ describe('normalizePrivateLanHttpIpv4ImplicitPort8001', () => {
   it('does not change when port is explicit', () => {
     const inUrl = 'http://10.0.18.125:3007/api/v1/x'
     expect(normalizePrivateLanHttpIpv4ImplicitPort8001(inUrl)).toBe(inUrl)
+  })
+})
+
+describe('normalizeConsentReceiptPdfUrlForBrowser', () => {
+  it('strips loopback absolute URL to same-origin path for Vite proxy', () => {
+    expect(
+      normalizeConsentReceiptPdfUrlForBrowser('http://127.0.0.1:8001/media/consent/x.pdf'),
+    ).toBe('/media/consent/x.pdf')
+    expect(normalizeConsentReceiptPdfUrlForBrowser('http://localhost:8001/media/a.pdf?q=1')).toBe(
+      '/media/a.pdf?q=1',
+    )
+  })
+
+  it('keeps relative /media paths', () => {
+    expect(normalizeConsentReceiptPdfUrlForBrowser('/media/foo/bar.pdf')).toBe('/media/foo/bar.pdf')
+  })
+
+  it('keeps non-loopback absolute URLs', () => {
+    expect(normalizeConsentReceiptPdfUrlForBrowser('https://cdn.example.com/r.pdf')).toBe(
+      'https://cdn.example.com/r.pdf',
+    )
   })
 })
 

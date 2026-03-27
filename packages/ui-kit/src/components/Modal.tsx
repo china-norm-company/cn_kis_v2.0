@@ -19,7 +19,7 @@ export interface ModalProps {
   titleClassName?: string
   /** 居中对话框（默认）或右侧全高抽屉 */
   placement?: 'center' | 'right'
-  size?: 'sm' | 'md' | 'lg' | 'xl'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'
   children: React.ReactNode
   footer?: React.ReactNode
   closeOnOverlay?: boolean
@@ -34,6 +34,8 @@ const sizeStyles = {
   md: 'max-w-lg',
   lg: 'max-w-2xl',
   xl: 'max-w-4xl',
+  /** 知情审核等大预览：接近全宽可读 PDF */
+  '2xl': 'max-w-[min(1200px,96vw)]',
 }
 
 export function Modal({

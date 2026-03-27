@@ -126,9 +126,20 @@ class IdentityVerifyCompleteIn(Schema):
 
 
 class ConsentFaceSignIn(Schema):
-    face_verify_token: str
+    face_verify_token: str = ''
     reading_duration_seconds: Optional[int] = 0
     comprehension_quiz_passed: Optional[bool] = True
+    signed_at: Optional[str] = None
+    declared_phone: Optional[str] = None
+    declared_subject_name: Optional[str] = None
+    declared_id_card: Optional[str] = None
+    declared_screening_number: Optional[str] = None
+    declared_initials: Optional[str] = None
+    other_information_text: Optional[str] = None
+    signature_image: Optional[str] = None
+    signature_images: Optional[list] = None
+    consent_test_scan_token: Optional[str] = None
+    icf_checkbox_answers: Optional[list] = None
 
 
 def _mask_phone(s: str) -> str:
@@ -802,43 +813,66 @@ def get_my_consents(request):
     subject = _get_subject_from_request(request)
     if not subject:
         return 404, {'code': 404, 'msg': '未找到受试者信息'}
-    from .services.consent_service import get_subject_consents
-    from django.conf import settings
-    items = get_subject_consents(subject.id)
-    return {'code': 200, 'msg': 'OK', 'data': {
-        'items': [{
-            'id': c.id,
-            'icf_version_id': c.icf_version_id,
-            'icf_version': c.icf_version.version if c.icf_version else '',
-            'is_signed': c.is_signed,
-            'signed_at': c.signed_at.isoformat() if c.signed_at else None,
-            'receipt_no': c.receipt_no or None,
-            'receipt_pdf_path': (c.signature_data or {}).get('receipt_pdf_path') if c.signature_data else None,
-            'receipt_pdf_url': (
-                f"{settings.MEDIA_URL}{(c.signature_data or {}).get('receipt_pdf_path')}"
-                if (c.signature_data or {}).get('receipt_pdf_path') else None
-            ),
-        } for c in items],
-    }}
+    from .services.consent_service import list_subject_consents_for_mini_program, sync_pending_consents_after_checkin
+
+    try:
+        sync_pending_consents_after_checkin(subject.id)
+    except Exception as exc:
+        logger.warning('sync_pending_consents_after_checkin on list consents subject_id=%s: %s', subject.id, exc)
+    items = list_subject_consents_for_mini_program(subject.id)
+    return {'code': 200, 'msg': 'OK', 'data': {'items': items}}
 
 
 @router.get('/consents/icf/{icf_version_id}', summary='获取 ICF 内容（动态加载）')
 @require_permission('my.consent.read')
 def get_icf_content(request, icf_version_id: int):
-    """返回单条 ICF 版本内容，供知情同意页动态加载"""
+    """返回单条 ICF 版本内容，供知情同意页动态加载（与执行台一致的 HTML 解析 + 小程序签署规则）。"""
     subject = _get_subject_from_request(request)
     if not subject:
         return 404, {'code': 404, 'msg': '未找到受试者信息'}
-    from .models import ICFVersion
+    from apps.protocol.api import _is_consent_launched
+    from apps.protocol.services.protocol_service import resolve_icf_body_html_for_execution
+    from .models import ICFVersion, SubjectConsent
+    from .services.consent_service import effective_required_reading_seconds_for_icf, get_effective_mini_sign_rules
+
     icf = ICFVersion.objects.filter(id=icf_version_id).select_related('protocol').first()
     if not icf:
         return 404, {'code': 404, 'msg': 'ICF 版本不存在'}
+    proto = icf.protocol
+    if not proto:
+        return 404, {'code': 404, 'msg': '协议不存在'}
+    if not SubjectConsent.objects.filter(subject_id=subject.id, icf_version_id=icf_version_id, is_deleted=False).exists():
+        return 404, {'code': 404, 'msg': '暂无该知情任务，请完成现场签到或联系研究方'}
+    if not _is_consent_launched(proto):
+        return 403, {
+            'code': 403,
+            'msg': '知情配置尚未发布，无法加载正文',
+            'data': None,
+            'error_code': 'CONSENT_NOT_LAUNCHED',
+        }
+
+    rules = get_effective_mini_sign_rules(proto, icf)
+    body = resolve_icf_body_html_for_execution(icf)
+    rd = effective_required_reading_seconds_for_icf(icf, proto)
+    from apps.protocol.api import _clamp_1_or_2
+
+    subj_sig_times = _clamp_1_or_2(rules.get('subject_signature_times'), 1) if rules.get('enable_subject_signature') else 0
     return {'code': 200, 'msg': 'OK', 'data': {
         'id': icf.id,
         'version': icf.version,
-        'content': icf.content or '',
+        'content': body or '',
         'file_path': icf.file_path or '',
-        'protocol_title': icf.protocol.title if icf.protocol else '',
+        'protocol_title': proto.title or '',
+        'node_title': (getattr(icf, 'node_title', None) or '').strip(),
+        'required_reading_duration_seconds': rd,
+        'collect_other_information': bool(rules.get('collect_other_information')),
+        'enable_auto_sign_date': bool(rules.get('enable_auto_sign_date')),
+        'enable_subject_signature': bool(rules.get('enable_subject_signature')),
+        'subject_signature_times': subj_sig_times,
+        'collect_subject_name': bool(rules.get('collect_subject_name')),
+        'collect_id_card': bool(rules.get('collect_id_card')),
+        'collect_screening_number': bool(rules.get('collect_screening_number')),
+        'collect_initials': bool(rules.get('collect_initials')),
     }}
 
 
@@ -866,7 +900,7 @@ def sign_my_consent(request, icf_version_id: int):
 @router.post('/consents/{icf_version_id}/face-sign', summary='人脸核身签署知情同意书')
 @require_permission('my.consent.sign')
 def face_sign_my_consent(request, icf_version_id: int, data: ConsentFaceSignIn):
-    """L2 实名用户方可签署；写入审计用 signature_data 并返回回执号"""
+    """L2 实名用户方可签署；支持补充信息、手写签名图、勾选结果（与执行台 mini_sign_rules 一致）。"""
     subject = _get_subject_from_request(request)
     if not subject:
         return 404, {'code': 404, 'msg': '未找到受试者信息'}
@@ -878,18 +912,32 @@ def face_sign_my_consent(request, icf_version_id: int, data: ConsentFaceSignIn):
             'data': None,
             'error_code': '403_IDENTITY_REQUIRED',
         }
-    from .models import ICFVersion
-    if not ICFVersion.objects.filter(id=icf_version_id).exists():
-        return 404, {'code': 404, 'msg': 'ICF 版本不存在'}
-    from .services.consent_service import sign_consent
-    signature_data = {
-        'verification_method': 'face_recognition',
+    from .services.consent_service import subject_face_sign_consent
+
+    raw = {
         'face_verify_token': data.face_verify_token,
         'reading_duration_seconds': data.reading_duration_seconds or 0,
         'comprehension_quiz_passed': data.comprehension_quiz_passed is not False,
-        'signed_at': timezone.now().isoformat(),
+        'signed_at': data.signed_at or timezone.now().isoformat(),
+        'declared_phone': data.declared_phone,
+        'declared_subject_name': data.declared_subject_name,
+        'declared_id_card': data.declared_id_card,
+        'declared_screening_number': data.declared_screening_number,
+        'declared_initials': data.declared_initials,
+        'other_information_text': data.other_information_text,
+        'signature_image': data.signature_image,
+        'signature_images': data.signature_images,
+        'icf_checkbox_answers': data.icf_checkbox_answers,
     }
-    consent = sign_consent(subject.id, icf_version_id, signature_data=signature_data)
+    result = subject_face_sign_consent(subject.id, icf_version_id, raw)
+    if not result.get('ok'):
+        body: dict = {'code': result['code'], 'msg': result['msg'], 'data': None}
+        ec = result.get('error_code')
+        if ec:
+            body['error_code'] = ec
+        return result['code'], body
+    consent = result['consent']
+    st = result.get('status') or 'signed'
     from django.conf import settings
     receipt_pdf_path = (consent.signature_data or {}).get('receipt_pdf_path') if consent.signature_data else None
     return {'code': 200, 'msg': 'OK', 'data': {
@@ -898,8 +946,8 @@ def face_sign_my_consent(request, icf_version_id: int, data: ConsentFaceSignIn):
         'receipt_no': consent.receipt_no,
         'receipt_pdf_path': receipt_pdf_path,
         'receipt_pdf_url': f"{settings.MEDIA_URL}{receipt_pdf_path}" if receipt_pdf_path else None,
-        'status': 'signed',
-        'trace_id': None,
+        'status': st,
+        'trace_id': _trace_id(),
     }}
 
 
@@ -1691,6 +1739,12 @@ def my_scan_checkin(request, data: Optional[ScanCheckinIn] = Body(default=None))
             target_date=today,
             project_code=project_code or None,
         )
+        try:
+            from .services.consent_service import sync_pending_consents_after_checkin
+
+            sync_pending_consents_after_checkin(subject.id)
+        except Exception as exc:
+            logger.warning('sync_pending_consents_after_checkin failed subject_id=%s: %s', subject.id, exc)
         return {
             'code': 200,
             'msg': '签到成功',

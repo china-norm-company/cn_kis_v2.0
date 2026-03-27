@@ -222,7 +222,7 @@ importers:
         version: 10.4.27(postcss@8.5.8)
       jsdom:
         specifier: ^24.0.0
-        version: 24.1.3
+        version: 24.1.3(canvas@2.11.2)
       postcss:
         specifier: ^8.4.33
         version: 8.5.8
@@ -237,7 +237,7 @@ importers:
         version: 5.4.21(@types/node@25.5.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
       vitest:
         specifier: ^1.2.0
-        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
+        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3(canvas@2.11.2))(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
 
   workstations/digital-workforce:
     dependencies:
@@ -289,7 +289,7 @@ importers:
         version: 10.4.27(postcss@8.5.8)
       jsdom:
         specifier: ^24.0.0
-        version: 24.1.3
+        version: 24.1.3(canvas@2.11.2)
       postcss:
         specifier: ^8.4.33
         version: 8.5.8
@@ -304,7 +304,7 @@ importers:
         version: 5.4.21(@types/node@25.5.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
       vitest:
         specifier: ^1.2.0
-        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
+        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3(canvas@2.11.2))(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
 
   workstations/equipment:
     dependencies:
@@ -356,7 +356,7 @@ importers:
         version: 10.4.27(postcss@8.5.8)
       jsdom:
         specifier: ^24.0.0
-        version: 24.1.3
+        version: 24.1.3(canvas@2.11.2)
       postcss:
         specifier: ^8.4.33
         version: 8.5.8
@@ -371,7 +371,7 @@ importers:
         version: 5.4.21(@types/node@25.5.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
       vitest:
         specifier: ^1.2.0
-        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
+        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3(canvas@2.11.2))(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
 
   workstations/ethics:
     dependencies:
@@ -420,7 +420,7 @@ importers:
         version: 10.4.27(postcss@8.5.8)
       jsdom:
         specifier: ^24.0.0
-        version: 24.1.3
+        version: 24.1.3(canvas@2.11.2)
       postcss:
         specifier: ^8.4.33
         version: 8.5.8
@@ -435,7 +435,7 @@ importers:
         version: 5.4.21(@types/node@25.5.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
       vitest:
         specifier: ^1.2.0
-        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
+        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3(canvas@2.11.2))(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
 
   workstations/evaluator:
     dependencies:
@@ -493,7 +493,7 @@ importers:
         version: 10.4.27(postcss@8.5.8)
       jsdom:
         specifier: ^23.2.0
-        version: 23.2.0
+        version: 23.2.0(canvas@2.11.2)
       postcss:
         specifier: ^8.4.33
         version: 8.5.8
@@ -508,7 +508,7 @@ importers:
         version: 5.4.21(@types/node@25.5.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
       vitest:
         specifier: ^1.2.0
-        version: 1.6.1(@types/node@25.5.0)(jsdom@23.2.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
+        version: 1.6.1(@types/node@25.5.0)(jsdom@23.2.0(canvas@2.11.2))(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
 
   workstations/execution:
     dependencies:
@@ -539,6 +539,9 @@ importers:
       mammoth:
         specifier: ^1.12.0
         version: 1.12.0
+      pdfjs-dist:
+        specifier: 4.4.168
+        version: 4.4.168
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
@@ -587,7 +590,7 @@ importers:
         version: 10.4.27(postcss@8.5.8)
       jsdom:
         specifier: ^24.0.0
-        version: 24.1.3
+        version: 24.1.3(canvas@2.11.2)
       postcss:
         specifier: ^8.4.33
         version: 8.5.8
@@ -602,7 +605,7 @@ importers:
         version: 5.4.21(@types/node@25.5.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
       vitest:
         specifier: ^2.1.0
-        version: 2.1.9(@types/node@25.5.0)(jsdom@24.1.3)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
+        version: 2.1.9(@types/node@25.5.0)(jsdom@24.1.3(canvas@2.11.2))(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
 
   workstations/facility:
     dependencies:
@@ -654,7 +657,7 @@ importers:
         version: 10.4.27(postcss@8.5.8)
       jsdom:
         specifier: ^24.0.0
-        version: 24.1.3
+        version: 24.1.3(canvas@2.11.2)
       postcss:
         specifier: ^8.4.33
         version: 8.5.8
@@ -669,7 +672,7 @@ importers:
         version: 5.4.21(@types/node@25.5.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
       vitest:
         specifier: ^1.2.0
-        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
+        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3(canvas@2.11.2))(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
 
   workstations/finance:
     dependencies:
@@ -811,7 +814,7 @@ importers:
         version: 10.4.27(postcss@8.5.8)
       jsdom:
         specifier: ^24.0.0
-        version: 24.1.3
+        version: 24.1.3(canvas@2.11.2)
       postcss:
         specifier: ^8.4.33
         version: 8.5.8
@@ -826,7 +829,7 @@ importers:
         version: 5.4.21(@types/node@25.5.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
       vitest:
         specifier: ^1.2.0
-        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
+        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3(canvas@2.11.2))(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
 
   workstations/hr:
     dependencies:
@@ -875,7 +878,7 @@ importers:
         version: 10.4.27(postcss@8.5.8)
       jsdom:
         specifier: ^24.0.0
-        version: 24.1.3
+        version: 24.1.3(canvas@2.11.2)
       postcss:
         specifier: ^8.4.33
         version: 8.5.8
@@ -890,7 +893,7 @@ importers:
         version: 5.4.21(@types/node@25.5.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
       vitest:
         specifier: ^1.2.0
-        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
+        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3(canvas@2.11.2))(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
 
   workstations/lab-personnel:
     dependencies:
@@ -945,7 +948,7 @@ importers:
         version: 10.4.27(postcss@8.5.8)
       jsdom:
         specifier: ^24.0.0
-        version: 24.1.3
+        version: 24.1.3(canvas@2.11.2)
       postcss:
         specifier: ^8.4.33
         version: 8.5.8
@@ -960,7 +963,7 @@ importers:
         version: 5.4.21(@types/node@25.5.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
       vitest:
         specifier: ^1.2.0
-        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
+        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3(canvas@2.11.2))(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
 
   workstations/material:
     dependencies:
@@ -1021,7 +1024,7 @@ importers:
         version: 10.4.27(postcss@8.5.8)
       jsdom:
         specifier: ^24.0.0
-        version: 24.1.3
+        version: 24.1.3(canvas@2.11.2)
       postcss:
         specifier: ^8.4.33
         version: 8.5.8
@@ -1036,7 +1039,7 @@ importers:
         version: 5.4.21(@types/node@25.5.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
       vitest:
         specifier: ^1.2.0
-        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
+        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3(canvas@2.11.2))(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
 
   workstations/quality:
     dependencies:
@@ -1088,7 +1091,7 @@ importers:
         version: 10.4.27(postcss@8.5.8)
       jsdom:
         specifier: ^24.0.0
-        version: 24.1.3
+        version: 24.1.3(canvas@2.11.2)
       postcss:
         specifier: ^8.4.33
         version: 8.5.8
@@ -1103,7 +1106,7 @@ importers:
         version: 5.4.21(@types/node@25.5.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
       vitest:
         specifier: ^1.2.0
-        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
+        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3(canvas@2.11.2))(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
 
   workstations/reception:
     dependencies:
@@ -1155,7 +1158,7 @@ importers:
         version: 10.4.27(postcss@8.5.8)
       jsdom:
         specifier: ^24.0.0
-        version: 24.1.3
+        version: 24.1.3(canvas@2.11.2)
       postcss:
         specifier: ^8.4.33
         version: 8.5.8
@@ -1170,7 +1173,7 @@ importers:
         version: 5.4.21(@types/node@25.5.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
       vitest:
         specifier: ^1.2.0
-        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
+        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3(canvas@2.11.2))(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
 
   workstations/recruitment:
     dependencies:
@@ -1228,7 +1231,7 @@ importers:
         version: 10.4.27(postcss@8.5.8)
       jsdom:
         specifier: ^24.0.0
-        version: 24.1.3
+        version: 24.1.3(canvas@2.11.2)
       postcss:
         specifier: ^8.4.33
         version: 8.5.8
@@ -1243,7 +1246,7 @@ importers:
         version: 5.4.21(@types/node@25.5.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
       vitest:
         specifier: ^2.1.0
-        version: 2.1.9(@types/node@25.5.0)(jsdom@24.1.3)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
+        version: 2.1.9(@types/node@25.5.0)(jsdom@24.1.3(canvas@2.11.2))(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
 
   workstations/research:
     dependencies:
@@ -1301,7 +1304,7 @@ importers:
         version: 10.4.27(postcss@8.5.8)
       jsdom:
         specifier: ^24.0.0
-        version: 24.1.3
+        version: 24.1.3(canvas@2.11.2)
       postcss:
         specifier: ^8.4.33
         version: 8.5.8
@@ -1316,7 +1319,7 @@ importers:
         version: 5.4.21(@types/node@25.5.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
       vitest:
         specifier: ^2.1.0
-        version: 2.1.9(@types/node@25.5.0)(jsdom@24.1.3)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
+        version: 2.1.9(@types/node@25.5.0)(jsdom@24.1.3(canvas@2.11.2))(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
 
   workstations/secretary:
     dependencies:
@@ -1368,7 +1371,7 @@ importers:
         version: 10.4.27(postcss@8.5.8)
       jsdom:
         specifier: ^24.0.0
-        version: 24.1.3
+        version: 24.1.3(canvas@2.11.2)
       postcss:
         specifier: ^8.4.33
         version: 8.5.8
@@ -1383,7 +1386,7 @@ importers:
         version: 5.4.21(@types/node@25.5.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
       vitest:
         specifier: ^1.2.0
-        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
+        version: 1.6.1(@types/node@25.5.0)(jsdom@24.1.3(canvas@2.11.2))(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1)
 
   workstations/wechat-mini:
     dependencies:
@@ -1438,7 +1441,7 @@ importers:
         version: 3.6.39(@tarojs/helper@3.6.39)(@tarojs/taro@3.6.39(@tarojs/helper@3.6.39)(@tarojs/runtime@3.6.39(@tarojs/shared@3.6.39))(@types/react@18.3.28)(postcss@8.5.8))(@types/react@18.3.28)(postcss@8.5.8)
       '@tarojs/webpack5-runner':
         specifier: ^3.6.0
-        version: 3.6.39(@babel/core@7.29.0)(@swc/core@1.3.96)(@tarojs/components@3.6.39(@tarojs/helper@3.6.39)(@tarojs/runtime@3.6.39(@tarojs/shared@3.6.39))(@tarojs/shared@3.6.39)(@types/react@18.3.28)(postcss@8.5.8)(react@18.3.1))(@tarojs/runtime@3.6.39(@tarojs/shared@3.6.39))(@tarojs/shared@3.6.39)(@tarojs/taro@3.6.39(@tarojs/helper@3.6.39)(@tarojs/runtime@3.6.39(@tarojs/shared@3.6.39))(@types/react@18.3.28)(postcss@8.5.8))(@types/react@18.3.28)(@vue/compiler-sfc@3.5.30)(postcss@8.5.8)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)(underscore@1.13.8)(webpack@5.105.4(@swc/core@1.3.96))
+        version: 3.6.39(@babel/core@7.29.0)(@swc/core@1.3.96)(@tarojs/components@3.6.39(@tarojs/helper@3.6.39)(@tarojs/runtime@3.6.39(@tarojs/shared@3.6.39))(@tarojs/shared@3.6.39)(@types/react@18.3.28)(postcss@8.5.8)(react@18.3.1))(@tarojs/runtime@3.6.39(@tarojs/shared@3.6.39))(@tarojs/shared@3.6.39)(@tarojs/taro@3.6.39(@tarojs/helper@3.6.39)(@tarojs/runtime@3.6.39(@tarojs/shared@3.6.39))(@types/react@18.3.28)(postcss@8.5.8))(@types/react@18.3.28)(@vue/compiler-sfc@3.5.30)(canvas@2.11.2)(postcss@8.5.8)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)(underscore@1.13.8)(webpack@5.105.4(@swc/core@1.3.96))
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.28
@@ -3355,6 +3358,10 @@ packages:
   '@leichtgewicht/ip-codec@2.0.5':
     resolution: {integrity: sha512-Vo+PSpZG2/fmgmiNzYK9qWRh8h/CHrwD0mo1h1DzL4yzHNSfWYujGTYsWGreD000gcgmZ7K4Ys6Tx9TxtsKdDw==}
 
+  '@mapbox/node-pre-gyp@1.0.11':
+    resolution: {integrity: sha512-Yhlar6v9WQgUp/He7BdgzOz8lqMQ8sU+jkCq7Wx8Myc5YFJLbEe7lgui/V7G1qB1DJykHSGwreceSaD60Y0PUQ==}
+    hasBin: true
+
   '@napi-rs/triples@1.2.0':
     resolution: {integrity: sha512-HAPjR3bnCsdXBsATpDIP5WCrw0JcACwhhrwIAQhiR46n+jm+a2F8kBsfseAuWtSyQ+H3Yebt2k43B5dy+04yMA==}
 
@@ -5120,6 +5127,9 @@ packages:
     resolution: {integrity: sha512-j2afSsaIENvHZN2B8GOpF566vZ5WVk5opAiMTvWgaQT8DkbOqsTfvNAvHoRGU2zzP8cPoqys+xHTRDWW8L+/BA==}
     deprecated: Use your platform's native atob() and btoa() methods instead
 
+  abbrev@1.1.1:
+    resolution: {integrity: sha512-nne9/IiQ/hzIhY6pdDnbBtz7DjPTKrY00P/zvPSm5pOFkl6xuGrGnXn/VtTNNfNtAfZ9/1RtehkszU9qcTii0Q==}
+
   abort-controller@3.0.0:
     resolution: {integrity: sha512-h8lQ8tacZYnR3vNQTgibj+tODHI5/+l06Au2Pcriv/Gmet0eaj4TwWH41sO9wnHDiQsEj19q0drzdWdeAHtweg==}
     engines: {node: '>=6.5'}
@@ -5292,6 +5302,9 @@ packages:
     resolution: {integrity: sha512-KMReFUr0B4t+D+OBkjR3KYqvocp2XaSzO55UcB6mgQMd3KbcE+mWTyvVV7D/zsdEbNnV6acZUutkiHQXvTr1Rw==}
     engines: {node: '>= 8'}
 
+  aproba@2.1.0:
+    resolution: {integrity: sha512-tLIEcj5GuR2RSTnxNKdkK0dJ/GrC7P38sUkiDmDuHfsHmbagTFAxDVIBltoklXEVIQ/f14IL8IMJ5pn9Hez1Ew==}
+
   archive-type@4.0.0:
     resolution: {integrity: sha512-zV4Ky0v1F8dBrdYElwTvQhweQ0P7Kwc1aluqJsYtOBP01jXcWCyW2IEfI1YiqsG+Iy7ZR+o5LF1N+PGECBxHWA==}
     engines: {node: '>=4'}
@@ -5310,6 +5323,11 @@ packages:
 
   archy@1.0.0:
     resolution: {integrity: sha512-Xg+9RwCg/0p32teKdGMPTPnVXKD0w3DfHnFTficozsAgsvq2XenPJq/MYpzzQ/v8zrOyJn6Ds39VA4JIDwFfqw==}
+
+  are-we-there-yet@2.0.0:
+    resolution: {integrity: sha512-Ci/qENmwHnsYo9xKIcUJN5LeDKdJ6R1Z1j9V/J5wyq8nh/mYPEpIKJbBZXtZjG04HiK7zV/p6Vs9952MrMeUIw==}
+    engines: {node: '>=10'}
+    deprecated: This package is no longer supported.
 
   arg@5.0.2:
     resolution: {integrity: sha512-PYjyFOLKQ9y57JvQ6QLo8dAgNqswh8M1RMJYdQduT6xbWSgK36P/Z/v+p888pM69jMMfS8Xd8F6I1kQ/I9HUGg==}
@@ -5911,6 +5929,10 @@ packages:
   caniuse-lite@1.0.30001781:
     resolution: {integrity: sha512-RdwNCyMsNBftLjW6w01z8bKEvT6e/5tpPVEgtn22TiLGlstHOVecsX2KHFkD5e/vRnIE4EGzpuIODb3mtswtkw==}
 
+  canvas@2.11.2:
+    resolution: {integrity: sha512-ItanGBMrmRV7Py2Z+Xhs7cT+FNt5K0vPL4p9EZ/UX/Mu7hFbkxSjKF2KVtPwX7UYWp7dRKnrTvReflgrItJbdw==}
+    engines: {node: '>=6'}
+
   canvg@3.0.11:
     resolution: {integrity: sha512-5ON+q7jCTgMp9cjpu4Jo6XbvfYwSB2Ow3kzHKfIyJfaCAOHLbdKPQqGKgfED/R5B+3TFFfe8pegYA+b423SRyA==}
     engines: {node: '>=10.0.0'}
@@ -5986,6 +6008,10 @@ packages:
   chokidar@4.0.3:
     resolution: {integrity: sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA==}
     engines: {node: '>= 14.16.0'}
+
+  chownr@2.0.0:
+    resolution: {integrity: sha512-bIomtDF5KGpdogkLd9VspvFzk9KfpyyGlS8YFVZl7TGPBHL5snIOnxeshwVgPteQ9b4Eydl+pVbIyE1DcvCWgQ==}
+    engines: {node: '>=10'}
 
   chroma-js@2.6.0:
     resolution: {integrity: sha512-BLHvCB9s8Z1EV4ethr6xnkl/P2YRFOGqfgvuMG/MyCbZPrTA+NeiByY6XvgF0zP4/2deU2CXnWyMa3zu1LqQ3A==}
@@ -6172,6 +6198,9 @@ packages:
 
   consola@2.15.3:
     resolution: {integrity: sha512-9vAdYbHj6x2fLKC4+oPH0kFzY/orMZyG2Aj+kNylHxKGJ/Ed4dpNyAQYwJOdqO4zdM7XpVHmyejQDcQHrnuXbw==}
+
+  console-control-strings@1.1.0:
+    resolution: {integrity: sha512-ty/fTekppD2fIwRvnZAVdeOiGd1c7YXEixbgJTNzqcxJWKQnjJ/V1bNEEE6hygpM3WjwHFUVK6HTjWSzV4a8sQ==}
 
   consolidate@0.15.1:
     resolution: {integrity: sha512-DW46nrsMJgy9kqAbPt5rKaCr7uFtpo4mSUvLHIUbJEjm0vo+aY5QLwBUq3FK4tRnJr/X0Psc0C4jf/h+HtXSMw==}
@@ -6710,6 +6739,10 @@ packages:
     resolution: {integrity: sha512-BzRPQuY1ip+qDonAOz42gRm/pg9F768C+npV/4JOsxRC2sq+Rlk+Q4ZCAsOhnIaMrgarILY+RMUIvMmmX1qAEA==}
     engines: {node: '>=4'}
 
+  decompress-response@4.2.1:
+    resolution: {integrity: sha512-jOSne2qbyE+/r8G1VU+G/82LBs2Fs4LAsTiLSHOCOMZQl2OKZ6i8i4IyHemTe+/yIXOtTcRQMzPcgyhoFlqPkw==}
+    engines: {node: '>=8'}
+
   decompress-tar@4.1.1:
     resolution: {integrity: sha512-JdJMaCrGpB5fESVyxwpCx4Jdj2AagLmv3y58Qy4GE6HMVjWz1FeVQk1Ct4Kye7PftcdOo/7U7UKzYBJgqnGeUQ==}
     engines: {node: '>=4'}
@@ -6778,6 +6811,9 @@ packages:
   delayed-stream@1.0.0:
     resolution: {integrity: sha512-ZySD7Nf91aLB0RxL4KGrKHBXl7Eds1DAmEdcoVawXnLD7SDhpNgtuII2aAkg7a7QS41jxPSZ17p4VdGnMHk3MQ==}
     engines: {node: '>=0.4.0'}
+
+  delegates@1.0.0:
+    resolution: {integrity: sha512-bd2L678uiWATM6m5Z1VzNCErI3jiGzt6HGY8OVICs40JQq/HALfbyNJmp0UDakEY4pMMaN0Ly5om/B1VI/+xfQ==}
 
   depcheck@1.4.7:
     resolution: {integrity: sha512-1lklS/bV5chOxwNKA/2XUUk/hPORp8zihZsXflr8x0kLwmcZ9Y9BsS6Hs3ssvA+2wUVbG0U2Ciqvm1SokNjPkA==}
@@ -7535,6 +7571,10 @@ packages:
     resolution: {integrity: sha512-yhlQgA6mnOJUKOsRUFsgJdQCvkKhcz8tlZG5HBQfReYZy46OwLcY+Zia0mtdHsOo9y/hP+CxMN0TU9QxoOtG4g==}
     engines: {node: '>=6 <7 || >=8'}
 
+  fs-minipass@2.1.0:
+    resolution: {integrity: sha512-V/JgOLFCS+R6Vcq0slCuaeWEdNC3ouDlJMNIsacH2VtALiu9mV4LPrHc5cDl8k5aw6J8jwgWWpiTo5RYhmIzvg==}
+    engines: {node: '>= 8'}
+
   fs-monkey@1.1.0:
     resolution: {integrity: sha512-QMUezzXWII9EV5aTFXW1UBVUO77wYPpjqIF8/AviUCThNeSYZykpoTixUeaNNBwmCev0AMDWMAni+f8Hxb1IFw==}
 
@@ -7556,6 +7596,11 @@ packages:
 
   functions-have-names@1.2.3:
     resolution: {integrity: sha512-xckBUXyTIqT97tq2x2AMb+g163b5JFysYk0x4qxNFwbfQkmNZoiRHb6sPzI9/QV33WeuvVYBUIiD4NzNIyqaRQ==}
+
+  gauge@3.0.2:
+    resolution: {integrity: sha512-+5J6MS/5XksCuXq++uFRsnUd7Ovu1XenbeuIuNRJxYWjgQbPuFhT14lAvsWfqfAmnwluf1OwMjz39HjfLPci0Q==}
+    engines: {node: '>=10'}
+    deprecated: This package is no longer supported.
 
   gensync@1.0.0-beta.2:
     resolution: {integrity: sha512-3hN7NaskYvMDLQY55gnW3NQ+mesEAepTqlg+VEbj7zzqEMBVNhzcGYYeqFo/TlYz6eQiFcp1HcsCZO+nGgS8zg==}
@@ -7789,6 +7834,9 @@ packages:
   has-tostringtag@1.0.2:
     resolution: {integrity: sha512-NqADB8VjPFLM2V0VvHUewwwsw0ZWBaIdgo+ieHtK3hasLz4qeCRjYcqfB6AQrBggRKppKF8L52/VqdVsO47Dlw==}
     engines: {node: '>= 0.4'}
+
+  has-unicode@2.0.1:
+    resolution: {integrity: sha512-8Rf9Y83NBReMnx0gFzA8JImQACstCYWUplepDa9xprwwtmgEZUF0h/i5xSA625zB/I37EtrswSST6OXxwaaIJQ==}
 
   has-yarn@2.1.0:
     resolution: {integrity: sha512-UqBRqi4ju7T+TqGNdqAO0PaSVGsDGJUBQvk9eUWNGRY1CFGDzYhLWoM7JQEemnlvVcv/YEmc2wNW8BC24EnUsw==}
@@ -8912,6 +8960,10 @@ packages:
     resolution: {integrity: sha512-j5EctnkH7amfV/q5Hgmoal1g2QHFJRraOtmx0JpIqkxhBhI/lJSl1nMpQ45hVarwNETOoWEimndZ4QK0RHxuxQ==}
     engines: {node: '>=4'}
 
+  mimic-response@2.1.0:
+    resolution: {integrity: sha512-wXqjST+SLt7R009ySCglWBCFpjUygmCIfD790/kVbiGmUgfYGuB14PiTd5DwVxSV4NcYHjzMkoj5LjQZwTQLEA==}
+    engines: {node: '>=8'}
+
   min-document@2.19.2:
     resolution: {integrity: sha512-8S5I8db/uZN8r9HSLFVWPdJCvYOejMcEC82VIzNUc6Zkklf/d1gg2psfE79/vyhWOj4+J8MtwmoOz3TmvaGu5A==}
 
@@ -8960,6 +9012,14 @@ packages:
   minimist@1.2.8:
     resolution: {integrity: sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==}
 
+  minipass@3.3.6:
+    resolution: {integrity: sha512-DxiNidxSEK+tHG6zOIklvNOwm3hvCrbUrdtzY74U6HKTJxvIDfOUL5W5P2Ghd3DTkhhKPYGqeNUIh5qcM4YBfw==}
+    engines: {node: '>=8'}
+
+  minipass@5.0.0:
+    resolution: {integrity: sha512-3FnjYuehv9k6ovOEbyOswadCDPX1piCfhV8ncmYtHOjuPwylVWsghTLo7rabjC3Rx5xD4HDx8Wm1xnMF7S5qFQ==}
+    engines: {node: '>=8'}
+
   minipass@6.0.2:
     resolution: {integrity: sha512-MzWSV5nYVT7mVyWCwn2o7JH13w2TBRmmSqSRCKzTw+lmft9X4z+3wjvs06Tzijo5z4W/kahUCDpRXTF+ZrmF/w==}
     engines: {node: '>=16 || 14 >=14.17'}
@@ -8980,6 +9040,10 @@ packages:
 
   miniprogram-simulate@1.6.1:
     resolution: {integrity: sha512-WO+T1A1fYZV6qW4mLNEl/+Rtdpw339mPd8q0KkyGHUFbRCIMzIHVutn2UrhUbn6UWZpkGurKwDUckNkpLhJ9QA==}
+
+  minizlib@2.1.2:
+    resolution: {integrity: sha512-bAxsR8BVfj60DWXHE3u30oHzfl4G7khkSuPW+qvpd7jFRHm7dLxOjUk1EHACJ/hxLY8phGJ0YhYHZo7jil7Qdg==}
+    engines: {node: '>= 8'}
 
   mkdir-p@0.0.7:
     resolution: {integrity: sha512-VkWaZNxDgZle/aJAemUAWdyYX7geyuleKYFfRejf/pFKjxBDbWrMAy41ijg5EiI1U00WR9JcvynuDedE/fTxLA==}
@@ -9030,6 +9094,9 @@ packages:
 
   mz@2.7.0:
     resolution: {integrity: sha512-z81GNO7nnYMEhrGh9LeymoE4+Yr0Wn5McHIZMK5cfQCl+NDX08sCZgUc9/6MHni9IWuFLm1Z3HTCXu2z9fN62Q==}
+
+  nan@2.26.2:
+    resolution: {integrity: sha512-0tTvBTYkt3tdGw22nrAy50x7gpbGCCFH3AFcyS5WiUu7Eu4vWlri1woE6qHBSfy11vksDqkiwjOnlR7WV8G1Hw==}
 
   nanoid@3.3.11:
     resolution: {integrity: sha512-N8SpfPUnUp1bK+PMYW8qSWdl9U+wwNWI4QKxOYDy9JAro3WMX7p2OeVRF9v+347pnakNevPmiHhNmZ2HbFA76w==}
@@ -9084,12 +9151,26 @@ packages:
   node-emoji@1.11.0:
     resolution: {integrity: sha512-wo2DpQkQp7Sjm2A0cq+sN7EHKO6Sl0ctXeBdFZrL9T9+UywORbufTcTZxom8YqpLQt/FqNMUkOpkZrJVYSKD3A==}
 
+  node-fetch@2.7.0:
+    resolution: {integrity: sha512-c4FRfUm/dbcWZ7U+1Wq0AwCyFL+3nt2bEw05wfxSz+DWpWsitgmSgYmy2dQdWyKC1694ELPqMs/YzUSNozLt8A==}
+    engines: {node: 4.x || >=6.0.0}
+    peerDependencies:
+      encoding: ^0.1.0
+    peerDependenciesMeta:
+      encoding:
+        optional: true
+
   node-forge@1.3.3:
     resolution: {integrity: sha512-rLvcdSyRCyouf6jcOIPe/BgwG/d7hKjzMKOas33/pHEr6gbq18IK9zV7DiPvzsz0oBJPme6qr6H6kGZuI9/DZg==}
     engines: {node: '>= 6.13.0'}
 
   node-releases@2.0.36:
     resolution: {integrity: sha512-TdC8FSgHz8Mwtw9g5L4gR/Sh9XhSP/0DEkQxfEFXOpiul5IiHgHan2VhYYb6agDSfp4KuvltmGApc8HMgUrIkA==}
+
+  nopt@5.0.0:
+    resolution: {integrity: sha512-Tbj67rffqceeLpcRXrT7vKAN8CwfPeIBgM7E6iBkmKLV7bEMwpGgYLGv0jACUsECaa/vuxP0IjEont6umdMgtQ==}
+    engines: {node: '>=6'}
+    hasBin: true
 
   normalize-package-data@2.5.0:
     resolution: {integrity: sha512-/5CMN3T0R4XTj4DcGaexo+roZSdSFW/0AOOTROrjxzCG1wrWXEsGbRKevjlIL+ZDE4sZlJr5ED4YW0yqmkK+eA==}
@@ -9137,6 +9218,10 @@ packages:
   npm-run-path@5.3.0:
     resolution: {integrity: sha512-ppwTtiJZq0O/ai0z7yfudtBpWIoxM8yE6nHi1X47eFR2EWORqfbu6CnPlNsjeN683eT0qG6H/Pyf9fCcvjnnnQ==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
+
+  npmlog@5.0.1:
+    resolution: {integrity: sha512-AqZtDUWOMKs1G/8lwylVjrdYgqA4d9nu8hc+0gzRxlDb1I10+FHBGMXs6aiQHFdCUUlqH99MUMuLfzWDNDtfxw==}
+    deprecated: This package is no longer supported.
 
   nth-check@2.1.1:
     resolution: {integrity: sha512-lqjrjmaOoAnWfMmBPL+XNnynZh2+swxiX3WUE0s4yEHI6m+AwrK2UZOimIRl3X/4QctVqS8AiZjFqyOGrMXb/w==}
@@ -9389,6 +9474,10 @@ packages:
     resolution: {integrity: sha512-gDKb8aZMDeD/tZWs9P6+q0J9Mwkdl6xMV8TjnGP3qJVJ06bdMgkbBlLU8IdfOsIsFz2BW1rNVT3XuNEl8zPAvw==}
     engines: {node: '>=8'}
 
+  path2d@0.2.2:
+    resolution: {integrity: sha512-+vnG6S4dYcYxZd+CZxzXCNKdELYZSKfohrk98yajCo1PtRoDgCTrrwOvK1GT0UoAdVszagDVllQc0U1vaX4NUQ==}
+    engines: {node: '>=6'}
+
   pathe@1.1.2:
     resolution: {integrity: sha512-whLdWMYL2TwI08hn8/ZqAbrVemu0LNaNNJZX73O6qaIdCTfXutsLhMkjdENX0qhsQ9uIimo4/aQOmXkoon2nDQ==}
 
@@ -9401,6 +9490,10 @@ packages:
   pathval@2.0.1:
     resolution: {integrity: sha512-//nshmD55c46FuFw26xV/xFAaB5HF9Xdap7HJBBnrKdAd6/GxDBaNA1870O79+9ueg61cZLSVc+OaFlfmObYVQ==}
     engines: {node: '>= 14.16'}
+
+  pdfjs-dist@4.4.168:
+    resolution: {integrity: sha512-MbkAjpwka/dMHaCfQ75RY1FXX3IewBVu6NGZOcxerRFlaBiIkZmUoR0jotX5VUzYZEXAGzSFtknWs5xRKliXPA==}
+    engines: {node: '>=18'}
 
   peek-readable@4.1.0:
     resolution: {integrity: sha512-ZI3LnwUv5nOGbQzD9c2iDG6toheuXSZP5esSHBjopsXH4dg19soufvpUGA3uohi5anFtGb2lhAVdHzH6R/Evvg==}
@@ -10485,6 +10578,12 @@ packages:
     resolution: {integrity: sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw==}
     engines: {node: '>=14'}
 
+  simple-concat@1.0.1:
+    resolution: {integrity: sha512-cSFtAPtRhljv69IK0hTVZQ+OfE9nePi/rtJmw5UjHeVyVroEqJXP1sFztKUy1qU+xvz3u/sfYJLa947b7nAN2Q==}
+
+  simple-get@3.1.1:
+    resolution: {integrity: sha512-CQ5LTKGfCpvE1K0n2us+kuMPbk/q0EKl82s4aheV9oXjFEz6W/Y7oQFVJuU6QG77hRT4Ghb5RURteF5vnWjupA==}
+
   simple-plist@1.3.1:
     resolution: {integrity: sha512-iMSw5i0XseMnrhtIzRb7XpQEXepa9xhWxGUojHBL43SIpQuDQkh3Wpy67ZbDzZVr6EKxvwVChnVpdl8hEVLDiw==}
 
@@ -10815,6 +10914,11 @@ packages:
     resolution: {integrity: sha512-ujeqbceABgwMZxEJnk2HDY2DlnUZ+9oEcb1KzTVfYHio0UE6dG71n60d8D2I4qNvleWrrXpmjpt7vZeF1LnMZQ==}
     engines: {node: '>=6'}
 
+  tar@6.2.1:
+    resolution: {integrity: sha512-DZ4yORTwrbTj/7MZYq2w+/ZFdI6OZ/f9SFHR+71gIVUZhOQPHzVCLpvRnPgyaMpfWxxk/4ONva3GQSyNIKRv6A==}
+    engines: {node: '>=10'}
+    deprecated: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+
   terminal-kit@2.11.7:
     resolution: {integrity: sha512-Obe3T8rYOVEI+3uJM1jAK74GkyJsLqRNsA78LcVQrJJ0XfxkhNEVJZ3+pdYD2qcXt9MOx3e/fCMZK/J0lg7KUA==}
     engines: {node: '>=14.15.0'}
@@ -10969,6 +11073,9 @@ packages:
   tough-cookie@4.1.4:
     resolution: {integrity: sha512-Loo5UUvLD9ScZ6jh8beX1T6sO1w2/MpCRpEP7V280GKMVUQ0Jzar2U3UJPsrdbziLEMMhu3Ujnq//rhiFuIeag==}
     engines: {node: '>=6'}
+
+  tr46@0.0.3:
+    resolution: {integrity: sha512-N3WMsuqV66lT30CrXNbEjx4GEwlow3v6rr4mCcv6prnfwhS01rkgyFdjPNBYd9br7LpXV1+Emh01fHnq2Gdgrw==}
 
   tr46@4.1.1:
     resolution: {integrity: sha512-2lv/66T7e5yNyhAAC4NaKe5nVavzuGJQVVtRYLyQ2OI8tsJ61PMLlelehb0wi2Hx6+hT/OJUWZcw8MjlSRnxvw==}
@@ -11387,6 +11494,9 @@ packages:
   wcwidth@1.0.1:
     resolution: {integrity: sha512-XHPEwS0q6TaxcvG85+8EYkbiCux2XtWG2mkc47Ng2A77BQu9+DqIOJldST4HgPkuea7dvKSj5VgX3P1d4rW8Tg==}
 
+  webidl-conversions@3.0.1:
+    resolution: {integrity: sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ==}
+
   webidl-conversions@7.0.0:
     resolution: {integrity: sha512-VwddBukDzu71offAQR975unBIGqfKZpM+8ZX6ySk8nYhVoo5CYaZyzt3YBvYtRtO+aoGlqxPg/B87NGVZ/fu6g==}
     engines: {node: '>=12'}
@@ -11488,6 +11598,9 @@ packages:
     resolution: {integrity: sha512-De72GdQZzNTUBBChsXueQUnPKDkg/5A5zp7pFDuQAj5UFoENpiACU0wlCvzpAGnTkj++ihpKwKyYewn/XNUbKw==}
     engines: {node: '>=18'}
 
+  whatwg-url@5.0.0:
+    resolution: {integrity: sha512-saE57nupxk6v3HY35+jzBwYa0rKSy0XR8JSxZPwgLr7ys0IBzhGviA1/TUGJLmSVqs8pb9AnvICXEuOHLprYTw==}
+
   which-boxed-primitive@1.1.1:
     resolution: {integrity: sha512-TbX3mj8n0odCBFVlY8AxkqcHASw3L60jIuF8jFP78az3C2YhmGvqbHBpAjTRH2/xqYunrJ9g1jSyjCjpoWzIAA==}
     engines: {node: '>= 0.4'}
@@ -11520,6 +11633,9 @@ packages:
     resolution: {integrity: sha512-hUrmaWBdVDcxvYqnyh09zunKzROWjbZTiNy8dBEjkS7ehEDQibXJ7XvlmtbwuTclUiIyN+CyXQD4Vmko8fNm8w==}
     engines: {node: '>=8'}
     hasBin: true
+
+  wide-align@1.1.5:
+    resolution: {integrity: sha512-eDMORYaPNZ4sQIuuYPDHdQvf4gyCF9rEEV/yPxGfwPkRodwEgiMUUXTx/dex+Me0wxx53S+NgUHaP7y3MGlDmg==}
 
   widest-line@3.1.0:
     resolution: {integrity: sha512-NsmoXalsWVDMGupxZ5R08ka9flZjjiLvHVAWYOKtiKM8ujtZWr9cRffak+uSE48+Ob8ObalXpwyeUiyDD6QFgg==}
@@ -14294,6 +14410,22 @@ snapshots:
 
   '@leichtgewicht/ip-codec@2.0.5': {}
 
+  '@mapbox/node-pre-gyp@1.0.11':
+    dependencies:
+      detect-libc: 2.1.2
+      https-proxy-agent: 5.0.1
+      make-dir: 3.1.0
+      node-fetch: 2.7.0
+      nopt: 5.0.0
+      npmlog: 5.0.1
+      rimraf: 3.0.2
+      semver: 7.7.4
+      tar: 6.2.1
+    transitivePeerDependencies:
+      - encoding
+      - supports-color
+    optional: true
+
   '@napi-rs/triples@1.2.0': {}
 
   '@nicolo-ribaudo/eslint-scope-5-internals@5.1.1-v1':
@@ -15656,7 +15788,7 @@ snapshots:
       - supports-color
       - vue
 
-  '@tarojs/webpack5-runner@3.6.39(@babel/core@7.29.0)(@swc/core@1.3.96)(@tarojs/components@3.6.39(@tarojs/helper@3.6.39)(@tarojs/runtime@3.6.39(@tarojs/shared@3.6.39))(@tarojs/shared@3.6.39)(@types/react@18.3.28)(postcss@8.5.8)(react@18.3.1))(@tarojs/runtime@3.6.39(@tarojs/shared@3.6.39))(@tarojs/shared@3.6.39)(@tarojs/taro@3.6.39(@tarojs/helper@3.6.39)(@tarojs/runtime@3.6.39(@tarojs/shared@3.6.39))(@types/react@18.3.28)(postcss@8.5.8))(@types/react@18.3.28)(@vue/compiler-sfc@3.5.30)(postcss@8.5.8)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)(underscore@1.13.8)(webpack@5.105.4(@swc/core@1.3.96))':
+  '@tarojs/webpack5-runner@3.6.39(@babel/core@7.29.0)(@swc/core@1.3.96)(@tarojs/components@3.6.39(@tarojs/helper@3.6.39)(@tarojs/runtime@3.6.39(@tarojs/shared@3.6.39))(@tarojs/shared@3.6.39)(@types/react@18.3.28)(postcss@8.5.8)(react@18.3.1))(@tarojs/runtime@3.6.39(@tarojs/shared@3.6.39))(@tarojs/shared@3.6.39)(@tarojs/taro@3.6.39(@tarojs/helper@3.6.39)(@tarojs/runtime@3.6.39(@tarojs/shared@3.6.39))(@types/react@18.3.28)(postcss@8.5.8))(@types/react@18.3.28)(@vue/compiler-sfc@3.5.30)(canvas@2.11.2)(postcss@8.5.8)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)(underscore@1.13.8)(webpack@5.105.4(@swc/core@1.3.96))':
     dependencies:
       '@parcel/css': 1.14.0
       '@tarojs/helper': 3.6.39
@@ -15685,7 +15817,7 @@ snapshots:
       file-loader: 6.0.0(webpack@5.105.4(@swc/core@1.3.96))
       html-minifier: 4.0.0
       html-webpack-plugin: 5.5.0(webpack@5.105.4(@swc/core@1.3.96))
-      jsdom: 21.1.2
+      jsdom: 21.1.2(canvas@2.11.2)
       less: 4.6.4
       less-loader: 10.2.0(less@4.6.4)(webpack@5.105.4(@swc/core@1.3.96))
       loader-utils: 1.4.2
@@ -16416,6 +16548,9 @@ snapshots:
 
   abab@2.0.6: {}
 
+  abbrev@1.1.1:
+    optional: true
+
   abort-controller@3.0.0:
     dependencies:
       event-target-shim: 5.0.1
@@ -16559,6 +16694,9 @@ snapshots:
       normalize-path: 3.0.0
       picomatch: 2.3.1
 
+  aproba@2.1.0:
+    optional: true
+
   archive-type@4.0.0:
     dependencies:
       file-type: 4.4.0
@@ -16600,6 +16738,12 @@ snapshots:
       zip-stream: 4.1.1
 
   archy@1.0.0: {}
+
+  are-we-there-yet@2.0.0:
+    dependencies:
+      delegates: 1.0.0
+      readable-stream: 3.6.2
+    optional: true
 
   arg@5.0.2: {}
 
@@ -17562,6 +17706,16 @@ snapshots:
 
   caniuse-lite@1.0.30001781: {}
 
+  canvas@2.11.2:
+    dependencies:
+      '@mapbox/node-pre-gyp': 1.0.11
+      nan: 2.26.2
+      simple-get: 3.1.1
+    transitivePeerDependencies:
+      - encoding
+      - supports-color
+    optional: true
+
   canvg@3.0.11:
     dependencies:
       '@babel/runtime': 7.29.2
@@ -17686,6 +17840,9 @@ snapshots:
   chokidar@4.0.3:
     dependencies:
       readdirp: 4.1.2
+
+  chownr@2.0.0:
+    optional: true
 
   chroma-js@2.6.0: {}
 
@@ -17871,6 +18028,9 @@ snapshots:
   connect-history-api-fallback@2.0.0: {}
 
   consola@2.15.3: {}
+
+  console-control-strings@1.1.0:
+    optional: true
 
   consolidate@0.15.1(lodash@4.17.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(underscore@1.13.8):
     dependencies:
@@ -18255,6 +18415,11 @@ snapshots:
     dependencies:
       mimic-response: 1.0.1
 
+  decompress-response@4.2.1:
+    dependencies:
+      mimic-response: 2.1.0
+    optional: true
+
   decompress-tar@4.1.1:
     dependencies:
       file-type: 5.2.0
@@ -18351,6 +18516,9 @@ snapshots:
       object-keys: 1.1.1
 
   delayed-stream@1.0.0: {}
+
+  delegates@1.0.0:
+    optional: true
 
   depcheck@1.4.7:
     dependencies:
@@ -19247,6 +19415,11 @@ snapshots:
       jsonfile: 4.0.0
       universalify: 0.1.2
 
+  fs-minipass@2.1.0:
+    dependencies:
+      minipass: 3.3.6
+    optional: true
+
   fs-monkey@1.1.0: {}
 
   fs.realpath@1.0.0: {}
@@ -19260,6 +19433,19 @@ snapshots:
   function-bind@1.1.2: {}
 
   functions-have-names@1.2.3: {}
+
+  gauge@3.0.2:
+    dependencies:
+      aproba: 2.1.0
+      color-support: 1.1.3
+      console-control-strings: 1.1.0
+      has-unicode: 2.0.1
+      object-assign: 4.1.1
+      signal-exit: 3.0.7
+      string-width: 4.2.3
+      strip-ansi: 6.0.1
+      wide-align: 1.1.5
+    optional: true
 
   gensync@1.0.0-beta.2: {}
 
@@ -19551,6 +19737,9 @@ snapshots:
   has-tostringtag@1.0.2:
     dependencies:
       has-symbols: 1.1.0
+
+  has-unicode@2.0.1:
+    optional: true
 
   has-yarn@2.1.0: {}
 
@@ -20108,7 +20297,7 @@ snapshots:
 
   jsbn@0.1.1: {}
 
-  jsdom@21.1.2:
+  jsdom@21.1.2(canvas@2.11.2):
     dependencies:
       abab: 2.0.6
       acorn: 8.16.0
@@ -20136,12 +20325,14 @@ snapshots:
       whatwg-url: 12.0.1
       ws: 8.20.0
       xml-name-validator: 4.0.0
+    optionalDependencies:
+      canvas: 2.11.2
     transitivePeerDependencies:
       - bufferutil
       - supports-color
       - utf-8-validate
 
-  jsdom@23.2.0:
+  jsdom@23.2.0(canvas@2.11.2):
     dependencies:
       '@asamuzakjp/dom-selector': 2.0.2
       cssstyle: 4.6.0
@@ -20164,12 +20355,14 @@ snapshots:
       whatwg-url: 14.2.0
       ws: 8.20.0
       xml-name-validator: 5.0.0
+    optionalDependencies:
+      canvas: 2.11.2
     transitivePeerDependencies:
       - bufferutil
       - supports-color
       - utf-8-validate
 
-  jsdom@24.1.3:
+  jsdom@24.1.3(canvas@2.11.2):
     dependencies:
       cssstyle: 4.6.0
       data-urls: 5.0.0
@@ -20192,6 +20385,8 @@ snapshots:
       whatwg-url: 14.2.0
       ws: 8.20.0
       xml-name-validator: 5.0.0
+    optionalDependencies:
+      canvas: 2.11.2
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -20755,6 +20950,9 @@ snapshots:
 
   mimic-response@1.0.1: {}
 
+  mimic-response@2.1.0:
+    optional: true
+
   min-document@2.19.2:
     dependencies:
       dom-walk: 0.1.2
@@ -20803,6 +21001,14 @@ snapshots:
       kind-of: 6.0.3
 
   minimist@1.2.8: {}
+
+  minipass@3.3.6:
+    dependencies:
+      yallist: 4.0.0
+    optional: true
+
+  minipass@5.0.0:
+    optional: true
 
   minipass@6.0.2: {}
 
@@ -21014,6 +21220,12 @@ snapshots:
       postcss: 7.0.39
       pretty-format: 26.6.2
 
+  minizlib@2.1.2:
+    dependencies:
+      minipass: 3.3.6
+      yallist: 4.0.0
+    optional: true
+
   mkdir-p@0.0.7: {}
 
   mkdirp@0.5.6:
@@ -21068,6 +21280,9 @@ snapshots:
       object-assign: 4.1.1
       thenify-all: 1.6.0
 
+  nan@2.26.2:
+    optional: true
+
   nanoid@3.3.11: {}
 
   native-request@1.1.2:
@@ -21117,9 +21332,19 @@ snapshots:
     dependencies:
       lodash: 4.17.23
 
+  node-fetch@2.7.0:
+    dependencies:
+      whatwg-url: 5.0.0
+    optional: true
+
   node-forge@1.3.3: {}
 
   node-releases@2.0.36: {}
+
+  nopt@5.0.0:
+    dependencies:
+      abbrev: 1.1.1
+    optional: true
 
   normalize-package-data@2.5.0:
     dependencies:
@@ -21195,6 +21420,14 @@ snapshots:
   npm-run-path@5.3.0:
     dependencies:
       path-key: 4.0.0
+
+  npmlog@5.0.1:
+    dependencies:
+      are-we-there-yet: 2.0.0
+      console-control-strings: 1.1.0
+      gauge: 3.0.2
+      set-blocking: 2.0.0
+    optional: true
 
   nth-check@2.1.1:
     dependencies:
@@ -21437,6 +21670,9 @@ snapshots:
 
   path-type@4.0.0: {}
 
+  path2d@0.2.2:
+    optional: true
+
   pathe@1.1.2: {}
 
   pathe@2.0.3: {}
@@ -21444,6 +21680,14 @@ snapshots:
   pathval@1.1.1: {}
 
   pathval@2.0.1: {}
+
+  pdfjs-dist@4.4.168:
+    optionalDependencies:
+      canvas: 2.11.2
+      path2d: 0.2.2
+    transitivePeerDependencies:
+      - encoding
+      - supports-color
 
   peek-readable@4.1.0: {}
 
@@ -22622,6 +22866,16 @@ snapshots:
 
   signal-exit@4.1.0: {}
 
+  simple-concat@1.0.1:
+    optional: true
+
+  simple-get@3.1.1:
+    dependencies:
+      decompress-response: 4.2.1
+      once: 1.4.0
+      simple-concat: 1.0.1
+    optional: true
+
   simple-plist@1.3.1:
     dependencies:
       bplist-creator: 0.1.0
@@ -22984,6 +23238,16 @@ snapshots:
       inherits: 2.0.4
       readable-stream: 3.6.2
 
+  tar@6.2.1:
+    dependencies:
+      chownr: 2.0.0
+      fs-minipass: 2.1.0
+      minipass: 5.0.0
+      minizlib: 2.1.2
+      mkdirp: 1.0.4
+      yallist: 4.0.0
+    optional: true
+
   terminal-kit@2.11.7:
     dependencies:
       '@cronvel/get-pixels': 3.4.1
@@ -23126,6 +23390,9 @@ snapshots:
       punycode: 2.3.1
       universalify: 0.2.0
       url-parse: 1.5.10
+
+  tr46@0.0.3:
+    optional: true
 
   tr46@4.1.1:
     dependencies:
@@ -23437,7 +23704,7 @@ snapshots:
       stylus: 0.55.0
       terser: 5.46.1
 
-  vitest@1.6.1(@types/node@25.5.0)(jsdom@23.2.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1):
+  vitest@1.6.1(@types/node@25.5.0)(jsdom@23.2.0(canvas@2.11.2))(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1):
     dependencies:
       '@vitest/expect': 1.6.1
       '@vitest/runner': 1.6.1
@@ -23461,7 +23728,7 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 25.5.0
-      jsdom: 23.2.0
+      jsdom: 23.2.0(canvas@2.11.2)
     transitivePeerDependencies:
       - less
       - lightningcss
@@ -23472,7 +23739,7 @@ snapshots:
       - supports-color
       - terser
 
-  vitest@1.6.1(@types/node@25.5.0)(jsdom@24.1.3)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1):
+  vitest@1.6.1(@types/node@25.5.0)(jsdom@24.1.3(canvas@2.11.2))(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1):
     dependencies:
       '@vitest/expect': 1.6.1
       '@vitest/runner': 1.6.1
@@ -23496,7 +23763,7 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 25.5.0
-      jsdom: 24.1.3
+      jsdom: 24.1.3(canvas@2.11.2)
     transitivePeerDependencies:
       - less
       - lightningcss
@@ -23507,7 +23774,7 @@ snapshots:
       - supports-color
       - terser
 
-  vitest@2.1.9(@types/node@25.5.0)(jsdom@24.1.3)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1):
+  vitest@2.1.9(@types/node@25.5.0)(jsdom@24.1.3(canvas@2.11.2))(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1):
     dependencies:
       '@vitest/expect': 2.1.9
       '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@25.5.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.98.0)(stylus@0.55.0)(terser@5.46.1))
@@ -23531,7 +23798,7 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 25.5.0
-      jsdom: 24.1.3
+      jsdom: 24.1.3(canvas@2.11.2)
     transitivePeerDependencies:
       - less
       - lightningcss
@@ -23643,6 +23910,9 @@ snapshots:
   wcwidth@1.0.1:
     dependencies:
       defaults: 1.0.4
+
+  webidl-conversions@3.0.1:
+    optional: true
 
   webidl-conversions@7.0.0: {}
 
@@ -23789,6 +24059,12 @@ snapshots:
       tr46: 5.1.1
       webidl-conversions: 7.0.0
 
+  whatwg-url@5.0.0:
+    dependencies:
+      tr46: 0.0.3
+      webidl-conversions: 3.0.1
+    optional: true
+
   which-boxed-primitive@1.1.1:
     dependencies:
       is-bigint: 1.1.0
@@ -23833,6 +24109,11 @@ snapshots:
     dependencies:
       siginfo: 2.0.0
       stackback: 0.0.2
+
+  wide-align@1.1.5:
+    dependencies:
+      string-width: 4.2.3
+    optional: true
 
   widest-line@3.1.0:
     dependencies:

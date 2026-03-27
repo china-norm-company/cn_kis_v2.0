@@ -294,10 +294,15 @@ def health_check(request, check: _Optional[str] = None):
 # ============================================================================
 # Django URL 配置
 # ============================================================================
+from django.conf import settings as django_settings
 from django.urls import path
+from django.conf.urls.static import static
 from apps.agent_gateway.views_sse import chat_stream
 
 urlpatterns = [
     path('api/v1/', api.urls),
     path('api/v1/agents/chat/stream', chat_stream),
 ]
+
+if django_settings.DEBUG:
+    urlpatterns += static(django_settings.MEDIA_URL, document_root=django_settings.MEDIA_ROOT)

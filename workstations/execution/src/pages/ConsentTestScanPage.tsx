@@ -7,15 +7,17 @@ import {
   buildIcfSignatureRawHtmlPlaceholders,
 } from '@cn-kis/consent-placeholders'
 import { Button } from '@cn-kis/ui-kit'
-import { BookOpen, CheckCircle2 } from 'lucide-react'
+import { BookOpen, CheckCircle2, Download, FileText } from 'lucide-react'
 import {
   appendSupplementalCollectCheckboxPreviewRows,
   collectInteractiveCheckboxAnswers,
+  focusFirstUnansweredInteractiveCheckbox,
   icfInteractiveCheckboxGroupsAllAnswered,
   injectInteractiveCheckboxMarkers,
   stripDocumentOtherInfoPlaceholderForCustomSupplemental,
 } from '@/utils/icfCheckboxDetect'
 import { ICF_PREVIEW_ASSIST_STYLE_BLOCK } from '@/utils/icfDocxPreviewShell'
+import { ConsentTestScanPdfPreviewModal } from '@/components/ConsentTestScanPdfPreviewModal'
 
 /** 开发环境 React.StrictMode 会二次挂载并重置 state，提交成功后用 sessionStorage 恢复完成页 */
 const CONSENT_TEST_SCAN_DONE_KEY = 'cn_kis:consent_test_scan_done:v1'
@@ -23,6 +25,63 @@ const CONSENT_TEST_SCAN_DONE_MAX_AGE_MS = 2 * 60 * 60 * 1000
 
 function consentTestScanDoneStorageKey(protocolId: number, token: string) {
   return `${CONSENT_TEST_SCAN_DONE_KEY}:${protocolId}:${token}`
+}
+
+/** 核验前基础信息草稿：按协议 ID 存本机 localStorage，便于同一设备重复扫码不必重填 */
+const CONSENT_TEST_SCAN_SUBJECT_INFO_PREFIX = 'cn_kis:consent_test_scan_subject_info:v1'
+
+function consentTestScanSubjectInfoStorageKey(protocolId: number): string {
+  return `${CONSENT_TEST_SCAN_SUBJECT_INFO_PREFIX}:${protocolId}`
+}
+
+type ConsentTestScanSubjectInfoDraft = {
+  subject_name: string
+  id_card_no: string
+  phone: string
+  screening_number: string
+  pinyin_initials: string
+}
+
+function loadConsentTestScanSubjectInfo(protocolId: number): ConsentTestScanSubjectInfoDraft | null {
+  try {
+    const raw = localStorage.getItem(consentTestScanSubjectInfoStorageKey(protocolId))
+    if (!raw) return null
+    const p = JSON.parse(raw) as Record<string, unknown>
+    const s = (k: string) => (typeof p[k] === 'string' ? p[k] : '')
+    return {
+      subject_name: s('subject_name'),
+      id_card_no: s('id_card_no'),
+      phone: s('phone'),
+      screening_number: s('screening_number'),
+      pinyin_initials: s('pinyin_initials'),
+    }
+  } catch {
+    return null
+  }
+}
+
+function saveConsentTestScanSubjectInfo(protocolId: number, d: ConsentTestScanSubjectInfoDraft): void {
+  try {
+    localStorage.setItem(consentTestScanSubjectInfoStorageKey(protocolId), JSON.stringify(d))
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+/** 避免将 Django 500 HTML 页当作错误文案展示在页面上 */
+function formatConsentScanHttpError(e: unknown, fallback: string): string {
+  const ax = e as { response?: { data?: unknown }; message?: string }
+  const d = ax.response?.data
+  if (typeof d === 'string' && (d.includes('<!DOCTYPE') || d.includes('<html'))) {
+    return '服务器处理失败，请稍后重试或联系管理员'
+  }
+  if (d && typeof d === 'object' && !Array.isArray(d) && 'msg' in d) {
+    const m = (d as { msg?: unknown }).msg
+    if (typeof m === 'string' && m.trim()) return m.trim()
+  }
+  const m = ax.message
+  if (typeof m === 'string' && m.trim()) return m.trim()
+  return fallback
 }
 
 /** 与 apps/execution/index.html 默认 <title> 一致，离开本页时恢复 */
@@ -35,10 +94,29 @@ const DEFAULT_EXECUTION_BROWSER_TITLE = '维周·执行台 - CN KIS'
 function consentTestScanDocumentTitle(projectTitle: string, projectCode: string): string {
   const name = (projectTitle || '').trim()
   const code = (projectCode || '').trim()
-  if (!name && !code) return '知情核验测试'
+  if (!name && !code) return '知情测试'
   if (!code) return name
   if (!name) return code
   return `${name}\n${code}`
+}
+
+/** 与后端 `_consent_test_scan_receipt_download_basename` 规则一致：项目编号_SC号_签署节点名称.pdf */
+function sanitizeConsentTestScanFilenameSegment(s: string, maxLen: number): string {
+  let t = (s || '').trim()
+  if (!t) return ''
+  t = t.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+  t = t.replace(/\s+/g, '_')
+  t = t.replace(/^_+|_+$/g, '')
+  return t.slice(0, maxLen)
+}
+
+function consentTestScanReceiptPdfFilename(projectCode: string, scNumber: string, nodeTitle: string): string {
+  const p1 = sanitizeConsentTestScanFilenameSegment(projectCode, 40)
+  const p2 = sanitizeConsentTestScanFilenameSegment(scNumber, 64)
+  const p3 = sanitizeConsentTestScanFilenameSegment(nodeTitle, 120)
+  const parts = [p1, p2, p3].filter(Boolean)
+  if (parts.length) return `${parts.join('_')}.pdf`
+  return 'icf_receipt.pdf'
 }
 
 type QueueItem = {
@@ -66,7 +144,7 @@ function subjectPadCount(item: QueueItem | null): number {
 }
 
 /**
- * 执行台「核验测试」移动端 H5：扫码进入，按协议 ICF 节点完成阅读/勾选/签名后写入「测试」类型签署记录。
+ * 执行台「知情测试」移动端 H5：扫码进入，按协议 ICF 节点完成阅读/勾选/签名后写入「测试」类型签署记录。
  * 与列表二维码参数 p、t（consent_test_scan_token）一致；不经过小程序。
  */
 type ScanPhase = 'info' | 'face' | 'test'
@@ -89,6 +167,8 @@ export default function ConsentTestScanPage() {
   const [infoIdCard, setInfoIdCard] = useState('')
   const [infoPhone, setInfoPhone] = useState('')
   const [infoSc, setInfoSc] = useState('')
+  /** 与列表「拼音首字母」、导出 ZIP 文件夹中段一致（英文字母，提交时转大写） */
+  const [infoPinyinInitials, setInfoPinyinInitials] = useState('')
   const [infoErr, setInfoErr] = useState<string | null>(null)
   const [items, setItems] = useState<QueueItem[]>([])
   const [queueIndex, setQueueIndex] = useState(0)
@@ -122,9 +202,6 @@ export default function ConsentTestScanPage() {
   const signaturesByIcfRef = useRef<Record<number, string[]>>({})
   /** 完成页：页内 iframe 预览 PDF（避免新窗口被浏览器/微信强制下载） */
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  /** 启用勾选识别时：每一处「请勾选」是否已选是/否 */
-  const [checkboxRubricOk, setCheckboxRubricOk] = useState(true)
-
   const current = items[queueIndex] ?? null
   const total = items.length
   const stepLabel = total > 1 ? `（${queueIndex + 1}/${total}）` : ''
@@ -166,6 +243,33 @@ export default function ConsentTestScanPage() {
     setSigPreviewDataUrls(urls)
   }, [sigFilled, phase, current?.icf_version_id, padCount, queueIndex])
 
+  /** 进入核验前信息页时从本机恢复上次填写（useLayoutEffect 避免首屏空白再闪出内容） */
+  useLayoutEffect(() => {
+    if (phase !== 'info' || !Number.isFinite(protocolId) || items.length === 0) return
+    const d = loadConsentTestScanSubjectInfo(protocolId)
+    if (!d) return
+    setInfoName(d.subject_name)
+    setInfoIdCard(d.id_card_no)
+    setInfoPhone(d.phone)
+    setInfoSc(d.screening_number)
+    setInfoPinyinInitials(d.pinyin_initials)
+  }, [phase, protocolId, items.length])
+
+  /** 信息页输入防抖写入本机，刷新或下次扫码同协议可续用 */
+  useEffect(() => {
+    if (phase !== 'info' || !Number.isFinite(protocolId)) return
+    const id = window.setTimeout(() => {
+      saveConsentTestScanSubjectInfo(protocolId, {
+        subject_name: infoName,
+        id_card_no: infoIdCard,
+        phone: infoPhone,
+        screening_number: infoSc,
+        pinyin_initials: infoPinyinInitials,
+      })
+    }, 400)
+    return () => window.clearTimeout(id)
+  }, [phase, protocolId, infoName, infoIdCard, infoPhone, infoSc, infoPinyinInitials])
+
   const articleHtml = useMemo(() => {
     const raw0 = (current?.content || '').trim()
     if (!raw0) return '<p>（暂无正文）</p>'
@@ -179,6 +283,7 @@ export default function ConsentTestScanPage() {
         declared_id_card: infoIdCard,
         declared_phone: infoPhone,
         declared_screening_number: infoSc,
+        declared_pinyin_initials: infoPinyinInitials,
       },
       previewNow: previewAnchoredAt,
       enableAutoSignDate: protocolAutoSignDate || !!current?.enable_auto_sign_date,
@@ -217,49 +322,13 @@ export default function ConsentTestScanPage() {
     infoIdCard,
     infoPhone,
     infoSc,
+    infoPinyinInitials,
     previewAnchoredAt,
     protocolAutoSignDate,
     current?.enable_auto_sign_date,
     padCount,
     sigPreviewDataUrls,
   ])
-
-  useLayoutEffect(() => {
-    if (phase !== 'test' || !current?.enable_checkbox_recognition) {
-      setCheckboxRubricOk(true)
-      return
-    }
-    const el = contentRef.current
-    const sync = () => {
-      setCheckboxRubricOk(icfInteractiveCheckboxGroupsAllAnswered(contentRef.current))
-    }
-    sync()
-    // innerHTML 注入后同一帧内 ref 子树可能尚未稳定，双 rAF 再验一次
-    let raf2 = 0
-    const id0 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(sync)
-    })
-    el?.addEventListener('change', sync)
-    el?.addEventListener('input', sync)
-    el?.addEventListener('click', sync)
-    return () => {
-      cancelAnimationFrame(id0)
-      if (raf2) cancelAnimationFrame(raf2)
-      el?.removeEventListener('change', sync)
-      el?.removeEventListener('input', sync)
-      el?.removeEventListener('click', sync)
-    }
-  }, [articleHtml, current?.enable_checkbox_recognition, queueIndex, phase])
-
-  /** 勾选状态仅依赖事件时偶发不刷新；短轮询兜底，避免底部按钮长期置灰 */
-  useEffect(() => {
-    if (phase !== 'test' || !current?.enable_checkbox_recognition) return
-    const sync = () => {
-      setCheckboxRubricOk(icfInteractiveCheckboxGroupsAllAnswered(contentRef.current))
-    }
-    const t = window.setInterval(sync, 300)
-    return () => window.clearInterval(t)
-  }, [articleHtml, current?.enable_checkbox_recognition, queueIndex, phase])
 
   useEffect(() => {
     if (!t.trim() || !Number.isFinite(protocolId)) {
@@ -276,6 +345,9 @@ export default function ConsentTestScanPage() {
           subjectNo?: string
           protocol_title?: string
           protocol_code?: string
+          /** 扫码页基础信息 SC 号，用于完成页文件名与后端一致 */
+          screening_number?: string
+          pinyin_initials?: string
           items?: Array<{
             consent_id: number
             icf_version_id: number
@@ -293,6 +365,8 @@ export default function ConsentTestScanPage() {
         ) {
           setTitle((parsed.protocol_title || '').trim())
           setProtocolCode((parsed.protocol_code || '').trim())
+          setInfoSc((parsed.screening_number || '').trim())
+          setInfoPinyinInitials((parsed.pinyin_initials || '').trim())
           setReceiptBundle({
             batchId: String(parsed.batchId).trim(),
             subjectNo: String(parsed.subjectNo || '').trim(),
@@ -317,11 +391,11 @@ export default function ConsentTestScanPage() {
         const res = await protocolApi.getConsentTestScanQueue({ p: protocolId, t })
         if (cancelled) return
         if (res.code !== 200 || !res.data) {
-          setErr(res.msg || '无法加载核验测试队列')
+          setErr(res.msg || '无法加载知情测试队列')
           return
         }
         const d = res.data
-        setTitle((d.protocol_title || '').trim() || '知情核验测试')
+        setTitle((d.protocol_title || '').trim() || '知情测试')
         setProtocolCode((d.protocol_code || '').trim())
         setRequireFaceVerify(!!d.require_face_verify)
         setProtocolAutoSignDate(!!d.enable_auto_sign_date)
@@ -332,8 +406,7 @@ export default function ConsentTestScanPage() {
           setPhase('info')
         }
       } catch (e: unknown) {
-        const ax = e as { response?: { data?: { msg?: string } }; message?: string }
-        setErr(ax.response?.data?.msg || ax.message || '加载失败')
+        setErr(formatConsentScanHttpError(e, '加载失败'))
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -345,11 +418,20 @@ export default function ConsentTestScanPage() {
 
   useEffect(() => {
     if (loading && !finishedAll) {
-      document.title = '知情核验测试'
+      document.title = '知情测试'
+      return
+    }
+    if (finishedAll) {
+      document.title = '核验完成 · 全部签署文档'
       return
     }
     document.title = consentTestScanDocumentTitle(title, protocolCode)
   }, [loading, finishedAll, title, protocolCode])
+
+  useEffect(() => {
+    if (!finishedAll) return
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [finishedAll])
 
   useEffect(() => {
     return () => {
@@ -361,10 +443,12 @@ export default function ConsentTestScanPage() {
     if (phase !== 'test') return
     setErr(null)
     setAgreed(false)
-    setReadingStartedAt(null)
     setElapsedSec(0)
+    // 直接锚定新节点阅读计时起点，避免先置 null 再置时与读秒 interval 竞态导致第二份及以后文档长期 readOk=false
+    setReadingStartedAt(Date.now())
     setSigFilled(Array(padCount).fill(false))
-    canvasRefs.current = []
+    // 禁止清空 canvasRefs：ref 已在 commit 阶段写入，本 effect 在 useEffect 阶段晚于 ref 挂载，
+    // 若置 [] 会抹掉当前节点画布引用，导致笔迹已显示但 sigFilled/提交仍判为未签名，第二份节点起按钮长期置灰。
     activePadIdx.current = null
     drawing.current = false
   }, [queueIndex, current?.icf_version_id, padCount, phase])
@@ -383,11 +467,6 @@ export default function ConsentTestScanPage() {
     }
     return urls
   }, [current])
-
-  useEffect(() => {
-    if (!current || phase !== 'test') return
-    setReadingStartedAt(Date.now())
-  }, [current, phase])
 
   useEffect(() => {
     if (phase !== 'test') {
@@ -457,6 +536,20 @@ export default function ConsentTestScanPage() {
     lastPt.current = null
   }, [])
 
+  /** 移动端：画布上手写时阻止默认 touchmove 冒泡为页面滚动（需 passive: false；勿与 touch-pan-y 同用） */
+  useLayoutEffect(() => {
+    if (phase !== 'test') return
+    const canvases = canvasRefs.current.filter((c): c is HTMLCanvasElement => c != null)
+    if (canvases.length === 0) return
+    const onTouchMove = (e: TouchEvent) => {
+      if (drawing.current) e.preventDefault()
+    }
+    canvases.forEach((c) => c.addEventListener('touchmove', onTouchMove, { passive: false }))
+    return () => {
+      canvases.forEach((c) => c.removeEventListener('touchmove', onTouchMove))
+    }
+  }, [queueIndex, padCount, phase])
+
   const clearPad = (idx: number) => {
     const c = canvasRefs.current[idx]
     const ctx = c?.getContext('2d')
@@ -478,6 +571,7 @@ export default function ConsentTestScanPage() {
     const idc = infoIdCard.trim()
     const phone = infoPhone.trim()
     const sc = infoSc.trim()
+    const py = infoPinyinInitials.trim().toUpperCase()
     if (!name) {
       setInfoErr('请填写姓名')
       return
@@ -495,6 +589,19 @@ export default function ConsentTestScanPage() {
       setInfoErr('请填写 SC号')
       return
     }
+    if (!py || !/^[A-Z]{1,32}$/.test(py)) {
+      setInfoErr('请填写 1～32 位拼音首字母（仅英文字母，如 WMD）')
+      return
+    }
+    if (Number.isFinite(protocolId)) {
+      saveConsentTestScanSubjectInfo(protocolId, {
+        subject_name: name,
+        id_card_no: idc,
+        phone: phone,
+        screening_number: sc,
+        pinyin_initials: py,
+      })
+    }
     if (requireFaceVerify) setPhase('face')
     else setPhase('test')
   }
@@ -504,7 +611,8 @@ export default function ConsentTestScanPage() {
     if (!readOk) return
     if (!agreed) return
     if (current.enable_checkbox_recognition && !icfInteractiveCheckboxGroupsAllAnswered(contentRef.current)) {
-      setErr('请完成正文中每一处「请勾选」（是/否）')
+      setErr('请先在正文中完成每一处「请勾选」：为「是」或「否」选择一项（已为你定位到第一处未完成项）')
+      focusFirstUnansweredInteractiveCheckbox(contentRef.current)
       return
     }
     if (!hasAllSignatures) return
@@ -540,6 +648,7 @@ export default function ConsentTestScanPage() {
           id_card_no: infoIdCard.trim(),
           phone: infoPhone.trim(),
           screening_number: infoSc.trim(),
+          pinyin_initials: infoPinyinInitials.trim().toUpperCase(),
         })
         if (res.code !== 200 || !res.data) {
           setErr(res.msg || '写入签署记录失败')
@@ -559,6 +668,8 @@ export default function ConsentTestScanPage() {
               savedAt: Date.now(),
               protocol_title: title,
               protocol_code: protocolCode,
+              screening_number: infoSc.trim(),
+              pinyin_initials: infoPinyinInitials.trim().toUpperCase(),
             }),
           )
         } catch {
@@ -567,8 +678,7 @@ export default function ConsentTestScanPage() {
         setReceiptBundle(bundle)
         setFinishedAll(true)
       } catch (e: unknown) {
-        const ax = e as { response?: { data?: { msg?: string } }; message?: string }
-        setErr(ax.response?.data?.msg || ax.message || '写入签署记录失败')
+        setErr(formatConsentScanHttpError(e, '写入签署记录失败'))
       } finally {
         setSubmitting(false)
       }
@@ -604,99 +714,115 @@ export default function ConsentTestScanPage() {
       if (download) q.set('download', '1')
       return `${apiBase}/protocol/public/consent-test-receipt?${q.toString()}`
     }
-    const items = receiptBundle?.items ?? []
+    const receiptRows = receiptBundle?.items ?? []
+    const totalDocs = receiptRows.length
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-start pt-10 px-4 pb-12">
-        <div className="w-full max-w-lg rounded-2xl bg-white border border-slate-200 shadow-sm p-8 text-center">
-          <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto mb-3" />
-          <h1 className="text-lg font-semibold text-slate-800">核验测试已完成</h1>
-          <p className="text-sm text-slate-600 mt-3 text-left leading-relaxed">
-            已写入<strong>测试类型</strong>签署记录；受试者编号为{' '}
-            <strong className="font-mono">{receiptBundle?.subjectNo || '—'}</strong>
-            （以 T 开头），姓名与上一步填写一致。
-          </p>
-          <p className="text-sm text-slate-600 mt-2 text-left leading-relaxed">
-            以下为本次生成的各节点<strong>知情签署 PDF</strong>：前几页为知情原文（若节点已上传 PDF/Word 预览），末尾为本次勾选结果与手写签名留痕；可在本页预览或下载。
-          </p>
-          {items.length > 0 ? (
-            <ul className="mt-4 space-y-3 text-left">
-              {items.map((r) => (
-                <li
-                  key={r.consent_id}
-                  className="rounded-xl border border-slate-200 bg-slate-50/90 px-3 py-3 text-left"
-                >
-                  <div className="text-sm font-semibold text-slate-800">
-                    {(r.node_title || '').trim() || '签署节点'}
-                    {(r.version || '').trim() ? (
-                      <span className="text-slate-500 font-normal"> · v{(r.version || '').trim()}</span>
-                    ) : null}
-                  </div>
-                  {(r.receipt_no || '').trim() ? (
-                    <div className="text-xs text-slate-500 mt-1">回执号 {(r.receipt_no || '').trim()}</div>
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-start pt-8 px-4 pb-12">
+        <div className="w-full max-w-2xl">
+          <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6 sm:p-8">
+            <div className="flex flex-col items-center text-center sm:flex-row sm:text-left sm:items-start gap-4 border-b border-slate-100 pb-6">
+              <CheckCircle2 className="w-12 h-12 text-emerald-600 shrink-0 mx-auto sm:mx-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">知情测试已完成</p>
+                <h1 className="text-xl font-semibold text-slate-900 mt-1">全部签署文档</h1>
+                <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+                  已写入<strong>测试类型</strong>签署记录
+                  {protocolCode ? (
+                    <>
+                      {' '}
+                      · 项目 <span className="font-mono">{protocolCode}</span>
+                    </>
                   ) : null}
-                  <div className="flex flex-wrap gap-4 mt-2.5 text-sm">
-                    <button
-                      type="button"
-                      onClick={() => setPreviewUrl(buildReceiptPdfHref(r.consent_id, false))}
-                      className="text-indigo-600 font-medium hover:underline"
-                    >
-                      预览 PDF
-                    </button>
-                    <a
-                      href={buildReceiptPdfHref(r.consent_id, true)}
-                      className="text-indigo-600 font-medium hover:underline"
-                    >
-                      下载 PDF
-                    </a>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-amber-800 mt-4 text-left rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
-              未返回回执列表，请确认后端已更新；仍可在执行台「知情管理 → 签署记录」中查看测试类型记录。
-            </p>
-          )}
-          <button
-            type="button"
-            className="mt-6 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            onClick={() => {
-              try {
-                sessionStorage.removeItem(consentTestScanDoneStorageKey(protocolId, t))
-              } catch {
-                /* ignore */
-              }
-              window.location.reload()
-            }}
-          >
-            重新核验（清除本机缓存并重新加载）
-          </button>
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h2 className="text-base font-semibold text-slate-800 flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-indigo-600 shrink-0" aria-hidden />
+                  文档列表
+                </h2>
+                {totalDocs > 0 ? (
+                  <span className="text-xs text-slate-500">共 {totalDocs} 份 · 可预览或下载 PDF</span>
+                ) : null}
+              </div>
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                文件名：项目编号_SC号_签署节点名称；节点名称与执行台知情配置一致，SC 号为扫码后基础信息中所填。
+              </p>
+            </div>
+
+            {receiptRows.length > 0 ? (
+              <ul className="mt-3 space-y-2">
+                {receiptRows.map((r, idx) => {
+                  const pdfName = consentTestScanReceiptPdfFilename(
+                    protocolCode,
+                    infoSc.trim(),
+                    (r.node_title || '').trim() || '签署节点',
+                  )
+                  return (
+                  <li
+                    key={r.consent_id}
+                    className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-left shadow-sm"
+                  >
+                    <div className="flex gap-2.5">
+                      <span
+                        className="flex h-7 min-w-[2.25rem] items-center justify-center rounded-md bg-indigo-100 text-[11px] font-semibold text-indigo-800 shrink-0 self-start"
+                        aria-label={`第 ${idx + 1} 份，共 ${totalDocs} 份`}
+                      >
+                        {idx + 1}/{totalDocs}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[13px] font-medium text-slate-900 font-mono break-all leading-snug" title={pdfName}>
+                          {pdfName}
+                        </div>
+                        <div className="flex flex-row gap-2 mt-2">
+                          <a
+                            href={buildReceiptPdfHref(r.consent_id, true)}
+                            download={pdfName}
+                            className="flex-1 min-w-0 inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-2 py-2 text-xs font-medium text-white hover:bg-indigo-700 active:bg-indigo-800"
+                          >
+                            <Download className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                            下载
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => setPreviewUrl(buildReceiptPdfHref(r.consent_id, false))}
+                            className="flex-1 min-w-0 inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                          >
+                            预览
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                  )
+                })}
+              </ul>
+            ) : (
+              <p className="text-sm text-amber-900 mt-4 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2.5 leading-relaxed">
+                未返回各节点回执列表，请确认后端已更新；仍可在执行台「知情管理 → 签署记录」中查看测试类型记录。
+              </p>
+            )}
+
+            <button
+              type="button"
+              className="mt-8 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              onClick={() => {
+                try {
+                  sessionStorage.removeItem(consentTestScanDoneStorageKey(protocolId, t))
+                } catch {
+                  /* ignore */
+                }
+                window.location.reload()
+              }}
+            >
+              重新核验（清除本机缓存并重新加载）
+            </button>
+          </div>
         </div>
         {previewUrl ? (
-          <div
-            className="fixed inset-0 z-[100] flex flex-col bg-black/50 p-3 pt-10"
-            role="dialog"
-            aria-modal="true"
-            aria-label="PDF 预览"
-          >
-            <div className="mx-auto flex w-full max-w-3xl flex-1 min-h-0 flex-col rounded-t-xl bg-white shadow-xl overflow-hidden">
-              <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-2 text-sm">
-                <span className="text-slate-700 font-medium">PDF 预览</span>
-                <button
-                  type="button"
-                  className="rounded-lg px-3 py-1.5 text-slate-600 hover:bg-slate-100"
-                  onClick={() => setPreviewUrl(null)}
-                >
-                  关闭
-                </button>
-              </div>
-              <iframe
-                title="pdf-preview"
-                src={previewUrl}
-                className="w-full flex-1 min-h-[70vh] border-0 bg-slate-100"
-              />
-            </div>
-          </div>
+          <ConsentTestScanPdfPreviewModal pdfUrl={previewUrl} onClose={() => setPreviewUrl(null)} />
         ) : null}
       </div>
     )
@@ -714,6 +840,9 @@ export default function ConsentTestScanPage() {
             <h1 className="text-lg font-semibold">核验前信息</h1>
           </div>
           <p className="text-sm text-slate-500 mb-4">{title}</p>
+          <p className="text-[11px] text-slate-400 mb-3 leading-relaxed">
+            为便于重复核验，本页填写会保存在本浏览器（按协议区分）；请勿在公共设备上留存真实受试者信息。
+          </p>
           <div className="space-y-3">
             <label className="block">
               <span className="text-sm font-medium text-slate-700">姓名</span>
@@ -762,10 +891,30 @@ export default function ConsentTestScanPage() {
                 placeholder="请输入数字"
               />
             </label>
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">拼音首字母</span>
+              <input
+                type="text"
+                name="pinyinInitials"
+                inputMode="text"
+                autoCapitalize="characters"
+                value={infoPinyinInitials}
+                onChange={(e) =>
+                  setInfoPinyinInitials(
+                    e.target.value
+                      .replace(/[^A-Za-z]/g, '')
+                      .toUpperCase()
+                      .slice(0, 32),
+                  )
+                }
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 font-mono tracking-wide"
+                placeholder="如 WMD"
+              />
+            </label>
           </div>
           {infoErr ? <p className="mt-3 text-sm text-rose-600">{infoErr}</p> : null}
           <Button variant="primary" className="w-full mt-6 min-h-[3rem]" onClick={onSubmitInfo}>
-            {requireFaceVerify ? '下一步：人脸核验说明' : '进入知情核验测试'}
+            {requireFaceVerify ? '下一步：人脸核验说明' : '进入知情测试'}
           </Button>
         </div>
       </div>
@@ -781,10 +930,10 @@ export default function ConsentTestScanPage() {
             当前协议在知情配置中<strong>启用了人脸认证签署</strong>。正式环境中请先在微信完成实名与人脸核验（与小程序正式流程一致），或联系管理员在知情配置中关闭「人脸认证签署」后使用本 H5 仅做交互与版式核验。
           </p>
           <p className="text-sm text-slate-500 mt-2 leading-relaxed">
-            本页为执行台预发布核验测试流程的说明步骤；若你已按项目要求完成人脸核验，可点击下方按钮进入知情文档阅读与签名测试。
+            本页为执行台预发布知情测试流程的说明步骤；若你已按项目要求完成人脸核验，可点击下方按钮进入知情文档阅读与签名测试。
           </p>
           <Button variant="primary" className="w-full mt-6 min-h-[3rem]" onClick={() => setPhase('test')}>
-            我已知晓，进入知情核验测试
+            我已知晓，进入知情测试
           </Button>
         </div>
       </div>
@@ -802,12 +951,12 @@ export default function ConsentTestScanPage() {
       <div className="w-full max-w-2xl">
         <div className="flex items-center gap-2 text-slate-800 mb-1">
           <BookOpen className="w-6 h-6 text-indigo-600" />
-          <h1 className="text-lg font-semibold">知情核验测试 {stepLabel}</h1>
+          <h1 className="text-lg font-semibold">知情测试 {stepLabel}</h1>
         </div>
         <p className="text-sm text-slate-500 mb-4">{title}</p>
         <div className="mb-4 rounded-lg border border-sky-200 bg-sky-50/90 px-3 py-2 text-[12px] leading-relaxed text-sky-950">
           <strong className="font-medium">说明：</strong>
-          本页为执行台「核验测试」移动端 H5，用于工作人员验证阅读计时、勾选与签名交互；提交后写入<strong>测试</strong>类型签署记录，与小程序正式受试者签署无关。
+          本页为执行台「知情测试」移动端 H5，用于工作人员验证阅读计时、勾选与签名交互；提交后写入<strong>测试</strong>类型签署记录，与小程序正式受试者签署无关。
           {protocolAutoSignDate || current?.enable_auto_sign_date ? (
             <span className="block mt-1.5">
               当前协议/节点已启用<strong>自动签署日期</strong>：落库签署日为<strong>当日日历日</strong>（与小程序一致）。
@@ -819,7 +968,11 @@ export default function ConsentTestScanPage() {
             </span>
           ) : null}
         </div>
-        {err ? <div className="mb-4 rounded-lg bg-rose-50 border border-rose-100 text-rose-700 text-sm p-3">{err}</div> : null}
+        {err ? (
+          <div className="mb-4 rounded-lg bg-rose-50 border border-rose-100 text-rose-700 text-sm p-3 break-words whitespace-pre-wrap">
+            {err}
+          </div>
+        ) : null}
 
         {current ? (
           <>
@@ -855,9 +1008,12 @@ export default function ConsentTestScanPage() {
 
             {padCount > 0 ? (
               <div className="mt-4 space-y-4">
-                <p className="text-xs text-slate-500">手写签名（核验测试）</p>
+                <p className="text-xs text-slate-500">手写签名（知情测试）</p>
                 {Array.from({ length: padCount }, (_, idx) => (
-                  <div key={`sig-${current.icf_version_id}-${idx}`} className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                  <div
+                    key={`sig-${current.icf_version_id}-${idx}`}
+                    className="rounded-lg border border-slate-200 bg-white overflow-hidden touch-none overscroll-contain"
+                  >
                     {padCount > 1 ? (
                       <p className="text-xs text-slate-600 px-3 pt-2 pb-1 border-b border-slate-100 bg-slate-50/50">
                         受试者签名 {idx + 1} / {padCount}
@@ -867,7 +1023,7 @@ export default function ConsentTestScanPage() {
                       ref={setCanvasRef(idx)}
                       width={700}
                       height={160}
-                      className="w-full h-40 touch-none cursor-crosshair touch-pan-y block"
+                      className="w-full h-40 touch-none cursor-crosshair block select-none"
                       onMouseDown={startDraw(idx)}
                       onMouseMove={moveDraw}
                       onMouseUp={endDraw}
@@ -897,13 +1053,7 @@ export default function ConsentTestScanPage() {
             <Button
               variant="primary"
               className="w-full mt-6 min-h-[3rem] flex flex-col items-center justify-center gap-0.5 py-2.5 px-3 h-auto"
-              disabled={
-                submitting ||
-                !readOk ||
-                !agreed ||
-                !hasAllSignatures ||
-                (!!current.enable_checkbox_recognition && !checkboxRubricOk)
-              }
+              disabled={submitting || !readOk || !agreed || !hasAllSignatures}
               onClick={() => void onConfirmStep()}
             >
               {submitting ? (
@@ -924,7 +1074,7 @@ export default function ConsentTestScanPage() {
         ) : null}
 
         <p className="text-[11px] text-slate-400 leading-relaxed mt-6">
-          说明：本页为预发布「核验测试」H5；提交前需先填写姓名、身份证、手机号与 SC号。若未启用人脸认证签署，填写信息后直接进入本文档与签名测试。
+          说明：本页为预发布「知情测试」H5；提交前需先填写姓名、身份证、手机号与 SC号。若未启用人脸认证签署，填写信息后直接进入本文档与签名测试。
         </p>
       </div>
     </div>

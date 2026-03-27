@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { protocolApi } from '@cn-kis/api-client'
-import type { WitnessStaffRecord } from '@cn-kis/api-client'
+import type { WitnessStaffAuthSignatureStatus, WitnessStaffRecord } from '@cn-kis/api-client'
 import { Badge, Button, DataTable, Input, Modal } from '@cn-kis/ui-kit'
 import { Search, Plus, Mail, ChevronLeft, RefreshCw, Trash2 } from 'lucide-react'
 import {
@@ -12,6 +12,55 @@ import {
 } from '../utils/witnessStaffListFocusStorage'
 import { witnessStaffFocusLog } from '../utils/witnessStaffListFocusDebug'
 import { WitnessStaffBatchImportModal } from '../components/WitnessStaffBatchImportModal'
+import { WitnessStaffSignatureCell } from '../components/WitnessStaffSignatureCell'
+import { AuthSignatureFilterSelect, type WitnessStaffAuthSigFilter } from '../components/AuthSignatureFilterSelect'
+import { maskIdCardNoForDisplay } from '../utils/idCardMask'
+
+export type { WitnessStaffAuthSigFilter }
+
+/** 仅根据行字段推断（与 list 接口一致）；不盲信 auth_signature_status，避免 API 仍为 pending_reauth 时无法显示「已完成」 */
+function inferAuthSignatureStatusFromRow(r: WitnessStaffRecord): WitnessStaffAuthSignatureStatus {
+  const hasExecutionSignature =
+    !!(r.signature_file || '').trim() && !!r.signature_at && !Number.isNaN(Date.parse(r.signature_at))
+  if (r.identity_reverify_pending && r.identity_verified) {
+    const fid = (r.face_order_id || '').trim()
+    const legacyFace = /^FACE-[0-9a-f]{16}$/i.test(fid)
+    const effectiveFace =
+      r.identity_verified && !!r.face_verified_at && !!fid && !legacyFace
+    const sigAt = r.signature_at ? Date.parse(r.signature_at) : NaN
+    const ut = r.update_time ? Date.parse(r.update_time) : NaN
+    if (
+      effectiveFace &&
+      hasExecutionSignature &&
+      !Number.isNaN(sigAt) &&
+      !Number.isNaN(ut) &&
+      sigAt >= ut
+    ) {
+      return 'completed'
+    }
+    return 'pending_reauth'
+  }
+  if (r.identity_verified) {
+    if (hasExecutionSignature) return 'completed'
+    return 'pending_sign'
+  }
+  const hasProgress =
+    !!r.face_verified_at || !!(r.face_order_id || '').trim() || !!(r.signature_file || '').trim()
+  if (!hasProgress) return 'pending_mail'
+  return 'pending_sign'
+}
+
+function resolveAuthSignatureStatus(r: WitnessStaffRecord): WitnessStaffAuthSignatureStatus {
+  const api = r.auth_signature_status
+  const inferred = inferAuthSignatureStatusFromRow(r)
+  if (api === 'pending_reauth') {
+    return inferred === 'completed' ? 'completed' : 'pending_reauth'
+  }
+  // 纠偏：仅人脸通过、尚未登记手写签名时，接口不应展示「已完成」
+  if (api === 'completed' && inferred === 'pending_sign') return 'pending_sign'
+  if (api && api !== 'pending_reauth') return api
+  return inferred
+}
 
 export default function WitnessStaffPage() {
   const qc = useQueryClient()
@@ -38,6 +87,12 @@ export default function WitnessStaffPage() {
     return null
   }, [searchParams, location.search, location.key, focusStateId, sessionBackedFocusId])
 
+  /**
+   * 深链定位用 focus_witness_staff_id 仅应请求一次；若一直携带，后端会固定返回「该行所在页」（常为 1），
+   * 与用户在分页器上选择的 page 冲突，表现为点「下一页」被 effect 里 setPage(dPage) 拉回第 1 页，需点两次才翻页。
+   */
+  const [focusDeepLinkConsumed, setFocusDeepLinkConsumed] = useState(() => focusWitnessStaffIdNum == null)
+
   useEffect(() => {
     witnessStaffFocusLog('名单页:解析快照', {
       focusWitnessStaffIdNum,
@@ -51,11 +106,15 @@ export default function WitnessStaffPage() {
   }, [focusWitnessStaffIdNum, searchParams, location.search, location.key, focusStateId, sessionBackedFocusId])
 
   const [listFocusWitnessStaffId, setListFocusWitnessStaffId] = useState<number | null>(null)
+  /** 分页切换后将列表块滚入视口顶部（避免长页仅滚了 window 后误以为仍停留在「第一页」） */
+  const witnessStaffListTopRef = useRef<HTMLDivElement>(null)
+  const skipPageScrollIntoViewOnMountRef = useRef(true)
 
   const [search, setSearch] = useState('')
   const [applied, setApplied] = useState('')
+  const [authSignatureFilter, setAuthSignatureFilter] = useState<WitnessStaffAuthSigFilter>('all')
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(20)
+  const [pageSize, setPageSize] = useState(10)
   const [jumpPageInput, setJumpPageInput] = useState('')
   const [verifyOpen, setVerifyOpen] = useState(false)
   const [verifyTarget, setVerifyTarget] = useState<WitnessStaffRecord | null>(null)
@@ -71,37 +130,78 @@ export default function WitnessStaffPage() {
 
   /** 与知情管理 consent-overview 一致：queryFn 直接返回 ApiResponse，用 res.data.items / res.data.page */
   const { data: staffListRes, isLoading, error } = useQuery({
-    queryKey: ['witness-staff', applied, page, pageSize, focusWitnessStaffIdNum ?? '', focusStateId ?? ''],
+    queryKey: [
+      'witness-staff',
+      applied,
+      authSignatureFilter,
+      page,
+      pageSize,
+      focusWitnessStaffIdNum ?? '',
+      focusStateId ?? '',
+      focusDeepLinkConsumed,
+    ],
     queryFn: () =>
       protocolApi.listWitnessStaff({
         search: applied || undefined,
         page,
         page_size: pageSize,
-        ...(focusWitnessStaffIdNum != null && { focus_witness_staff_id: focusWitnessStaffIdNum }),
+        ...(authSignatureFilter !== 'all' && { auth_signature: authSignatureFilter }),
+        ...(focusWitnessStaffIdNum != null &&
+          !focusDeepLinkConsumed && { focus_witness_staff_id: focusWitnessStaffIdNum }),
       }),
     /** 邮件核验页跳转来后无需手点刷新；与全局 refetchOnWindowFocus:false 解耦 */
     refetchOnWindowFocus: true,
+    /** 深链进入后避免沿用缓存中的旧 auth_signature_status */
+    refetchOnMount: 'always',
+    staleTime: 0,
   })
   const items = staffListRes?.data?.items ?? []
   const total = staffListRes?.data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
+  /**
+   * 用户主动翻页/筛选时必须先放弃邮件深链：否则请求仍带 focus_witness_staff_id，
+   * 后端会固定返回「该行所在页」，effect 里 setPage(dPage) 会把页码拉回第 1 页（与「下一页」冲突）。
+   */
+  const abandonDeepLinkFocus = useCallback(() => {
+    setFocusDeepLinkConsumed(true)
+    setListFocusWitnessStaffId(null)
+    clearWitnessStaffListFocusStorage()
+    setSessionBackedFocusId(null)
+    // 无深链时切勿 navigate：Router 默认会滚动到文档顶部，长页底部点「下一页」会像回到第一页。
+    const needClearRouter =
+      focusWitnessStaffIdNum != null || (typeof focusStateId === 'number' && focusStateId > 0)
+    if (needClearRouter) {
+      navigate(
+        { pathname: location.pathname, search: '' },
+        { replace: true, state: {}, preventScrollReset: true },
+      )
+    }
+  }, [navigate, location.pathname, focusWitnessStaffIdNum, focusStateId])
+
   const handleJumpPage = useCallback(() => {
     const n = parseInt(jumpPageInput, 10)
     if (!Number.isNaN(n) && n >= 1 && n <= totalPages) {
+      abandonDeepLinkFocus()
       setPage(n)
       setJumpPageInput('')
     }
-  }, [jumpPageInput, totalPages])
+  }, [jumpPageInput, totalPages, abandonDeepLinkFocus])
+
+  useEffect(() => {
+    setPage(1)
+  }, [authSignatureFilter])
 
   /** 删除或搜索后当前页可能超出总页数，回退到最后一页或第 1 页 */
   useEffect(() => {
     if (page > totalPages) setPage(totalPages)
   }, [totalPages, page])
 
-  /** 深链定位：服务端分页后同步页码、高亮行并去掉 query/state（对齐 ConsentManagementPage focusProtocolId） */
-  useEffect(() => {
+  /** 深链定位：服务端分页后同步页码、高亮行并去掉 query/state（对齐 ConsentManagementPage focusProtocolId）。
+   *  用 useLayoutEffect 在绘制前完成消费，避免用户先点到「下一页」时仍带 focus 参数被服务端拉回第 1 页。 */
+  useLayoutEffect(() => {
     if (focusWitnessStaffIdNum == null) return
+    if (focusDeepLinkConsumed) return
     if (!staffListRes?.data?.items) {
       witnessStaffFocusLog('名单页:effect 等待列表', { focusWitnessStaffIdNum, hasRes: !!staffListRes })
       return
@@ -113,12 +213,11 @@ export default function WitnessStaffPage() {
     witnessStaffFocusLog('名单页:effect 应用', {
       focusWitnessStaffIdNum,
       responsePage: dPage,
-      statePage: page,
-      willSetPage: typeof dPage === 'number' && dPage !== page ? dPage : null,
+      willSetPage: typeof dPage === 'number' ? dPage : null,
       itemIds,
       rowMatched: matched,
     })
-    if (typeof dPage === 'number' && dPage !== page) {
+    if (typeof dPage === 'number') {
       setPage(dPage)
     }
     if (matched) {
@@ -133,11 +232,12 @@ export default function WitnessStaffPage() {
     /** HashRouter：`setSearchParams` 有时无法去掉 `#/path?focusWitnessStaffId=` 中的 query，需 navigate 清 search */
     navigate(
       { pathname: location.pathname, search: '' },
-      { replace: true, state: focusStateId != null ? {} : undefined },
+      { replace: true, state: focusStateId != null ? {} : undefined, preventScrollReset: true },
     )
     clearWitnessStaffListFocusStorage()
     setSessionBackedFocusId(null)
-  }, [focusWitnessStaffIdNum, staffListRes, page, navigate, location.pathname, focusStateId])
+    setFocusDeepLinkConsumed(true)
+  }, [focusWitnessStaffIdNum, focusDeepLinkConsumed, staffListRes, navigate, location.pathname, focusStateId])
 
   useEffect(() => {
     if (listFocusWitnessStaffId == null) return
@@ -158,6 +258,15 @@ export default function WitnessStaffPage() {
     }, 80)
     return () => window.clearTimeout(id)
   }, [listFocusWitnessStaffId, isLoading, page])
+
+  /** 页码变化后把列表区域对齐到视口上方，便于直接看到「当前页」内容顶部 */
+  useLayoutEffect(() => {
+    if (skipPageScrollIntoViewOnMountRef.current) {
+      skipPageScrollIntoViewOnMountRef.current = false
+      return
+    }
+    witnessStaffListTopRef.current?.scrollIntoView({ block: 'start', behavior: 'auto' })
+  }, [page])
 
   const pageIds = useMemo(() => items.map((r) => r.id), [items])
   const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id))
@@ -214,6 +323,7 @@ export default function WitnessStaffPage() {
   })
 
   const runSearch = () => {
+    abandonDeepLinkFocus()
     setApplied(search.trim())
     setPage(1)
   }
@@ -227,7 +337,7 @@ export default function WitnessStaffPage() {
             包含<strong className="text-slate-700">无治理台账号、由执行台手工录入</strong>的人员，与
             <strong className="text-slate-700"> 鹿鸣·治理台（3008）</strong>关联人员（具备全局角色
             <strong className="text-slate-700"> QA质量管理</strong>
-            ）。治理台侧请维护账号与角色后「同步」；无账号者请点「添加」在弹窗内填写姓名与工作邮箱。「核验」邮件中的人脸环节由本人填写身份证、手机号等实名信息并回写档案。
+            ）。治理台侧请维护账号与角色后「同步」；无账号者请点「添加」在弹窗内填写姓名与工作邮箱。「认证签名」邮件中的人脸环节由本人填写身份证、手机号等实名信息并回写档案。
           </p>
         </div>
         <Link
@@ -239,9 +349,12 @@ export default function WitnessStaffPage() {
         </Link>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div
+        ref={witnessStaffListTopRef}
+        className="bg-white rounded-xl border border-slate-200 overflow-hidden scroll-mt-4"
+      >
         <div className="p-5 border-b border-slate-100 space-y-4">
-          <div className="flex flex-wrap items-end gap-4">
+          <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[200px] max-w-xl">
               <label className="block text-xs font-medium text-slate-500 mb-1.5">搜索</label>
               <div className="relative">
@@ -254,6 +367,15 @@ export default function WitnessStaffPage() {
                   className="pl-9"
                 />
               </div>
+            </div>
+            <div className="shrink-0 w-[13.5rem]">
+              <AuthSignatureFilterSelect
+                value={authSignatureFilter}
+                onChange={(v) => {
+                  abandonDeepLinkFocus()
+                  setAuthSignatureFilter(v)
+                }}
+              />
             </div>
             <div className="flex flex-wrap items-center gap-2 shrink-0">
               <Button
@@ -381,12 +503,20 @@ export default function WitnessStaffPage() {
               render: (_, r) => (r.role_labels?.length ? r.role_labels.join('、') : '—'),
             },
             {
-              key: 'gender',
-              title: '性别',
-              width: 72,
-              render: (_, r) => (r.gender && String(r.gender).trim() ? String(r.gender).trim() : '—'),
+              key: 'id_card_no',
+              title: '身份证号',
+              width: 168,
+              render: (_, r) => {
+                const masked = maskIdCardNoForDisplay(r.id_card_no)
+                return masked ? (
+                  <span className="font-mono text-sm tabular-nums tracking-tight" title="已脱敏展示">
+                    {masked}
+                  </span>
+                ) : (
+                  '—'
+                )
+              },
             },
-            { key: 'id_card_no', title: '身份证号', width: 160, render: (_, r) => r.id_card_no || '—' },
             {
               key: 'email',
               title: '邮箱',
@@ -408,24 +538,10 @@ export default function WitnessStaffPage() {
             {
               key: 'signature_file',
               title: '签名文件',
-              width: 120,
-              render: (_, r) =>
-                r.signature_file ? (
-                  <a
-                    href={`/media/${r.signature_file}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-block"
-                  >
-                    <img
-                      src={`/media/${r.signature_file}`}
-                      alt="签名"
-                      className="h-10 max-w-[100px] object-contain border border-slate-100 rounded bg-white"
-                    />
-                  </a>
-                ) : (
-                  '—'
-                ),
+              width: 128,
+              render: (_, r) => (
+                <WitnessStaffSignatureCell staffId={Number(r.id)} hasSignatureFile={!!(r.signature_file || '').trim()} />
+              ),
             },
             {
               key: 'signature_at',
@@ -441,16 +557,29 @@ export default function WitnessStaffPage() {
             },
             {
               key: 'id_ver',
-              title: '核验',
-              width: 88,
-              render: (_, r) =>
-                r.identity_verified ? <Badge variant="success">已核验</Badge> : <Badge variant="default">未核验</Badge>,
+              title: '认证签名',
+              width: 112,
+              render: (_, r) => {
+                const s = resolveAuthSignatureStatus(r)
+                if (s === 'completed') {
+                  return <Badge variant="success">已完成</Badge>
+                }
+                if (s === 'pending_reauth') {
+                  return <Badge variant="info">待重新认证</Badge>
+                }
+                if (s === 'pending_mail') {
+                  return <Badge variant="default">待发送邮件</Badge>
+                }
+                return <Badge variant="warning">待认证签名</Badge>
+              },
             },
             {
               key: 'op',
               title: '操作',
               width: 168,
-              render: (_, r) => (
+              render: (_, r) => {
+                const label = !r.identity_verified ? '认证签名' : '重新认证'
+                return (
                 <div className="flex flex-row flex-nowrap items-center gap-2 whitespace-nowrap">
                   <button
                     type="button"
@@ -462,7 +591,7 @@ export default function WitnessStaffPage() {
                     }}
                   >
                     <Mail className="w-3 h-3 shrink-0" />
-                    {r.identity_verified ? '认证重签' : '认证签名'}
+                    {label}
                   </button>
                   <button
                     type="button"
@@ -473,7 +602,8 @@ export default function WitnessStaffPage() {
                     删除
                   </button>
                 </div>
-              ),
+                );
+              },
             },
           ]}
         />
@@ -485,12 +615,14 @@ export default function WitnessStaffPage() {
             <select
               value={pageSize}
               onChange={(e) => {
+                abandonDeepLinkFocus()
                 setPageSize(Number(e.target.value))
                 setPage(1)
               }}
               className="h-8 px-2 text-sm border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-primary-500/30"
               aria-label="每页条数"
             >
+              <option value={10}>10</option>
               <option value={20}>20</option>
               <option value={50}>50</option>
               <option value={100}>100</option>
@@ -500,7 +632,10 @@ export default function WitnessStaffPage() {
           <div className="flex items-center gap-3 flex-wrap">
             <button
               type="button"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              onClick={() => {
+                abandonDeepLinkFocus()
+                setPage((p) => Math.max(1, p - 1))
+              }}
               disabled={page <= 1 || totalPages <= 1}
               className="px-3 py-1.5 text-sm rounded border border-slate-200 disabled:opacity-50 hover:bg-slate-50"
             >
@@ -511,7 +646,10 @@ export default function WitnessStaffPage() {
             </span>
             <button
               type="button"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              onClick={() => {
+                abandonDeepLinkFocus()
+                setPage((p) => Math.min(totalPages, p + 1))
+              }}
               disabled={page >= totalPages || totalPages <= 1}
               className="px-3 py-1.5 text-sm rounded border border-slate-200 disabled:opacity-50 hover:bg-slate-50"
             >
@@ -575,7 +713,7 @@ export default function WitnessStaffPage() {
                 value={ptEmail}
                 onChange={(e) => setPtEmail(e.target.value)}
                 className="mt-1"
-                placeholder="用于接收核验邮件"
+                placeholder="用于接收认证签名邮件"
                 inputMode="email"
                 autoComplete="email"
               />

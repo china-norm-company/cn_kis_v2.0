@@ -188,6 +188,11 @@ class WitnessStaff(models.Model):
     signature_file = models.CharField('签名文件路径', max_length=500, blank=True, default='')
     signature_at = models.DateTimeField('签名时间', null=True, blank=True)
     identity_verified = models.BooleanField('身份已核验', default=False)
+    identity_reverify_pending = models.BooleanField(
+        '待重新认证',
+        default=False,
+        help_text='已认证档案再次发送核验邮件后为 True，对方完成签名登记后清 False',
+    )
     is_deleted = models.BooleanField('已删除', default=False)
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)

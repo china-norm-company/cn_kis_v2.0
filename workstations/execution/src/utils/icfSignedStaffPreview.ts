@@ -16,6 +16,7 @@ import {
   stripDocumentOtherInfoPlaceholderForCustomSupplemental,
   stripEmbeddedOtherInfoPlaceholderBlocks,
 } from '@/utils/icfCheckboxDetect'
+import { mediaUrlFromStorageKey as mediaUrlForStoredPath } from '@/utils/mediaUrl'
 
 export type MiniSignRulesPreview = {
   enable_checkbox_recognition: boolean
@@ -45,13 +46,6 @@ function answerIsNo(a: unknown): boolean {
   }
   const s = String(a ?? '').trim().toLowerCase()
   return ['no', 'n', 'false', '0', '否'].includes(s)
-}
-
-function mediaUrlForStoredPath(key: string): string {
-  const k = (key || '').trim().replace(/^\/+/, '')
-  if (!k) return ''
-  if (k.startsWith('http://') || k.startsWith('https://') || k.startsWith('data:')) return k
-  return `/media/${encodeURI(k)}`
 }
 
 /**

@@ -665,6 +665,37 @@ export function icfInteractiveCheckboxGroupsAllAnswered(root: HTMLElement | null
 }
 
 /**
+ * 文档顺序中第一处未完成「是/否」二选一的交互组；均已选则返回 null。
+ */
+export function findFirstUnansweredInteractiveCheckboxGroup(root: HTMLElement | null): HTMLElement | null {
+  if (!root) return null
+  const groups = root.querySelectorAll('.icf-cb-preview.icf-cb-interactive')
+  const seenNames = new Set<string>()
+  for (let i = 0; i < groups.length; i += 1) {
+    const g = groups[i]
+    if (!(g instanceof HTMLElement)) continue
+    const ord = (g.getAttribute('data-icf-cb-ord') || '').trim()
+    if (!ord) return g
+    const name = `icf-cb-g${ord}`
+    if (seenNames.has(name)) continue
+    seenNames.add(name)
+    if (!yesNoCheckboxGroupHasSelection(g)) return g
+  }
+  return null
+}
+
+/** 滚动至第一处未完成勾选并尝试聚焦，便于 H5 底部按钮可点后引导用户补勾 */
+export function focusFirstUnansweredInteractiveCheckbox(root: HTMLElement | null): void {
+  const el = findFirstUnansweredInteractiveCheckboxGroup(root)
+  if (!el) return
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  window.requestAnimationFrame(() => {
+    const input = el.querySelector<HTMLInputElement>('input.icf-cb-yes, input.icf-cb-no')
+    input?.focus({ preventScroll: true })
+  })
+}
+
+/**
  * 联调页提交：按文档顺序采集每组「是/否」的值，供写入 signature_data.icf_checkbox_answers。
  */
 export function collectInteractiveCheckboxAnswers(root: HTMLElement | null): Array<{ value: string }> {

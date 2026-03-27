@@ -36,6 +36,8 @@ export type IcfIdentityLike = {
   declared_id_card?: string
   declared_phone?: string
   declared_screening_number?: string
+  /** 知情测试 H5 扫码页手填拼音首字母 */
+  declared_pinyin_initials?: string
 }
 
 export type IcfMiniSignConfirmLike = {
@@ -52,7 +54,7 @@ export type BuildIcfPlaceholderValuesInput = {
   protocolTitle?: string
   nodeTitle?: string
   versionLabel?: string
-  /** 核验测试 H5 identity */
+  /** 知情测试 H5 identity */
   identity?: IcfIdentityLike | null
   /** 小程序签署后 mini_sign_confirm */
   miniSignConfirm?: IcfMiniSignConfirmLike | null
@@ -125,7 +127,10 @@ export function buildIcfPlaceholderValues(input: BuildIcfPlaceholderValuesInput)
     (typeof id.declared_screening_number === 'string' && id.declared_screening_number.trim()) ||
     ''
 
-  const initials = (typeof mc.initials === 'string' && mc.initials.trim()) || ''
+  const initials =
+    (typeof mc.initials === 'string' && mc.initials.trim()) ||
+    (typeof id.declared_pinyin_initials === 'string' && id.declared_pinyin_initials.trim()) ||
+    ''
 
   const signed = parseSignedAt(input.signedAt)
   const preview = input.previewNow instanceof Date && !Number.isNaN(input.previewNow.getTime()) ? input.previewNow : null

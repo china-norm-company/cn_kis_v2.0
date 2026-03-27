@@ -5,7 +5,9 @@ export const WITNESS_STAFF_LIST_FOCUS_STORAGE_KEY = 'cnkis.execution.witnessStaf
 export function peekWitnessStaffListFocusId(): number | null {
   if (typeof window === 'undefined') return null
   try {
-    const raw = sessionStorage.getItem(WITNESS_STAFF_LIST_FOCUS_STORAGE_KEY)
+    const raw =
+      sessionStorage.getItem(WITNESS_STAFF_LIST_FOCUS_STORAGE_KEY) ||
+      localStorage.getItem(WITNESS_STAFF_LIST_FOCUS_STORAGE_KEY)
     if (!raw) return null
     const n = parseInt(raw, 10)
     return Number.isNaN(n) || n <= 0 ? null : n
@@ -15,8 +17,14 @@ export function peekWitnessStaffListFocusId(): number | null {
 }
 
 export function persistWitnessStaffListFocusId(id: number): void {
+  const v = String(id)
   try {
-    sessionStorage.setItem(WITNESS_STAFF_LIST_FOCUS_STORAGE_KEY, String(id))
+    sessionStorage.setItem(WITNESS_STAFF_LIST_FOCUS_STORAGE_KEY, v)
+  } catch {
+    /* ignore */
+  }
+  try {
+    localStorage.setItem(WITNESS_STAFF_LIST_FOCUS_STORAGE_KEY, v)
   } catch {
     /* ignore */
   }
@@ -25,6 +33,11 @@ export function persistWitnessStaffListFocusId(id: number): void {
 export function clearWitnessStaffListFocusStorage(): void {
   try {
     sessionStorage.removeItem(WITNESS_STAFF_LIST_FOCUS_STORAGE_KEY)
+  } catch {
+    /* ignore */
+  }
+  try {
+    localStorage.removeItem(WITNESS_STAFF_LIST_FOCUS_STORAGE_KEY)
   } catch {
     /* ignore */
   }

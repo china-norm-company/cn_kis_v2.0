@@ -92,7 +92,81 @@ const OAUTH_STATE_KEY = 'cnkis_auth_state'
 const OAUTH_TRACE_ID_KEY = 'cnkis_auth_trace_id'
 const OAUTH_EXCHANGE_INFLIGHT_KEY = 'cnkis_oauth_exchange_inflight'
 
+/** 邮件核验页在登录前写入，随 OAuth state 回传（跨 127.0.0.1 ↔ localhost 时 sessionStorage 不同源无法共享） */
+export const CNKIS_POST_LOGIN_HASH_STORAGE_KEY = 'cnkis.execution.postLoginHash'
+/** 换票成功后写入，reload 后 PostAuth 消费并 navigate */
+export const CNKIS_OAUTH_RESTORE_HASH_KEY = 'cnkis.oauth.restore_hash'
+
 let oauthCodeExchangePromise: Promise<AuthResult | null> | null = null
+
+function b64urlDecodeJsonToRecord(stateStr: string): Record<string, unknown> | null {
+  try {
+    let b64 = stateStr.replace(/-/g, '+').replace(/_/g, '/')
+    const pad = b64.length % 4
+    if (pad) b64 += '='.repeat(4 - pad)
+    const binary = atob(b64)
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0))
+    const json = new TextDecoder('utf-8').decode(bytes)
+    return JSON.parse(json) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+/** 从 OAuth state（与 generateState 一致）解析待恢复的 hash（#/consent?…） */
+export function extractPostLoginHashFromOAuthState(stateStr: string): string | null {
+  const payload = b64urlDecodeJsonToRecord(stateStr)
+  if (!payload) return null
+  const h = payload.post_login_hash
+  if (typeof h === 'string' && h.length > 0 && h.length <= 512) return h
+  const pid = payload.post_login_focus_protocol_id
+  if (typeof pid === 'number' && Number.isFinite(pid) && pid > 0) {
+    return `#/consent?focusProtocolId=${Math.floor(pid)}`
+  }
+  const wid = payload.post_login_focus_witness_staff_id
+  if (typeof wid === 'number' && Number.isFinite(wid) && wid > 0) {
+    return `#/consent/witness-staff?focusWitnessStaffId=${Math.floor(wid)}`
+  }
+  return null
+}
+
+/** 从 OAuth 回调 URL 提取 state（避免 URLSearchParams 对部分字符处理与飞书不一致） */
+export function getOAuthStateFromUrl(): string {
+  if (typeof window === 'undefined') return ''
+  const search = window.location.search
+  if (search.length > 1) {
+    const m = search.match(/[?&]state=([^&]*)/)
+    if (m?.[1]) {
+      try {
+        return decodeURIComponent(m[1])
+      } catch {
+        return m[1]
+      }
+    }
+  }
+  const hash = window.location.hash || ''
+  if (hash.includes('?')) {
+    const q = hash.split('?')[1]
+    if (q) return new URLSearchParams(q).get('state') || ''
+  }
+  return ''
+}
+
+/** 邮件核验「打开知情管理 / 双签名单」前调用；generateState 会读入并写入紧凑数字字段以缩短 OAuth state */
+export function setExecutionPostLoginHashForOAuth(hash: string): void {
+  if (typeof window === 'undefined') return
+  if (!hash || hash.length > 512) return
+  try {
+    sessionStorage.setItem(CNKIS_POST_LOGIN_HASH_STORAGE_KEY, hash)
+  } catch {
+    /* ignore */
+  }
+  try {
+    localStorage.setItem(CNKIS_POST_LOGIN_HASH_STORAGE_KEY, hash)
+  } catch {
+    /* ignore */
+  }
+}
 
 function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
@@ -143,13 +217,39 @@ export class FeishuAuth {
   }
 
   generateState(traceId?: string): string {
-    const payload = {
+    const payload: Record<string, unknown> = {
       ws: this.config.workstation || 'unknown',
       app_id: this.config.appId,
       trace_id: traceId || this.generateTraceId(),
       nonce: Math.random().toString(36).slice(2, 14),
       ts: Math.floor(Date.now() / 1000),
       ver: 'v1',
+    }
+    try {
+      let h: string | null = null
+      if (typeof sessionStorage !== 'undefined') {
+        h = sessionStorage.getItem(CNKIS_POST_LOGIN_HASH_STORAGE_KEY)
+      }
+      if (!h && typeof localStorage !== 'undefined') {
+        h = localStorage.getItem(CNKIS_POST_LOGIN_HASH_STORAGE_KEY)
+      }
+      if (h && h.length > 0 && h.length <= 512) {
+        const fp = h.match(/[?&]focusProtocolId=(\d+)/) ?? h.match(/focusProtocolId=(\d+)/)
+        const ws = h.match(/[?&]focusWitnessStaffId=(\d+)/) ?? h.match(/focusWitnessStaffId=(\d+)/)
+        if (fp) {
+          const n = parseInt(fp[1], 10)
+          if (!Number.isNaN(n) && n > 0) payload.post_login_focus_protocol_id = n
+        }
+        if (ws) {
+          const n = parseInt(ws[1], 10)
+          if (!Number.isNaN(n) && n > 0) payload.post_login_focus_witness_staff_id = n
+        }
+        if (!payload.post_login_focus_protocol_id && !payload.post_login_focus_witness_staff_id) {
+          payload.post_login_hash = h
+        }
+      }
+    } catch {
+      /* ignore */
     }
     return this.toBase64Url(JSON.stringify(payload))
   }
@@ -218,13 +318,14 @@ export class FeishuAuth {
     this.setSessionValue(OAUTH_STATE_KEY, state)
     const encodedRedirect = encodeURIComponent(redirectUri)
     const scope = encodeURIComponent(this.config.scope || DEFAULT_USER_SCOPES)
+    const encodedState = encodeURIComponent(state)
     return (
       `https://open.feishu.cn/open-apis/authen/v1/authorize` +
       `?client_id=${appId}` +
       `&redirect_uri=${encodedRedirect}` +
       `&response_type=code` +
       `&scope=${scope}` +
-      `&state=${state}`
+      `&state=${encodedState}`
     )
   }
 
@@ -352,6 +453,57 @@ export class FeishuAuth {
 
           try {
             const result = await this.exchangeCode(code, state || storedState || undefined)
+            const stateFromUrl = getOAuthStateFromUrl()
+            const stateForRestore = (stateFromUrl || state || storedState || urlParams.get('state') || '').trim()
+            let restore = stateForRestore ? extractPostLoginHashFromOAuthState(stateForRestore) : null
+            if (!restore && storedState) {
+              restore = extractPostLoginHashFromOAuthState(storedState)
+            }
+            // state 解析失败时：换票回调页（如 localhost）与打开登录页主机（如 127.0.0.1）不同源时，
+            // post_login 仅存于另一主机；删除 key 前再读一次本机 storage，尽量写入 oauth.restore_hash。
+            if (!restore) {
+              try {
+                const h =
+                  (typeof sessionStorage !== 'undefined' &&
+                    sessionStorage.getItem(CNKIS_POST_LOGIN_HASH_STORAGE_KEY)) ||
+                  (typeof localStorage !== 'undefined' && localStorage.getItem(CNKIS_POST_LOGIN_HASH_STORAGE_KEY))
+                const trimmed = (h || '').trim()
+                if (trimmed.startsWith('#/consent')) {
+                  restore = trimmed
+                }
+              } catch {
+                /* ignore */
+              }
+            }
+            if (restore && typeof sessionStorage !== 'undefined') {
+              try {
+                sessionStorage.setItem(CNKIS_OAUTH_RESTORE_HASH_KEY, restore)
+              } catch {
+                /* ignore */
+              }
+              try {
+                localStorage.setItem(CNKIS_OAUTH_RESTORE_HASH_KEY, restore)
+              } catch {
+                /* ignore */
+              }
+            }
+            // 仅当已成功写入 oauth.restore_hash 时再删 postLoginHash；否则保留供执行台 peek 兜底（避免 state 解析失败时空指针）
+            if (restore) {
+              try {
+                if (typeof sessionStorage !== 'undefined') {
+                  sessionStorage.removeItem(CNKIS_POST_LOGIN_HASH_STORAGE_KEY)
+                }
+              } catch {
+                /* ignore */
+              }
+              try {
+                if (typeof localStorage !== 'undefined') {
+                  localStorage.removeItem(CNKIS_POST_LOGIN_HASH_STORAGE_KEY)
+                }
+              } catch {
+                /* ignore */
+              }
+            }
             this.clearStoredOAuthContext()
             this.clearOAuthRetryGuard()
             if (oauthParamsInHash && window.location.hash.includes('?')) {
@@ -415,6 +567,18 @@ export class FeishuAuth {
   redirectToAuth(resetRetryGuard = true): void {
     if (resetRetryGuard) {
       this.clearOAuthRetryGuard()
+    }
+    // 任意入口发起 OAuth 前同步当前 hash（与 ExecutionLoginFallback.handleLogin 一致），
+    // 避免仅错误重试 / nonce 恢复等路径直接 login() 时未写入 post_login，换票后只能落首页。
+    try {
+      if (typeof window !== 'undefined') {
+        const h = window.location.hash || ''
+        if (h.includes('focusProtocolId') || h.includes('focusWitnessStaffId')) {
+          setExecutionPostLoginHashForOAuth(h.startsWith('#') ? h : `#${h}`)
+        }
+      }
+    } catch {
+      /* ignore */
     }
     window.location.href = this.getAuthUrl()
   }

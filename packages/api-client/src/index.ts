@@ -119,8 +119,11 @@ export type {
   DualSignStaff,
   ConsentSettings,
   WitnessStaffRecord,
+  WitnessStaffAuthSignatureStatus,
   DualSignStaffVerificationStatus,
   WitnessSignatureAuthStatus,
+  WitnessSignatureAuthDailyRow,
+  WitnessSignatureAuthRecordRow,
 } from './modules/protocol'
 export { resourceApi } from './modules/resource'
 export { qualityApi } from './modules/quality'

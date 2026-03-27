@@ -16,9 +16,9 @@ const ENLARGE_QR_PX = 280
 type Props = {
   /** 完整落地页 URL（微信扫一扫） */
   scanUrl: string
-  /** 是否为可扫码测试状态（未发布且为核验测试中 / 已授权待测试 / 已测试待开始 等）：否则落地页提示不可测试 */
+  /** 是否为可扫码测试状态（未发布且为授权测试中 / 已授权待测试 / 已测试待开始 等）：否则落地页提示不可测试 */
   verificationActive: boolean
-  /** 知情已发布时，服务端不会放行预发布「核验测试」扫码；用于展示与未发布阶段不同的说明 */
+  /** 知情已发布时，服务端不会放行预发布「知情测试」扫码；用于展示与未发布阶段不同的说明 */
   consentLaunched?: boolean
   /** 列表「知情配置状态」，配合 consentLaunched 说明为何当前不可测试扫码 */
   configStatus?: string
@@ -79,10 +79,10 @@ export function ConsentTestScanQr({
 
   const st = (configStatus || '').trim() || '—'
   const tip = verificationActive
-    ? '手机浏览器或微信扫一扫：打开执行台「知情核验测试」H5 页（阅读计时、勾选、签名），不进入小程序；提交后签署记录为「测试」类型。请将 CONSENT_TEST_SCAN_PUBLIC_BASE 配为手机可访问的执行台地址（含端口，一般为 :3007）。'
+    ? '手机浏览器或微信扫一扫：打开执行台「知情测试」H5 页（阅读计时、勾选、签名），不进入小程序；提交后签署记录为「测试」类型。请将 CONSENT_TEST_SCAN_PUBLIC_BASE 配为手机可访问的执行台地址（含端口，一般为 :3007）。'
     : consentLaunched
-      ? `知情已发布（当前列表状态「${st}」）。预发布「核验测试」扫码仅适用于未发布阶段（列表为「已授权待测试」「已测试待开始」等）；与蓝底气泡是否曾发邮无关。正式签署请走小程序正式入口；若需再次从本列表「授权核验测试」发邮，请先下架知情。`
-      : '请先完成配置与工作人员在邮件中完成人脸核验与签名授权（列表需为「核验测试中」「已授权待测试」或「已测试待开始」等）。扫码将打开提示页，无法开始测试。'
+      ? `知情已发布（当前列表状态「${st}」）。预发布「知情测试」扫码仅适用于未发布阶段（列表为「已授权待测试」「已测试待开始」等）；与蓝底气泡是否曾发邮无关。正式签署请走小程序正式入口；若需再次从本列表「授权签名测试」发邮，请先下架知情。`
+      : '请先完成配置与工作人员在邮件中完成人脸核验与签名授权（列表需为「授权测试中」「已授权待测试」或「已测试待开始」等）。扫码将打开提示页，无法开始测试。'
 
   const unreachableFromPhone = isConsentScanUrlUnreachableFromPhone(scanUrl)
   const httpIpv4NoPort = isConsentScanUrlHttpIpv4ImplicitPort80(scanUrl)
@@ -124,7 +124,7 @@ export function ConsentTestScanQr({
 
   return (
     <>
-      <RichTooltip content={tooltipBody}>
+      <RichTooltip content={tooltipBody} contentAriaLabel={tip}>
         <button
           type="button"
           onClick={(e) => {

@@ -25,4 +25,21 @@ describe('createWorkstationFeishuConfig', () => {
 
     expect(config.redirectUri).toBe('https://v2.example.com/login')
   })
+
+  it('dev: normalizes 127.0.0.1 to localhost for Feishu redirect whitelist (20029)', () => {
+    ;(import.meta as any).env = {
+      ...originalEnv,
+      DEV: true,
+      VITE_FEISHU_APP_ID: 'cli_test',
+      VITE_FEISHU_REDIRECT_BASE: '',
+      VITE_FEISHU_REDIRECT_URI: '',
+    }
+    vi.stubGlobal('window', {
+      location: { origin: 'http://127.0.0.1:3007' },
+    })
+
+    const config = createWorkstationFeishuConfig('execution')
+
+    expect(config.redirectUri).toBe('http://localhost:3007/execution/')
+  })
 })

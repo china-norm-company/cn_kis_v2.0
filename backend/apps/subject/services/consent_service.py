@@ -14,7 +14,7 @@ from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from pathlib import Path
 import re
-from datetime import date, datetime, time as dt_time
+from datetime import date, datetime
 from typing import Dict, Iterable, Optional, List, Tuple
 import zipfile
 from io import BytesIO
@@ -83,6 +83,55 @@ def signing_staff_name_for_screening_date(screening_schedule: Optional[list], re
         if d == ds:
             return (item.get('signing_staff_name') or '').strip()
     return ''
+
+
+def screening_signing_staff_for_consent_list(
+    screening_schedule: Optional[list],
+    ref_day: Optional[date],
+    settings_data: Optional[dict],
+    signature_data: Optional[dict],
+    *,
+    protocol_id: Optional[int] = None,
+    signed_at: Optional[datetime] = None,
+) -> Tuple[str, Optional[str]]:
+    """
+    签署记录「知情签署人员」及（知情测试 H5 时）对应邮件「签名授权」时间戳。
+
+    1) 知情测试 H5 + 测试类型：优先使用签署写入 signature_data 时冻结的 witness_staff_name /
+       witness_staff_auth_at（列表与 PDF 与生成时刻一致，不随后续令牌变更而变）
+    2) 无冻结字段的旧数据：再按 signed_at 查邮件授权快照
+    3) 否则回退 signature_data.witness_staff_name（联调等）
+    4) 协议级 consent_verify_test_staff_name、现场筛选计划 signing_staff_name
+    """
+    sig = signature_data if isinstance(signature_data, dict) else {}
+    is_test_scan = bool(sig.get('consent_test_scan_h5')) and (sig.get('signing_kind') or '').strip() == 'test'
+
+    if is_test_scan:
+        wn = (sig.get('witness_staff_name') or '').strip()
+        if wn:
+            auth_iso = sig.get('witness_staff_auth_at')
+            return wn, auth_iso if isinstance(auth_iso, str) else None
+
+    if is_test_scan and protocol_id and signed_at:
+        from apps.protocol.services import witness_staff_service as ws_svc
+
+        snap = ws_svc.witness_staff_snapshot_for_consent_signing(protocol_id, signed_at)
+        wn = (snap.get('witness_staff_name') or '').strip()
+        if wn:
+            auth_iso = snap.get('witness_staff_auth_at')
+            return wn, auth_iso if isinstance(auth_iso, str) else None
+
+    wn = (sig.get('witness_staff_name') or '').strip()
+    if wn:
+        auth_iso = sig.get('witness_staff_auth_at')
+        return wn, auth_iso if isinstance(auth_iso, str) else None
+
+    sd = settings_data if isinstance(settings_data, dict) else {}
+    cv = (sd.get('consent_verify_test_staff_name') or '').strip()
+    if cv:
+        return cv, None
+    row = signing_staff_name_for_screening_date(screening_schedule, ref_day) if ref_day else ''
+    return row, None
 
 
 def _table_has_column(table_name: str, column_name: str) -> bool:
@@ -970,6 +1019,9 @@ def subject_phone_display_for_consent(c: SubjectConsent) -> str:
         if phone:
             return phone
     sig = c.signature_data if isinstance(c.signature_data, dict) else {}
+    cti = sig.get('consent_test_scan_identity') if isinstance(sig.get('consent_test_scan_identity'), dict) else {}
+    if (cti.get('declared_phone') or '').strip():
+        return (cti.get('declared_phone') or '').strip()
     mc = sig.get('mini_sign_confirm') or {}
     if isinstance(mc, dict):
         for key in ('phone', 'mobile'):
@@ -1036,7 +1088,7 @@ def _consent_row_search_blob(c: SubjectConsent) -> str:
     ex = consent_list_display_fields(c, None)
     sig = (c.signature_data or {}).get('investigator_sign') or {}
     subj = getattr(c, 'subject', None)
-    phone_for_search = (getattr(subj, 'phone', None) or '').strip() if subj is not None else ''
+    phone_for_search = (subject_phone_display_for_consent(c) or '').strip()
     icfv = safe_subject_consent_icf_version(c)
     parts = [
         subject_no_display_for_consent(c),
@@ -1250,6 +1302,7 @@ def consent_list_api_rows_from_subject_groups(
     sched: list,
     single_ref_date: Optional[date],
     media_url: str,
+    protocol_id: int,
 ) -> List[dict]:
     """将按受试者分组的 SubjectConsent 列表转为执行台知情管理 API 行（含 consent_ids、group_by_subject）。"""
     rows: List[dict] = []
@@ -1294,12 +1347,15 @@ def consent_list_api_rows_from_subject_groups(
                 d = _dt_to_local_date(c.signed_at) or _dt_to_local_date(c.create_time)
                 if d and (ref_day is None or d > ref_day):
                     ref_day = d
-        screening_signing_staff = signing_staff_name_for_screening_date(sched, ref_day) if ref_day else ''
-        for c in grp:
-            sig_for_row = c.signature_data or {}
-            if sig_for_row.get('witness_dev_flow') and (sig_for_row.get('witness_staff_name') or '').strip():
-                screening_signing_staff = str(sig_for_row.get('witness_staff_name')).strip()
-                break
+        sig_for_row = c0.signature_data or {}
+        screening_signing_staff, witness_staff_auth_at = screening_signing_staff_for_consent_list(
+            sched,
+            ref_day,
+            settings_data,
+            sig_for_row,
+            protocol_id=protocol_id,
+            signed_at=signed_at_max,
+        )
         witness_batch = None
         for c in grp:
             wb = ((c.signature_data or {}).get('witness_dev_batch_id') or '') or None
@@ -1342,6 +1398,7 @@ def consent_list_api_rows_from_subject_groups(
                 'investigator_signed_at': investigator_signed_at,
                 'investigator_sign_staff_name': witness_meta.get('staff_name') or '',
                 'screening_signing_staff': screening_signing_staff,
+                'witness_staff_auth_at': witness_staff_auth_at,
                 'receipt_no': receipt_only,
                 'receipt_pdf_path': first_receipt_path,
                 'receipt_pdf_url': receipt_pdf_url,
@@ -1463,7 +1520,7 @@ def _sanitize_zip_path_component(s: str, max_len: int = 80) -> str:
 
 
 def _subject_id_card_plain_for_export(subject: Subject, consent: SubjectConsent) -> str:
-    """导出用身份证号：主表解密优先，否则核验测试 H5 填报。"""
+    """导出用身份证号：主表解密优先，否则知情测试 H5 填报。"""
     from apps.subject.services.profile_service import decrypt_id_card
 
     enc = (getattr(subject, 'id_card_encrypted', None) or '').strip()
@@ -1483,6 +1540,35 @@ def _subject_id_card_plain_for_export(subject: Subject, consent: SubjectConsent)
     return (cti.get('declared_id_card') or '').strip()
 
 
+def _subject_phone_plain_for_export(subject: Subject, consent: SubjectConsent) -> str:
+    """导出用手机号：优先扫码/知情测试 H5 基础信息页 declared_phone，否则受试者主表。"""
+    sig = consent.signature_data or {}
+    cti = sig.get('consent_test_scan_identity') if isinstance(sig.get('consent_test_scan_identity'), dict) else {}
+    dp = normalize_phone_digits(cti.get('declared_phone') or '')
+    if dp:
+        return dp
+    if subject is None:
+        return ''
+    sp = (getattr(subject, 'phone', None) or '').strip()
+    return normalize_phone_digits(sp) or sp
+
+
+def _sc_number_export_sort_key(sc_raw: str) -> tuple:
+    """受试者基础信息导出：按 SC 号升序（空排后；含数字时按首个数字段数值比）。"""
+    s = (sc_raw or '').strip()
+    if not s:
+        return (2, 0, '')
+    if s.isdigit():
+        return (0, int(s), '')
+    nums = re.findall(r'\d+', s)
+    if nums:
+        try:
+            return (0, int(nums[0]), s)
+        except ValueError:
+            pass
+    return (1, 0, s)
+
+
 def _pick_representative_consent_for_export(group: list) -> SubjectConsent:
     """同一受试者多节点时：优先选带扫码填报身份证的节点，便于导出。"""
     for c in group:
@@ -1500,9 +1586,12 @@ def get_subjects_basic_export_rows(
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     search: Optional[str] = None,
+    protocol_code: str = '',
+    protocol_title: str = '',
 ) -> list[dict]:
     """
-    签署记录导出：按受试者去重一行，字段 SC号、姓名、手机号、身份证号。
+    签署记录导出：按受试者去重一行。
+    含项目编号/名称、SC号、姓名、手机号（优先扫码基础信息页 declared_phone）、拼音首字母、身份证号；按 SC 号升序。
     """
     from collections import defaultdict
 
@@ -1546,9 +1635,17 @@ def get_subjects_basic_export_rows(
             name = ''
 
         try:
-            phone = (getattr(subj, 'phone', None) or '').strip() if subj is not None else ''
-        except Exception:
+            phone = _subject_phone_plain_for_export(subj, rep)
+        except Exception as e:
+            logger.warning('consent_export: 解析手机号失败，已回退为空（consent_id=%s）: %s', getattr(rep, 'id', None), e)
             phone = ''
+
+        try:
+            py_raw = (extra.get('name_pinyin_initials') or '').strip()
+            if py_raw == '-':
+                py_raw = ''
+        except Exception:
+            py_raw = ''
 
         try:
             idc = _subject_id_card_plain_for_export(subj, rep) if subj is not None else ''
@@ -1557,13 +1654,16 @@ def get_subjects_basic_export_rows(
             idc = ''
         rows.append(
             {
+                'project_code': (protocol_code or '').strip(),
+                'project_title': (protocol_title or '').strip(),
                 'sc_number': sc,
                 'subject_name': name,
                 'phone': phone,
+                'name_pinyin_initials': py_raw,
                 'id_card': idc,
             }
         )
-    rows.sort(key=lambda r: (r.get('subject_name') or ''))
+    rows.sort(key=lambda r: _sc_number_export_sort_key(r.get('sc_number') or ''))
     return rows
 
 
@@ -1611,6 +1711,15 @@ def zip_consent_receipt_pdfs_for_protocol(
             py_raw = (extra.get('name_pinyin_initials') or '').strip()
             if py_raw == '-':
                 py_raw = ''
+            if not py_raw:
+                try:
+                    from apps.subject.services.reception_service import _name_pinyin_initials
+
+                    nm = (subject_name_display_for_consent(rep) or '').strip()
+                    if nm:
+                        py_raw = _name_pinyin_initials(nm)
+                except Exception:
+                    pass
             times = [c.signed_at or c.create_time for c in group if c.signed_at or c.create_time]
             t0 = min(times) if times else timezone.now()
             if timezone.is_aware(t0):
@@ -1638,7 +1747,7 @@ def zip_consent_receipt_pdfs_for_protocol(
                     not rel or sig.get('receipt_stub') is not False
                 )
                 if needs_receipt:
-                    _ensure_receipt_pdf(c)
+                    _ensure_receipt_pdf_safe(c)
                     rel = (c.signature_data or {}).get('receipt_pdf_path')
                     if rel:
                         c.save(update_fields=['signature_data', 'update_time'])
@@ -1738,14 +1847,31 @@ def _attach_subject_snapshot_to_signature(sig: Optional[dict], subject_id: int) 
 
 
 def _resolved_consent_signed_at_datetime(sig_payload: Optional[dict]) -> datetime:
-    """若 signature_data.signed_at 为 YYYY-MM-DD（自动签署日期），则对应本地日 0 点；否则为当前时刻。"""
+    """
+    SubjectConsent.signed_at 落库时间。
+    - 完整 ISO 日期时间字符串：解析为 aware datetime；
+    - 仅为 YYYY-MM-DD（自动签署日）：历史上用当日 0 点会导致列表/导出时分秒恒为 00:00:00，改为当前时刻；
+    - 未提供或无法解析：当前时刻。
+    """
     raw = (sig_payload or {}).get('signed_at')
     if isinstance(raw, str):
         s = raw.strip()
+        if len(s) >= 16:
+            try:
+                from django.utils.dateparse import parse_datetime
+
+                norm = s.replace(' ', 'T', 1) if ' ' in s[:19] and 'T' not in s[:19] else s
+                dt = parse_datetime(norm)
+                if dt:
+                    if timezone.is_naive(dt):
+                        dt = timezone.make_aware(dt, timezone.get_current_timezone())
+                    return dt
+            except Exception:
+                pass
         if len(s) >= 10 and s[4] == '-' and s[7] == '-':
             try:
-                d = datetime.strptime(s[:10], '%Y-%m-%d').date()
-                return timezone.make_aware(datetime.combine(d, dt_time.min))
+                datetime.strptime(s[:10], '%Y-%m-%d')
+                return timezone.now()
             except ValueError:
                 pass
     return timezone.now()
@@ -1771,7 +1897,7 @@ def sign_consent(subject_id: int, icf_version_id: int, signature_data: dict = No
             receipt_no=_allocate_receipt_no_for_subject_protocol(subject_id, icf_version_id),
             staff_audit_status=STAFF_AUDIT_PENDING_REVIEW,
         )
-        _ensure_receipt_pdf(consent)
+        _ensure_receipt_pdf_safe(consent)
         consent.save(update_fields=['signature_data', 'staff_audit_status', 'update_time'])
         return consent
 
@@ -1786,7 +1912,7 @@ def sign_consent(subject_id: int, icf_version_id: int, signature_data: dict = No
         )
         if not consent.receipt_no:
             consent.receipt_no = _allocate_receipt_no_for_subject_protocol(subject_id, icf_version_id)
-        _ensure_receipt_pdf(consent)
+        _ensure_receipt_pdf_safe(consent)
         consent.save(
             update_fields=[
                 'is_deleted',
@@ -1812,7 +1938,7 @@ def sign_consent(subject_id: int, icf_version_id: int, signature_data: dict = No
     )
     if not consent.receipt_no:
         consent.receipt_no = _allocate_receipt_no_for_subject_protocol(subject_id, icf_version_id)
-    _ensure_receipt_pdf(consent)
+    _ensure_receipt_pdf_safe(consent)
     consent.save(
         update_fields=['is_signed', 'signed_at', 'signature_data', 'receipt_no', 'staff_audit_status', 'update_time']
     )
@@ -1826,6 +1952,169 @@ def get_subject_consents(subject_id: int) -> list:
         .select_related('icf_version', 'icf_version__protocol')
         .order_by('-create_time')
     )
+
+
+def _serialize_subject_consent_for_my_api(c: SubjectConsent) -> dict:
+    """小程序 GET /my/consents 单条结构（仅含已发布项目的知情任务）。"""
+    from django.conf import settings
+
+    icf = safe_subject_consent_icf_version(c)
+    proto = safe_icf_protocol(icf)
+    sig = c.signature_data if isinstance(c.signature_data, dict) else {}
+    rules = get_effective_mini_sign_rules(proto, icf) if proto and icf else {}
+    rd = effective_required_reading_seconds_for_icf(icf, proto) if icf and proto else 0
+    receipt_pdf_path = (sig.get('receipt_pdf_path') or '').strip() if sig else ''
+    return {
+        'id': c.id,
+        'icf_version_id': c.icf_version_id,
+        'icf_version': icf.version if icf else '',
+        'node_title': (getattr(icf, 'node_title', None) or '').strip() if icf else '',
+        'display_order': int(getattr(icf, 'display_order', 0) or 0) if icf else 0,
+        'required_reading_duration_seconds': rd,
+        'protocol_id': proto.id if proto else None,
+        'protocol_code': (proto.code or '').strip() if proto else '',
+        'protocol_title': (proto.title or '').strip() if proto else '',
+        'is_signed': c.is_signed,
+        'signed_at': c.signed_at.isoformat() if c.signed_at else None,
+        'receipt_no': c.receipt_no or None,
+        'receipt_pdf_path': receipt_pdf_path or None,
+        'receipt_pdf_url': f"{settings.MEDIA_URL}{receipt_pdf_path}" if receipt_pdf_path else None,
+        'staff_audit_status': (getattr(c, 'staff_audit_status', None) or '').strip(),
+        'staff_return_reason': (sig.get('staff_return_reason') or '').strip() or None,
+        'consent_status_label': consent_staff_display_status(c),
+    }
+
+
+def list_subject_consents_for_mini_program(subject_id: int) -> list:
+    """
+    小程序「我的知情」列表：仅返回执行台已「发布」知情配置的项目下、未软删的签署任务；
+    排序与执行台节点顺序一致（协议 consent_display_order → 节点 display_order）。
+    """
+    from apps.protocol.api import _is_consent_launched
+
+    qs = (
+        SubjectConsent.objects.filter(subject_id=subject_id, is_deleted=False)
+        .select_related('icf_version', 'icf_version__protocol')
+    )
+    rows: List[SubjectConsent] = []
+    for c in qs:
+        icf = safe_subject_consent_icf_version(c)
+        proto = safe_icf_protocol(icf)
+        if not icf or not proto:
+            continue
+        if not getattr(icf, 'is_active', True):
+            continue
+        if not _is_consent_launched(proto):
+            continue
+        rows.append(c)
+
+    def _sort_key(c: SubjectConsent) -> tuple:
+        icf = safe_subject_consent_icf_version(c)
+        proto = safe_icf_protocol(icf)
+        p_order = int(getattr(proto, 'consent_display_order', 0) or 0) if proto else 0
+        pid = proto.id if proto else 0
+        d_order = int(getattr(icf, 'display_order', 0) or 0) if icf else 0
+        iid = icf.id if icf else 0
+        return (p_order, pid, d_order, iid)
+
+    rows.sort(key=_sort_key)
+    return [_serialize_subject_consent_for_my_api(c) for c in rows]
+
+
+def subject_face_sign_consent(subject_id: int, icf_version_id: int, raw: dict) -> dict:
+    """
+    小程序人脸核身 + 手写签名 + 补充信息签署（正式流程，非知情测试扫码）。
+    返回 {'ok': True, 'consent': SubjectConsent, 'status': 'signed'|'signed_pending_investigator', ...}
+    或 {'ok': False, 'code': int, 'msg': str, 'error_code': str|None}
+    """
+    from types import SimpleNamespace
+
+    from apps.protocol.api import _is_consent_launched
+
+    subject = Subject.objects.filter(pk=subject_id, is_deleted=False).first()
+    if not subject:
+        return {'ok': False, 'code': 404, 'msg': '未找到受试者信息', 'error_code': None}
+
+    icf = ICFVersion.objects.filter(id=icf_version_id).select_related('protocol').first()
+    if not icf:
+        return {'ok': False, 'code': 404, 'msg': 'ICF 版本不存在', 'error_code': None}
+    protocol = safe_icf_protocol(icf)
+    if not protocol:
+        return {'ok': False, 'code': 404, 'msg': '协议不存在', 'error_code': None}
+    if not _is_consent_launched(protocol):
+        return {
+            'ok': False,
+            'code': 403,
+            'msg': '知情配置尚未发布，请待研究方在执行台知情管理中发布后再签署',
+            'error_code': 'CONSENT_NOT_LAUNCHED',
+        }
+
+    consent = SubjectConsent.objects.filter(subject_id=subject_id, icf_version_id=icf_version_id).first()
+    if consent is None:
+        return {
+            'ok': False,
+            'code': 404,
+            'msg': '暂无该知情签署任务，请完成现场签到或联系研究方',
+            'error_code': None,
+        }
+    if consent.is_signed:
+        return {'ok': False, 'code': 409, 'msg': '您已签署过该版本', 'error_code': None}
+
+    rules = get_effective_mini_sign_rules(protocol, icf)
+    ns = SimpleNamespace(
+        declared_phone=raw.get('declared_phone'),
+        declared_subject_name=raw.get('declared_subject_name'),
+        declared_id_card=raw.get('declared_id_card'),
+        declared_screening_number=raw.get('declared_screening_number'),
+        declared_initials=raw.get('declared_initials'),
+    )
+    err = mini_sign_supplement_error_message(subject, rules, ns)
+    if err:
+        return {'ok': False, 'code': 400, 'msg': err, 'error_code': None}
+
+    sig: dict = {
+        'verification_method': 'face_recognition',
+        'face_verify_token': (raw.get('face_verify_token') or '').strip(),
+        'reading_duration_seconds': max(0, int(raw.get('reading_duration_seconds') or 0)),
+        'comprehension_quiz_passed': raw.get('comprehension_quiz_passed') is not False,
+        'signed_at': raw.get('signed_at'),
+        'signing_kind': 'formal',
+    }
+    if rules.get('enable_subject_signature'):
+        from apps.protocol.api import _clamp_1_or_2
+
+        st = _clamp_1_or_2(rules.get('subject_signature_times'), 1)
+        if st > 0:
+            imgs = raw.get('signature_images')
+            if st >= 2:
+                if isinstance(imgs, list) and len([x for x in imgs if str(x).strip()]) >= 2:
+                    sig['signature_images'] = [str(x).strip() for x in imgs if str(x).strip()][:2]
+                else:
+                    return {'ok': False, 'code': 400, 'msg': '请完成两处手写签名', 'error_code': None}
+            else:
+                one = (raw.get('signature_image') or '').strip()
+                if not one:
+                    return {'ok': False, 'code': 400, 'msg': '请完成手写签名', 'error_code': None}
+                sig['signature_image'] = one
+
+    if rules.get('collect_other_information') and (raw.get('other_information_text') or '').strip():
+        sig['other_information_text'] = str(raw.get('other_information_text')).strip()[:4000]
+
+    if rules.get('enable_checkbox_recognition'):
+        ans = raw.get('icf_checkbox_answers')
+        if isinstance(ans, list) and ans:
+            sig['icf_checkbox_answers'] = ans
+
+    old_rs = (consent.signature_data or {}).get('reception_sync') if isinstance(consent.signature_data, dict) else {}
+    apply_mini_sign_supplement_to_signature(subject, rules, ns, sig, old_rs if isinstance(old_rs, dict) else {})
+
+    consent = sign_consent(subject_id, icf_version_id, signature_data=sig)
+
+    rules2 = get_effective_mini_sign_rules(protocol, icf)
+    need_inv = bool(rules2.get('require_dual_sign'))
+    inv_at = getattr(consent, 'investigator_signed_at', None) if need_inv else True
+    status = 'signed_pending_investigator' if need_inv and not inv_at else 'signed'
+    return {'ok': True, 'consent': consent, 'status': status}
 
 
 def _resolve_icf_source_pdf_relative_path(icf) -> Optional[str]:
@@ -1868,6 +2157,65 @@ def _resolve_icf_source_pdf_relative_path(icf) -> Optional[str]:
     return None
 
 
+def _witness_staff_signature_bytes_for_protocol(protocol, max_n: int) -> list:
+    """双签名单顺序取首个已登记 signature_file 的工作人员；max_n>1 时为同一人签名图重复（与占位符一致）。"""
+    if not protocol or max_n <= 0:
+        return []
+    from apps.protocol.api import _get_consent_settings
+    from apps.protocol.models import WitnessStaff
+
+    try:
+        settings_json = _get_consent_settings(protocol)
+        rows = list(settings_json.get('dual_sign_staffs') or [])
+    except Exception:
+        return []
+    first_bytes: Optional[bytes] = None
+    for row in rows:
+        sid = row.get('staff_id')
+        if not sid:
+            continue
+        ws = WitnessStaff.objects.filter(id=int(sid), is_deleted=False).only('signature_file').first()
+        if not ws:
+            continue
+        rel = (ws.signature_file or '').strip()
+        if not rel:
+            continue
+        b = _load_signature_image_bytes(rel)
+        if b:
+            first_bytes = b
+            break
+    if not first_bytes:
+        return []
+    return [first_bytes] * max_n
+
+
+def _witness_staff_signature_bytes_by_staff_ids(staff_ids: Optional[list], max_n: int) -> list:
+    """仅使用快照中授权工作人员（列表首项 id）的签名图；max_n>1 时重复同图，不取多名工作人员。"""
+    if not staff_ids or max_n <= 0:
+        return []
+    from apps.protocol.models import WitnessStaff
+
+    first_id = None
+    for sid in staff_ids:
+        try:
+            first_id = int(sid)
+            break
+        except (TypeError, ValueError):
+            continue
+    if first_id is None:
+        return []
+    ws = WitnessStaff.objects.filter(id=first_id, is_deleted=False).only('signature_file').first()
+    if not ws:
+        return []
+    rel = (ws.signature_file or '').strip()
+    if not rel:
+        return []
+    b = _load_signature_image_bytes(rel)
+    if not b:
+        return []
+    return [b] * max_n
+
+
 def _load_signature_image_bytes(sig_ref: str) -> Optional[bytes]:
     """手写签名：支持 base64 或 MEDIA 下 storage_key 相对路径。"""
     import base64
@@ -1898,7 +2246,7 @@ def _load_signature_image_bytes(sig_ref: str) -> Optional[bytes]:
 def _build_full_consent_receipt_pdf(consent: SubjectConsent) -> None:
     """
     知情签署回执 PDF：合并知情原文 PDF（若节点已上传且可解析）+ 签署摘要页
-    （项目/节点信息、受试者填报、勾选结果、手写签名等）。适用于小程序正式签署与核验测试 H5。
+    （项目/节点信息、受试者填报、勾选结果、手写签名等）。适用于小程序正式签署与知情测试 H5。
     """
     import base64
     import os
@@ -1924,6 +2272,24 @@ def _build_full_consent_receipt_pdf(consent: SubjectConsent) -> None:
         return
 
     is_test_scan = bool(data.get('consent_test_scan_h5'))
+    proto_early = getattr(icf, 'protocol', None)
+    if is_test_scan and proto_early and consent.signed_at:
+        need_snap = (
+            not data.get('witness_staff_signature_order_ids')
+            or not (data.get('witness_staff_name') or '').strip()
+            or not data.get('witness_staff_auth_at')
+        )
+        if need_snap:
+            from apps.protocol.services import witness_staff_service as ws_svc
+
+            snap = ws_svc.witness_staff_snapshot_for_consent_signing(proto_early.id, consent.signed_at)
+            data = dict(data)
+            if not data.get('witness_staff_signature_order_ids') and snap.get('witness_staff_signature_order_ids'):
+                data['witness_staff_signature_order_ids'] = snap['witness_staff_signature_order_ids']
+            if not (data.get('witness_staff_name') or '').strip() and snap.get('witness_staff_name'):
+                data['witness_staff_name'] = snap['witness_staff_name']
+            if not data.get('witness_staff_auth_at') and snap.get('witness_staff_auth_at'):
+                data['witness_staff_auth_at'] = snap['witness_staff_auth_at']
 
     signed_at = consent.signed_at or timezone.now()
     rel_dir = Path('consent') / f'{signed_at:%Y}' / f'{signed_at:%m}'
@@ -2027,6 +2393,10 @@ def _build_full_consent_receipt_pdf(consent: SubjectConsent) -> None:
     eff_rules = get_effective_mini_sign_rules(proto, icf)
     from apps.protocol.api import _clamp_1_or_2
 
+    answers = data.get('icf_checkbox_answers') or data.get('checkbox_answers') or []
+    if not isinstance(answers, list):
+        answers = []
+
     auto_sign_date = bool(eff_rules.get('enable_auto_sign_date'))
     subj_sig_times = _clamp_1_or_2(eff_rules.get('subject_signature_times'), 1) if eff_rules.get('enable_subject_signature') else 0
     if auto_sign_date:
@@ -2036,6 +2406,7 @@ def _build_full_consent_receipt_pdf(consent: SubjectConsent) -> None:
                 body_cn,
             )
         )
+        story.append(Paragraph(xml_escape(f'签署时刻：{signed_at.isoformat()}'), body_cn))
     else:
         story.append(Paragraph(xml_escape(f'签署时间：{signed_at.isoformat()}'), body_cn))
     if subj_sig_times > 0:
@@ -2047,39 +2418,54 @@ def _build_full_consent_receipt_pdf(consent: SubjectConsent) -> None:
         )
     story.append(Spacer(1, 3 * mm))
 
-    had_sig_placeholders_in_icf_body = False
     if not merged_doc:
         from apps.protocol.services.protocol_service import resolve_icf_body_html_for_execution
 
-        raw_html = (resolve_icf_body_html_for_execution(icf) if icf else '').strip()
-        had_sig_placeholders_in_icf_body = (
-            '{{ICF_SUBJECT_SIG_1}}' in raw_html
-            or '{{ICF_SUBJECT_SIG_2}}' in raw_html
-            or '{{ICF_STAFF_SIG_1}}' in raw_html
-            or '{{ICF_STAFF_SIG_2}}' in raw_html
-        )
+        raw_html = ''
+        try:
+            raw_html = (resolve_icf_body_html_for_execution(icf) if icf else '').strip()
+        except Exception as exc:
+            logger.warning(
+                'consent receipt: resolve_icf_body_html_for_execution failed consent_id=%s: %s',
+                consent.id,
+                exc,
+            )
         if raw_html:
             try:
+                from apps.subject.services.icf_checkbox_receipt import apply_checkbox_answers_inline_to_html
                 from apps.subject.services.icf_placeholders import (
                     apply_icf_placeholders,
                     build_icf_placeholder_map_for_consent_record,
                 )
 
-                proto = getattr(icf, 'protocol', None)
-                pcode = str(getattr(proto, 'code', None) or '')
-                ptitle = str(getattr(proto, 'title', None) or '')
-                nt = str(getattr(icf, 'node_title', None) or '')
-                ver = str(getattr(icf, 'version', None) or '')
+                if eff_rules.get('enable_checkbox_recognition') and answers:
+                    raw_html = apply_checkbox_answers_inline_to_html(raw_html, answers)
+                pcode_ph = str((getattr(proto, 'code', None) or '') if proto else '')
+                ptitle_ph = str((getattr(proto, 'title', None) or '') if proto else '')
+                nt = str((getattr(icf, 'node_title', None) or '') if icf else '')
+                ver = str((getattr(icf, 'version', None) or '') if icf else '')
                 pmap = build_icf_placeholder_map_for_consent_record(
                     signature_data=data,
-                    protocol_code=pcode,
-                    protocol_title=ptitle,
+                    protocol_code=pcode_ph,
+                    protocol_title=ptitle_ph,
                     node_title=nt,
                     version_label=ver,
                     signed_at=signed_at,
                     receipt_no=str(consent.receipt_no or ''),
+                    protocol=proto,
+                    icf=icf,
                 )
-                raw_html = apply_icf_placeholders(raw_html, pmap, escape_values=True)
+                _sig_tokens = (
+                    '{{ICF_SUBJECT_SIG_1}}',
+                    '{{ICF_SUBJECT_SIG_2}}',
+                    '{{ICF_STAFF_SIG_1}}',
+                    '{{ICF_STAFF_SIG_2}}',
+                )
+                raw_sig = {k: pmap[k] for k in _sig_tokens if pmap.get(k)}
+                pmap_rest = {k: v for k, v in pmap.items() if k not in raw_sig}
+                raw_html = apply_icf_placeholders(
+                    raw_html, pmap_rest, escape_values=True, raw_html_by_token=raw_sig
+                )
             except Exception:
                 pass
             plain = strip_tags(raw_html)
@@ -2090,18 +2476,73 @@ def _build_full_consent_receipt_pdf(consent: SubjectConsent) -> None:
                 story.append(Paragraph(xml_escape('【正文摘要】（节点未生成可合并的 PDF 时展示）'), body_cn))
                 for chunk in re.findall(r'.{1,800}', plain):
                     story.append(Paragraph(xml_escape(chunk), small_cn))
+    elif merged_doc and eff_rules.get('enable_checkbox_recognition') and answers:
+        from apps.protocol.services.protocol_service import resolve_icf_body_html_for_execution
+        from apps.subject.services.icf_checkbox_receipt import apply_checkbox_answers_inline_to_html
 
-    answers = data.get('icf_checkbox_answers') or data.get('checkbox_answers') or []
-    if isinstance(answers, list) and len(answers) > 0:
-        story.append(Spacer(1, 2 * mm))
-        story.append(Paragraph(xml_escape('【正文勾选结果】'), body_cn))
-        for i, a in enumerate(answers, 1):
-            if isinstance(a, dict):
-                v = a.get('value', a.get('answer', ''))
-            else:
-                v = a
-            lab = '是' if str(v).strip().lower() in ('yes', 'y', 'true', '1', '是') else '否'
-            story.append(Paragraph(xml_escape(f'第 {i} 处：{lab}'), body_cn))
+        try:
+            raw_html_for_merged_cb = (resolve_icf_body_html_for_execution(icf) if icf else '').strip()
+        except Exception as exc:
+            logger.warning(
+                'consent receipt: merged checkbox trace resolve failed consent_id=%s: %s',
+                consent.id,
+                exc,
+            )
+            raw_html_for_merged_cb = ''
+        if raw_html_for_merged_cb:
+            try:
+                raw_html_for_merged_cb = apply_checkbox_answers_inline_to_html(
+                    raw_html_for_merged_cb, answers
+                )
+                from apps.subject.services.icf_placeholders import (
+                    apply_icf_placeholders,
+                    build_icf_placeholder_map_for_consent_record,
+                )
+
+                pcode_m = str((getattr(proto, 'code', None) or '') if proto else '')
+                ptitle_m = str((getattr(proto, 'title', None) or '') if proto else '')
+                nt_m = str((getattr(icf, 'node_title', None) or '') if icf else '')
+                ver_m = str((getattr(icf, 'version', None) or '') if icf else '')
+                pmap_m = build_icf_placeholder_map_for_consent_record(
+                    signature_data=data,
+                    protocol_code=pcode_m,
+                    protocol_title=ptitle_m,
+                    node_title=nt_m,
+                    version_label=ver_m,
+                    signed_at=signed_at,
+                    receipt_no=str(consent.receipt_no or ''),
+                    protocol=proto,
+                    icf=icf,
+                )
+                _sig_tok = (
+                    '{{ICF_SUBJECT_SIG_1}}',
+                    '{{ICF_SUBJECT_SIG_2}}',
+                    '{{ICF_STAFF_SIG_1}}',
+                    '{{ICF_STAFF_SIG_2}}',
+                )
+                raw_sig_m = {k: pmap_m[k] for k in _sig_tok if pmap_m.get(k)}
+                pmap_rest_m = {k: v for k, v in pmap_m.items() if k not in raw_sig_m}
+                raw_html_for_merged_cb = apply_icf_placeholders(
+                    raw_html_for_merged_cb,
+                    pmap_rest_m,
+                    escape_values=True,
+                    raw_html_by_token=raw_sig_m,
+                )
+                plain_m = strip_tags(raw_html_for_merged_cb)
+                plain_m = re.sub(r'\s+', ' ', plain_m).strip()
+                if len(plain_m) > 12000:
+                    plain_m = plain_m[:12000] + '…'
+                if plain_m:
+                    story.append(
+                        Paragraph(
+                            xml_escape('【正文勾选与占位符留痕】（与原文顺序一致，已合并知情原文 PDF 时仅附此摘要）'),
+                            body_cn,
+                        )
+                    )
+                    for chunk in re.findall(r'.{1,800}', plain_m):
+                        story.append(Paragraph(xml_escape(chunk), small_cn))
+            except Exception:
+                pass
 
     sig_refs: list[str] = []
     if isinstance(data.get('consent_test_scan_signature_images'), list) and data.get('consent_test_scan_signature_images'):
@@ -2113,8 +2554,8 @@ def _build_full_consent_receipt_pdf(consent: SubjectConsent) -> None:
             v = (data.get(k) or '').strip()
             if v:
                 sig_refs.append(v)
-    # 正文 HTML 已使用 {{ICF_SUBJECT_SIG_*}} 且摘要段已含「已采集」说明时，不再重复附录大图
-    skip_sig_appendix = bool(not merged_doc and had_sig_placeholders_in_icf_body)
+    # strip_tags 会去掉正文内嵌 img，故附录始终输出受试者签名大图，避免回执仅余空白占位
+    skip_sig_appendix = False
     if sig_refs and not skip_sig_appendix:
         story.append(Spacer(1, 4 * mm))
         story.append(Paragraph(xml_escape('【手写签名】'), body_cn))
@@ -2140,6 +2581,34 @@ def _build_full_consent_receipt_pdf(consent: SubjectConsent) -> None:
             except Exception as exc:
                 logger.warning('consent receipt: embed signature image failed: %s', exc)
 
+    staff_sig_times = _clamp_1_or_2(eff_rules.get('staff_signature_times'), 1) if eff_rules.get('enable_staff_signature') else 0
+    if staff_sig_times > 0 and proto:
+        snap_ids = data.get('witness_staff_signature_order_ids')
+        if isinstance(snap_ids, list) and snap_ids:
+            staff_bytes_list = _witness_staff_signature_bytes_by_staff_ids(snap_ids, staff_sig_times)
+        else:
+            staff_bytes_list = _witness_staff_signature_bytes_for_protocol(proto, staff_sig_times)
+        if staff_bytes_list:
+            story.append(Spacer(1, 4 * mm))
+            story.append(Paragraph(xml_escape('【工作人员签名】（与知情配置次数一致）'), body_cn))
+            for idx, raw_bytes in enumerate(staff_bytes_list[:8], 1):
+                try:
+                    im = Image.open(BytesIO(raw_bytes))
+                    w, h = im.size
+                    max_w = 420
+                    scale = min(max_w / float(w or 1), 1.0)
+                    rw, rh = int(w * scale), int(h * scale)
+                    buf = BytesIO(raw_bytes)
+                    buf.seek(0)
+                    lab = f'工作人员签名 {idx}'
+                    if staff_sig_times > 1:
+                        lab += f' / {staff_sig_times}'
+                    story.append(Paragraph(xml_escape(lab), small_cn))
+                    story.append(RLImage(buf, width=rw, height=rh))
+                    story.append(Spacer(1, 2 * mm))
+                except Exception as exc:
+                    logger.warning('consent receipt: embed staff signature image failed: %s', exc)
+
     if data.get('comprehension_quiz_passed') is False:
         story.append(Spacer(1, 2 * mm))
         story.append(Paragraph(xml_escape('知情测验：未通过'), body_cn))
@@ -2158,9 +2627,9 @@ def _build_full_consent_receipt_pdf(consent: SubjectConsent) -> None:
     story.append(
         Paragraph(
             xml_escape(
-                '说明：前几页为知情原文（若节点已上传 PDF/Word 并生成预览）；其后为本次签署的勾选结果与手写签名留痕。'
+                '说明：前几页为知情原文（若节点已上传 PDF/Word 并生成预览）；其后为回执摘要页：正文勾选在原文句式位置以「已选：是/否」展示，并与受试者/工作人员手写签名留痕。'
                 if not is_test_scan
-                else '说明：前几页为知情原文（若节点已上传 PDF/Word 预览）；本段为本次核验勾选与签名留痕。'
+                else '说明：前几页为知情原文（若节点已上传 PDF/Word 预览）；其后为回执摘要页：正文勾选在原文位置展示，并附受试者与工作人员签名留痕。'
             ),
             small_cn,
         ),
@@ -2209,7 +2678,7 @@ def _build_full_consent_receipt_pdf(consent: SubjectConsent) -> None:
 
 
 def _ensure_stub_receipt_pdf(consent: SubjectConsent) -> None:
-    """最小回执（英文行），用于异常回退或非核验测试路径。"""
+    """最小回执（英文行），用于异常回退或非知情测试路径。"""
     data = dict(consent.signature_data or {})
     if data.get('receipt_pdf_path'):
         return
@@ -2250,6 +2719,18 @@ def _ensure_receipt_pdf(consent: SubjectConsent) -> None:
     if data.get('receipt_pdf_path') and data.get('receipt_stub') is False:
         return
     _build_full_consent_receipt_pdf(consent)
+
+
+def _ensure_receipt_pdf_safe(consent: SubjectConsent) -> None:
+    """签署落库时生成回执；任一步骤失败则降级为 stub，避免整笔签署事务失败（多节点批量提交时尤为关键）。"""
+    try:
+        _ensure_receipt_pdf(consent)
+    except Exception:
+        logger.exception('consent receipt: _ensure_receipt_pdf failed consent_id=%s', consent.id)
+        try:
+            _ensure_stub_receipt_pdf(consent)
+        except Exception:
+            logger.exception('consent receipt: stub fallback failed consent_id=%s', consent.id)
 
 
 def _signed_consent_outcome_yes_no(signature_data: Optional[dict]) -> str:
@@ -2360,7 +2841,7 @@ def consent_list_display_fields(consent: SubjectConsent, aggregate_signing_resul
     py = (rs.get('name_pinyin_initials') or '').strip()
     if not py and isinstance(mc, dict) and (mc.get('initials') or '').strip():
         py = (mc.get('initials') or '').strip()
-    # 核验测试 H5：扫码页填写的 SC、姓名 → 列表 SC号 / 拼音首字母（signature_data.consent_test_scan_identity）
+    # 知情测试 H5：扫码页填写的 SC、姓名 → 列表 SC号 / 拼音首字母（signature_data.consent_test_scan_identity）
     if sig.get('consent_test_scan_h5'):
         cti = sig.get('consent_test_scan_identity')
         if isinstance(cti, dict):
@@ -2368,7 +2849,10 @@ def consent_list_display_fields(consent: SubjectConsent, aggregate_signing_resul
                 sn = (cti.get('declared_screening_number') or '').strip()
                 if sn:
                     sc = sn
-            if not py:
+            pin = (cti.get('declared_pinyin_initials') or '').strip()
+            if pin:
+                py = pin.upper()[:50]
+            elif not py:
                 dn = (cti.get('declared_name') or '').strip()
                 if dn:
                     from apps.subject.services.reception_service import _name_pinyin_initials
@@ -2401,6 +2885,12 @@ def consent_list_display_fields(consent: SubjectConsent, aggregate_signing_resul
                     py = _name_pinyin_initials(subj.name or '')
         except Exception as e:
             logger.warning('consent_list_display_fields: 补全 SC/拼音首字母失败（已跳过）: %s', e)
+    if not py:
+        nm = (subject_name_display_for_consent(consent) or '').strip()
+        if nm:
+            from apps.subject.services.reception_service import _name_pinyin_initials
+
+            py = _name_pinyin_initials(nm)
     signing_kind = (sig.get('signing_kind') or '').strip()
     signing_type = '测试' if signing_kind == 'test' else '正式'
     phone_masked = _mask_phone(subject_phone_display_for_consent(consent))
@@ -2590,6 +3080,12 @@ def get_consent_preview_for_execution(protocol_id: int, consent_id: int) -> Opti
     )
     if not c:
         return None
+    # 与小程序「下载签署文件」同源：预览前尽量生成完整回执 PDF（合并原文 + 摘要页）
+    if c.is_signed:
+        _sd0 = dict(c.signature_data or {})
+        if not _sd0.get('receipt_pdf_path') or _sd0.get('receipt_stub') is not False:
+            _ensure_receipt_pdf_safe(c)
+            c.save(update_fields=['signature_data', 'update_time'])
     icf = safe_subject_consent_icf_version(c)
     protocol = safe_icf_protocol(icf)
     from apps.protocol.services.protocol_service import resolve_icf_body_html_for_execution
@@ -2614,13 +3110,18 @@ def get_consent_preview_for_execution(protocol_id: int, consent_id: int) -> Opti
             version_label=str(ver),
             signed_at=c.signed_at,
             receipt_no=str(c.receipt_no or ''),
+            protocol=protocol,
+            icf=icf,
         )
-        # 手写签名位由前端用 <img> 注入；此处仅替换姓名/日期等文本占位符
-        pmap.pop('{{ICF_SUBJECT_SIG_1}}', None)
-        pmap.pop('{{ICF_SUBJECT_SIG_2}}', None)
-        pmap.pop('{{ICF_STAFF_SIG_1}}', None)
-        pmap.pop('{{ICF_STAFF_SIG_2}}', None)
-        content = apply_icf_placeholders(content, pmap, escape_values=True)
+        _sig_tok = (
+            '{{ICF_SUBJECT_SIG_1}}',
+            '{{ICF_SUBJECT_SIG_2}}',
+            '{{ICF_STAFF_SIG_1}}',
+            '{{ICF_STAFF_SIG_2}}',
+        )
+        raw_sig = {k: pmap[k] for k in _sig_tok if pmap.get(k)}
+        pmap_rest = {k: v for k, v in pmap.items() if k not in raw_sig}
+        content = apply_icf_placeholders(content, pmap_rest, escape_values=True, raw_html_by_token=raw_sig)
     except Exception:
         pass
     pub_sig = {k: v for k, v in sig.items() if k not in ('face_verify_token',)}
@@ -2652,6 +3153,11 @@ def get_consent_preview_for_execution(protocol_id: int, consent_id: int) -> Opti
             'staff_signature_times': staff_times,
             'enable_auto_sign_date': bool(mr.get('enable_auto_sign_date', False)),
         }
+    from django.conf import settings as _django_settings
+
+    _rp = (sig.get('receipt_pdf_path') or '').strip()
+    _receipt_pdf_path = _rp or None
+    _receipt_pdf_url = f'{_django_settings.MEDIA_URL}{_receipt_pdf_path}' if _receipt_pdf_path else None
     return {
         'subject_no': subject_no_display_for_consent(c),
         'subject_name': subject_name_display_for_consent(c),
@@ -2663,6 +3169,8 @@ def get_consent_preview_for_execution(protocol_id: int, consent_id: int) -> Opti
         'is_signed': c.is_signed,
         'signed_at': c.signed_at.isoformat() if c.signed_at else None,
         'receipt_no': c.receipt_no or '',
+        'receipt_pdf_path': _receipt_pdf_path,
+        'receipt_pdf_url': _receipt_pdf_url,
         'signing_result': consent_signing_result_label(sig, c.is_signed),
         'consent_status_label': consent_staff_display_status(c),
         'staff_audit_status': getattr(c, 'staff_audit_status', '') or '',

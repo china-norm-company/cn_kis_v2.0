@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useImperativeHandle, useRef } from 'react'
+import { forwardRef, useCallback, useImperativeHandle, useLayoutEffect, useRef } from 'react'
 import { Button } from '@cn-kis/ui-kit'
 
 export type WitnessStaffSignaturePadHandle = {
@@ -81,14 +81,24 @@ const WitnessStaffInlineSignaturePad = forwardRef<WitnessStaffSignaturePadHandle
       [clear],
     )
 
+    useLayoutEffect(() => {
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const onTouchMove = (e: TouchEvent) => {
+        if (drawing.current) e.preventDefault()
+      }
+      canvas.addEventListener('touchmove', onTouchMove, { passive: false })
+      return () => canvas.removeEventListener('touchmove', onTouchMove)
+    }, [])
+
     return (
       <div className="space-y-2">
-        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden touch-none">
+        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden touch-none overscroll-contain">
           <canvas
             ref={canvasRef}
             width={W}
             height={H}
-            className="w-full h-[200px] touch-none cursor-crosshair block bg-white"
+            className="w-full h-[200px] touch-none cursor-crosshair block bg-white select-none"
             onMouseDown={startDraw}
             onMouseMove={moveDraw}
             onMouseUp={endDraw}

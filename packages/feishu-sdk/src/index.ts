@@ -5,7 +5,19 @@
  */
 
 // 认证
-export { FeishuAuth, AuthError, type FeishuAuthConfig, type FeishuUser, type AuthErrorType, type AuthResult } from './auth'
+export {
+  FeishuAuth,
+  AuthError,
+  type FeishuAuthConfig,
+  type FeishuUser,
+  type AuthErrorType,
+  type AuthResult,
+  CNKIS_POST_LOGIN_HASH_STORAGE_KEY,
+  CNKIS_OAUTH_RESTORE_HASH_KEY,
+  setExecutionPostLoginHashForOAuth,
+  extractPostLoginHashFromOAuthState,
+  getOAuthStateFromUrl,
+} from './auth'
 export { createWorkstationFeishuConfig } from './config'
 export { useFeishuAuth } from './hooks/useFeishuAuth'
 export { FeishuAuthProvider, useFeishuContext } from './provider'

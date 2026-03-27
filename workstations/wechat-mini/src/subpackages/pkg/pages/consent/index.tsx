@@ -14,11 +14,32 @@ import './index.scss'
 
 const subjectApi = buildSubjectEndpoints(taroApiClient)
 
-const MOCK_LOGIN_BTN = String(process.env.TARO_APP_MOCK_LOGIN_BTN || '').toLowerCase() === 'true'
+const MOCK_LOGIN_BTN =
+  typeof process !== 'undefined' &&
+  !!process.env &&
+  String(process.env.TARO_APP_MOCK_LOGIN_BTN || '').toLowerCase() === 'true'
 
 function isNetworkError(err: unknown): boolean {
   const msg = String((err as Error)?.message || err || '')
   return /request:fail|ERR_CONNECTION|net::|timeout|网络|连接/.test(msg)
+}
+
+/**
+ * 微信小程序 `rich-text` 不支持 iframe/embed 等节点；执行台对 PDF 节点会下发 iframe 嵌入，
+ * 直接渲染会触发「Component is not found in path wx://not-found」并导致整页白屏。
+ */
+function sanitizeHtmlForWechatRichText(html: string): string {
+  if (!html) return ''
+  const iframeNotice =
+    '<p style="color:#64748b;font-size:14px;line-height:1.6;padding:8px 0;">'
+    + '[PDF 附件类正文无法在小程序内嵌预览，已省略嵌入区域；请继续阅读下方 HTML 正文，或向现场工作人员索取完整版。]'
+    + '</p>'
+  return html
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, iframeNotice)
+    .replace(/<embed\b[^>]*>[\s\S]*?<\/embed>/gi, '')
+    .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, '')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/on\w+\s*=\s*["'][^"']*["']/gi, '')
 }
 
 /** 开发预览：无后端时使用的模拟知情项 */
@@ -50,7 +71,7 @@ interface ConsentItem {
   node_title?: string
   display_order?: number
   required_reading_duration_seconds?: number
-  /** 执行台知情核验测试扫码入口会带 protocol_id，用于筛选待签队列 */
+  /** 执行台知情测试扫码入口会带 protocol_id，用于筛选待签队列 */
   protocol_id?: number | null
   protocol_code?: string
   protocol_title?: string
@@ -109,7 +130,7 @@ interface Point {
 
 function ConsentPage() {
   const router = useRouter()
-  /** 知情核验测试：落地页跳转携带 protocol_id + ct（与执行台列表二维码一致） */
+  /** 知情测试：落地页跳转携带 protocol_id + ct（与执行台列表二维码一致） */
   const consentScanTestRef = useRef<{ protocolId?: number; token?: string }>({})
   const [bootstrap, setBootstrap] = useState<ConsentBootstrap | null>(null)
   const [bootstrapLoading, setBootstrapLoading] = useState(true)
@@ -182,31 +203,33 @@ function ConsentPage() {
         const data = res.data as ConsentBootstrap | undefined
         if (res.code === 200 && data) {
           setBootstrap(data)
-          setIdentityGateRequired(!!data.identity_gate_required)
-          // 本地 API 为 localhost/127.0.0.1：门禁仅因未实名时，自动完成 L2 dev-skip 并刷新（对接执行台知情配置）
-          if (
-            data.identity_gate_required
-            && shouldUseIdentityVerifyDevBypass()
-            && !identityDevAutoSkipRef.current
-          ) {
-            identityDevAutoSkipRef.current = true
-            void subjectApi.devSkipIdentityVerify()
-              .then((sk) => {
-                if (sk.code !== 200) {
-                  identityDevAutoSkipRef.current = false
-                  return
-                }
-                return subjectApi.getConsentBootstrap().then((r2) => {
-                  const d2 = r2.data as ConsentBootstrap | undefined
-                  if (r2.code === 200 && d2) {
-                    setBootstrap(d2)
-                    setIdentityGateRequired(!!d2.identity_gate_required)
+          const bypass = shouldUseIdentityVerifyDevBypass()
+          const gate = !!data.identity_gate_required
+          // 本地/局域网联调：与执行台扫码测试一致，不拦截「去实名」页，直接进入待签队列与基础信息/正文（后台仍 dev-skip 写入 L2）
+          if (gate && bypass) {
+            setIdentityGateRequired(false)
+            if (!identityDevAutoSkipRef.current) {
+              identityDevAutoSkipRef.current = true
+              void subjectApi.devSkipIdentityVerify()
+                .then((sk) => {
+                  if (sk.code !== 200) {
+                    identityDevAutoSkipRef.current = false
+                    return
                   }
+                  return subjectApi.getConsentBootstrap().then((r2) => {
+                    const d2 = r2.data as ConsentBootstrap | undefined
+                    if (r2.code === 200 && d2) {
+                      setBootstrap(d2)
+                      setIdentityGateRequired(!!d2.identity_gate_required)
+                    }
+                  })
                 })
-              })
-              .catch(() => {
-                identityDevAutoSkipRef.current = false
-              })
+                .catch(() => {
+                  identityDevAutoSkipRef.current = false
+                })
+            }
+          } else {
+            setIdentityGateRequired(gate)
           }
         } else if (res.code === 401) {
           setNeedLogin(true)
@@ -528,7 +551,9 @@ function ConsentPage() {
       sig1Src: sigInlineTempPaths[0] || null,
       sig2Src: sigInlineTempPaths[1] || null,
     })
-    return applyIcfPlaceholders(base, vals, { escapeValues: true, rawHtmlByToken: rawSig })
+    return sanitizeHtmlForWechatRichText(
+      applyIcfPlaceholders(base, vals, { escapeValues: true, rawHtmlByToken: rawSig }),
+    )
   }, [
     icfContent,
     currentItem?.protocol_code,
@@ -1114,7 +1139,9 @@ function ConsentPage() {
         <View className='consent-content consent-empty'>
           <View className='document'>
             <Text className='doc-title'>知情同意</Text>
-            <Text className='section-text empty-desc'>暂无待签署的知情文档。若您已入组试点项目，请联系研究方确认是否已为您分配签署任务。</Text>
+            <Text className='section-text empty-desc'>
+              暂无待签署的知情文档。请确认：研究方已在执行台「知情管理」中对本项目执行「发布」；您当日已在小程序完成现场签到；接待台登记的受试者信息与当前登录手机号一致。
+            </Text>
             <Text className='consent-back' onClick={() => Taro.navigateBack()}>返回</Text>
           </View>
         </View>
@@ -1184,7 +1211,7 @@ function ConsentPage() {
   if (showBasicInfoStepOnly) {
     return (
       <View className='consent-page'>
-        <ScrollView className='consent-content' scrollY enhanced showScrollbar>
+        <ScrollView className='consent-content' scrollY>
           <View className='document'>
             <Text className='doc-title'>签署前身份确认{stepLabel}</Text>
             {currentItem?.protocol_code ? (
@@ -1282,7 +1309,7 @@ function ConsentPage() {
 
   return (
     <View className='consent-page'>
-      <ScrollView className='consent-content' scrollY enhanced showScrollbar>
+      <ScrollView className='consent-content' scrollY>
         <View className='document'>
           <Text className='doc-title'>{icfTitle}{stepLabel}</Text>
           {currentItem?.protocol_code ? (

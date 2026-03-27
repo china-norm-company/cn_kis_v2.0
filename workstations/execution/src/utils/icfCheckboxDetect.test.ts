@@ -8,6 +8,7 @@ import {
   stripDocumentOtherInfoPlaceholderForCustomSupplemental,
   icfInteractiveCheckboxGroupsAllAnswered,
   collectInteractiveCheckboxAnswers,
+  findFirstUnansweredInteractiveCheckboxGroup,
 } from './icfCheckboxDetect'
 
 describe('stripDocumentOtherInfoPlaceholderForCustomSupplemental', () => {
@@ -139,6 +140,20 @@ describe('injectInteractiveCheckboxMarkers / 方形勾选与采集', () => {
     const yes = root?.querySelector('input.icf-cb-yes') as HTMLInputElement
     yes!.checked = true
     expect(icfInteractiveCheckboxGroupsAllAnswered(root)).toBe(true)
+  })
+
+  it('findFirstUnansweredInteractiveCheckboxGroup returns first incomplete group in document order', () => {
+    const html = '<p>A 请勾选 [ ] 是 [ ] 否</p><p>B 请勾选 [ ] 是 [ ] 否</p>'
+    const injected = injectInteractiveCheckboxMarkers(html)
+    document.body.innerHTML = `<div id="r">${injected}</div>`
+    const root = document.getElementById('r')!
+    const g0 = root.querySelectorAll('.icf-cb-interactive')[0]
+    const g1 = root.querySelectorAll('.icf-cb-interactive')[1]
+    expect(findFirstUnansweredInteractiveCheckboxGroup(root)).toBe(g0)
+    ;(g0 as HTMLElement).querySelector<HTMLInputElement>('input.icf-cb-yes')!.checked = true
+    expect(findFirstUnansweredInteractiveCheckboxGroup(root)).toBe(g1)
+    ;(g1 as HTMLElement).querySelector<HTMLInputElement>('input.icf-cb-no')!.checked = true
+    expect(findFirstUnansweredInteractiveCheckboxGroup(root)).toBeNull()
   })
 
   it('collectInteractiveCheckboxAnswers returns yes/no per group', () => {

@@ -12,10 +12,19 @@ import {
   BarChart3,
   FileSignature,
 } from 'lucide-react'
-import { FeishuAuthProvider, useFeishuContext, LoginFallback, createWorkstationFeishuConfig } from '@cn-kis/feishu-sdk'
+import {
+  FeishuAuthProvider,
+  useFeishuContext,
+  LoginFallback,
+  createWorkstationFeishuConfig,
+  setExecutionPostLoginHashForOAuth,
+} from '@cn-kis/feishu-sdk'
 import { MobileWorkstationLayout, type MobileWorkstationNavItem } from '@cn-kis/ui-kit'
 import { ThemeProvider } from '../contexts/ThemeContext'
 import { ThemeToggle } from '../components/ThemeToggle'
+import { PostAuthPendingDeepLink } from '../components/PostAuthPendingDeepLink'
+import { peekConsentListFocusProtocolId } from '../utils/consentListFocusStorage'
+import { peekWitnessStaffListFocusId } from '../utils/witnessStaffListFocusStorage'
 
 const FEISHU_CONFIG = createWorkstationFeishuConfig('execution')
 
@@ -91,30 +100,53 @@ function LayoutContent() {
   const visibleItems = useVisibleNavItems()
   const mode = useFeishuContext().getWorkstationMode('execution')
 
-  if (mode === 'blank') {
-    return <WorkstationPlaceholder />
-  }
-
   return (
-    <MobileWorkstationLayout
-      title="维周·执行台"
-      logoText="执"
-      logoClassName="bg-indigo-600"
-      navItems={visibleItems}
-      mobilePrimaryNavItems={visibleItems.slice(0, 5)}
-      userName={user?.name}
-      userAvatar={user?.avatar}
-      onLogout={logout}
-      headerExtra={<ThemeToggle />}
-    >
-      <Outlet />
-    </MobileWorkstationLayout>
+    <>
+      {/* 须在 blank 模式外也挂载：否则工作台模式异常时无法从 OAuth 回到知情/双签深链 */}
+      <PostAuthPendingDeepLink />
+      {mode === 'blank' ? (
+        <WorkstationPlaceholder />
+      ) : (
+        <MobileWorkstationLayout
+          title="维周·执行台"
+          logoText="执"
+          logoClassName="bg-indigo-600"
+          navItems={visibleItems}
+          mobilePrimaryNavItems={visibleItems.slice(0, 5)}
+          userName={user?.name}
+          userAvatar={user?.avatar}
+          onLogout={logout}
+          headerExtra={<ThemeToggle />}
+        >
+          <Outlet />
+        </MobileWorkstationLayout>
+      )}
+    </>
   )
 }
 
 function ExecutionLoginFallback() {
   const { login } = useFeishuContext()
-  return <LoginFallback title="维周·执行台" onLogin={login} />
+  const handleLogin = () => {
+    try {
+      const h = typeof window !== 'undefined' ? window.location.hash || '' : ''
+      if (h.includes('focusProtocolId') || h.includes('focusWitnessStaffId')) {
+        setExecutionPostLoginHashForOAuth(h.startsWith('#') ? h : `#${h}`)
+      } else {
+        // 127.0.0.1 ↔ localhost 不同源时 hash 可能丢失；用 peek 写入 OAuth state（与 generateState 一致）
+        const pid = peekConsentListFocusProtocolId()
+        if (pid != null) setExecutionPostLoginHashForOAuth(`#/consent?focusProtocolId=${pid}`)
+        else {
+          const wid = peekWitnessStaffListFocusId()
+          if (wid != null) setExecutionPostLoginHashForOAuth(`#/consent/witness-staff?focusWitnessStaffId=${wid}`)
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    login()
+  }
+  return <LoginFallback title="维周·执行台" onLogin={handleLogin} />
 }
 
 export function AppLayout() {

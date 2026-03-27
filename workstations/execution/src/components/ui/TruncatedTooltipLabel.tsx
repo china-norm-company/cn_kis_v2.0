@@ -17,12 +17,23 @@ export type RichTooltipProps = {
   children: ReactNode
   side?: 'top' | 'right' | 'bottom' | 'left'
   align?: 'start' | 'center' | 'end'
+  /**
+   * 传给 Radix Content 的 aria-label（与可见文案一致）。
+   * 传入后无障碍隐藏层用纯文本，避免重复挂载子节点导致异常观感（如叠加大问号样式）。
+   */
+  contentAriaLabel?: string
 }
 
 /**
  * 自定义触发器 + 多段说明文案（与知情页「?」帮助弹层 UI 一致）。
  */
-export function RichTooltip({ content, children, side = 'bottom', align = 'start' }: RichTooltipProps) {
+export function RichTooltip({
+  content,
+  children,
+  side = 'bottom',
+  align = 'start',
+  contentAriaLabel,
+}: RichTooltipProps) {
   return (
     <TooltipPrimitive.Root>
       <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
@@ -33,6 +44,7 @@ export function RichTooltip({ content, children, side = 'bottom', align = 'start
           sideOffset={8}
           collisionPadding={12}
           className={[consentTooltipContentClassName, 'max-w-[min(90vw,22rem)]'].join(' ')}
+          aria-label={contentAriaLabel}
         >
           <div className="space-y-2 break-words">{content}</div>
         </TooltipPrimitive.Content>
@@ -88,6 +100,7 @@ export function TruncatedTooltipLabel({ text, className }: TruncatedTooltipLabel
           sideOffset={8}
           collisionPadding={12}
           className={[consentTooltipContentClassName, 'max-w-[min(90vw,28rem)]'].join(' ')}
+          aria-label={text}
         >
           <span className="block break-words">{text}</span>
         </TooltipPrimitive.Content>

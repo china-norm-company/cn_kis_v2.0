@@ -32,6 +32,25 @@ export interface ICFVersion {
   mini_sign_rules?: Partial<MiniSignRules> & Record<string, unknown>
 }
 
+/** 知情管理 · 授权记录（按令牌合并；新到旧） */
+export interface WitnessSignatureAuthRecordRow {
+  /** 代表行对应的 WitnessDualSignAuthToken.id */
+  id: number
+  witness_staff_id: number | null
+  witness_staff_name: string | null
+  /** agreed：已完成授权；pending：待邮件内决策；refused：已拒绝 */
+  signature_auth_status: 'agreed' | 'pending' | 'refused'
+  /** 授权签名时间（同意/拒绝时）；待决策为空 */
+  signature_auth_at: string | null
+  /** 邮件发出时间 */
+  mail_sent_at: string | null
+  /** 与本次授权时刻对应的签署人数（签署记录 witness_staff_auth_at 一致，subject 去重；同一人多节点只计 1） */
+  consent_sign_count: number
+}
+
+/** @deprecated 请使用 WitnessSignatureAuthRecordRow */
+export type WitnessSignatureAuthDailyRow = WitnessSignatureAuthRecordRow
+
 /** 签署记录（知情管理） */
 export interface ConsentRecord {
   id: number
@@ -48,7 +67,7 @@ export interface ConsentRecord {
   name_pinyin_initials?: string
   /** 待签署为 -；已签署：勾选题为任一则否否则是，或知情测验未通过为否 */
   signing_result?: string
-  /** 数据类型：正式（小程序等）| 测试（执行台二维码核验测试 H5 扫码签署，signature_data.signing_kind=test） */
+  /** 数据类型：正式（小程序等）| 测试（执行台二维码知情测试 H5 扫码签署，signature_data.signing_kind=test） */
   signing_type?: string
   icf_version_id: number
   icf_version: string
@@ -61,6 +80,8 @@ export interface ConsentRecord {
   investigator_sign_staff_name?: string
   /** 现场筛选计划中与当前展示日对应的 signing_staff_name（与筛选单日或本条签署/创建日对齐） */
   screening_signing_staff?: string
+  /** 知情测试 H5：本条对应工作人员在邮件中「同意使用签名」的时间（ISO8601），与列表姓名一致 */
+  witness_staff_auth_at?: string | null
   require_dual_sign?: boolean
   receipt_no: string
   receipt_pdf_path: string | null
@@ -91,6 +112,9 @@ export interface ConsentPreviewData {
   is_signed: boolean
   signed_at: string | null
   receipt_no: string
+  /** 签署回执 PDF 相对路径（与小程序下载同源，供 iframe 预览） */
+  receipt_pdf_path?: string | null
+  receipt_pdf_url?: string | null
   signing_result: string
   consent_status_label: string
   staff_audit_status: string
@@ -164,8 +188,10 @@ export interface ProtocolConsentOverview {
     | '待配置'
     | '配置中'
     | '待认证授权'
+    | '待认证核验'
     | '已授权待测试'
     | '已测试待开始'
+    | '授权测试中'
     /** @deprecated 旧名「核验测试中」，保留兼容 */
     | '核验测试中'
     /** @deprecated 旧名，保留兼容 */
@@ -182,8 +208,8 @@ export interface ProtocolConsentOverview {
   verified_staff_count?: number
   /** 配置的见证工作人员总数（双签名单人数） */
   dual_sign_staff_total?: number
-  /** 无需核验 | 待核验 | 核验中 | 核验完成（启用双签时） */
-  staff_verification_status?: '无需核验' | '待核验' | '核验中' | '核验完成'
+  /** 无需认证 | 待完成 | 进行中 | 已完成（启用双签时；与执行台文案一致） */
+  staff_verification_status?: '无需认证' | '待完成' | '进行中' | '已完成'
   mini_app_ready?: boolean
   /** 知情配置负责人（治理台账号 ID） */
   consent_config_account_id?: number | null
@@ -191,8 +217,10 @@ export interface ProtocolConsentOverview {
   consent_config_display_name?: string | null
   /** 项目级「知情签署工作人员」姓名（须为双签名单中的姓名；列表展示优先于现场日汇总） */
   consent_signing_staff_name?: string | null
-  /** 最近一次「授权核验测试」所选工作人员姓名（与 consent_settings 同步） */
+  /** 最近一次「授权签名测试」所选工作人员姓名（与 consent_settings 同步） */
   consent_verify_test_staff_name?: string | null
+  /** 当前所选核验人选是否已完成人脸+档案签名+项目邮件授权同意（为 true 时列表姓名可用蓝色气泡） */
+  consent_verify_test_staff_ready?: boolean
   /** 各现场筛选日到场的受试者批次及签署进度 */
   screening_batches?: ScreeningBatchConsent[]
   screening_batch_count?: number
@@ -210,7 +238,7 @@ export interface ProtocolConsentOverview {
   consent_launched?: boolean
   /** 协议知情相关配置等最后更新时间（与列表「最后更新时间」列一致） */
   consent_last_update_at?: string | null
-  /** 核验测试扫码落地页完整 URL（微信扫一扫打开纯 H5 验证页，不跳转小程序；非可扫码测试态时仍可扫，落地页会提示不可测试） */
+  /** 知情测试扫码落地页完整 URL（微信扫一扫打开纯 H5 验证页，不跳转小程序；非可扫码测试态时仍可扫，落地页会提示不可测试） */
   consent_test_scan_url?: string
 }
 
@@ -254,6 +282,13 @@ export interface MiniSignRules {
   enable_auto_sign_date?: boolean
 }
 
+/** 双签名单「认证签名」列（服务端计算，与筛选一致） */
+export type WitnessStaffAuthSignatureStatus =
+  | 'completed'
+  | 'pending_mail'
+  | 'pending_sign'
+  | 'pending_reauth'
+
 /** 双签工作人员档案（与治理台账号关联，见 role_labels） */
 export interface WitnessStaffRecord {
   id: number
@@ -271,11 +306,15 @@ export interface WitnessStaffRecord {
   signature_file: string
   signature_at: string | null
   identity_verified: boolean
+  /** 已认证档案再次发核验邮件后为 true，对方完成签名登记后清 false */
+  identity_reverify_pending?: boolean
+  /** 列表接口返回：已完成 | 待发送邮件 | 待认证签名 | 待重新认证 */
+  auth_signature_status?: WitnessStaffAuthSignatureStatus
   update_time: string | null
   create_time: string | null
 }
 
-/** 双签：单人在本协议+签署节点下的核验阶段（与执行台列表徽章一致） */
+/** 双签：单人在本协议+签署节点下的认证签名阶段（与执行台「认证签名」列语义一致；值为英文枚举） */
 export type DualSignStaffVerificationStatus =
   | 'pending_email'
   | 'pending_verify'
@@ -325,7 +364,7 @@ export interface ConsentSettings {
   screening_schedule?: ScreeningDay[]
   /** 项目级知情签署工作人员（须为 dual_sign_staffs 中的姓名） */
   consent_signing_staff_name?: string
-  /** 最近一次从列表「授权核验测试」发起双签授权邮件所选工作人员姓名（用于列表标记） */
+  /** 最近一次从列表「授权签名测试」发起双签授权邮件所选工作人员姓名（用于列表标记） */
   consent_verify_test_staff_name?: string
   /** 邮件「签名授权」已同意后由服务端写入；列表展示「已授权待测试」 */
   consent_verify_signature_authorized?: boolean
@@ -576,9 +615,38 @@ export const protocolApi = {
     }>(`/protocol/${protocolId}/consents`, { params })
   },
 
+  /** 知情管理：双签授权记录（按令牌合并分页；新到旧） */
+  listWitnessSignatureAuthRecords(
+    protocolId: number,
+    params?: {
+      page?: number
+      page_size?: number
+      date_from?: string
+      date_to?: string
+      /** all | complete | pending */
+      status?: string
+    },
+  ) {
+    return api.get<{
+      items: WitnessSignatureAuthRecordRow[]
+      total: number
+      page: number
+      page_size: number
+    }>(`/protocol/${protocolId}/witness-signature-auth-records`, { params })
+  },
+
   /** 执行台：签署内容预览 */
   getConsentPreview(protocolId: number, consentId: number) {
     return api.get<ConsentPreviewData>(`/protocol/${protocolId}/consents/${consentId}/preview`)
+  },
+
+  /** 执行台：签署回执 PDF 二进制（JWT，与预览权限一致；用于审核弹窗 pdf.js，避免直链 /media 404） */
+  async getConsentReceiptPdfBlob(protocolId: number, consentId: number): Promise<ArrayBuffer> {
+    const inst = getAxiosInstance()
+    const res = await inst.get<ArrayBuffer>(`/protocol/${protocolId}/consents/${consentId}/receipt-pdf`, {
+      responseType: 'arraybuffer',
+    })
+    return res.data
   },
 
   /** 执行台：退回重签（可选 body.reason，供小程序展示） */
@@ -618,7 +686,7 @@ export const protocolApi = {
     )
   },
 
-  /** 导出受试者基础信息 Excel（SC号、姓名、手机号、身份证号；按受试者去重；返回 blob） */
+  /** 导出受试者基础信息 Excel（项目编号/名称、SC号、姓名、手机号优先扫码页、拼音首字母、身份证；按受试者去重、SC 升序；返回 blob） */
   async exportConsents(
     protocolId: number,
     params?: {
@@ -668,6 +736,8 @@ export const protocolApi = {
     page_size?: number
     /** 深链定位：服务端计算该档案所在分页并返回 data.page */
     focus_witness_staff_id?: number
+    /** 认证签名：all | completed | pending_mail | pending_sign | pending_reauth */
+    auth_signature?: string
   }) {
     return api.get<{ items: WitnessStaffRecord[]; total: number; page: number; page_size: number }>(
       '/protocol/witness-staff/list',
@@ -730,6 +800,17 @@ export const protocolApi = {
     return api.delete<ApiResponse<null>>(`/protocol/witness-staff/${staffId}`)
   },
 
+  /**
+   * 双签档案签名图片（需登录；列表用 blob URL 展示，避免 /media 无鉴权与路径不一致）
+   */
+  async fetchWitnessStaffSignatureImageBlob(staffId: number): Promise<Blob> {
+    const axios = getAxiosInstance()
+    const res = await axios.get(`/protocol/witness-staff/${staffId}/signature-image`, {
+      responseType: 'blob',
+    })
+    return res.data as Blob
+  },
+
   /** 知情配置：提交双签身份验证（向工作人员发邮件） */
   requestDualSignAuth(
     protocolId: number,
@@ -739,7 +820,7 @@ export const protocolApi = {
   },
 
   /**
-   * 双签名单每人核验阶段（待发邮件 / 待核验 / 核验中 / 已核验）。
+   * 双签名单每人认证签名阶段（待发邮件 / pending_verify / verifying / verified，与执行台列表「认证签名」列语义对应）。
    * 传入 staffIds 可与页面「已选顺序」一致；不传则仅按已保存的协议级双签名单计算。
    */
   getDualSignStaffStatus(protocolId: number, icfVersionId: number, staffIds?: number[]) {
@@ -886,7 +967,7 @@ export const protocolApi = {
     }>('/protocol/witness-auth/dev-consent-queue', { params: { token } })
   },
 
-  /** 核验测试 H5：公开口令下列出 ICF（执行台 /#/consent-test-scan） */
+  /** 知情测试 H5：公开口令下列出 ICF（执行台 /#/consent-test-scan） */
   getConsentTestScanQueue(params: { p: number; t: string }) {
     return api.get<{
       protocol_id: number
@@ -912,7 +993,7 @@ export const protocolApi = {
     }>('/protocol/public/consent-test-queue', { params })
   },
 
-  /** 核验测试 H5：写入测试类型签署记录 */
+  /** 知情测试 H5：写入测试类型签署记录 */
   submitConsentTestScan(data: {
     p: number
     t: string
@@ -924,6 +1005,8 @@ export const protocolApi = {
     id_card_no?: string
     phone?: string
     screening_number?: string
+    /** 扫码页手填拼音首字母（与列表/导出 ZIP 文件夹中段一致） */
+    pinyin_initials?: string
   }) {
     return api.post<{
       protocol_id: number

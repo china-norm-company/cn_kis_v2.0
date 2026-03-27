@@ -10,6 +10,7 @@ import re
 import secrets
 from urllib.parse import quote
 from collections import defaultdict
+from datetime import date as date_type
 from datetime import datetime, time
 from email.utils import formataddr, parseaddr
 from typing import Optional
@@ -17,7 +18,7 @@ from typing import Optional
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Exists, Max, OuterRef, Q
 from django.utils import timezone
 
 from apps.protocol.models import WitnessStaff, WitnessDualSignAuthToken, Protocol
@@ -186,17 +187,107 @@ def _role_labels_for_account(account_id: int) -> list[str]:
     return _batch_role_labels([account_id]).get(account_id, [])
 
 
+def _witness_has_execution_signature(ws: WitnessStaff) -> bool:
+    """执行台已保存手写签名文件且有时间（仅人脸通过不算「认证签名」已完成）。"""
+    return bool((ws.signature_file or '').strip()) and ws.signature_at is not None
+
+
+def _witness_auth_signature_status(
+    ws: WitnessStaff,
+    has_profile_mail: bool,
+    latest_profile_token_id: Optional[int] = None,
+    max_registered_profile_token_id: Optional[int] = None,
+) -> str:
+    """
+    认证签名列（与列表筛选一致）：
+    - completed：身份已核验、已登记手写签名，且未处于重新认证流程（或重认证链路已闭环）
+    - pending_reauth：已认证用户再次发起核验邮件，待对方完成签名登记
+    - pending_mail：尚未发送档案核验邮件，且无人脸/签名进度
+    - pending_sign：已发邮件或已有进度，或人脸已通过但尚未登记手写签名
+
+    latest_profile_token_id：档案核验邮件（protocol_id 空）中 id 最大的一条。
+    max_registered_profile_token_id：同上链路中 staff_signature_registered_at 非空的 id 最大的一条。
+    二者相等表示「当前最新一封邮件对应的令牌已完成手写签名登记」，不依赖 ORM 字段是否被延迟加载。
+    """
+    if getattr(ws, 'identity_reverify_pending', False) and ws.identity_verified:
+        if latest_profile_token_id and max_registered_profile_token_id:
+            if latest_profile_token_id == max_registered_profile_token_id:
+                return 'completed'
+            if latest_profile_token_id > max_registered_profile_token_id:
+                return 'pending_reauth'
+        # 若清除未落库，用「真实人脸核身 + 已有签名，且签名时间不早于档案 update_time」近似视为已重新登记完成。
+        if (
+            witness_face_verification_effective(ws)
+            and _witness_has_execution_signature(ws)
+            and ws.update_time
+            and ws.signature_at >= ws.update_time
+        ):
+            return 'completed'
+        return 'pending_reauth'
+    if ws.identity_verified:
+        if _witness_has_execution_signature(ws):
+            return 'completed'
+        return 'pending_sign'
+    has_progress = bool(ws.face_verified_at) or bool((ws.face_order_id or '').strip()) or bool(
+        (ws.signature_file or '').strip()
+    )
+    if not has_profile_mail and not has_progress:
+        return 'pending_mail'
+    return 'pending_sign'
+
+
 def list_witness_staff(
     search: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
     focus_witness_staff_id: Optional[int] = None,
+    auth_signature_filter: Optional[str] = None,
 ) -> dict:
     """列出全部非删除双签档案（与治理台维护范围一致）；知情签署等场景依赖完整名单。
 
     focus_witness_staff_id：深链定位某条档案所在分页时传入，与 order_by('-priority','id') 一致计算所在页。
+    auth_signature_filter：all | completed | pending_mail | pending_sign | pending_reauth（认证签名快捷筛选）
     """
     qs = WitnessStaff.objects.filter(is_deleted=False).select_related('account')
+    profile_mail_exists = WitnessDualSignAuthToken.objects.filter(
+        witness_staff_id=OuterRef('pk'),
+        protocol_id__isnull=True,
+    )
+    qs = qs.annotate(_has_profile_mail=Exists(profile_mail_exists))
+
+    af = (auth_signature_filter or '').strip().lower()
+    if af and af not in ('all', '全部'):
+        if af == 'completed':
+            qs = qs.filter(
+                identity_verified=True,
+                identity_reverify_pending=False,
+            ).exclude(signature_file='').filter(signature_at__isnull=False)
+        elif af == 'pending_reauth':
+            qs = qs.filter(identity_reverify_pending=True)
+        elif af == 'pending_mail':
+            qs = qs.filter(identity_verified=False).filter(_has_profile_mail=False).filter(
+                face_verified_at__isnull=True,
+                face_order_id='',
+                signature_file='',
+            )
+        elif af == 'pending_sign':
+            qs = qs.filter(
+                Q(
+                    Q(identity_verified=False)
+                    & (
+                        Q(_has_profile_mail=True)
+                        | Q(face_verified_at__isnull=False)
+                        | ~Q(face_order_id='')
+                        | ~Q(signature_file='')
+                    )
+                )
+                | (
+                    Q(identity_verified=True)
+                    & Q(identity_reverify_pending=False)
+                    & (Q(signature_file='') | Q(signature_at__isnull=True))
+                )
+            )
+
     if search and search.strip():
         q = search.strip()
         qs = qs.filter(
@@ -231,10 +322,51 @@ def list_witness_staff(
         effective_page = max_page
     offset = (effective_page - 1) * page_size
     items = list(ordered[offset : offset + page_size])
+    staff_ids = [w.id for w in items]
+    max_any_by_staff: dict[int, int] = {}
+    max_reg_by_staff: dict[int, int] = {}
+    if staff_ids:
+        max_any_rows = (
+            WitnessDualSignAuthToken.objects.filter(
+                witness_staff_id__in=staff_ids,
+                protocol_id__isnull=True,
+            )
+            .values('witness_staff_id')
+            .annotate(mid=Max('id'))
+        )
+        max_any_by_staff = {r['witness_staff_id']: r['mid'] for r in max_any_rows if r.get('mid')}
+        max_reg_rows = (
+            WitnessDualSignAuthToken.objects.filter(
+                witness_staff_id__in=staff_ids,
+                protocol_id__isnull=True,
+                staff_signature_registered_at__isnull=False,
+            )
+            .values('witness_staff_id')
+            .annotate(mid=Max('id'))
+        )
+        max_reg_by_staff = {r['witness_staff_id']: r['mid'] for r in max_reg_rows if r.get('mid')}
     acc_ids = [w.account_id for w in items if w.account_id]
     label_map = _batch_role_labels(acc_ids)
+    out_items = []
+    for w in items:
+        has_pm = bool(getattr(w, '_has_profile_mail', False))
+        status = _witness_auth_signature_status(
+            w,
+            has_pm,
+            latest_profile_token_id=max_any_by_staff.get(w.id),
+            max_registered_profile_token_id=max_reg_by_staff.get(w.id),
+        )
+        if getattr(w, 'identity_reverify_pending', False) and status == 'completed':
+            WitnessStaff.objects.filter(pk=w.id, identity_reverify_pending=True).update(
+                identity_reverify_pending=False,
+                update_time=timezone.now(),
+            )
+            w.identity_reverify_pending = False
+        row = witness_staff_to_dict(w, role_labels=label_map.get(w.account_id))
+        row['auth_signature_status'] = status
+        out_items.append(row)
     return {
-        'items': [witness_staff_to_dict(w, role_labels=label_map.get(w.account_id)) for w in items],
+        'items': out_items,
         'total': total,
         'page': effective_page,
         'page_size': page_size,
@@ -261,6 +393,7 @@ def witness_staff_to_dict(ws: WitnessStaff, role_labels: Optional[list[str]] = N
         'signature_file': ws.signature_file or '',
         'signature_at': ws.signature_at.isoformat() if ws.signature_at else None,
         'identity_verified': bool(ws.identity_verified),
+        'identity_reverify_pending': bool(getattr(ws, 'identity_reverify_pending', False)),
         'update_time': ws.update_time.isoformat() if ws.update_time else None,
         'create_time': ws.create_time.isoformat() if ws.create_time else None,
     }
@@ -593,6 +726,11 @@ def send_witness_profile_verification_email(*, witness: WitnessStaff, notify_ema
         witness.id,
         notify_email.strip(),
     )
+    # 已认证档案再次发信：进入「待重新认证」，直至对方完成手写签名登记
+    WitnessStaff.objects.filter(pk=witness.id, is_deleted=False, identity_verified=True).update(
+        identity_reverify_pending=True,
+        update_time=timezone.now(),
+    )
     return row
 
 
@@ -671,6 +809,62 @@ def _apply_protocol_consent_verify_signature_authorized(protocol_id: int) -> Non
     _save_consent_settings(protocol, settings_data)
 
 
+def witness_staff_snapshot_for_consent_signing(protocol_id: int, signed_at_dt: Optional[datetime]) -> dict:
+    """
+    知情测试签署：在签署时刻 signed_at 之前，取「项目邮件授权」中最近一次同意使用签名的工作人员
+    （WitnessDualSignAuthToken.signature_auth_at 最大且 <= signed_at）；
+    witness_staff_signature_order_ids 仅含该人 id（与知情配置 staff_signature_times=2 无关：占位符/PDF
+    中多次工作人员签名为**同一人同一签名图重复**，不从双签名单各取一人）。
+    """
+    if not protocol_id or not signed_at_dt:
+        return {}
+    sat = signed_at_dt
+    if timezone.is_naive(sat):
+        sat = timezone.make_aware(sat, timezone.get_current_timezone())
+
+    protocol = Protocol.objects.filter(id=protocol_id, is_deleted=False).first()
+    if not protocol:
+        return {}
+
+    from apps.protocol.api import _get_consent_settings
+
+    settings_json = _get_consent_settings(protocol)
+    rows = list(settings_json.get('dual_sign_staffs') or [])
+    ordered_ids: list[int] = []
+    for row in rows:
+        sid = row.get('staff_id')
+        if not sid:
+            continue
+        try:
+            ordered_ids.append(int(sid))
+        except (TypeError, ValueError):
+            continue
+
+    latest = (
+        WitnessDualSignAuthToken.objects.filter(
+            protocol_id=protocol_id,
+            signature_auth_decision='agreed',
+            signature_auth_at__isnull=False,
+            signature_auth_at__lte=sat,
+        )
+        .select_related('witness_staff')
+        .order_by('-signature_auth_at')
+        .first()
+    )
+
+    out: dict = {}
+    if latest and latest.witness_staff:
+        out['witness_staff_name'] = (latest.witness_staff.name or '').strip()
+        out['witness_staff_id'] = latest.witness_staff_id
+        if latest.signature_auth_at:
+            out['witness_staff_auth_at'] = latest.signature_auth_at.isoformat()
+
+    if latest and latest.witness_staff_id:
+        out['witness_staff_signature_order_ids'] = [int(latest.witness_staff_id)]
+
+    return out
+
+
 def record_witness_signature_authorization(token: str, decision: str) -> dict:
     """
     邮件公开页：在人脸核验有效的前提下，记录是否同意本项目使用工作人员签名信息。
@@ -691,7 +885,7 @@ def record_witness_signature_authorization(token: str, decision: str) -> dict:
     if val == 'agreed':
         w = WitnessStaff.objects.filter(pk=ws.id, is_deleted=False).first()
         if not w or not (str(w.signature_file or '').strip()):
-            raise ValueError('请先在执行台「双签工作人员名单」中完成签名登记后再同意授权')
+            raise ValueError('请先完成手写签名登记后再同意授权（可在本页或执行台双签名单中登记）')
     existing = (row.signature_auth_decision or '').strip()
     if existing:
         if existing == val:
@@ -709,17 +903,21 @@ def record_witness_signature_authorization(token: str, decision: str) -> dict:
 
 
 def register_witness_staff_signature_from_token(token: str, image_base64: str) -> dict:
-    """档案核验邮件：人脸有效后提交手写签名图片，写入 t_witness_staff 并标记本令牌已完成登记。"""
+    """档案核验或项目授权邮件：人脸有效后提交手写签名图片，写入 t_witness_staff 并标记本令牌已完成登记。"""
     row = resolve_auth_token(token)
     if not row:
         raise ValueError('链接无效或已过期')
-    if row.protocol_id is not None:
-        raise ValueError('请使用「档案核验」邮件链接完成签名登记；项目授权请使用知情流程中的邮件')
     ws = row.witness_staff
     if not witness_face_verification_effective(ws):
         raise ValueError('请先完成人脸核验')
     if row.staff_signature_registered_at:
+        WitnessStaff.objects.filter(pk=ws.id, is_deleted=False).update(
+            identity_reverify_pending=False,
+            update_time=timezone.now(),
+        )
         ws.refresh_from_db(fields=['signature_file', 'signature_at'])
+        if row.protocol_id:
+            _sync_witness_dual_sign_snapshot(row.protocol_id, ws)
         return {
             'already_registered': True,
             'witness_staff_id': ws.id,
@@ -734,9 +932,13 @@ def register_witness_staff_signature_from_token(token: str, image_base64: str) -
     WitnessStaff.objects.filter(pk=ws.id, is_deleted=False).update(
         signature_file=key,
         signature_at=now,
+        identity_reverify_pending=False,
         update_time=now,
     )
     WitnessDualSignAuthToken.objects.filter(pk=row.pk).update(staff_signature_registered_at=now)
+    ws.refresh_from_db()
+    if row.protocol_id:
+        _sync_witness_dual_sign_snapshot(row.protocol_id, ws)
     return {
         'already_registered': False,
         'witness_staff_id': ws.id,
@@ -934,6 +1136,7 @@ def clear_witness_staff_face_verification(staff_ids: list[int]) -> int:
         return 0
     return WitnessStaff.objects.filter(id__in=staff_ids, is_deleted=False).update(
         identity_verified=False,
+        identity_reverify_pending=False,
         face_order_id='',
         face_verified_at=None,
         update_time=timezone.now(),
@@ -1078,6 +1281,58 @@ def dual_sign_staff_status_batch(protocol_id: int, icf_version_id: int, staff_id
             }
         )
     return out
+
+
+def _resolve_witness_staff_for_consent_verify_test_name(settings: dict) -> Optional[WitnessStaff]:
+    """从协议知情配置中的 consent_verify_test_staff_name 解析 WitnessStaff（优先 dual_sign_staffs.staff_id）。"""
+    name = (settings.get('consent_verify_test_staff_name') or '').strip()
+    if not name:
+        return None
+    for s in settings.get('dual_sign_staffs') or []:
+        if (s.get('name') or '').strip() != name:
+            continue
+        sid = str(s.get('staff_id') or '').strip()
+        if sid.isdigit():
+            ws = WitnessStaff.objects.filter(id=int(sid), is_deleted=False).first()
+            if ws:
+                return ws
+    return WitnessStaff.objects.filter(name=name, is_deleted=False).first()
+
+
+def consent_verify_test_staff_fully_ready(protocol_id: int, settings: dict) -> bool:
+    """
+    「授权签名测试」当前所选工作人员是否已完成全流程：
+    项目双签链路下有效人脸核身 + 档案手写签名登记 + 本项目授权邮件内同意使用签名。
+
+    未设置 consent_verify_test_staff_name 时返回 True（列表不因「未选人」而锁死在「待认证核验」）。
+    项目节点以该人员对本协议**最近一次**项目授权邮件（WitnessDualSignAuthToken）绑定的 icf_version_id 为准，避免多节点双签与发信节点不一致。
+    """
+    if not (settings.get('consent_verify_test_staff_name') or '').strip():
+        return True
+    ws = _resolve_witness_staff_for_consent_verify_test_name(settings)
+    if not ws:
+        return False
+    tok = (
+        WitnessDualSignAuthToken.objects.filter(
+            protocol_id=protocol_id,
+            witness_staff_id=ws.id,
+            icf_version_id__isnull=False,
+        )
+        .order_by('-create_time')
+        .first()
+    )
+    if not tok or not tok.icf_version_id:
+        return False
+    icf_id = int(tok.icf_version_id)
+    face_st = compute_dual_sign_staff_status(protocol_id, icf_id, ws.id)
+    sig_st = compute_signature_auth_status(protocol_id, icf_id, ws)
+    if face_st != 'verified':
+        return False
+    if not _witness_has_execution_signature(ws):
+        return False
+    if sig_st != 'agreed':
+        return False
+    return True
 
 
 @transaction.atomic
@@ -1240,10 +1495,11 @@ def submit_consent_test_scan_records(
     id_card_no: str | None = None,
     phone: str | None = None,
     screening_number: str | None = None,
+    pinyin_initials: str | None = None,
     icf_version_signatures: list | None = None,
 ) -> dict:
     """
-    执行台「核验测试」H5：凭 consent_test_scan_token 将阅读结果写入 SubjectConsent（签署类型「测试」）。
+    执行台「知情测试」H5：凭 consent_test_scan_token 将阅读结果写入 SubjectConsent（签署类型「测试」）。
     与小程序 face-sign + consent_test_scan_token 的校验规则一致；每次提交新建一名测试受试者。
     """
     from apps.protocol.consent_test_tokens import unsign_consent_test_scan_token
@@ -1253,17 +1509,17 @@ def submit_consent_test_scan_records(
 
     tid = unsign_consent_test_scan_token(scan_token)
     if tid is None or int(tid) != int(protocol_id):
-        raise ValueError('核验测试口令无效或已过期')
+        raise ValueError('知情测试口令无效或已过期')
 
     protocol = Protocol.objects.filter(id=protocol_id, is_deleted=False).first()
     if not protocol:
         raise ValueError('协议不存在')
     if _is_consent_launched(protocol):
-        raise ValueError('知情已发布，不能使用核验测试口令签署')
+        raise ValueError('知情已发布，不能使用知情测试口令签署')
     if get_consent_config_status_for_protocol(protocol) not in (
         '已授权待测试',
         '已测试待开始',
-        '核验测试中',
+        '授权测试中',
         '待测试',
     ):
         raise ValueError('请先完成配置与工作人员授权核验')
@@ -1299,7 +1555,7 @@ def submit_consent_test_scan_records(
     else:
         raise RuntimeError('无法生成唯一受试者编号')
 
-    display_name = (subject_name or '').strip() or '知情核验测试受试者'
+    display_name = (subject_name or '').strip() or '知情测试受试者'
     phone_digits = normalize_phone_digits(phone or '')
     phone_display = (phone or '').strip()[:20] if phone else ''
     if phone_digits and len(phone_digits) >= 11:
@@ -1307,16 +1563,19 @@ def submit_consent_test_scan_records(
     else:
         phone_store = phone_display[:20] if phone_display else ''
 
+    # 主表 phone 不写入真实号码：t_subject 对「未删除且 phone 非空」有全局唯一索引，重复扫码测试会撞库；
+    # 填报手机号仅写入各节点 signature_data.consent_test_scan_identity（及下方 identity_meta），回执/列表展示仍可用。
     subj = Subject.objects.create(
         name=display_name[:100],
         subject_no=subject_no,
-        phone=phone_store,
+        phone='',
         source_channel='consent_test_scan_h5',
     )
 
     import uuid
 
     batch_id = uuid.uuid4().hex
+
     identity_meta: dict = {}
     if (subject_name or '').strip():
         identity_meta['declared_name'] = (subject_name or '').strip()[:100]
@@ -1324,6 +1583,9 @@ def submit_consent_test_scan_records(
         identity_meta['declared_id_card'] = (id_card_no or '').strip()[:32]
     if (screening_number or '').strip():
         identity_meta['declared_screening_number'] = (screening_number or '').strip()[:64]
+    pin = (pinyin_initials or '').strip()
+    if pin:
+        identity_meta['declared_pinyin_initials'] = pin[:50].upper()
     if phone_store:
         identity_meta['declared_phone'] = phone_store
 
@@ -1333,6 +1595,7 @@ def submit_consent_test_scan_records(
         'consent_test_scan_batch_id': batch_id,
         'consent_test_scan_identity': identity_meta,
     }
+    base_sig.update(witness_staff_snapshot_for_consent_signing(protocol.id, timezone.now()))
     enable_auto_sign = bool(_get_consent_settings(protocol).get('enable_auto_sign_date', False))
 
     answers_by_icf: dict[int, list] = {}
@@ -1385,3 +1648,211 @@ def submit_consent_test_scan_records(
         'consent_test_scan_batch_id': batch_id,
         'receipt_items': receipt_items,
     }
+
+
+def _witness_auth_token_decision(t: WitnessDualSignAuthToken) -> str:
+    return (t.signature_auth_decision or '').strip().lower()
+
+
+def _consent_counts_by_witness_auth_key(protocol_id: int) -> dict[tuple[str, int], int]:
+    """
+    统计与「项目邮件授权时刻」对应的**签署人数**（subject_id 去重）：键为
+    (signature_data.witness_staff_auth_at ISO 字符串, witness_staff_id)。
+    同一受试者多节点签署多条 SubjectConsent 只计 1 人。
+    """
+    from collections import defaultdict
+
+    from apps.subject.models import SubjectConsent
+
+    buckets: dict[tuple[str, int], set[int]] = defaultdict(set)
+    for subj_id, sd in SubjectConsent.objects.filter(
+        icf_version__protocol_id=protocol_id,
+        is_deleted=False,
+        is_signed=True,
+    ).values_list('subject_id', 'signature_data'):
+        if not isinstance(sd, dict):
+            continue
+        auth = (sd.get('witness_staff_auth_at') or '').strip()
+        if not auth:
+            continue
+        try:
+            sid_int = int(subj_id)
+        except (TypeError, ValueError):
+            continue
+        sids = sd.get('witness_staff_signature_order_ids')
+        wid = sd.get('witness_staff_id')
+        if isinstance(sids, list) and sids:
+            for x in sids:
+                try:
+                    buckets[(auth, int(x))].add(sid_int)
+                except (TypeError, ValueError):
+                    pass
+        elif wid is not None:
+            try:
+                buckets[(auth, int(wid))].add(sid_int)
+            except (TypeError, ValueError):
+                pass
+    return {k: len(v) for k, v in buckets.items()}
+
+
+def _local_date_in_range(dt, df: Optional[date_type], dt_to: Optional[date_type], tz) -> bool:
+    if not dt:
+        return True
+    d = timezone.localtime(dt, tz).date()
+    if df is not None and d < df:
+        return False
+    if dt_to is not None and d > dt_to:
+        return False
+    return True
+
+
+def list_witness_signature_auth_daily_summary_for_protocol(
+    protocol_id: int,
+    *,
+    date_from: Optional[date_type] = None,
+    date_to: Optional[date_type] = None,
+    status_filter: str = 'all',
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[int, list[dict]]:
+    """
+    知情管理 · 授权记录：按授权令牌合并展示，新到旧。
+
+    - 同一工作人员连续多次「同意授权」且尚未产生任何关联知情签署时，合并为一条（取最近一条同意记录代表）。
+    - 一旦该次授权已有关联签署记录（签署记录中 witness_staff_auth_at 与该次 signature_auth_at 一致），
+      之后再授权则新增一行。
+    - 待决策：同一工作人员仅保留最新一封未决策邮件。
+    """
+    sf = (status_filter or 'all').strip().lower()
+    if sf not in ('all', 'complete', 'pending'):
+        sf = 'all'
+    tz = timezone.get_current_timezone()
+    qs = WitnessDualSignAuthToken.objects.filter(protocol_id=protocol_id).select_related('witness_staff').order_by('id')
+    rows = list(qs)
+    counts_map = _consent_counts_by_witness_auth_key(protocol_id)
+
+    def _auth_iso(t: WitnessDualSignAuthToken) -> str:
+        return t.signature_auth_at.isoformat() if t.signature_auth_at else ''
+
+    def _consent_n(t: WitnessDualSignAuthToken) -> int:
+        if not t.signature_auth_at:
+            return 0
+        return int(counts_map.get((_auth_iso(t), t.witness_staff_id), 0))
+
+    agreed_chrono = [
+        t
+        for t in rows
+        if _witness_auth_token_decision(t) == 'agreed' and t.signature_auth_at is not None
+    ]
+    agreed_chrono.sort(key=lambda t: (t.signature_auth_at, t.pk))
+
+    pending_by_staff: dict[int, WitnessDualSignAuthToken] = {}
+    merged_agreed: list[WitnessDualSignAuthToken] = []
+
+    for t in agreed_chrono:
+        sid = t.witness_staff_id
+        if sid not in pending_by_staff:
+            pending_by_staff[sid] = t
+            continue
+        p = pending_by_staff[sid]
+        if _consent_n(p) == 0:
+            pending_by_staff[sid] = t
+        else:
+            merged_agreed.append(p)
+            pending_by_staff[sid] = t
+
+    merged_agreed.extend(pending_by_staff.values())
+
+    refused_rows = [t for t in rows if _witness_auth_token_decision(t) == 'refused']
+
+    undecided = [t for t in rows if _witness_auth_token_decision(t) not in ('agreed', 'refused')]
+    undecided.sort(key=lambda t: (t.create_time or timezone.now(), t.pk))
+    pending_latest_by_staff: dict[int, WitnessDualSignAuthToken] = {}
+    for t in undecided:
+        pending_latest_by_staff[t.witness_staff_id] = t
+
+    items_full: list[dict] = []
+
+    for t in merged_agreed:
+        if not _local_date_in_range(t.signature_auth_at, date_from, date_to, tz):
+            continue
+        ws = t.witness_staff
+        name = (ws.name or '').strip() if ws else ''
+        items_full.append(
+            {
+                'id': t.pk,
+                'witness_staff_id': t.witness_staff_id,
+                'witness_staff_name': name or None,
+                'signature_auth_status': 'agreed',
+                'signature_auth_at': _auth_iso(t),
+                'mail_sent_at': t.create_time.isoformat() if t.create_time else None,
+                'consent_sign_count': _consent_n(t),
+            }
+        )
+
+    for t in refused_rows:
+        sort_anchor = t.signature_auth_at or t.create_time
+        if not _local_date_in_range(sort_anchor, date_from, date_to, tz):
+            continue
+        ws = t.witness_staff
+        name = (ws.name or '').strip() if ws else ''
+        items_full.append(
+            {
+                'id': t.pk,
+                'witness_staff_id': t.witness_staff_id,
+                'witness_staff_name': name or None,
+                'signature_auth_status': 'refused',
+                'signature_auth_at': _auth_iso(t) if t.signature_auth_at else None,
+                'mail_sent_at': t.create_time.isoformat() if t.create_time else None,
+                'consent_sign_count': 0,
+            }
+        )
+
+    for t in pending_latest_by_staff.values():
+        if not _local_date_in_range(t.create_time, date_from, date_to, tz):
+            continue
+        ws = t.witness_staff
+        name = (ws.name or '').strip() if ws else ''
+        items_full.append(
+            {
+                'id': t.pk,
+                'witness_staff_id': t.witness_staff_id,
+                'witness_staff_name': name or None,
+                'signature_auth_status': 'pending',
+                'signature_auth_at': None,
+                'mail_sent_at': t.create_time.isoformat() if t.create_time else None,
+                'consent_sign_count': 0,
+            }
+        )
+
+    def _passes_status(row: dict) -> bool:
+        st = (row.get('signature_auth_status') or '').strip().lower()
+        if sf == 'all':
+            return True
+        if sf == 'complete':
+            return st == 'agreed'
+        if sf == 'pending':
+            return st == 'pending'
+        return True
+
+    filtered = [r for r in items_full if _passes_status(r)]
+
+    def _sort_key(r: dict) -> tuple:
+        iso = r.get('signature_auth_at') or r.get('mail_sent_at') or ''
+        try:
+            dtp = datetime.fromisoformat(iso.replace('Z', '+00:00'))
+            if timezone.is_naive(dtp):
+                dtp = timezone.make_aware(dtp, tz)
+            ts = -dtp.timestamp()
+        except (ValueError, TypeError):
+            ts = 0.0
+        return (ts, -int(r.get('id') or 0))
+
+    filtered.sort(key=_sort_key)
+
+    total = len(filtered)
+    p = max(1, int(page))
+    ps = max(1, min(100, int(page_size)))
+    start = (p - 1) * ps
+    page_items = filtered[start : start + ps]
+    return total, page_items
