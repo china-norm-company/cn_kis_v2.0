@@ -1,7 +1,11 @@
 import { useState } from 'react'
 import { View, Text } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
-import { AUTH_LEVEL, type AuthLevel } from '@cn-kis/subject-core'
+import { AUTH_LEVEL, type AuthLevel, useIdentityStatus, useProfileAuth } from '@cn-kis/subject-core'
+import { MiniEmpty } from '../../components/ui'
+import { PAGE_COPY } from '../../constants/copy'
+import { taroApiClient, taroAuthProvider } from '../../adapters/subject-core'
+import './index.scss'
 
 function getAuthLevelLabel(authLevel: AuthLevel | string): string {
   const labels: Record<string, string> = {
@@ -11,11 +15,6 @@ function getAuthLevelLabel(authLevel: AuthLevel | string): string {
   }
   return labels[authLevel] || '未认证'
 }
-import { MiniEmpty } from '../../components/ui'
-import { PAGE_COPY } from '../../constants/copy'
-import { useIdentityStatus, useProfileAuth } from '@cn-kis/subject-core'
-import { taroApiClient, taroAuthProvider } from '../../adapters/subject-core'
-import './index.scss'
 
 interface MenuItem {
   id: string

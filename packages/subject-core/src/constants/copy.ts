@@ -105,6 +105,7 @@ export const PAGE_COPY = {
       icon: '📔',
       actionText: '填写今日日记',
     },
+    noAdverseLabel: '是否发生任何不良情况',
   },
   questionnaire: {
     empty: {
