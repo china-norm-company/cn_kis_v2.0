@@ -1,5 +1,5 @@
 """
-创建演示用治理台账号（admin / CRC / CRC主管）并同步到双签工作人员名单。
+创建演示用治理台账号（QA质量管理）并同步到双签工作人员名单。
 
 前置：python manage.py seed_roles
 
@@ -14,14 +14,14 @@ from apps.protocol.services import witness_staff_service as ws_svc
 
 DEMO_USERS = (
     # username, display_name, email, phone, role_name（显示名不含「演示」前缀，便于列表与知情签署展示）
-    ('demo_witness_admin', '林雪', 'demo.witness.admin@example.com', '13800001001', 'admin'),
-    ('demo_witness_crc', '刘敏', 'demo.witness.crc@example.com', '13800001002', 'crc'),
-    ('demo_witness_crc_sup', '陈芳', 'demo.witness.crcsuper@example.com', '13800001003', 'crc_supervisor'),
+    ('demo_witness_qa_1', '林雪', 'demo.witness.qa1@example.com', '13800001001', 'qa'),
+    ('demo_witness_qa_2', '刘敏', 'demo.witness.qa2@example.com', '13800001002', 'qa'),
+    ('demo_witness_qa_3', '陈芳', 'demo.witness.qa3@example.com', '13800001003', 'qa'),
 )
 
 
 class Command(BaseCommand):
-    help = '创建双签演示账号（治理台角色）并写入 t_witness_staff'
+    help = '创建双签演示账号（治理台 QA 角色）并写入 t_witness_staff'
 
     def handle(self, *args, **options):
         for username, display_name, email, phone, role_name in DEMO_USERS:

@@ -10,6 +10,7 @@ import {
   Fragment,
   type CSSProperties,
   type ReactNode,
+  type RefObject,
 } from 'react'
 import { createPortal } from 'react-dom'
 import { TooltipProvider, TruncatedTooltipLabel, RichTooltip } from '@/components/ui/TruncatedTooltipLabel'
@@ -121,6 +122,19 @@ function formatLocalDateYmd(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
+}
+
+/** 统一日期时间展示：YYYY-MM-DD HH:mm:ss（本地时区） */
+function formatLocalDateTimeYmdHms(input: string | Date): string {
+  const d = input instanceof Date ? input : new Date(input)
+  if (Number.isNaN(d.getTime())) return String(input)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  const ss = String(d.getSeconds()).padStart(2, '0')
+  return `${y}-${m}-${day} ${hh}:${mm}:${ss}`
 }
 
 function aggregatePreviewSigningResults(items: ConsentPreviewData[]): string {
@@ -270,10 +284,17 @@ function localTodayISO(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function batchProgressPair(b: ScreeningBatchConsent): { num: number; den: number; pend: number } {
-  const den = b.progress_total ?? Math.max(1, b.total || 0, b.expected_consent_rows || 0)
-  const num = b.progress_signed ?? b.signed_count
-  const pend = b.pending_progress ?? b.pending_count
+function batchProgressPair(record: ProtocolConsentOverview, b: ScreeningBatchConsent): { num: number; den: number; pend: number } {
+  // 与「计划」弹窗口径保持一致：按“人数”展示，而非按“文档份数（人数×ICF 节点数）”。
+  const icfCount = Math.max(1, Number(b.icf_count) || 1)
+  const targetPeople = targetCountForBatchDate(record, b.screening_date)
+  const den = targetPeople != null
+    ? Math.max(0, targetPeople)
+    : Math.max(0, Number(b.cohort_subject_count) || 0)
+  const signedDocs = Math.max(0, Number(b.progress_signed ?? b.signed_count) || 0)
+  // 以“完整签署人数”估算：已签署文档数 / ICF 节点数，向下取整并封顶到目标人数。
+  const num = Math.min(den, Math.floor(signedDocs / icfCount))
+  const pend = Math.max(0, den - num)
   return { num, den, pend }
 }
 
@@ -958,6 +979,127 @@ function consentOverviewSideCellWrapperClass(
     : 'flex w-full justify-start pt-[22px]'
 }
 
+const CONSENT_LIST_MORE_MENU_GAP = 4
+const CONSENT_LIST_MORE_MENU_PAD = 8
+
+/**
+ * 知情列表「更多」菜单：挂到 document.body + fixed 定位，避免表体 overflow 裁切首行/末行；
+ * 视口内优先向下展开，下方不足则翻到按钮上方，仍不足则贴顶并依赖 max-h 滚动。
+ */
+function ConsentListMoreFixedPortal(props: {
+  open: boolean
+  anchorRef: RefObject<HTMLButtonElement | null>
+  children: React.ReactNode
+}) {
+  const { open, anchorRef, children } = props
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [box, setBox] = useState<{ top: number; left: number; width: number } | null>(null)
+
+  const reposition = useCallback(() => {
+    const btn = anchorRef.current
+    const wrap = wrapRef.current
+    if (!btn || !wrap) return
+    const br = btn.getBoundingClientRect()
+    const mw = Math.max(168, wrap.offsetWidth)
+    const mh = wrap.offsetHeight
+    const gap = CONSENT_LIST_MORE_MENU_GAP
+    const pad = CONSENT_LIST_MORE_MENU_PAD
+    const vh = window.innerHeight
+    const vw = window.innerWidth
+
+    let top = br.bottom + gap
+    if (top + mh > vh - pad) {
+      const aboveTop = br.top - gap - mh
+      if (aboveTop >= pad) {
+        top = aboveTop
+      } else {
+        top = Math.max(pad, Math.min(br.bottom + gap, vh - pad - mh))
+      }
+    }
+
+    let left = br.right - mw
+    left = Math.max(pad, Math.min(left, vw - mw - pad))
+
+    setBox({ top, left, width: mw })
+  }, [anchorRef])
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setBox(null)
+      return
+    }
+    reposition()
+    const raf = requestAnimationFrame(() => reposition())
+    const wrap = wrapRef.current
+    const ro = wrap ? new ResizeObserver(() => reposition()) : null
+    if (wrap) ro?.observe(wrap)
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    return () => {
+      cancelAnimationFrame(raf)
+      ro?.disconnect()
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
+    }
+  }, [open, reposition])
+
+  if (!open || typeof document === 'undefined') return null
+
+  return createPortal(
+    <div
+      ref={wrapRef}
+      style={
+        box
+          ? {
+              position: 'fixed',
+              top: box.top,
+              left: box.left,
+              width: box.width,
+              zIndex: 500,
+            }
+          : { position: 'fixed', top: 0, left: 0, visibility: 'hidden', zIndex: 500 }
+      }
+      className="min-w-[10.5rem] max-h-[min(70vh,calc(100vh-16px))] overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 text-left text-sm shadow-lg"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {children}
+    </div>,
+    document.body,
+  )
+}
+
+/** 每行独立 ref，供 ConsentListMoreFixedPortal 锚定按钮位置 */
+function ConsentRowMoreMenu(props: {
+  open: boolean
+  onToggle: () => void
+  menu: ReactNode
+}) {
+  const { open, onToggle, menu } = props
+  const btnRef = useRef<HTMLButtonElement>(null)
+  return (
+    <div className="relative shrink-0">
+      <button
+        ref={btnRef}
+        type="button"
+        title="发布、下架、授权核验测试、签署记录、删除项目"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={(e) => {
+          e.stopPropagation()
+          onToggle()
+        }}
+        className="inline-flex flex-col items-center gap-0.5 rounded-md border border-slate-200 bg-white px-1.5 py-1 text-slate-700 hover:bg-slate-50 min-w-[2.75rem] disabled:opacity-40"
+      >
+        <MoreHorizontal className="w-3.5 h-3.5" aria-hidden />
+        <span className="text-[11px] font-medium leading-none tracking-tight">更多</span>
+      </button>
+      <ConsentListMoreFixedPortal open={open} anchorRef={btnRef}>
+        {menu}
+      </ConsentListMoreFixedPortal>
+    </div>
+  )
+}
+
 /**
  * 按现场日升序；顶部合计在同时存在正式与测试现场日时按「知情签署总计 / 测试」拆分；默认仅展示首日，可展开全部。
  * expanded / onExpandedChange 由列表父组件统一管理，以支持「全部展开/全部收起」。
@@ -983,7 +1125,7 @@ function ScreeningConsentProgressColumn({
     const formal = { num: 0, den: 0, pend: 0 }
     const test = { num: 0, den: 0, pend: 0 }
     for (const b of sortedBatches) {
-      const p = batchProgressPair(b)
+      const p = batchProgressPair(record, b)
       if (isTestScreeningForBatch(record, b)) {
         test.num += p.num
         test.den += p.den
@@ -1063,7 +1205,7 @@ function ScreeningConsentProgressColumn({
 
       <ul className="w-full max-w-full space-y-1.5">
         {visibleBatches.map((b, idx) => {
-          const { num, den, pend } = batchProgressPair(b)
+          const { num, den, pend } = batchProgressPair(record, b)
           const isTestBatch = isTestScreeningForBatch(record, b)
           const signingStaff = signingStaffNameForScreeningDate(record, b.screening_date)
           return (
@@ -1075,9 +1217,9 @@ function ScreeningConsentProgressColumn({
                   : 'w-full max-w-full rounded-lg border border-slate-200 bg-gradient-to-br from-slate-50 to-white px-1.5 py-1.5 shadow-sm'
               }
             >
-              {/* 单行：统一 gap-x，各段紧挨排列；禁止末段 flex-1，宽屏余白只在行尾，避免「中间一大块空、左右挤在一起」 */}
+              {/* 单行：所有元素在日期卡片边框内自适应分配宽度，避免出框；右侧三项统一右对齐 */}
               <div className="min-w-0 w-full pb-0.5">
-                <div className="flex w-full min-w-0 flex-nowrap items-baseline gap-x-3 text-[11px] leading-snug [font-variant-numeric:tabular-nums] sm:gap-x-4 sm:text-xs">
+                <div className="grid w-full min-w-0 grid-cols-[auto_auto_minmax(0,1fr)] items-baseline gap-x-2 text-[11px] leading-snug [font-variant-numeric:tabular-nums] sm:gap-x-2.5 sm:text-xs">
                   <span className="inline-flex shrink-0 items-center gap-0.5 font-semibold text-slate-900 tabular-nums whitespace-nowrap">
                     {b.screening_date.slice(0, 10)}
                     <span
@@ -1098,20 +1240,20 @@ function ScreeningConsentProgressColumn({
                       {num}/{den}
                     </span>
                   </span>
-                  <span className="shrink-0 whitespace-nowrap font-semibold tabular-nums text-red-600">
-                    待签署{pend}人
-                  </span>
-                  <span className="shrink-0 whitespace-nowrap text-slate-500 tabular-nums">
-                    {batchAttendanceLabel(record, b)}
-                  </span>
-                  {signingStaff ? (
-                    <span
-                      className="min-w-0 max-w-[min(14rem,42%)] shrink truncate font-medium text-slate-800"
-                      title={signingStaff}
-                    >
-                      {signingStaff}
+                  <span className="ml-auto grid min-w-0 w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)] items-baseline justify-items-end gap-x-1.5 text-right">
+                    <span className="min-w-0 w-full whitespace-nowrap text-right font-semibold tabular-nums text-red-600">
+                      待签署{pend}人
                     </span>
-                  ) : null}
+                    <span className="min-w-0 w-full whitespace-nowrap text-right text-slate-500 tabular-nums">
+                      {batchAttendanceLabel(record, b)}
+                    </span>
+                    <span
+                      className="min-w-0 w-full truncate text-right font-medium text-slate-800"
+                      title={signingStaff || ''}
+                    >
+                      {signingStaff || '\u00A0'}
+                    </span>
+                  </span>
                 </div>
               </div>
               {!b.is_planned_placeholder && b.total === 0 && b.expected_consent_rows > 0 ? (
@@ -2114,7 +2256,7 @@ function ScreeningScheduleEditor({
       (r) => !r.is_test_screening && /^\d{4}-\d{2}-\d{2}$/.test((r.date || '').trim().slice(0, 10)),
     )
     if (!formal.length) return null
-    return formal.map((r) => r.date.slice(0, 10)).sort()[0]
+    return formal.map((r) => (r.date || '').trim().slice(0, 10)).sort()[0]
   }, [rows])
 
   const patchRow = (idx: number, patch: Partial<ScreeningDay>) => {
@@ -2924,6 +3066,8 @@ export default function ConsentManagementPage() {
   const [exportingPdfs, setExportingPdfs] = useState(false)
   const [settingsDraft, setSettingsDraft] = useState<ConsentSettings>(DEFAULT_SETTINGS)
   const [createModalOpen, setCreateModalOpen] = useState(false)
+  /** 知情配置保存按钮 UI：onMutate/onSettled 双保险，避免偶发卡在「保存中…」 */
+  const [settingsSaveUiBusy, setSettingsSaveUiBusy] = useState(false)
   /** 知情测验配置入口：正式页面临时占位弹窗 */
   const [comprehensionQuizComingSoonOpen, setComprehensionQuizComingSoonOpen] = useState(false)
   /** 人脸认证签署未开放时的说明弹窗 */
@@ -2936,7 +3080,7 @@ export default function ConsentManagementPage() {
   const [createTab, setCreateTab] = useState<'single' | 'batch'>('single')
   const [createTitle, setCreateTitle] = useState('')
   const [createCode, setCreateCode] = useState('')
-  /** 新建项目：知情配置负责人（治理台 CRC / CRC主管） */
+  /** 新建项目：知情配置负责人（治理台 QA质量管理） */
   const [createConsentAssigneeId, setCreateConsentAssigneeId] = useState('')
   /** 新建项目：知情签署工作人员（与 GET /witness-staff 双签名单一致，可多选） */
   const [createConsentSigningStaffNames, setCreateConsentSigningStaffNames] = useState<string[]>([])
@@ -2959,6 +3103,7 @@ export default function ConsentManagementPage() {
   const [signProgressExpandedById, setSignProgressExpandedById] = useState<Record<number, boolean>>({})
   /** 列表操作：软删除二次确认 */
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{ id: number; title: string; code: string } | null>(null)
+  const [deleteProtocolError, setDeleteProtocolError] = useState<string | null>(null)
   /** 「计划」弹窗内：项目编号/名称（与现场计划一并保存） */
   const [screeningPlanProjectCode, setScreeningPlanProjectCode] = useState('')
   const [screeningPlanProjectTitle, setScreeningPlanProjectTitle] = useState('')
@@ -2966,15 +3111,21 @@ export default function ConsentManagementPage() {
     null,
   )
   const [screeningPlanProjectError, setScreeningPlanProjectError] = useState<string | null>(null)
+  /** 计划抽屉：保存成功提示（不自动关抽屉，用户可继续编辑或点取消关闭） */
+  const [screeningPlanSaveSuccess, setScreeningPlanSaveSuccess] = useState<string | null>(null)
   /** 「计划」弹窗：知情配置负责人 account id（字符串，空表示未指定） */
   const [screeningPlanConsentAssigneeId, setScreeningPlanConsentAssigneeId] = useState('')
   /** 「计划」弹窗：项目级知情签署工作人员（可多选） */
   const [screeningPlanConsentSigningStaffNames, setScreeningPlanConsentSigningStaffNames] = useState<string[]>([])
+  /** 保存按钮 UI：在 mutationFn 的 finally 中复位，避免仅依赖 isPending 时偶发卡在「保存中」 */
+  const [screeningPlanSaveUiBusy, setScreeningPlanSaveUiBusy] = useState(false)
   /** 与当前打开的「计划」抽屉 protocolId 同步，供保存成功回调判断是否在途请求仍对应当前弹窗 */
   const screeningPlanOpenPidRef = useRef<number | null>(null)
   useLayoutEffect(() => {
     screeningPlanOpenPidRef.current = screeningPlanProtocolId
   }, [screeningPlanProtocolId])
+  /** 知情配置草稿灌值键：仅在切换项目/签署节点时重灌，避免后台刷新覆盖用户正在编辑的内容 */
+  const settingsDraftHydratedKeyRef = useRef<string>('')
   const [createProtocolError, setCreateProtocolError] = useState<string | null>(null)
   /** 新建单个项目成功后短暂高亮对应行 */
   const [highlightNewProtocolId, setHighlightNewProtocolId] = useState<number | null>(null)
@@ -3000,6 +3151,7 @@ export default function ConsentManagementPage() {
     setScreeningPlanProjectTitle(title)
     setScreeningPlanProjectInitial({ code, title })
     setScreeningPlanProjectError(null)
+    setScreeningPlanSaveSuccess(null)
     setScreeningPlanMergeSource(record)
     setScreeningPlanConsentAssigneeId(
       record.consent_config_account_id != null ? String(record.consent_config_account_id) : '',
@@ -3376,6 +3528,47 @@ export default function ConsentManagementPage() {
     settingsDraft.staff_signature_times,
   ])
 
+  const [icfEditorHydratingFromPreview, setIcfEditorHydratingFromPreview] = useState(false)
+  const hydrateIcfEditorFromPreview = useCallback(async () => {
+    if (!protocolId || !selectedConfigIcf?.file_path) return
+    setIcfEditorHydratingFromPreview(true)
+    try {
+      const r = await loadIcfPreviewInLocalDev(protocolId, selectedConfigIcf)
+      if (r.ok === false) {
+        window.alert(r.message || '无法从预览生成可编辑 HTML')
+        return
+      }
+      if (r.mode === 'pdf') {
+        window.alert('当前文件为 PDF，无法自动转换为可编辑 HTML。请上传 Word 或手动粘贴 HTML 正文。')
+        return
+      }
+      if (r.mode === 'docx-html') {
+        const next = (r.articleHtml || '').trim()
+        if (!next) {
+          window.alert('未提取到可编辑 HTML，请检查源文件内容。')
+          return
+        }
+        setIcfContentHtmlDraft(next)
+        return
+      }
+      const blob = r.blob
+      if (await isLikelyPdfBlob(blob)) {
+        window.alert('服务端返回为 PDF 预览，无法自动转换为可编辑 HTML。请上传 Word 或手动粘贴 HTML 正文。')
+        return
+      }
+      const html = (await blob.text()).trim()
+      if (!html) {
+        window.alert('预览内容为空，无法生成可编辑 HTML。')
+        return
+      }
+      setIcfContentHtmlDraft(html)
+    } catch (err) {
+      window.alert(getMutationErrorMessage(err, '从预览生成可编辑 HTML 失败'))
+    } finally {
+      setIcfEditorHydratingFromPreview(false)
+    }
+  }, [protocolId, selectedConfigIcf])
+
   const showIcfPreviewModeToggle = useMemo(
     () =>
       !!selectedConfigIcf &&
@@ -3660,53 +3853,13 @@ export default function ConsentManagementPage() {
     returned_resign_row_count: 0,
   }
 
-  const { data: settingsRes } = useQuery({
+  const { data: settingsRes, isFetching: consentSettingsFetching } = useQuery({
     queryKey: ['protocol', protocolId, 'consent-settings'],
     queryFn: () => protocolApi.getConsentSettings(protocolId!),
     enabled: !!protocolId,
   })
   const consentSettingsData = settingsRes?.data as ConsentSettings | undefined
   const loadedSettings = (consentSettingsData ?? DEFAULT_SETTINGS) as ConsentSettings
-
-  const icfMiniHydrateKey = useMemo(
-    () =>
-      JSON.stringify(
-        icfVersions.map((i) => ({
-          id: i.id,
-          saved: i.mini_sign_rules_saved,
-          rules: i.mini_sign_rules_saved ? i.mini_sign_rules : null,
-        })),
-      ),
-    [icfVersions],
-  )
-
-  const protocolMiniTemplateKey = useMemo(
-    () =>
-      JSON.stringify({
-        require_face_verify: false,
-        require_dual_sign: loadedSettings.require_dual_sign,
-        require_comprehension_quiz: loadedSettings.require_comprehension_quiz,
-        enable_min_reading_duration: loadedSettings.enable_min_reading_duration,
-        min_reading_duration_seconds: loadedSettings.min_reading_duration_seconds,
-        dual_sign_staffs: loadedSettings.dual_sign_staffs,
-        collect_id_card: loadedSettings.collect_id_card,
-        collect_screening_number: loadedSettings.collect_screening_number,
-        collect_initials: loadedSettings.collect_initials,
-        collect_subject_name: loadedSettings.collect_subject_name,
-        collect_other_information: loadedSettings.collect_other_information,
-        supplemental_collect_labels: loadedSettings.supplemental_collect_labels,
-        enable_checkbox_recognition: loadedSettings.enable_checkbox_recognition,
-        enable_staff_signature: loadedSettings.enable_staff_signature,
-        staff_signature_times: loadedSettings.staff_signature_times,
-        enable_subject_signature: loadedSettings.enable_subject_signature,
-        subject_signature_times: loadedSettings.subject_signature_times,
-        enable_guardian_signature: loadedSettings.enable_guardian_signature,
-        guardian_parent_count: loadedSettings.guardian_parent_count,
-        guardian_signature_times: loadedSettings.guardian_signature_times,
-        enable_auto_sign_date: loadedSettings.enable_auto_sign_date,
-      }),
-    [loadedSettings],
-  )
 
   const { data: configProtocolsRes } = useQuery({
     queryKey: ['protocol', 'consent-overview', 'all'],
@@ -3715,7 +3868,7 @@ export default function ConsentManagementPage() {
   })
   const configProtocols = (configProtocolsRes?.data?.items ?? []) as ProtocolConsentOverview[]
 
-  const { data: configProtocolSettingsRes } = useQuery({
+  const { data: configProtocolSettingsRes, isFetching: configProtocolSettingsFetching } = useQuery({
     queryKey: ['protocol', configProtocolId, 'consent-settings'],
     queryFn: () => protocolApi.getConsentSettings(configProtocolId!),
     enabled: viewMode === 'config' && !!configProtocolId,
@@ -3734,6 +3887,7 @@ export default function ConsentManagementPage() {
 
   useEffect(() => {
     if (viewMode === 'config' && configProtocolId && configProtocolSettings) {
+      if (configProtocolSettingsFetching) return
       const s = configProtocolSettings as ConsentSettings
       const sched = screeningScheduleFromConsent(s as ConsentSettings)
       setConfigProtocolDraft({
@@ -3769,6 +3923,18 @@ export default function ConsentManagementPage() {
       })
     }
   }, [viewMode, configProtocolId, configProtocolSettings])
+
+  /** 切换配置中心协议时先清空草稿，避免短暂展示上一协议配置 */
+  useEffect(() => {
+    if (viewMode !== 'config') return
+    if (!configProtocolId) {
+      setConfigProtocolDraft(DEFAULT_SETTINGS)
+      return
+    }
+    if (configProtocolSettingsFetching) {
+      setConfigProtocolDraft(DEFAULT_SETTINGS)
+    }
+  }, [viewMode, configProtocolId, configProtocolSettingsFetching])
 
   const consentLaunched = !!loadedSettings.consent_launched
 
@@ -3810,13 +3976,24 @@ export default function ConsentManagementPage() {
     return true
   }, [icfVersions, loadedSettings])
 
-  /** 协议级现场计划 + 当前节点小程序规则（同一次 setState，避免半更新） */
+  /**
+   * 协议级现场计划 + 当前节点小程序规则（同一次 setState，避免半更新）。
+   * 仅在切换项目或切换签署节点时灌值；不要在后台 refetch 时反复覆盖草稿，避免页面闪烁与输入被重置。
+   */
   useEffect(() => {
     if (!protocolId) {
+      settingsDraftHydratedKeyRef.current = ''
       setSettingsDraft(DEFAULT_SETTINGS)
       setDualSignNotifyEmail('')
       return
     }
+    const activeIcfId = selectedConfigIcfId ?? icfVersions[0]?.id ?? 0
+    const hydrateKey = `${protocolId}:${activeIcfId}`
+    // 首次拉取当前协议设置时等待数据返回；已有草稿时不因后台刷新重置
+    if (!consentSettingsData && consentSettingsFetching) {
+      return
+    }
+    if (settingsDraftHydratedKeyRef.current === hydrateKey) return
     const sched = screeningScheduleFromConsent(loadedSettings as ConsentSettings)
     const icf =
       icfVersions.find((i) => i.id === selectedConfigIcfId) ?? icfVersions[0] ?? null
@@ -3826,7 +4003,15 @@ export default function ConsentManagementPage() {
       planned_screening_dates: sched.map((x) => x.date),
       screening_schedule: sched,
     })
-  }, [protocolId, loadedSettings, selectedConfigIcfId, icfMiniHydrateKey, protocolMiniTemplateKey])
+    settingsDraftHydratedKeyRef.current = hydrateKey
+  }, [
+    protocolId,
+    consentSettingsData,
+    consentSettingsFetching,
+    loadedSettings,
+    selectedConfigIcfId,
+    icfVersions,
+  ])
 
   /** 勾选「启用勾选框识别」后默认切到勾选预览；关闭则回原始预览（仍可在开启后手动切回原始文件） */
   useEffect(() => {
@@ -3884,6 +4069,14 @@ export default function ConsentManagementPage() {
       /** 与 GET /witness-staff 一致的姓名字段，用于保存前校验 */
       allowedWitnessSigningNames: string[]
     }) => {
+      const traceId = `consent-plan-save-${args.pid}-${Date.now().toString(36)}`
+      const t0 = Date.now()
+      console.info(`[${traceId}] start`, {
+        pid: args.pid,
+        launched: !!args.consent.consent_launched,
+        localSchedRows: args.localSched?.length ?? 0,
+        consentSigningStaffCount: args.consentSigningStaffNames?.length ?? 0,
+      })
       const code = args.projectCode.trim()
       const title = args.projectTitle.trim()
       if (!code || !title) {
@@ -3896,6 +4089,7 @@ export default function ConsentManagementPage() {
       const wantResolved = Number.isFinite(wantAid) && wantAid > 0 ? wantAid : null
       const initAid = args.initialConsentAccountId ?? null
       if (wantResolved !== initAid) {
+        console.info(`[${traceId}] updateBasic consent_config_account_id`, { wantResolved, initAid })
         await protocolApi.updateBasic(args.pid, { consent_config_account_id: wantResolved ?? 0 })
       }
       const assigneeChanged = wantResolved !== initAid
@@ -3905,11 +4099,14 @@ export default function ConsentManagementPage() {
           throw new Error('未修改任何内容')
         }
         if (titleChanged) {
-          return protocolApi.updateBasic(args.pid, { title, code })
+          console.info(`[${traceId}] launched updateBasic title/code`)
+          return await protocolApi.updateBasic(args.pid, { title, code })
         }
-        return protocolApi.getConsentSettings(args.pid)
+        console.info(`[${traceId}] launched getConsentSettings fallback`)
+        return await protocolApi.getConsentSettings(args.pid)
       }
       if (ic !== code || it !== title) {
+        console.info(`[${traceId}] updateBasic title/code`)
         await protocolApi.updateBasic(args.pid, { title, code })
       }
       const allowedSigningNames = new Set(
@@ -3919,13 +4116,13 @@ export default function ConsentManagementPage() {
         const n = (s.name || '').trim()
         if (n) allowedSigningNames.add(n)
       }
-      for (const n of args.consentSigningStaffNames) {
+      for (const n of args.consentSigningStaffNames ?? []) {
         const t = (n || '').trim()
         if (t && !allowedSigningNames.has(t)) {
           throw new Error('知情签署工作人员须从双签工作人员名单中选择')
         }
       }
-      for (const row of args.localSched) {
+      for (const row of args.localSched ?? []) {
         const sn = (row.signing_staff_name || '').trim()
         if (!sn) continue
         if (!allowedSigningNames.has(sn)) {
@@ -3933,27 +4130,56 @@ export default function ConsentManagementPage() {
         }
       }
       const sched = cleanScreeningScheduleForApi(args.localSched)
-      const csn = serializeSigningStaffNames(args.consentSigningStaffNames)
-      return protocolApi.updateConsentSettings(args.pid, {
+      const csn = serializeSigningStaffNames(args.consentSigningStaffNames ?? [])
+      console.info(`[${traceId}] updateConsentSettings`, {
+        screeningScheduleRows: sched.length,
+        consentSigningStaffName: csn,
+      })
+      const ret = await protocolApi.updateConsentSettings(args.pid, {
         ...args.consent,
         screening_schedule: sched,
         planned_screening_dates: sched.map((x) => x.date),
         consent_signing_staff_name: csn,
       })
+      console.info(`[${traceId}] done`, { elapsedMs: Date.now() - t0 })
+      return ret
     },
-    onSuccess: (_data, variables) => {
-      const savedPid = variables.pid
-      queryClient.invalidateQueries({ queryKey: ['protocol', 'consent-overview'] })
-      queryClient.invalidateQueries({ queryKey: ['protocol', savedPid, 'consent-settings'] })
-      // 若用户已关闭抽屉或已打开其他项目，勿清掉当前弹窗状态
-      if (screeningPlanOpenPidRef.current !== savedPid) return
-      setScreeningPlanProjectError(null)
-      setScreeningPlanProjectInitial(null)
-      setScreeningPlanMergeSource(null)
-      setScreeningPlanProtocolId(null)
-      setScreeningPlanConsentSigningStaffNames([])
+    onMutate: () => {
+      setScreeningPlanSaveUiBusy(true)
+      setScreeningPlanSaveSuccess(null)
+    },
+    onSettled: () => {
+      setScreeningPlanSaveUiBusy(false)
+    },
+    onSuccess: async (_data, variables) => {
+      try {
+        const savedPid = variables.pid
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['protocol', 'consent-overview'] }),
+          queryClient.invalidateQueries({ queryKey: ['protocol', savedPid, 'consent-settings'] }),
+        ])
+        // 若用户已关闭抽屉或已打开其他项目，勿更新当前抽屉状态
+        if (screeningPlanOpenPidRef.current !== savedPid) return
+        setScreeningPlanProjectError(null)
+        setScreeningPlanSaveSuccess('保存成功')
+        const code = variables.projectCode.trim()
+        const title = variables.projectTitle.trim()
+        setScreeningPlanProjectInitial({ code, title })
+        const wantAid = variables.consentAssigneeIdInput.trim() ? Number(variables.consentAssigneeIdInput) : 0
+        const wantResolved = Number.isFinite(wantAid) && wantAid > 0 ? wantAid : null
+        setScreeningPlanMergeSource((prev) =>
+          prev && prev.id === savedPid
+            ? { ...prev, consent_config_account_id: wantResolved, code, title }
+            : prev,
+        )
+      } catch (e) {
+        console.error('saveScreeningPlan onSuccess', e)
+        setScreeningPlanProjectError('保存已成功，但刷新列表时出错，请手动刷新页面')
+      }
     },
     onError: (err: Error) => {
+      console.error('[consent-plan-save] failed', err)
+      setScreeningPlanSaveSuccess(null)
       setScreeningPlanProjectError(getMutationErrorMessage(err, '保存失败，请重试'))
     },
   })
@@ -3961,6 +4187,8 @@ export default function ConsentManagementPage() {
   /** 关闭「计划」抽屉：始终可关；若保存请求卡住，reset mutation 解除「保存中」锁死 */
   const closeScreeningPlanModal = useCallback(() => {
     saveScreeningPlanMutation.reset()
+    setScreeningPlanSaveUiBusy(false)
+    setScreeningPlanSaveSuccess(null)
     setScreeningPlanMergeSource(null)
     setScreeningPlanProtocolId(null)
     setScreeningPlanProjectError(null)
@@ -3971,10 +4199,12 @@ export default function ConsentManagementPage() {
 
   const deleteProtocolMutation = useMutation({
     mutationFn: (id: number) => protocolApi.softDeleteProtocol(id),
+    onMutate: () => {
+      setDeleteProtocolError(null)
+    },
     onSuccess: (_, deletedId) => {
-      queryClient.invalidateQueries({ queryKey: ['protocol', 'consent-overview'] })
-      queryClient.invalidateQueries({ queryKey: ['protocol', deletedId] })
       setDeleteConfirmTarget(null)
+      setDeleteProtocolError(null)
       if (protocolId === deletedId) {
         setProtocolId(null)
         setViewMode('list')
@@ -3982,6 +4212,7 @@ export default function ConsentManagementPage() {
       if (screeningPlanProtocolId === deletedId) {
         setScreeningPlanMergeSource(null)
         setScreeningPlanProtocolId(null)
+        setScreeningPlanSaveSuccess(null)
         setScreeningPlanConsentSigningStaffNames([])
       }
       if (configProtocolId === deletedId) {
@@ -3996,6 +4227,18 @@ export default function ConsentManagementPage() {
         const { [deletedId]: _, ...rest } = prev
         return rest
       })
+      /**
+       * 必须在同步阶段结束 onSuccess，勿 await invalidateQueries。
+       * TanStack Query v5 会 await mutation 的 onSuccess；invalidateQueries 会等 consent-overview
+       * 重拉完成（该请求 timeout 可达 120s），导致按钮长期停在「处理中…」。
+       */
+      queueMicrotask(() => {
+        void queryClient.invalidateQueries({ queryKey: ['protocol', 'consent-overview'] })
+        void queryClient.invalidateQueries({ queryKey: ['protocol', deletedId] })
+      })
+    },
+    onError: (err: Error) => {
+      setDeleteProtocolError(getMutationErrorMessage(err, '删除失败，请重试'))
     },
   })
 
@@ -4157,6 +4400,7 @@ export default function ConsentManagementPage() {
       })
     },
     onMutate: () => {
+      setSettingsSaveUiBusy(true)
       setConsentSettingsSaveFeedback(null)
       if (consentSettingsSaveFeedbackTimerRef.current) {
         clearTimeout(consentSettingsSaveFeedbackTimerRef.current)
@@ -4164,10 +4408,14 @@ export default function ConsentManagementPage() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'consent-settings'] })
-      queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'icf-versions'] })
-      queryClient.invalidateQueries({ queryKey: ['protocol', 'consent-overview'] })
-      queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'dual-sign-staff-status'] })
+      try {
+        queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'consent-settings'] })
+        queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'icf-versions'] })
+        queryClient.invalidateQueries({ queryKey: ['protocol', 'consent-overview'] })
+        queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'dual-sign-staff-status'] })
+      } catch (e) {
+        console.error('saveSettings onSuccess invalidate failed', e)
+      }
       setConsentSettingsSaveFeedback({ kind: 'success', message: '保存成功' })
       if (consentSettingsSaveFeedbackTimerRef.current) {
         clearTimeout(consentSettingsSaveFeedbackTimerRef.current)
@@ -4183,6 +4431,9 @@ export default function ConsentManagementPage() {
         message: getMutationErrorMessage(err, '保存失败，请重试'),
       })
     },
+    onSettled: () => {
+      setSettingsSaveUiBusy(false)
+    },
   })
 
   useEffect(() => {
@@ -4194,11 +4445,11 @@ export default function ConsentManagementPage() {
   }, [])
 
   useEffect(() => {
-    if (!consentSettingsSaveFeedback) return
-    requestAnimationFrame(() => {
-      consentSettingsSaveBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    })
-  }, [consentSettingsSaveFeedback])
+    if (!protocolId) {
+      setSettingsSaveUiBusy(false)
+      saveSettings.reset()
+    }
+  }, [protocolId, saveSettings])
 
   const saveConfigProtocolMutation = useMutation({
     mutationFn: (data: ConsentSettings) => protocolApi.updateConsentSettings(configProtocolId!, data),
@@ -4270,6 +4521,12 @@ export default function ConsentManagementPage() {
       queryClient.invalidateQueries({ queryKey: ['protocol', protocolId, 'consent-preview'] })
       setDeleteConsentIds(null)
       setDeleteConsentSummary('')
+      setConsentSelectedIds((prev) => {
+        if (prev.size === 0) return prev
+        const next = new Set(prev)
+        ids.forEach((id) => next.delete(id))
+        return next
+      })
       setPreviewConsentIds((prev) => {
         if (prev != null && ids.some((id) => prev.includes(id))) {
           setStaffAuditActionError(null)
@@ -4913,6 +5170,16 @@ export default function ConsentManagementPage() {
     })
   }, [consents, consentSelectedIds])
 
+  const openBatchDeleteConsents = useCallback(() => {
+    const ids = Array.from(consentSelectedIds)
+    if (ids.length === 0) {
+      window.alert('请先勾选需要删除的签署记录')
+      return
+    }
+    setDeleteConsentIds(ids)
+    setDeleteConsentSummary(`已选择 ${ids.length} 条签署记录（支持跨页勾选）`)
+  }, [consentSelectedIds])
+
   const handleConsentJumpPage = useCallback(() => {
     const n = parseInt(consentJumpInput, 10)
     if (!Number.isNaN(n) && n >= 1 && n <= consentTotalPages) {
@@ -5265,7 +5532,7 @@ export default function ConsentManagementPage() {
                       headerRender: (
                         <span
                           className="whitespace-nowrap"
-                          title="治理台中具备全局角色 CRC 或 CRC主管 的账号，每项目指定一人负责知情配置"
+                          title="治理台中具备全局角色 QA质量管理 的账号，每项目指定一人负责知情配置"
                         >
                           知情配置人员
                         </span>
@@ -5285,7 +5552,7 @@ export default function ConsentManagementPage() {
                     {
                       key: 'signing_staff_summary',
                       title: '知情签署工作人员',
-                      width: 152,
+                      width: 136,
                       headerClassName: '!pl-1 !pr-2',
                       cellClassName: '!pl-1 !pr-2',
                       headerRender: (
@@ -5315,7 +5582,7 @@ export default function ConsentManagementPage() {
                           知情配置状态
                         </span>
                       ),
-                      width: 104,
+                      width: 96,
                       render: (_, record) => {
                         const bp = configStatusBadgeProps(record.config_status)
                         return (
@@ -5336,7 +5603,7 @@ export default function ConsentManagementPage() {
                           筛选开始日期
                         </span>
                       ),
-                      width: 120,
+                      width: 108,
                       render: (_, record) => {
                         const earliest = firstConfiguredScreeningDate(record)
                         if (!earliest) {
@@ -5360,7 +5627,7 @@ export default function ConsentManagementPage() {
                           筛选结束日期
                         </span>
                       ),
-                      width: 120,
+                      width: 108,
                       render: (_, record) => {
                         const latest = lastConfiguredScreeningDate(record)
                         if (!latest) {
@@ -5428,7 +5695,7 @@ export default function ConsentManagementPage() {
                           </span>
                         </div>
                       ),
-                      width: 380,
+                      width: 430,
                       render: (_, record) => (
                         <ScreeningConsentProgressColumn
                           record={record}
@@ -5442,7 +5709,7 @@ export default function ConsentManagementPage() {
                     {
                       key: 'consent_qr',
                       title: '二维码',
-                      width: 76,
+                      width: 68,
                       headerClassName: '!px-1.5',
                       cellClassName: '!px-1.5',
                       align: 'center' as const,
@@ -5490,7 +5757,7 @@ export default function ConsentManagementPage() {
                     {
                       key: 'consent_last_update',
                       title: '最后更新时间',
-                      width: 122,
+                      width: 170,
                       headerClassName: '!px-1.5',
                       cellClassName: '!px-1.5',
                       cellVAlign: 'top' as const,
@@ -5501,12 +5768,13 @@ export default function ConsentManagementPage() {
                           body = <span className="text-slate-400 text-sm">—</span>
                         } else {
                           try {
+                            const shown = formatLocalDateTimeYmdHms(raw)
                             body = (
                               <span
-                                className="block min-w-0 truncate text-sm text-slate-700 tabular-nums"
+                                className="block min-w-0 whitespace-nowrap text-sm text-slate-700 tabular-nums"
                                 title={raw}
                               >
-                                {new Date(raw).toLocaleString()}
+                                {shown}
                               </span>
                             )
                           } catch {
@@ -5521,7 +5789,7 @@ export default function ConsentManagementPage() {
                     {
                       key: 'action',
                       title: '操作',
-                      width: 168,
+                      width: 160,
                       headerClassName: '!px-1.5',
                       cellClassName: '!px-1.5',
                       align: 'center' as const,
@@ -5558,27 +5826,13 @@ export default function ConsentManagementPage() {
                               <Settings className="w-3.5 h-3.5" aria-hidden />
                               <span className="text-[11px] font-medium leading-none tracking-tight">知情</span>
                             </button>
-                            <div className="relative shrink-0">
-                              <button
-                                type="button"
-                                title="发布、下架、授权核验测试、签署记录、删除项目"
-                                aria-haspopup="menu"
-                                aria-expanded={consentListMoreOpenId === record.id}
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setConsentListMoreOpenId((prev) => (prev === record.id ? null : record.id))
-                                }}
-                                className="inline-flex flex-col items-center gap-0.5 rounded-md border border-slate-200 bg-white px-1.5 py-1 text-slate-700 hover:bg-slate-50 min-w-[2.75rem] disabled:opacity-40"
-                              >
-                                <MoreHorizontal className="w-3.5 h-3.5" aria-hidden />
-                                <span className="text-[11px] font-medium leading-none tracking-tight">更多</span>
-                              </button>
-                              {consentListMoreOpenId === record.id ? (
-                                <ul
-                                  role="menu"
-                                  className="absolute right-0 bottom-full z-[120] mb-1 min-w-[10.5rem] rounded-lg border border-slate-200 bg-white py-1 text-left text-sm shadow-lg"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
+                            <ConsentRowMoreMenu
+                              open={consentListMoreOpenId === record.id}
+                              onToggle={() =>
+                                setConsentListMoreOpenId((prev) => (prev === record.id ? null : record.id))
+                              }
+                              menu={
+                                <ul role="menu" className="text-left text-sm">
                                   <li>
                                     <button
                                       type="button"
@@ -5657,6 +5911,8 @@ export default function ConsentManagementPage() {
                                       className="w-full px-3 py-2 text-left text-rose-700 hover:bg-rose-50 disabled:opacity-40 disabled:pointer-events-none"
                                       onClick={() => {
                                         setConsentListMoreOpenId(null)
+                                        deleteProtocolMutation.reset()
+                                        setDeleteProtocolError(null)
                                         setDeleteConfirmTarget({
                                           id: record.id,
                                           title: record.title || '',
@@ -5668,13 +5924,14 @@ export default function ConsentManagementPage() {
                                     </button>
                                   </li>
                                 </ul>
-                              ) : null}
-                            </div>
+                              }
+                            />
                           </div>
                         )
                       },
                     },
                   ]}
+                  desktopBodyShrinkToContent
                   data={overviewItems}
                   loading={false}
                   emptyText="暂无项目"
@@ -5685,64 +5942,66 @@ export default function ConsentManagementPage() {
                 />
               <div className="shrink-0 -mx-2 px-2 md:-mx-5 md:px-5">
               {overviewItems.length > 0 ? (
-                <div className="flex flex-wrap items-center justify-between gap-4 rounded-b-xl border border-t-0 border-slate-200 bg-white px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm text-slate-500">共 {overviewTotal} 条</span>
-                    <span className="text-slate-300">|</span>
-                    <span className="text-sm text-slate-500">每页</span>
-                    <select
-                      value={pageSize}
-                      onChange={(e) => (setPageSize(Number(e.target.value)), setPage(1))}
-                      className="h-8 px-2 text-sm border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-primary-500/30"
-                    >
-                      <option value={10}>10</option>
-                      <option value={20}>20</option>
-                      <option value={50}>50</option>
-                      <option value={100}>100</option>
-                    </select>
-                    <span className="text-sm text-slate-500">条</span>
-                  </div>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={page <= 1 || totalPages <= 1}
-                      className="px-3 py-1.5 text-sm rounded border border-slate-200 disabled:opacity-50 hover:bg-slate-50"
-                    >
-                      上一页
-                    </button>
-                    <span className="text-sm text-slate-600">
-                      第 {page} / {totalPages} 页
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={page >= totalPages || totalPages <= 1}
-                      className="px-3 py-1.5 text-sm rounded border border-slate-200 disabled:opacity-50 hover:bg-slate-50"
-                    >
-                      下一页
-                    </button>
-                    <span className="text-sm text-slate-500">跳转至</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={totalPages}
-                      value={jumpPageInput}
-                      onChange={(e) => setJumpPageInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleJumpPage()}
-                      className="w-14 px-2 py-1 text-sm border border-slate-200 rounded text-center"
-                      placeholder="页"
-                      disabled={totalPages <= 1}
-                      aria-label="跳转页码"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleJumpPage}
-                      disabled={totalPages <= 1}
-                      className="px-2 py-1 text-sm rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      跳转
-                    </button>
+                <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-sm text-slate-500">共 {overviewTotal} 条</span>
+                      <span className="text-slate-300">|</span>
+                      <span className="text-sm text-slate-500">每页</span>
+                      <select
+                        value={pageSize}
+                        onChange={(e) => (setPageSize(Number(e.target.value)), setPage(1))}
+                        className="h-8 px-2 text-sm border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-primary-500/30"
+                      >
+                        <option value={10}>10</option>
+                        <option value={20}>20</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                      <span className="text-sm text-slate-500">条</span>
+                    </div>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={page <= 1 || totalPages <= 1}
+                        className="px-3 py-1.5 text-sm rounded border border-slate-200 disabled:opacity-50 hover:bg-slate-50"
+                      >
+                        上一页
+                      </button>
+                      <span className="text-sm text-slate-600">
+                        第 {page} / {totalPages} 页
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={page >= totalPages || totalPages <= 1}
+                        className="px-3 py-1.5 text-sm rounded border border-slate-200 disabled:opacity-50 hover:bg-slate-50"
+                      >
+                        下一页
+                      </button>
+                      <span className="text-sm text-slate-500">跳转至</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={totalPages}
+                        value={jumpPageInput}
+                        onChange={(e) => setJumpPageInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleJumpPage()}
+                        className="w-14 px-2 py-1 text-sm border border-slate-200 rounded text-center"
+                        placeholder="页"
+                        disabled={totalPages <= 1}
+                        aria-label="跳转页码"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleJumpPage}
+                        disabled={totalPages <= 1}
+                        className="px-2 py-1 text-sm rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        跳转
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -5770,7 +6029,11 @@ export default function ConsentManagementPage() {
         <Modal
           open
           onClose={() => {
-            if (!deleteProtocolMutation.isPending) setDeleteConfirmTarget(null)
+            if (!deleteProtocolMutation.isPending) {
+              deleteProtocolMutation.reset()
+              setDeleteProtocolError(null)
+              setDeleteConfirmTarget(null)
+            }
           }}
           title="确认删除项目"
           size="sm"
@@ -5779,7 +6042,11 @@ export default function ConsentManagementPage() {
               <Button
                 variant="ghost"
                 disabled={deleteProtocolMutation.isPending}
-                onClick={() => setDeleteConfirmTarget(null)}
+                onClick={() => {
+                  deleteProtocolMutation.reset()
+                  setDeleteProtocolError(null)
+                  setDeleteConfirmTarget(null)
+                }}
               >
                 取消
               </Button>
@@ -5802,6 +6069,11 @@ export default function ConsentManagementPage() {
               ? `${deleteConfirmTarget.title || '（未命名）'}（${deleteConfirmTarget.code}）`
               : deleteConfirmTarget.title || `项目 #${deleteConfirmTarget.id}`}
           </p>
+          {deleteProtocolError ? (
+            <p className="mt-2 text-sm text-rose-600" role="alert">
+              {deleteProtocolError}
+            </p>
+          ) : null}
         </Modal>
       )}
 
@@ -5996,7 +6268,7 @@ export default function ConsentManagementPage() {
                   ) : null}
                 </div>
                 <p className="text-xs text-slate-500 mb-1.5">
-                  可选。来自治理台全局角色为 CRC 或 CRC主管 的账号；每项目指定一人。
+                  可选。来自治理台全局角色为 QA质量管理 的账号；每项目指定一人。
                 </p>
                 <SigningStaffInlineSelect
                   widthClass="w-full max-w-md"
@@ -6132,6 +6404,14 @@ export default function ConsentManagementPage() {
                 知情已发布：<strong>现场筛选计划</strong>不可在此修改（需先在「签署节点」取消发布后再改）；仍可修改上方<strong>项目编号/名称</strong>并保存。
               </p>
             ) : null}
+            {screeningPlanSaveSuccess ? (
+              <p
+                className="text-sm text-emerald-900 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2"
+                role="status"
+              >
+                {screeningPlanSaveSuccess}
+              </p>
+            ) : null}
             {!screeningPlanSettingsLoading && screeningPlanSettingsRaw ? (
               <>
                 <div className="rounded-lg border border-slate-200 bg-white px-3 py-3 space-y-3">
@@ -6148,6 +6428,7 @@ export default function ConsentManagementPage() {
                       onChange={(e) => {
                         setScreeningPlanProjectCode(e.target.value)
                         setScreeningPlanProjectError(null)
+                        setScreeningPlanSaveSuccess(null)
                       }}
                       className="w-full"
                     />
@@ -6162,6 +6443,7 @@ export default function ConsentManagementPage() {
                       onChange={(e) => {
                         setScreeningPlanProjectTitle(e.target.value)
                         setScreeningPlanProjectError(null)
+                        setScreeningPlanSaveSuccess(null)
                       }}
                       className="w-full"
                     />
@@ -6176,13 +6458,14 @@ export default function ConsentManagementPage() {
                           onClick={() => {
                             setScreeningPlanConsentAssigneeId('')
                             setScreeningPlanProjectError(null)
+                            setScreeningPlanSaveSuccess(null)
                           }}
                         >
                           清除
                         </button>
                       ) : null}
                     </div>
-                    <p className="text-xs text-slate-500 mb-1.5">治理台 CRC / CRC主管；每项目一人。</p>
+                    <p className="text-xs text-slate-500 mb-1.5">治理台 QA质量管理；每项目一人。</p>
                     <SigningStaffInlineSelect
                       widthClass="w-full max-w-md"
                       placeholder="请选择知情配置人员"
@@ -6190,6 +6473,7 @@ export default function ConsentManagementPage() {
                       onChange={(v) => {
                         setScreeningPlanConsentAssigneeId(v)
                         setScreeningPlanProjectError(null)
+                        setScreeningPlanSaveSuccess(null)
                       }}
                       options={consentAssigneeOptionsVisible.map((a) => ({
                         value: String(a.id),
@@ -6211,6 +6495,7 @@ export default function ConsentManagementPage() {
                       onChange={(next) => {
                         setScreeningPlanConsentSigningStaffNames(next)
                         setScreeningPlanProjectError(null)
+                        setScreeningPlanSaveSuccess(null)
                       }}
                       disabled={
                         !!screeningPlanSettingsRaw.consent_launched ||
@@ -6225,7 +6510,10 @@ export default function ConsentManagementPage() {
                   context="screening_modal"
                   maxRows={SCREENING_SCHEDULE_MAX_ROWS}
                   value={screeningPlanLocal}
-                  onChange={setScreeningPlanLocal}
+                  onChange={(next) => {
+                    setScreeningPlanLocal(next)
+                    setScreeningPlanSaveSuccess(null)
+                  }}
                   disabled={!!screeningPlanSettingsRaw.consent_launched}
                   allowedSigningStaffNames={screeningModalRowSigningStaffNames}
                 />
@@ -6248,7 +6536,7 @@ export default function ConsentManagementPage() {
                   <Button
                     variant="primary"
                     disabled={(() => {
-                      const pending = saveScreeningPlanMutation.isPending
+                      const pending = screeningPlanSaveUiBusy || saveScreeningPlanMutation.isPending
                       const code = screeningPlanProjectCode.trim()
                       const title = screeningPlanProjectTitle.trim()
                       const init = screeningPlanProjectInitial
@@ -6282,7 +6570,7 @@ export default function ConsentManagementPage() {
                       })
                     }}
                   >
-                    {saveScreeningPlanMutation.isPending ? '保存中…' : '保存'}
+                    {screeningPlanSaveUiBusy || saveScreeningPlanMutation.isPending ? '保存中…' : '保存'}
                   </Button>
               </div>
             ) : null}
@@ -7103,10 +7391,10 @@ export default function ConsentManagementPage() {
                 <button
                   type="button"
                   onClick={() => saveSettings.mutate()}
-                  disabled={saveSettings.isPending || selectedConfigIcfId == null}
+                  disabled={settingsSaveUiBusy || saveSettings.isPending || selectedConfigIcfId == null}
                   className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
                 >
-                  {saveSettings.isPending ? '保存中…' : '保存配置'}
+                  {settingsSaveUiBusy || saveSettings.isPending ? '保存中…' : '保存配置'}
                 </button>
               </div>
               )}
@@ -7179,7 +7467,36 @@ export default function ConsentManagementPage() {
                             })}
                             onCancel={() => setIcfContentHtmlEditorOpen(false)}
                             onSaved={() => setIcfContentHtmlEditorOpen(false)}
-                            anchoredPreviewHtml={icfEditorAnchoredPreviewHtml}
+                            anchoredPreviewHtml={icfContentHtmlDraft.trim() ? icfEditorAnchoredPreviewHtml : undefined}
+                            onHydrateFromPreview={!icfContentHtmlDraft.trim() ? hydrateIcfEditorFromPreview : undefined}
+                            hydratingFromPreview={icfEditorHydratingFromPreview}
+                            externalPreview={
+                              !icfContentHtmlDraft.trim() && selectedConfigIcf.file_path ? (
+                                <IcfUploadFilePreview
+                                  protocolId={protocolId}
+                                  icf={selectedConfigIcf}
+                                  protocolCode={projectBannerCode}
+                                  protocolTitle={projectBannerTitle}
+                                  previewViewMode={icfPreviewViewMode}
+                                  supplementalCollectLabels={settingsDraft.supplemental_collect_labels}
+                                  collectOtherInformation={!!settingsDraft.collect_other_information}
+                                  subjectSignatureTimes={
+                                    settingsDraft.enable_subject_signature === false
+                                      ? 0
+                                      : settingsDraft.subject_signature_times === 2
+                                        ? 2
+                                        : 1
+                                  }
+                                  staffSignatureTimes={
+                                    settingsDraft.enable_staff_signature === false
+                                      ? 0
+                                      : settingsDraft.staff_signature_times === 2
+                                        ? 2
+                                        : 1
+                                  }
+                                />
+                              ) : undefined
+                            }
                           />
                         </div>
                       ) : selectedConfigIcf.content ? (
@@ -7371,6 +7688,16 @@ export default function ConsentManagementPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
+                    onClick={openBatchDeleteConsents}
+                    disabled={softDeleteConsentMutation.isPending || consentSelectedIds.size === 0}
+                    className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                    title={consentSelectedIds.size > 0 ? `删除已勾选 ${consentSelectedIds.size} 条` : '请先勾选数据'}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    批量删除
+                  </button>
+                  <button
+                    type="button"
                     onClick={handleExportSubjects}
                     disabled={exportingSubjects}
                     className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
@@ -7429,6 +7756,8 @@ export default function ConsentManagementPage() {
                           order={consentSortOrder}
                           onSort={handleConsentSort}
                         />
+                        <th className="text-left py-3 px-4 font-medium text-slate-600 align-middle">手机号</th>
+                        <th className="text-left py-3 px-4 font-medium text-slate-600 align-middle min-w-[14rem]">身份证号</th>
                         <ConsentSortTh
                           label="拼音首字母"
                           field="name_pinyin_initials"
@@ -7523,6 +7852,8 @@ export default function ConsentManagementPage() {
                             <td className="py-3 px-2 text-slate-500 align-middle tabular-nums">{rowIndex}</td>
                             <td className="py-3 px-4 text-slate-800 align-middle">{c.subject_name || '-'}</td>
                             <td className="py-3 px-4 text-slate-700 align-middle font-mono text-xs">{c.sc_number ?? '-'}</td>
+                            <td className="py-3 px-4 text-slate-700 align-middle font-mono text-xs">{c.phone ?? '-'}</td>
+                            <td className="py-3 px-4 text-slate-700 align-middle font-mono text-xs whitespace-nowrap min-w-[14rem]">{c.id_card ?? '-'}</td>
                             <td className="py-3 px-4 text-slate-700 align-middle font-mono text-xs">{c.name_pinyin_initials ?? '-'}</td>
                             <td className="py-3 px-4 text-slate-700 align-middle">{signingResultDisp}</td>
                             <td className="py-3 px-4 text-slate-700 align-middle">

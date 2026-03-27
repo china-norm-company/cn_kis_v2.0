@@ -19,6 +19,7 @@ import mimetypes
 import os
 import re
 import threading
+import time
 from ninja import Router, Schema, Query, File, Form, Body
 from ninja.files import UploadedFile
 from typing import Optional, List, Any
@@ -76,7 +77,7 @@ class ProtocolCreateIn(Schema):
     efficacy_type: Optional[str] = None
     sample_size: Optional[int] = None
     screening_schedule: Optional[List[ScreeningDayIn]] = None
-    # 治理台账号 ID（全局角色 crc / crc_supervisor）；每项目至多一人
+    # 治理台账号 ID（全局角色 qa）；每项目至多一人
     consent_config_account_id: Optional[int] = None
     consent_signing_staff_name: Optional[str] = None
 
@@ -85,8 +86,7 @@ class ProtocolBasicUpdateIn(Schema):
     """更新项目名称/编号（至少填一项）；项目编号非空时全局唯一。"""
     title: Optional[str] = None
     code: Optional[str] = None
-    """知情配置负责人；0 表示清空；须为 crc / crc_supervisor 全局角色"""
-    consent_config_account_id: Optional[int] = None
+    consent_config_account_id: Optional[int] = None  # 0 表示清空；须为 qa（QA质量管理）全局角色
 
 
 class ProtocolQueryParams(Schema):
@@ -492,6 +492,23 @@ def _merge_consent_screening_schedule(raw: dict) -> list:
         {'date': d, 'target_count': 1}
         for d in _normalize_planned_screening_dates(raw.get('planned_screening_dates') or [])
     ]
+
+
+def _screening_schedule_input_to_plain_dicts(sched_raw: Optional[List]) -> List[dict]:
+    """将请求体中的 screening_schedule 转为纯 dict 列表；跳过 None，避免 dict(None) 导致 500。"""
+    if not sched_raw:
+        return []
+    out: List[dict] = []
+    for x in sched_raw:
+        if x is None:
+            continue
+        if isinstance(x, dict):
+            out.append(dict(x))
+        elif hasattr(x, 'model_dump'):
+            out.append(x.model_dump())
+        elif hasattr(x, 'dict'):
+            out.append(x.dict())
+    return out
 
 
 def _screening_schedule_summary(sched: list) -> str:
@@ -1212,10 +1229,10 @@ def reorder_consent(request, data: ReorderConsentIn):
 # ============================================================================
 # 知情管理（执行台）：协议概览、ICF 版本与签署记录
 # ============================================================================
-@router.get('/consent-config-assignees', summary='知情配置负责人候选（治理台 CRC / CRC主管）')
+@router.get('/consent-config-assignees', summary='知情配置负责人候选（治理台 QA质量管理）')
 @require_any_permission(['protocol.protocol.read', 'protocol.protocol.create', 'protocol.protocol.update', 'subject.subject.read'])
 def consent_config_assignees(request):
-    """具备全局角色 crc、crc_supervisor 的治理台账号列表，供新建/编辑项目时单选。"""
+    """具备全局角色 qa（QA质量管理）的治理台账号列表，供新建/编辑项目时单选。"""
     items = services.list_consent_config_assignee_accounts()
     return {'code': 200, 'msg': 'OK', 'data': {'items': items}}
 
@@ -1261,8 +1278,12 @@ def consent_overview(
             auth_payload = getattr(request, 'auth', None)
             if isinstance(auth_payload, dict):
                 uid = auth_payload.get('user_id')
+            try:
+                gen = int(cache.get('protocol:consent_overview:cache_gen') or 0)
+            except (TypeError, ValueError):
+                gen = 0
             cache_key = (
-                f'protocol:consent_overview:v3:uid={uid or "-"}:'
+                f'protocol:consent_overview:v3:g={gen}:uid={uid or "-"}:'
                 f'p={req_page}:s={req_page_size}:kw={kw or ""}:ds={ds or ""}:de={de or ""}:cfg={cfg or ""}'
             )
             cached = cache.get(cache_key)
@@ -1763,11 +1784,18 @@ def get_consent_settings(request, protocol_id: int):
 )
 @require_permission('protocol.protocol.update')
 def update_consent_settings(request, protocol_id: int, data: ConsentSettingsIn):
+    trace_id = f"consent_settings_update_{protocol_id}_{int(time.time() * 1000)}"
     _, protocol = _check_protocol_visible(request, protocol_id)
     if not protocol:
         return 404, {'code': 404, 'msg': '协议不存在'}
     if _is_consent_launched(protocol):
         return 400, {'code': 400, 'msg': '已发布，请先取消发布后再修改配置'}
+    logger.info(
+        '[%s] start update_consent_settings protocol_id=%s require_dual_sign=%s',
+        trace_id,
+        protocol_id,
+        bool(getattr(data, 'require_dual_sign', False)),
+    )
     from apps.subject.services.consent_service import (
         _normalize_screening_schedule_for_stats as _norm_ss,
         validate_screening_schedule_test_rules,
@@ -1775,7 +1803,7 @@ def update_consent_settings(request, protocol_id: int, data: ConsentSettingsIn):
 
     sched_raw = getattr(data, 'screening_schedule', None)
     if sched_raw is not None:
-        norm_sched = _norm_ss([x.dict() if hasattr(x, 'dict') else dict(x) for x in sched_raw])
+        norm_sched = _norm_ss(_screening_schedule_input_to_plain_dicts(sched_raw))
     else:
         norm_sched = [
             {'date': d, 'target_count': 1, 'is_test_screening': False}
@@ -1783,10 +1811,12 @@ def update_consent_settings(request, protocol_id: int, data: ConsentSettingsIn):
         ]
     verr = validate_screening_schedule_test_rules(norm_sched)
     if verr:
+        logger.warning('[%s] invalid screening_schedule protocol_id=%s err=%s', trace_id, protocol_id, verr)
         return 400, {'code': 400, 'msg': verr}
     norm_dual_for_row = _normalize_dual_sign_staffs(data.dual_sign_staffs)
     name_err = _validate_screening_signing_staff_names(norm_sched, norm_dual_for_row)
     if name_err:
+        logger.warning('[%s] invalid signing_staff_name protocol_id=%s err=%s', trace_id, protocol_id, name_err)
         return 400, {'code': 400, 'msg': name_err}
     csn = normalize_consent_signing_staff_storage(getattr(data, 'consent_signing_staff_name', None) or '')
     if csn:
@@ -1799,6 +1829,12 @@ def update_consent_settings(request, protocol_id: int, data: ConsentSettingsIn):
                 allowed_csn.add(n)
         for name in split_consent_signing_staff_names(csn):
             if name not in allowed_csn:
+                logger.warning(
+                    '[%s] consent_signing_staff_name out of whitelist protocol_id=%s name=%s',
+                    trace_id,
+                    protocol_id,
+                    name,
+                )
                 return 400, {'code': 400, 'msg': '知情签署工作人员须从双签工作人员名单中选择'}
     settings_data = {
         # 人脸认证签署暂未开放，固定关闭（忽略客户端传入）
@@ -1832,11 +1868,18 @@ def update_consent_settings(request, protocol_id: int, data: ConsentSettingsIn):
     settings_data['consent_verify_test_staff_name'] = (existing.get('consent_verify_test_staff_name') or '').strip()
     settings_data['consent_verify_signature_authorized'] = bool(existing.get('consent_verify_signature_authorized', False))
     _save_consent_settings(protocol, settings_data)
+    logger.info(
+        '[%s] saved consent_settings protocol_id=%s schedule_rows=%s',
+        trace_id,
+        protocol_id,
+        len(settings_data.get('screening_schedule') or []),
+    )
     try:
         _propagate_dual_sign_after_consent_save(protocol, settings_data)
     except Exception:
-        logger.exception('双签配置跨协议同步失败 protocol_id=%s', protocol_id)
+        logger.exception('[%s] 双签配置跨协议同步失败 protocol_id=%s', trace_id, protocol_id)
     protocol.refresh_from_db()
+    logger.info('[%s] finish update_consent_settings protocol_id=%s', trace_id, protocol_id)
     return {'code': 200, 'msg': 'OK', 'data': _get_effective_consent_settings(protocol)}
 
 
@@ -2136,7 +2179,11 @@ def get_icf_version_preview_pdf(request, protocol_id: int, icf_id: int):
         }
 
 
-@router.post('/{protocol_id}/icf-versions/upload', summary='上传文件创建签署节点（知情管理）')
+@router.post(
+    '/{protocol_id}/icf-versions/upload',
+    summary='上传文件创建签署节点（知情管理）',
+    response={200: dict, 400: dict, 404: dict},
+)
 @require_permission('protocol.protocol.update')
 def upload_icf_version(request, protocol_id: int, file: UploadedFile = File(...), node_title: Optional[str] = Form(None)):
     """上传 ICF 文件创建签署节点。文件名自动解析为节点标题，可传 node_title 覆盖。"""
@@ -2221,7 +2268,11 @@ def create_icf_version(request, protocol_id: int, data: ICFVersionCreateIn):
     }
 
 
-@router.put('/{protocol_id}/icf-versions/{icf_id}', summary='更新 ICF 版本（知情管理）')
+@router.put(
+    '/{protocol_id}/icf-versions/{icf_id}',
+    summary='更新 ICF 版本（知情管理）',
+    response={200: dict, 400: dict, 404: dict},
+)
 @require_permission('protocol.protocol.update')
 def update_icf_version(request, protocol_id: int, icf_id: int, data: ICFVersionUpdateIn):
     """执行台知情管理：更新 ICF 版本（版本号、内容、激活状态）"""
@@ -2256,7 +2307,12 @@ def update_icf_version(request, protocol_id: int, icf_id: int, data: ICFVersionU
     }
 
 
-@router.delete('/{protocol_id}/icf-versions/{icf_id}', summary='删除签署节点（知情管理）')
+@router.delete(
+    '/{protocol_id}/icf-versions/{icf_id}',
+    summary='删除签署节点（知情管理）',
+    # 须声明非 200，否则 Ninja 抛 ConfigError，全局处理器将正文替换为「操作失败」
+    response={200: dict, 400: dict, 404: dict},
+)
 @require_permission('protocol.protocol.update')
 def delete_icf_version(request, protocol_id: int, icf_id: int):
     """删除 ICF 版本（签署节点）；已发布或已有签署/见证记录时不允许删除。"""
@@ -2272,7 +2328,11 @@ def delete_icf_version(request, protocol_id: int, icf_id: int):
     return {'code': 200, 'msg': 'OK', 'data': {'id': icf_id}}
 
 
-@router.post('/{protocol_id}/icf-versions/reorder', summary='调整 ICF 签署顺序（知情管理）')
+@router.post(
+    '/{protocol_id}/icf-versions/reorder',
+    summary='调整 ICF 签署顺序（知情管理）',
+    response={200: dict, 400: dict, 404: dict},
+)
 @require_permission('protocol.protocol.update')
 def reorder_icf_versions(request, protocol_id: int, data: ICFReorderIn):
     """按 id_order 更新 ICF 版本的签署顺序"""
@@ -2420,6 +2480,7 @@ def list_consents(
         consent_staff_display_status,
         list_consents_grouped_by_subject_page,
         list_consents_page_for_protocol,
+        safe_subject_consent_icf_version,
         signing_staff_name_for_screening_date,
         subject_name_display_for_consent,
         subject_no_display_for_consent,
@@ -2486,8 +2547,9 @@ def list_consents(
             investigator_signed_at = c.investigator_signed_at.isoformat() if getattr(c, 'investigator_signed_at', None) else None
         except Exception:
             investigator_signed_at = None
-        node_title = getattr(c.icf_version, 'node_title', None) or '' if c.icf_version else ''
-        icf_version = c.icf_version.version if c.icf_version else ''
+        icf_row = safe_subject_consent_icf_version(c)
+        node_title = (getattr(icf_row, 'node_title', None) or '') if icf_row else ''
+        icf_version = icf_row.version if icf_row else ''
         extra = consent_list_display_fields(c, None)
         if single_ref_date:
             ref_day = single_ref_date
@@ -2502,6 +2564,8 @@ def list_consents(
             'subject_id': c.subject_id,
             'subject_no': subject_no_display_for_consent(c),
             'subject_name': subject_name_display_for_consent(c),
+            'phone': extra.get('phone_masked') or '-',
+            'id_card': extra.get('id_card_masked') or '-',
             'sc_number': extra.get('sc_number') or '-',
             'name_pinyin_initials': extra.get('name_pinyin_initials') or '-',
             'signing_result': extra.get('signing_result') or '-',
@@ -2682,8 +2746,9 @@ def investigator_sign_consent(request, protocol_id: int, consent_id: int, data: 
 @require_permission('protocol.protocol.update')
 def update_protocol_basic(request, protocol_id: int, data: ProtocolBasicUpdateIn):
     """新建项目外的编辑入口：修改项目编号时需保证与现有项目不重复。"""
-    account = _get_account_from_request(request)
-    protocol = get_visible_object(Protocol.objects.filter(id=protocol_id, is_deleted=False), account)
+    # 与知情管理 consent-settings、consent-overview 一致：仅校验协议存在 + 权限码，不套用项目级 scope
+    # （否则列表可见协议但 PUT 基本信息失败，现场计划保存会先调本接口）
+    protocol = Protocol.objects.filter(id=protocol_id, is_deleted=False).first()
     if not protocol:
         return 404, {'code': 404, 'msg': '协议不存在'}
     patch = data.model_dump(exclude_unset=True) if hasattr(data, 'model_dump') else data.dict(exclude_unset=True)
@@ -2721,9 +2786,8 @@ def update_protocol_basic(request, protocol_id: int, data: ProtocolBasicUpdateIn
 @router.get('/{protocol_id}', summary='协议详情')
 @require_permission('protocol.protocol.read')
 def get_protocol(request, protocol_id: int):
-    """获取协议详细信息；按数据权限校验可见性"""
-    account = _get_account_from_request(request)
-    protocol = get_visible_object(Protocol.objects.filter(id=protocol_id, is_deleted=False), account)
+    """获取协议详细信息（与知情管理链路一致：存在性 + 权限码，不套用项目级 scope）。"""
+    protocol = Protocol.objects.filter(id=protocol_id, is_deleted=False).first()
     if not protocol:
         return 404, {'code': 404, 'msg': '协议不存在'}
     return {'code': 200, 'msg': 'OK', 'data': _protocol_to_dict(protocol)}
@@ -3051,7 +3115,7 @@ def deactivate_protocol(request, protocol_id: int):
 
 
 class WitnessStaffCreateIn(Schema):
-    """从鹿鸣·治理台（3008）已存在的账号建档；须具备 admin / crc / crc_supervisor 全局角色。"""
+    """从鹿鸣·治理台（3008）已存在的账号建档；须具备 qa（QA质量管理）全局角色。"""
     account_id: int
 
 
@@ -3191,7 +3255,7 @@ def _perform_dual_sign_auth(protocol_id: int, data: DualSignAuthRequestIn):
     if not ws_svc.witness_staff_can_receive_auth_emails(ws):
         return 400, {
             'code': 400,
-            'msg': '该人员无法发送授权邮件：须为具备双签角色的治理台账号，或已填写姓名与工作邮箱的无账号档案',
+            'msg': '该人员无法发送授权邮件：须为具备 QA质量管理 全局角色的治理台账号，或已填写姓名与工作邮箱的无账号档案',
         }
     icf = ICFVersion.objects.filter(id=data.icf_version_id, protocol_id=protocol_id).first()
     if not icf:
@@ -3244,7 +3308,7 @@ def witness_staff_list(
     }
 
 
-@router.get('/witness-staff/eligible-accounts', summary='可选：治理台账号（具备双签角色，用于建档）')
+@router.get('/witness-staff/eligible-accounts', summary='可选：治理台账号（QA质量管理，用于建档）')
 @require_permission('protocol.protocol.update')
 def witness_staff_eligible_accounts(
     request,
@@ -3478,7 +3542,7 @@ def witness_staff_send_profile_verify_email(request, staff_id: int, data: Witnes
     if not ws_svc.witness_staff_can_receive_auth_emails(ws):
         return 400, {
             'code': 400,
-            'msg': '该人员无法发送核验邮件：须为具备双签角色的治理台账号，或已填写姓名与工作邮箱的无账号档案',
+            'msg': '该人员无法发送核验邮件：须为具备 QA质量管理 全局角色的治理台账号，或已填写姓名与工作邮箱的无账号档案',
         }
     notify = (data.notify_email or '').strip() or (ws.email or '').strip()
     if not notify:

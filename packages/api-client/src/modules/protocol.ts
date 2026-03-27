@@ -38,6 +38,10 @@ export interface ConsentRecord {
   subject_id: number
   subject_no: string
   subject_name: string
+  /** 手机号（默认脱敏展示：132****1234） */
+  phone?: string
+  /** 身份证号（默认脱敏展示：310110********3920） */
+  id_card?: string
   /** 接待台队列同步的筛选号（如 SC001） */
   sc_number?: string
   /** 拼音首字母 */
@@ -396,7 +400,7 @@ export const protocolApi = {
   },
 
   // ---------- 知情管理（执行台） ----------
-  /** 知情配置负责人候选（治理台全局角色 CRC / CRC主管） */
+  /** 知情配置负责人候选（治理台全局角色 QA质量管理） */
   listConsentConfigAssignees() {
     return api.get<{ items: Array<{ id: number; display_name: string; username: string; email: string }> }>(
       '/protocol/consent-config-assignees',
@@ -671,7 +675,7 @@ export const protocolApi = {
     )
   },
 
-  /** 具备管理员/CRC/CRC主管 角色的治理台账号（用于建档） */
+  /** 具备 QA质量管理 全局角色的治理台账号（用于建档） */
   listWitnessEligibleAccounts(params?: {
     search?: string
     page?: number
