@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Check, ClipboardList, Link2, PlayCircle, UserPlus } from 'lucide-react'
+import { ArrowLeft, Check, ClipboardList, Link2, PlayCircle } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { controlPlaneApi } from '@/api/controlPlane'
 import { QueryError, QueryLoading } from '@/components/QueryState'

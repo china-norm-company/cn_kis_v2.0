@@ -96,7 +96,6 @@ class Command(BaseCommand):
             # 批量生成 embedding（fastembed 支持批量推理）
             texts = [_prepare_text(e) for e in batch]
             try:
-                from fastembed import TextEmbedding
                 raw_vecs = list(model.embed(texts))
                 vecs = [v.tolist() if hasattr(v, 'tolist') else list(v) for v in raw_vecs]
             except Exception as e:

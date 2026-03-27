@@ -97,3 +97,35 @@ class NotificationPreference(models.Model):
 
     def __str__(self):
         return f'User#{self.user_id} - {self.notification_type}'
+
+
+class PrApprovalRecord(models.Model):
+    """飞书原生 PR 审批记录（免 GitHub 登录）"""
+
+    class Meta:
+        db_table = 't_pr_approval_record'
+        verbose_name = 'PR 飞书审批记录'
+        unique_together = [('repo', 'pr_number', 'approver_open_id')]
+        indexes = [
+            models.Index(fields=['repo', 'pr_number', 'action']),
+        ]
+
+    repo = models.CharField('仓库', max_length=200, help_text='owner/repo 格式')
+    pr_number = models.IntegerField('PR 编号')
+    commit_sha = models.CharField('Commit SHA', max_length=40)
+
+    approver_open_id = models.CharField('审批人 Feishu open_id', max_length=100)
+    approver_name = models.CharField('审批人姓名', max_length=100, blank=True, default='')
+
+    ACTION_APPROVE = 'approve'
+    ACTION_REJECT = 'reject'
+    ACTION_CHOICES = [(ACTION_APPROVE, '批准'), (ACTION_REJECT, '拒绝')]
+    action = models.CharField('审批动作', max_length=20, choices=ACTION_CHOICES)
+
+    github_status_set = models.BooleanField('已更新 GitHub 状态', default=False)
+
+    create_time = models.DateTimeField('创建时间', auto_now_add=True)
+    update_time = models.DateTimeField('更新时间', auto_now=True)
+
+    def __str__(self):
+        return f'PR#{self.pr_number} {self.action} by {self.approver_name or self.approver_open_id}'

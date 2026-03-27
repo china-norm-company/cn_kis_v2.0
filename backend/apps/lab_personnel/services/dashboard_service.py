@@ -5,11 +5,10 @@
 """
 import logging
 from datetime import date, timedelta
-from decimal import Decimal
 
-from django.db.models import Count, Avg, Q
+from django.db.models import Count, Avg
 
-from apps.hr.models import Staff, Training, TrainingStatus
+from apps.hr.models import Training, TrainingStatus
 from apps.lab_personnel.models import LabStaffProfile, StaffCertificate, CertificateStatus
 from apps.lab_personnel.models_scheduling import ShiftSlot, SlotConfirmStatus
 from apps.lab_personnel.models_worktime import WorkTimeSummary

@@ -22,8 +22,8 @@ from .protocol_service import (
     set_parsed_data,
     complete_parse,
     get_parse_logs,
-    _create_project_chat,
-    _add_assignment_members_to_chat,
+    _create_project_chat,  # noqa: F401
+    _add_assignment_members_to_chat,  # noqa: F401
 )
 
 __all__ = [

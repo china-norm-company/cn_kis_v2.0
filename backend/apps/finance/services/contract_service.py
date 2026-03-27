@@ -9,8 +9,7 @@ from decimal import Decimal
 from datetime import timedelta
 
 from apps.finance.models import (
-    Contract, ContractStatus,
-    ContractPaymentTerm, ContractChange, ContractChangeStatus,
+    Contract, ContractPaymentTerm, ContractChange, ContractChangeStatus,
     PaymentPlan,
 )
 

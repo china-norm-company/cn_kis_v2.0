@@ -116,7 +116,7 @@ run_suite \
 
 run_suite \
   "招募台（recruitment）" \
-  "S04-S07（招募、联系、粗筛、入组衔接）" \
+  "S04-S07（招募、联系、初筛、入组衔接）" \
   "pnpm --filter \"@cn-kis/recruitment\" test:e2e:headed -- e2e/03-registration-workflow.spec.ts e2e/05-pre-screening-workflow.spec.ts" \
   "$ROOT/.tmp/stage13-headed/recruitment.log"
 

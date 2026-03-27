@@ -6,6 +6,7 @@ import { getWorkstationUrl } from '@cn-kis/feishu-sdk'
 import { ClawQuickPanel, useClawQuickActions, DigitalWorkerSuggestionBar, DigitalWorkerActionCard } from '@cn-kis/ui-kit'
 import type { QuickAction } from '@cn-kis/ui-kit'
 import type { RecruitmentPlan, SuggestionItem } from '@cn-kis/api-client'
+import { completionRatePercent } from '../utils/planDisplay'
 import { ErrorAlert } from '../components/ErrorAlert'
 import { RefreshCw, TrendingUp, Users, Filter, UserCheck, UserMinus, ArrowRight, PhoneCall, Stethoscope, ClipboardCheck, AlertTriangle, PhoneForwarded, Microscope } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
@@ -192,7 +193,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6 md:gap-4">
         <KPICard icon={<Users className="w-5 h-5" />} title="目标人数" value={totalTarget} color="text-indigo-600" bg="bg-indigo-50" loading={isLoading} />
         <KPICard icon={<TrendingUp className="w-5 h-5" />} title="报名数" value={totalRegistered} color="text-sky-600" bg="bg-sky-50" loading={isLoading} />
-        <KPICard icon={<Microscope className="w-5 h-5" />} title="今日粗筛" value={psSummary?.total ?? 0} color="text-orange-600" bg="bg-orange-50" loading={preScreeningSummaryQuery.isLoading} subtitle={psSummary ? `通过率 ${psSummary.pass_rate}%` : undefined} />
+        <KPICard icon={<Microscope className="w-5 h-5" />} title="今日初筛" value={psSummary?.total ?? 0} color="text-orange-600" bg="bg-orange-50" loading={preScreeningSummaryQuery.isLoading} subtitle={psSummary ? `通过率 ${psSummary.pass_rate}%` : undefined} />
         <KPICard icon={<Filter className="w-5 h-5" />} title="筛选数" value={totalScreened} color="text-amber-600" bg="bg-amber-50" loading={isLoading} />
         <KPICard icon={<UserCheck className="w-5 h-5" />} title="入组数" value={totalEnrolled} color="text-emerald-600" bg="bg-emerald-50" loading={isLoading} />
         <KPICard icon={<UserMinus className="w-5 h-5" />} title="进行中计划" value={activePlans.length} color="text-violet-600" bg="bg-violet-50" loading={isLoading} />
@@ -204,7 +205,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2 overflow-x-auto pb-1">
             <FunnelStep label="报名" value={totalRegistered} color="bg-sky-500" />
             <ArrowRight className="w-4 h-4 text-slate-300 flex-shrink-0" />
-            <FunnelStep label="粗筛" value={psSummary?.completed ?? 0} color="bg-orange-500" rate={totalRegistered > 0 ? ((psSummary?.completed ?? 0) / totalRegistered * 100) : 0} />
+            <FunnelStep label="初筛" value={psSummary?.completed ?? 0} color="bg-orange-500" rate={totalRegistered > 0 ? ((psSummary?.completed ?? 0) / totalRegistered * 100) : 0} />
             <ArrowRight className="w-4 h-4 text-slate-300 flex-shrink-0" />
             <FunnelStep label="筛选" value={totalScreened} color="bg-amber-500" rate={(psSummary?.passed ?? 0) > 0 ? (totalScreened / (psSummary?.passed ?? 1) * 100) : 0} />
             <ArrowRight className="w-4 h-4 text-slate-300 flex-shrink-0" />
@@ -240,11 +241,16 @@ export default function DashboardPage() {
                 <div className="w-48 text-sm text-slate-600 truncate" title={plan.title}>{plan.title}</div>
                 <div className="flex-1">
                   <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${Math.min(plan.completion_rate * 100, 100)}%` }} />
+                    <div
+                      className="h-full bg-emerald-500 rounded-full transition-all"
+                      style={{ width: `${Math.min(completionRatePercent(plan.completion_rate), 100)}%` }}
+                    />
                   </div>
                 </div>
                 <div className="w-24 text-right text-xs text-slate-600">{plan.enrolled_count}/{plan.target_count}</div>
-                <div className="w-16 text-right text-sm font-medium text-slate-700">{(plan.completion_rate * 100).toFixed(0)}%</div>
+                <div className="w-16 text-right text-sm font-medium text-slate-700">
+                  {completionRatePercent(plan.completion_rate).toFixed(0)}%
+                </div>
                 <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusColors[plan.status] || 'bg-slate-100 text-slate-600'}`}>{statusLabels[plan.status] || plan.status}</span>
               </div>
             ))}
@@ -508,7 +514,7 @@ function RecentRegistrations() {
   if (error) return <div className="text-sm text-red-500 py-4 text-center">{(error as Error).message}</div>
   if (items.length === 0) return <div className="text-sm text-slate-400 py-6 text-center">暂无报名</div>
 
-  const statusLabel: Record<string, string> = { registered: '已报名', contacted: '已联系', pre_screening: '粗筛中', pre_screened_pass: '粗筛通过', pre_screened_fail: '粗筛不通过', screening: '筛选中', screened_pass: '筛选通过', screened_fail: '筛选未通过', enrolled: '已入组', withdrawn: '已退出' }
+  const statusLabel: Record<string, string> = { registered: '已报名', contacted: '已联系', pre_screening: '初筛中', pre_screened_pass: '初筛通过', pre_screened_fail: '初筛不通过', screening: '筛选中', screened_pass: '筛选通过', screened_fail: '筛选未通过', enrolled: '已入组', withdrawn: '已退出' }
   const statusColor: Record<string, string> = { registered: 'text-amber-600', contacted: 'text-sky-600', pre_screening: 'text-orange-600', pre_screened_pass: 'text-orange-500', pre_screened_fail: 'text-red-500', screening: 'text-indigo-600', screened_pass: 'text-teal-600', screened_fail: 'text-red-500', enrolled: 'text-emerald-600', withdrawn: 'text-red-500' }
 
   return (

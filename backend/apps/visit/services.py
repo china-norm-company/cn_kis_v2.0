@@ -9,7 +9,6 @@
 import os
 import logging
 from typing import Optional, List
-from django.utils import timezone
 from django.db import transaction
 
 from .models import (

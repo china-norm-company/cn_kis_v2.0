@@ -5,7 +5,6 @@
   python manage.py diagnose_proposal_list
   python manage.py diagnose_proposal_list --account-id 168
 """
-import argparse
 import sys
 
 from django.core.management.base import BaseCommand

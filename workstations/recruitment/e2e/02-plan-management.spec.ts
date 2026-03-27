@@ -22,15 +22,13 @@ test.describe('场景2: 招募计划管理', () => {
 
     const table = page.locator('table')
     await expect(table).toBeVisible()
-    await expect(table.locator('th', { hasText: '计划编号' })).toBeVisible()
-    await expect(table.locator('th', { hasText: '标题' })).toBeVisible()
-    await expect(table.locator('th', { hasText: '目标/入组' })).toBeVisible()
-    await expect(table.locator('th', { hasText: '完成率' })).toBeVisible()
-    await expect(table.locator('th', { hasText: '状态' })).toBeVisible()
+    await expect(table.locator('th', { hasText: '项目编号' })).toBeVisible()
+    await expect(table.locator('th', { hasText: '项目名称' })).toBeVisible()
+    await expect(table.locator('th', { hasText: '样本量' })).toBeVisible()
   })
 
   test('2.2 计划状态筛选', async () => {
-    const statusSelect = page.locator('select[title="状态筛选"]')
+    const statusSelect = page.locator('select[title="计划状态筛选"]')
     await expect(statusSelect).toBeVisible()
 
     const options = statusSelect.locator('option')
@@ -41,7 +39,7 @@ test.describe('场景2: 招募计划管理', () => {
   })
 
   test('2.3 搜索框可用', async () => {
-    const searchInput = page.getByPlaceholder('搜索编号/标题')
+    const searchInput = page.getByPlaceholder('搜索项目编号/标题')
     await expect(searchInput).toBeVisible()
     await searchInput.fill('保湿')
     await searchInput.press('Enter')
@@ -51,25 +49,26 @@ test.describe('场景2: 招募计划管理', () => {
   })
 
   test('2.4 新建计划按钮打开创建弹窗', async () => {
-    await page.getByRole('button', { name: '新建计划' }).click()
-    await expect(page.getByRole('heading', { name: '新建招募计划' })).toBeVisible()
+    await page.getByRole('button', { name: '新增计划' }).click()
+    await expect(page.getByRole('heading', { name: '新增计划' })).toBeVisible()
 
-    await expect(page.getByText('计划标题')).toBeVisible()
-    await expect(page.getByText('关联协议')).toBeVisible()
-    await expect(page.getByText('目标人数')).toBeVisible()
+    await expect(page.getByText('项目编号（唯一）')).toBeVisible()
+    await expect(page.getByText('关联协议（可选）')).toBeVisible()
+    await expect(page.getByText('样本量')).toBeVisible()
     await expect(page.getByRole('button', { name: '创建' })).toBeVisible()
     await expect(page.getByRole('button', { name: '取消' })).toBeVisible()
   })
 
   test('2.5 创建弹窗可以关闭', async () => {
     await page.getByRole('button', { name: '取消' }).click()
-    await expect(page.getByRole('heading', { name: '新建招募计划' })).not.toBeVisible({ timeout: 3000 })
+    await expect(page.getByRole('heading', { name: '新增计划' })).not.toBeVisible({ timeout: 3000 })
   })
 
-  test('2.6 计划列表提供状态流转操作', async () => {
+  test('2.6 计划汇总提供状态流转操作', async () => {
+    await page.getByRole('button', { name: '计划汇总' }).click()
     const draftRow = page.locator('tr', { hasText: '美白功效评价招募' })
     await expect(draftRow).toBeVisible()
-    await expect(draftRow.getByRole('button', { name: '待审批' })).toBeVisible()
+    await expect(draftRow.getByRole('button', { name: '已批准' })).toBeVisible()
     await expect(draftRow.getByRole('button', { name: '删除' })).toBeVisible()
   })
 
@@ -79,8 +78,9 @@ test.describe('场景2: 招募计划管理', () => {
     await expect(exportBtn).toBeEnabled()
   })
 
-  test('2.8 计划编号可点击', async () => {
-    const planLink = page.getByRole('button', { name: 'RP-2026-001' })
+  test('2.8 计划页入口可点击', async () => {
+    await page.getByRole('button', { name: '计划汇总' }).click()
+    const planLink = page.getByRole('button', { name: '计划页' }).first()
     await expect(planLink).toBeVisible()
     await planLink.click()
     await expect(page).toHaveURL(/\/recruitment\/plans\/1/)

@@ -4,25 +4,90 @@
 路由前缀：/recruitment/
 覆盖：计划 CRUD + 审批、入排标准、渠道管理、广告、报名、筛选、入组、进度、问题、策略。
 """
-from ninja import Router, Schema, Query
-from typing import Optional, List
+import math
+import mimetypes
+import os
+import re
+from decimal import Decimal, InvalidOperation
+
+from ninja import Router, Schema, Query, Form, File
+from ninja.files import UploadedFile
+from typing import Optional, List, Dict, Tuple
 from datetime import datetime, date
-from apps.identity.decorators import require_permission, _get_account_from_request
+from django.http import FileResponse
+from apps.identity.decorators import require_permission, require_any_permission, _get_account_from_request
 from .services import recruitment_service as svc
 
 router = Router()
+
+
+def _normalize_wei_visit_date(v) -> str:
+    """具体访视日期：自由文本；兼容历史 date 入参。"""
+    if v is None:
+        return ''
+    if isinstance(v, date):
+        return v.isoformat()
+    return (str(v) or '').strip()[:500]
+
+
+def _wei_visit_date_out(v) -> Optional[str]:
+    if v is None or v == '':
+        return None
+    if hasattr(v, 'isoformat'):
+        return v.isoformat()
+    return str(v)
+
+
+def _parse_template_honorarium(th) -> Optional[Decimal]:
+    """招募模板礼金 → Decimal；空为 None。兼容字符串、含「元」等前缀后缀（提取首段数字）。"""
+    if th is None:
+        return None
+    if isinstance(th, bool):
+        raise ValueError('礼金须为数字（元）')
+    if isinstance(th, float):
+        if math.isnan(th) or math.isinf(th):
+            return None
+        return Decimal(str(th))
+    if isinstance(th, int):
+        return Decimal(th)
+    s = str(th).strip()
+    if not s:
+        return None
+    try:
+        return Decimal(s)
+    except InvalidOperation:
+        m = re.search(r'[-+]?\d+(?:\.\d+)?', s)
+        if m:
+            try:
+                return Decimal(m.group(0))
+            except InvalidOperation:
+                pass
+    raise ValueError('礼金须为数字（元），请勿使用无法识别的字符')
 
 
 # ============================================================================
 # Schema
 # ============================================================================
 class PlanCreateIn(Schema):
-    protocol_id: int
+    protocol_id: Optional[int] = None
     title: str
     target_count: int
     start_date: date
     end_date: date
     description: Optional[str] = ''
+    project_code: Optional[str] = None
+    sample_requirement: Optional[str] = ''
+    wei_visit_point: Optional[str] = ''
+    wei_visit_date: Optional[str] = None
+    researcher_name: Optional[str] = ''
+    supervisor_name: Optional[str] = ''
+    recruit_start_date: Optional[date] = None
+    recruit_end_date: Optional[date] = None
+    planned_appointment_count: Optional[int] = 0
+    estimated_work_hours: Optional[float] = None
+    recruit_specialist_names: Optional[List[str]] = None
+    channel_recruitment_needed: Optional[bool] = False
+    material_prep_status: Optional[str] = 'draft'
 
 
 class PlanUpdateIn(Schema):
@@ -32,6 +97,20 @@ class PlanUpdateIn(Schema):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     notes: Optional[str] = None
+    project_code: Optional[str] = None
+    sample_requirement: Optional[str] = None
+    wei_visit_point: Optional[str] = None
+    wei_visit_date: Optional[str] = None
+    researcher_name: Optional[str] = None
+    supervisor_name: Optional[str] = None
+    recruit_start_date: Optional[date] = None
+    recruit_end_date: Optional[date] = None
+    planned_appointment_count: Optional[int] = None
+    estimated_work_hours: Optional[float] = None
+    actual_work_hours: Optional[float] = None
+    recruit_specialist_names: Optional[List[str]] = None
+    channel_recruitment_needed: Optional[bool] = None
+    material_prep_status: Optional[str] = None
 
 
 class PlanStatusIn(Schema):
@@ -133,19 +212,136 @@ class AdUpdateIn(Schema):
     ad_type: Optional[str] = None
 
 
+class RecruitTemplateUpdateIn(Schema):
+    title: Optional[str] = None
+    content: Optional[str] = ''
+    template_project_code: Optional[str] = ''
+    template_project_name: Optional[str] = ''
+    template_sample_requirement: Optional[str] = ''
+    template_visit_date: Optional[date] = None
+    template_honorarium: Optional[float] = None
+    template_liaison_fee: Optional[str] = None
+
+
+class RejectReasonIn(Schema):
+    reason: Optional[str] = ''
+
+
+def _recruit_template_ad_dict(ad) -> dict:
+    def _dec(x):
+        return float(x) if x is not None else None
+    return {
+        'id': ad.id,
+        'ad_type': ad.ad_type,
+        'title': ad.title,
+        'content': ad.content or '',
+        'status': ad.status,
+        'template_project_code': getattr(ad, 'template_project_code', '') or '',
+        'template_project_name': getattr(ad, 'template_project_name', '') or '',
+        'template_sample_requirement': getattr(ad, 'template_sample_requirement', '') or '',
+        'template_visit_date': ad.template_visit_date.isoformat() if getattr(ad, 'template_visit_date', None) else None,
+        'template_honorarium': _dec(getattr(ad, 'template_honorarium', None)),
+        'template_liaison_fee': str(getattr(ad, 'template_liaison_fee', '') or ''),
+        'reject_reason': getattr(ad, 'reject_reason', '') or '',
+        'submitted_at': ad.submitted_at.isoformat() if getattr(ad, 'submitted_at', None) else None,
+        'submitted_by_id': getattr(ad, 'submitted_by_id', None),
+        'published_at': ad.published_at.isoformat() if ad.published_at else None,
+        'create_time': ad.create_time.isoformat(),
+    }
+
+
+def _appointment_doc_dict(d, plan_id: int) -> dict:
+    rel = ''
+    if d.file:
+        rel = (d.file.name or '').replace('\\', '/')
+    return {
+        'doc_type': d.doc_type,
+        'original_filename': d.original_filename or '',
+        'file_size': d.file_size,
+        'file_url': f'/api/v1/recruitment/plans/{plan_id}/appointment-docs/{d.doc_type}/file',
+        'storage_path': rel,
+        'update_time': d.update_time.isoformat() if d.update_time else None,
+    }
+
+
 # ============================================================================
 # 辅助函数
 # ============================================================================
-def _plan_dict(p) -> dict:
-    return {
+def _plan_dict(
+    p,
+    screening_map: Optional[Dict[int, int]] = None,
+    live_by_pc: Optional[Dict[str, Tuple[int, int]]] = None,
+    v1_by_pc: Optional[Dict[str, int]] = None,
+) -> dict:
+    code = ''
+    pr = getattr(p, 'protocol', None)
+    if pr is not None:
+        code = (pr.code or '').strip()
+    pc = (getattr(p, 'project_code', None) or '') or code or ''
+    planned = int(getattr(p, 'planned_appointment_count', 0) or 0)
+    if screening_map is not None:
+        scr_done = int(screening_map.get(p.id, 0))
+    else:
+        scr_done = svc.count_screening_completed_for_plan(p.id)
+    pc_key = pc.strip()
+    if v1_by_pc is not None:
+        actual_appt_v1 = int(v1_by_pc.get(pc_key, 0)) if pc_key else 0
+    else:
+        actual_appt_v1 = svc.count_v1_appointments_for_project_code(pc_key) if pc_key else 0
+    appointment_completion_rate = (
+        round(actual_appt_v1 / planned * 100, 2) if planned > 0 else 0.0
+    )
+    specialists = getattr(p, 'recruit_specialist_names', None) or []
+    if not isinstance(specialists, list):
+        specialists = []
+    def _d(d):
+        return d.isoformat() if d else None
+    def _dec(x):
+        return float(x) if x is not None else None
+    if pc.strip():
+        if live_by_pc is not None:
+            screened_appt, enr_live = live_by_pc.get(pc.strip(), (0, 0))
+        else:
+            screened_appt, enr_live = svc.get_plan_live_metrics(pc)
+        screened_display = screened_appt
+        enrolled_display = enr_live
+        completion_rate = (
+            round(enrolled_display / p.target_count * 100, 2) if p.target_count and p.target_count > 0 else 0.0
+        )
+    else:
+        screened_display = int(p.screened_count or 0)
+        enrolled_display = int(p.enrolled_count or 0)
+        completion_rate = p.completion_rate
+    base = {
         'id': p.id, 'plan_no': p.plan_no, 'protocol_id': p.protocol_id,
         'title': p.title, 'description': p.description,
-        'target_count': p.target_count, 'enrolled_count': p.enrolled_count,
-        'screened_count': p.screened_count, 'registered_count': p.registered_count,
+        'target_count': p.target_count, 'enrolled_count': enrolled_display,
+        'screened_count': screened_display, 'registered_count': p.registered_count,
+        'screening_completed_count': scr_done,
+        'actual_appointment_count': actual_appt_v1,
         'start_date': p.start_date.isoformat(), 'end_date': p.end_date.isoformat(),
-        'status': p.status, 'completion_rate': p.completion_rate,
+        'status': p.status, 'completion_rate': completion_rate,
+        'appointment_completion_rate': appointment_completion_rate,
         'create_time': p.create_time.isoformat(),
+        'protocol_code': code,
+        'project_code': (getattr(p, 'project_code', None) or '') or None,
+        'display_project_code': pc,
+        'sample_requirement': getattr(p, 'sample_requirement', '') or '',
+        'wei_visit_point': getattr(p, 'wei_visit_point', '') or '',
+        'wei_visit_date': _wei_visit_date_out(getattr(p, 'wei_visit_date', None)),
+        'researcher_name': getattr(p, 'researcher_name', '') or '',
+        'supervisor_name': getattr(p, 'supervisor_name', '') or '',
+        'recruit_start_date': _d(getattr(p, 'recruit_start_date', None)),
+        'recruit_end_date': _d(getattr(p, 'recruit_end_date', None)),
+        'planned_appointment_count': planned,
+        'estimated_work_hours': _dec(getattr(p, 'estimated_work_hours', None)),
+        'actual_work_hours': _dec(getattr(p, 'actual_work_hours', None)),
+        'recruit_specialist_names': specialists,
+        'channel_recruitment_needed': bool(getattr(p, 'channel_recruitment_needed', False)),
+        'material_prep_status': getattr(p, 'material_prep_status', None) or 'draft',
     }
+    base.update(svc.get_plan_material_summary(p.id))
+    return base
 
 
 # ============================================================================
@@ -156,8 +352,22 @@ def _plan_dict(p) -> dict:
 def list_plans(request, protocol_id: Optional[int] = None, status: Optional[str] = None,
                page: int = 1, page_size: int = 20):
     result = svc.list_plans(protocol_id=protocol_id, status=status, page=page, page_size=page_size)
+    items = result['items']
+    plan_ids = [p.id for p in items]
+    screening_map = svc.count_screening_completed_by_plan_ids(plan_ids)
+
+    def _display_pc(plan) -> str:
+        c = ''
+        pr = getattr(plan, 'protocol', None)
+        if pr is not None:
+            c = (pr.code or '').strip()
+        return (getattr(plan, 'project_code', None) or '') or c or ''
+
+    codes = [_display_pc(p) for p in items]
+    live_by_pc = svc.get_live_metrics_by_project_codes(codes)
+    v1_by_pc = svc.count_v1_appointments_by_project_codes(codes)
     return {'code': 200, 'msg': 'OK', 'data': {
-        'items': [_plan_dict(p) for p in result['items']],
+        'items': [_plan_dict(p, screening_map=screening_map, live_by_pc=live_by_pc, v1_by_pc=v1_by_pc) for p in items],
         'total': result['total'],
     }}
 
@@ -166,12 +376,34 @@ def list_plans(request, protocol_id: Optional[int] = None, status: Optional[str]
 @require_permission('subject.recruitment.create')
 def create_plan(request, data: PlanCreateIn):
     account = _get_account_from_request(request)
-    plan = svc.create_plan(
-        protocol_id=data.protocol_id, title=data.title,
-        target_count=data.target_count, start_date=data.start_date,
-        end_date=data.end_date, description=data.description or '',
-        account=account,
-    )
+    try:
+        from decimal import Decimal
+        est = data.estimated_work_hours
+        est_dec = Decimal(str(est)) if est is not None else None
+        plan = svc.create_plan(
+            protocol_id=data.protocol_id,
+            title=data.title,
+            target_count=data.target_count,
+            start_date=data.start_date,
+            end_date=data.end_date,
+            description=data.description or '',
+            account=account,
+            project_code=data.project_code,
+            sample_requirement=data.sample_requirement or '',
+            wei_visit_point=data.wei_visit_point or '',
+            wei_visit_date=_normalize_wei_visit_date(data.wei_visit_date),
+            researcher_name=data.researcher_name or '',
+            supervisor_name=data.supervisor_name or '',
+            recruit_start_date=data.recruit_start_date,
+            recruit_end_date=data.recruit_end_date,
+            planned_appointment_count=data.planned_appointment_count or 0,
+            estimated_work_hours=est_dec,
+            recruit_specialist_names=data.recruit_specialist_names,
+            channel_recruitment_needed=bool(data.channel_recruitment_needed),
+            material_prep_status=data.material_prep_status or 'draft',
+        )
+    except ValueError as e:
+        return 400, {'code': 400, 'msg': str(e)}
     return {'code': 200, 'msg': 'OK', 'data': _plan_dict(plan)}
 
 
@@ -187,14 +419,26 @@ def get_plan(request, plan_id: int):
 @router.put('/plans/{plan_id}', summary='更新招募计划')
 @require_permission('subject.recruitment.update')
 def update_plan(request, plan_id: int, data: PlanUpdateIn):
-    plan = svc.update_plan(plan_id, **data.dict(exclude_unset=True))
+    raw = data.dict(exclude_unset=True)
+    if 'wei_visit_date' in raw:
+        raw['wei_visit_date'] = _normalize_wei_visit_date(raw.get('wei_visit_date'))
+    if 'estimated_work_hours' in raw and raw['estimated_work_hours'] is not None:
+        from decimal import Decimal
+        raw['estimated_work_hours'] = Decimal(str(raw['estimated_work_hours']))
+    if 'actual_work_hours' in raw and raw['actual_work_hours'] is not None:
+        from decimal import Decimal
+        raw['actual_work_hours'] = Decimal(str(raw['actual_work_hours']))
+    try:
+        plan = svc.update_plan(plan_id, **raw)
+    except ValueError as e:
+        return 400, {'code': 400, 'msg': str(e)}
     if not plan:
         return 404, {'code': 404, 'msg': '计划不存在'}
     return {'code': 200, 'msg': 'OK', 'data': _plan_dict(plan)}
 
 
 @router.post('/plans/{plan_id}/status', summary='变更计划状态')
-@require_permission('subject.recruitment.approve')
+@require_any_permission(['subject.recruitment.approve', 'subject.recruitment.update'])
 def transition_plan_status(request, plan_id: int, data: PlanStatusIn):
     try:
         plan = svc.transition_plan_status(plan_id, data.status)
@@ -283,7 +527,7 @@ def create_ad(request, plan_id: int, data: AdCreateIn):
 
 
 @router.post('/ads/{ad_id}/publish', summary='发布广告')
-@require_permission('subject.recruitment.approve')
+@require_any_permission(['subject.recruitment.approve', 'subject.recruitment.update'])
 def publish_ad(request, ad_id: int):
     ad = svc.publish_ad(ad_id)
     if not ad:
@@ -410,7 +654,7 @@ def create_enrollment_record(request, reg_id: int):
 
 
 @router.post('/enrollment-records/{record_id}/confirm', summary='确认入组')
-@require_permission('subject.recruitment.approve')
+@require_any_permission(['subject.recruitment.approve', 'subject.recruitment.update'])
 def confirm_enrollment(request, record_id: int):
     record = svc.confirm_enrollment(record_id)
     if not record:
@@ -469,7 +713,7 @@ def create_strategy(request, plan_id: int, data: StrategyCreateIn):
 
 
 @router.post('/strategies/{strategy_id}/approve', summary='批准策略')
-@require_permission('subject.recruitment.approve')
+@require_any_permission(['subject.recruitment.approve', 'subject.recruitment.update'])
 def approve_strategy(request, strategy_id: int):
     s = svc.approve_strategy(strategy_id)
     if not s:
@@ -576,6 +820,156 @@ def update_ad(request, ad_id: int, data: AdUpdateIn):
     return {'code': 200, 'msg': 'OK', 'data': {'id': ad.id, 'status': ad.status}}
 
 
+@router.get('/plans/{plan_id}/recruit-template-ad', summary='招募模板广告（单条，无则创建草稿）')
+@require_permission('subject.recruitment.read')
+def get_recruit_template_ad(request, plan_id: int):
+    account = _get_account_from_request(request)
+    try:
+        ad = svc.get_or_create_recruit_template_ad(plan_id, account)
+    except ValueError as e:
+        return 400, {'code': 400, 'msg': str(e)}
+    return {'code': 200, 'msg': 'OK', 'data': _recruit_template_ad_dict(ad)}
+
+
+@router.put('/ads/{ad_id}/recruit-template', summary='更新招募模板字段（仅草稿）')
+@require_permission('subject.recruitment.update')
+def put_recruit_template_ad(request, ad_id: int, data: RecruitTemplateUpdateIn):
+    raw = data.dict(exclude_unset=True)
+    kw = {}
+    for key in ('title', 'content', 'template_project_code', 'template_project_name', 'template_sample_requirement', 'template_visit_date'):
+        if key in raw:
+            kw[key] = raw[key]
+    if 'template_honorarium' in raw:
+        try:
+            kw['template_honorarium'] = _parse_template_honorarium(raw['template_honorarium'])
+        except ValueError as e:
+            return 400, {'code': 400, 'msg': str(e)}
+    if 'template_liaison_fee' in raw:
+        tl = raw['template_liaison_fee']
+        kw['template_liaison_fee'] = (str(tl).strip()[:200] if tl is not None else '')
+    try:
+        ad = svc.update_recruit_template_ad(ad_id, **kw)
+    except ValueError as e:
+        return 400, {'code': 400, 'msg': str(e)}
+    if not ad:
+        return 404, {'code': 404, 'msg': '广告不存在'}
+    return {'code': 200, 'msg': 'OK', 'data': _recruit_template_ad_dict(ad)}
+
+
+@router.post('/ads/{ad_id}/submit', summary='提交招募模板审批')
+@require_permission('subject.recruitment.update')
+def submit_recruit_template_ad(request, ad_id: int):
+    account = _get_account_from_request(request)
+    try:
+        ad = svc.submit_recruit_template_ad(ad_id, account)
+    except ValueError as e:
+        return 400, {'code': 400, 'msg': str(e)}
+    return {'code': 200, 'msg': 'OK', 'data': _recruit_template_ad_dict(ad)}
+
+
+@router.post('/ads/{ad_id}/approve', summary='审批通过招募模板')
+@require_any_permission(['subject.recruitment.approve', 'subject.recruitment.update'])
+def approve_recruit_template_ad(request, ad_id: int):
+    try:
+        ad = svc.approve_recruit_template_ad(ad_id)
+    except ValueError as e:
+        return 400, {'code': 400, 'msg': str(e)}
+    return {'code': 200, 'msg': 'OK', 'data': _recruit_template_ad_dict(ad)}
+
+
+@router.post('/ads/{ad_id}/reject', summary='驳回招募模板')
+@require_any_permission(['subject.recruitment.approve', 'subject.recruitment.update'])
+def reject_recruit_template_ad(request, ad_id: int, data: RejectReasonIn):
+    try:
+        ad = svc.reject_recruit_template_ad(ad_id, data.reason or '')
+    except ValueError as e:
+        return 400, {'code': 400, 'msg': str(e)}
+    return {'code': 200, 'msg': 'OK', 'data': _recruit_template_ad_dict(ad)}
+
+
+@router.get('/plans/{plan_id}/appointment-docs', summary='招募预约文档列表')
+@require_permission('subject.recruitment.read')
+def list_appointment_docs(request, plan_id: int):
+    items = svc.list_appointment_docs(plan_id)
+    return {'code': 200, 'msg': 'OK', 'data': {
+        'items': [_appointment_doc_dict(x, plan_id) for x in items],
+    }}
+
+
+@router.post('/plans/{plan_id}/appointment-docs', summary='上传预约文档')
+@require_permission('subject.recruitment.update')
+def upload_appointment_doc(request, plan_id: int, doc_type: str = Form(...), file: UploadedFile = File(...)):
+    account = _get_account_from_request(request)
+    try:
+        obj = svc.upload_appointment_doc(plan_id, doc_type, file, account)
+    except ValueError as e:
+        return 400, {'code': 400, 'msg': str(e)}
+    return {'code': 200, 'msg': 'OK', 'data': _appointment_doc_dict(obj, plan_id)}
+
+
+@router.post('/plans/{plan_id}/appointment-docs/submit', summary='提交预约文档审批')
+@require_permission('subject.recruitment.update')
+def submit_appointment_docs(request, plan_id: int):
+    try:
+        plan = svc.submit_appointment_docs(plan_id)
+    except ValueError as e:
+        return 400, {'code': 400, 'msg': str(e)}
+    return {'code': 200, 'msg': 'OK', 'data': {'appointment_docs_status': plan.appointment_docs_status}}
+
+
+@router.post('/plans/{plan_id}/appointment-docs/approve', summary='审批通过预约文档')
+@require_any_permission(['subject.recruitment.approve', 'subject.recruitment.update'])
+def approve_appointment_docs(request, plan_id: int):
+    try:
+        plan = svc.approve_appointment_docs(plan_id)
+    except ValueError as e:
+        return 400, {'code': 400, 'msg': str(e)}
+    return {'code': 200, 'msg': 'OK', 'data': {'appointment_docs_status': plan.appointment_docs_status}}
+
+
+@router.post('/plans/{plan_id}/appointment-docs/reject', summary='驳回预约文档')
+@require_any_permission(['subject.recruitment.approve', 'subject.recruitment.update'])
+def reject_appointment_docs(request, plan_id: int, data: RejectReasonIn):
+    try:
+        plan = svc.reject_appointment_docs(plan_id, data.reason or '')
+    except ValueError as e:
+        return 400, {'code': 400, 'msg': str(e)}
+    return {'code': 200, 'msg': 'OK', 'data': {
+        'appointment_docs_status': plan.appointment_docs_status,
+        'appointment_docs_reject_reason': plan.appointment_docs_reject_reason or '',
+    }}
+
+
+@router.get('/plans/{plan_id}/appointment-docs/{doc_type}/file', summary='下载/预览预约文档文件')
+@require_permission('subject.recruitment.read')
+def download_appointment_doc_file(request, plan_id: int, doc_type: str):
+    """通过 Storage 打开文件，避免 Windows 下手动路径与 MEDIA_ROOT 字符串比较不一致导致 400/404。"""
+    from .models_recruitment import RecruitmentPlanAppointmentDoc
+    doc = RecruitmentPlanAppointmentDoc.objects.filter(plan_id=plan_id, doc_type=doc_type).first()
+    if not doc or not doc.file or not getattr(doc.file, 'name', None):
+        return 404, {'code': 404, 'msg': '文件不存在'}
+    name = (doc.original_filename or os.path.basename(doc.file.name) or 'document').strip() or 'document'
+    try:
+        fh = doc.file.open('rb')
+    except OSError:
+        return 404, {'code': 404, 'msg': '文件不存在或无法读取'}
+    ctype, _ = mimetypes.guess_type(name)
+    if not ctype:
+        low = name.lower()
+        if low.endswith('.doc'):
+            ctype = 'application/msword'
+        elif low.endswith('.docx'):
+            ctype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        elif low.endswith('.xls'):
+            ctype = 'application/vnd.ms-excel'
+        elif low.endswith('.xlsx'):
+            ctype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    if not ctype:
+        ctype = 'application/octet-stream'
+    # content_type 传入构造函数；as_attachment=False 即 inline（勿手写 Content-Disposition，以保留 Django 对中文文件名的 filename* 编码）
+    return FileResponse(fh, content_type=ctype, as_attachment=False, filename=name)
+
+
 # ============================================================================
 # 渠道分析（跨计划维度）
 # ============================================================================
@@ -654,7 +1048,7 @@ def batch_create_screenings(request, data: BatchScreeningIn):
 
 
 @router.post('/batch/confirm-enrollments', summary='批量确认入组')
-@require_permission('subject.recruitment.approve')
+@require_any_permission(['subject.recruitment.approve', 'subject.recruitment.update'])
 def batch_confirm_enrollments(request, data: BatchEnrollmentIn):
     success = []
     fail = []
@@ -711,7 +1105,7 @@ class ReferralVerifyIn(Schema):
 
 
 @router.post('/referrals/{referral_id}/verify', summary='审核转介绍')
-@require_permission('subject.recruitment.approve')
+@require_any_permission(['subject.recruitment.approve', 'subject.recruitment.update'])
 def verify_referral(request, referral_id: int, data: ReferralVerifyIn):
     from .models_loyalty import SubjectReferral
     ref = SubjectReferral.objects.filter(id=referral_id, is_deleted=False).first()

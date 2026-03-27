@@ -7,7 +7,6 @@
 from ninja import Router, Schema, File
 from ninja.files import UploadedFile
 from typing import Optional
-from datetime import date
 
 from django.http import HttpResponse
 

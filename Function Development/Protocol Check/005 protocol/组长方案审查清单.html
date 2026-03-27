@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>组长方案审查清单</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: radial-gradient(circle at top left, #eef2ff 0, #f9fafb 45%, #f3f4f6 100%);
+      color: #111827;
+      line-height: 1.6;
+    }
+
+    header {
+      padding: 24px 32px;
+      backdrop-filter: blur(12px);
+      background: linear-gradient(90deg, rgba(15, 23, 42, 0.95), rgba(30, 64, 175, 0.9));
+      color: #f9fafb;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header h1 { font-size: 22px; margin: 0 0 8px; font-weight: 600; }
+    header .subtitle { margin: 0; font-size: 13px; opacity: 0.9; }
+    header .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 10px;
+      padding: 4px 10px;
+      font-size: 11px;
+      background: rgba(248, 250, 252, 0.12);
+      border: 1px solid rgba(148, 163, 184, 0.5);
+      border-radius: 999px;
+    }
+    .tag-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.3);
+    }
+
+    main {
+      max-width: 900px;
+      margin: 28px auto 40px;
+      padding: 0 20px 32px;
+    }
+
+    .intro {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      border: 1px solid #e2e8f0;
+    }
+    .intro p { margin: 0 0 8px; font-size: 14px; color: #475569; }
+    .intro p strong { color: #1e293b; }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 0 0 20px;
+      margin-bottom: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      border: 1px solid #e2e8f0;
+      overflow: hidden;
+    }
+    .card-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1e293b;
+      margin: 0;
+      padding: 16px 24px;
+      background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+      border-bottom: 2px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .card-title .num {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .card-body { padding: 20px 24px 0; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    th {
+      background: #f8fafc;
+      color: #475569;
+      font-weight: 600;
+    }
+    td:first-child { color: #64748b; font-weight: 500; width: 56px; }
+    td:nth-child(2) { font-weight: 600; color: #1e293b; min-width: 120px; }
+    td:nth-child(3) { color: #475569; }
+    tr:hover td { background: #fafafa; }
+
+    .judge {
+      margin-top: 16px;
+      padding: 12px 16px;
+      background: #f0f9ff;
+      border-left: 4px solid #0ea5e9;
+      border-radius: 0 8px 8px 0;
+      font-size: 13px;
+      color: #0c4a6e;
+    }
+    .judge strong { color: #0369a1; }
+
+    .steps {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .steps li {
+      padding: 10px 0 10px 28px;
+      position: relative;
+      font-size: 14px;
+      color: #334155;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .steps li:last-child { border-bottom: none; }
+    .steps li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 16px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #2563eb;
+    }
+    .steps li strong { color: #1e293b; }
+
+    .form-table {
+      font-size: 13px;
+    }
+    .form-table th, .form-table td {
+      padding: 10px 12px;
+      vertical-align: middle;
+    }
+    .form-table th {
+      background: #f8fafc;
+      width: 140px;
+      font-weight: 600;
+      color: #475569;
+    }
+    .form-table input[type="text"] {
+      width: 100%;
+      max-width: 200px;
+      padding: 6px 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .form-table .radio-group { display: flex; gap: 16px; }
+    .form-table .radio-group label { cursor: pointer; font-weight: normal; color: #475569; }
+    .form-table tr.conclusion td {
+      background: #f0fdf4;
+      font-weight: 600;
+      color: #166534;
+    }
+
+    footer {
+      text-align: center;
+      padding: 20px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    @media (max-width: 640px) {
+      header { padding: 16px 20px; }
+      main { padding: 0 12px 24px; }
+      .card-body, .intro { padding-left: 16px; padding-right: 16px; }
+      th, td { padding: 8px 10px; font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>组长方案审查清单</h1>
+    <p class="subtitle">客户方案设计 → 研究员撰写具体方案 → 组长审查 → 通过后可最终交付</p>
+    <span class="tag"><span class="tag-dot"></span>化妆品功效测试方案</span>
+  </header>
+
+  <main>
+    <section class="intro">
+      <p><strong>流程</strong>：客户提供方案设计 → 研究员撰写具体方案 → <strong>组长审查</strong> → 通过后可进行最终交付（与客户确认、定稿、下发执行）。</p>
+      <p><strong>适用</strong>：化妆品功效测试方案。</p>
+      <p>以下为组长在审查研究员撰写的具体方案时需逐项关注的点，全部通过后再放行进入交付流程。</p>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title"><span class="num">一</span>与客户方案设计是否对齐</h2>
+      <div class="card-body">
+        <table>
+          <thead>
+            <tr><th>序号</th><th>审查点</th><th>说明</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>1.1</td><td>研究目的</td><td>与客户方案设计中的目的一致，无遗漏或擅自扩大/缩小范围</td></tr>
+            <tr><td>1.2</td><td>研究设计类型</td><td>随机/对照/单多中心等与客户设计一致</td></tr>
+            <tr><td>1.3</td><td>产品与使用方法</td><td>受试化妆品、使用部位/用法/用量与客户设计一致</td></tr>
+            <tr><td>1.4</td><td>主要/次要终点</td><td>客户要求的终点在方案中均有体现，且定义一致</td></tr>
+            <tr><td>1.5</td><td>客户特殊要求</td><td>客户在设计里提出的时间线、访视、问卷、仪器等要求已全部落实进正文</td></tr>
+          </tbody>
+        </table>
+        <p class="judge"><strong>组长判断</strong>：具体方案是否完整贯彻了客户的方案设计，有无偏离或遗漏。</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title"><span class="num">二</span>方案内容完整性与逻辑</h2>
+      <div class="card-body">
+        <table>
+          <thead>
+            <tr><th>序号</th><th>审查点</th><th>说明</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>2.1</td><td>纳入/排除标准</td><td>表述清晰、可操作；与产品/使用方法匹配；相互无矛盾</td></tr>
+            <tr><td>2.2</td><td>基础值入组条件</td><td>若有，须可量化、可核查，便于执行与数据检查</td></tr>
+            <tr><td>2.3</td><td>指标定义</td><td>每个主要/次要指标有明确定义；评估方法、仪器、问卷与指标一一对应，无悬空指标</td></tr>
+            <tr><td>2.4</td><td>访视与评估时点</td><td>时间轴完整；访视时点与评估时点对应清楚；时间窗口合理、可执行</td></tr>
+            <tr><td>2.5</td><td>样本量</td><td>有说明或计算依据；与“入组人数/完成人数”的预期一致</td></tr>
+            <tr><td>2.6</td><td>统计方法</td><td>主要/次要指标均有对应统计方法；表述无歧义，统计分析可据此执行</td></tr>
+            <tr><td>2.7</td><td>测试流程顺序</td><td>测试流程顺序合理；与访视/评估时点匹配；无逻辑倒置或遗漏环节</td></tr>
+            <tr><td>2.8</td><td>测试点位图</td><td>点位图与方案一致；部位、数量、标注正确，执行方可按图操作</td></tr>
+          </tbody>
+        </table>
+        <p class="judge"><strong>组长判断</strong>：方案是否自成一体、逻辑闭环，执行方仅凭本方案即可操作。</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title"><span class="num">三</span>文字与格式</h2>
+      <div class="card-body">
+        <table>
+          <thead>
+            <tr><th>序号</th><th>审查点</th><th>说明</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>3.1</td><td>前后一致</td><td>全文术语、缩写、时点、指标名称统一，无前后矛盾</td></tr>
+            <tr><td>3.2</td><td>版本与修订</td><td>若为修订版，修订处有标注或修订说明；版本号、日期正确</td></tr>
+            <tr><td>3.3</td><td>可读性</td><td>语句通顺、层级清晰，客户与执行方易于理解</td></tr>
+          </tbody>
+        </table>
+        <p class="judge"><strong>组长判断</strong>：文档是否达到对外/对执行方交付的规范与可读性要求。</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title"><span class="num">四</span>组长审查通过后的交付步骤</h2>
+      <div class="card-body">
+        <p style="margin:0 0 12px; font-size:14px; color:#475569;">审查全部通过后，可按下列顺序进行最终交付：</p>
+        <ol class="steps">
+          <li><strong>与客户确认</strong>：将方案发客户审阅，收集修改意见并交由研究员修订，必要时组长复核修订稿。</li>
+          <li><strong>定稿</strong>：客户确认无异议后，方案定稿，赋予版本号并归档。</li>
+          <li><strong>下发执行</strong>：将定稿方案下发至执行方/站点，确保其知悉并依此执行。</li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title"><span class="num">五</span>组长审查结论记录（建议）</h2>
+      <div class="card-body">
+        <table class="form-table">
+          <tr>
+            <th>项目名称</th>
+            <td><input type="text" placeholder="填写项目名称" /></td>
+            <th style="width:100px;">方案版本</th>
+            <td><input type="text" placeholder="如 V1.0" /></td>
+          </tr>
+          <tr>
+            <th>研究员</th>
+            <td><input type="text" placeholder="填写研究员" /></td>
+            <th>审查日期</th>
+            <td><input type="text" placeholder="如 2025-03-09" /></td>
+          </tr>
+          <tr>
+            <th>与客户设计对齐</th>
+            <td colspan="3">
+              <span class="radio-group">
+                <label><input type="radio" name="r1" /> 通过</label>
+                <label><input type="radio" name="r1" /> 需修改</label>
+              </span>
+            </td>
+          </tr>
+          <tr>
+            <th>内容完整性与逻辑</th>
+            <td colspan="3">
+              <span class="radio-group">
+                <label><input type="radio" name="r2" /> 通过</label>
+                <label><input type="radio" name="r2" /> 需修改</label>
+              </span>
+            </td>
+          </tr>
+          <tr>
+            <th>文字与格式</th>
+            <td colspan="3">
+              <span class="radio-group">
+                <label><input type="radio" name="r3" /> 通过</label>
+                <label><input type="radio" name="r3" /> 需修改</label>
+              </span>
+            </td>
+          </tr>
+          <tr class="conclusion">
+            <th>审查结论</th>
+            <td colspan="3">
+              <span class="radio-group">
+                <label><input type="radio" name="conclusion" /> 通过，可进入客户确认与最终交付</label>
+                <label><input type="radio" name="conclusion" /> 退回修改</label>
+              </span>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </section>
+
+    <footer>组长方案审查清单 · 如有更新以项目 SOP 为准</footer>
+  </main>
+</body>
+</html>

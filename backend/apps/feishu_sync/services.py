@@ -4,8 +4,7 @@
 实现数据库与飞书多维表格之间的双向数据同步
 """
 import httpx
-from typing import Optional, Dict, List, Any
-from django.conf import settings
+from typing import Dict, List, Any
 from django.apps import apps
 from django.db import models as django_models, transaction
 from django.utils import timezone
@@ -94,10 +93,10 @@ def recommend_unique_key_fields(table_name: str) -> List[str]:
 def sync_to_bitable(config: SyncConfig) -> SyncLog:
     """
     同步数据库数据到飞书多维表格
-    
+
     Args:
         config: 同步配置
-        
+
     Returns:
         SyncLog: 同步日志记录
     """
@@ -106,18 +105,18 @@ def sync_to_bitable(config: SyncConfig) -> SyncLog:
         status=SyncLogStatus.RUNNING,
         started_at=timezone.now(),
     )
-    
+
     try:
         tenant_token = get_feishu_tenant_token()
-        
+
         model = _resolve_model_by_table_name(config.table_name)
-        
+
         if not model:
             raise ValueError(f"找不到模型: {config.table_name}")
-        
+
         # 获取数据库记录
         records = list(model.objects.all()[:1000])  # 限制单次同步数量
-        
+
         # 准备飞书记录数据
         feishu_records = []
         for record in records:
@@ -134,20 +133,20 @@ def sync_to_bitable(config: SyncConfig) -> SyncLog:
                         fields[feishu_field_id] = value
                     else:
                         fields[feishu_field_id] = str(value)
-            
+
             if fields:
                 feishu_records.append({"fields": fields})
-        
+
         # 批量创建飞书记录
         success_count = 0
         failed_count = 0
-        
+
         # 飞书API：单条创建或批量创建（根据API支持情况）
         # 先尝试批量创建，如果失败则逐条创建
         batch_size = 100  # 保守的批次大小
         for i in range(0, len(feishu_records), batch_size):
             batch = feishu_records[i:i + batch_size]
-            
+
             # 尝试批量创建
             try:
                 resp = httpx.post(
@@ -159,7 +158,7 @@ def sync_to_bitable(config: SyncConfig) -> SyncLog:
                     json={'records': batch},
                     timeout=30.0,
                 )
-                
+
                 if resp.status_code == 200:
                     result = resp.json()
                     if result.get('code') == 0:
@@ -210,9 +209,9 @@ def sync_to_bitable(config: SyncConfig) -> SyncLog:
                                     failed_count += 1
                             else:
                                 failed_count += 1
-                        except Exception as e:
+                        except Exception:
                             failed_count += 1
-            except Exception as e:
+            except Exception:
                 # 批量请求异常，尝试逐条创建
                 for record_data in batch:
                     try:
@@ -235,22 +234,22 @@ def sync_to_bitable(config: SyncConfig) -> SyncLog:
                             failed_count += 1
                     except Exception:
                         failed_count += 1
-        
+
         log.status = SyncLogStatus.SUCCESS if failed_count == 0 else SyncLogStatus.FAILED
         log.records_synced = success_count
         log.completed_at = timezone.now()
         log.save()
-        
+
         # 更新配置的最后同步时间
         config.last_sync_time = timezone.now()
         config.save(update_fields=['last_sync_time'])
-        
+
     except Exception as e:
         log.status = SyncLogStatus.FAILED
         log.error_message = str(e)
         log.completed_at = timezone.now()
         log.save()
-    
+
     # 飞书通知：同步结果（对应 FEISHU_NATIVE_SETUP.md 4.2）
     try:
         from libs.notification import notify_sync_result
@@ -258,17 +257,17 @@ def sync_to_bitable(config: SyncConfig) -> SyncLog:
     except Exception as e:
         import logging
         logging.getLogger(__name__).error(f"同步通知发送失败: {e}")
-    
+
     return log
 
 
 def sync_from_bitable(config: SyncConfig) -> SyncLog:
     """
     从飞书多维表格同步数据到数据库
-    
+
     Args:
         config: 同步配置
-        
+
     Returns:
         SyncLog: 同步日志记录
     """
@@ -277,60 +276,60 @@ def sync_from_bitable(config: SyncConfig) -> SyncLog:
         status=SyncLogStatus.RUNNING,
         started_at=timezone.now(),
     )
-    
+
     try:
         tenant_token = get_feishu_tenant_token()
-        
+
         model = _resolve_model_by_table_name(config.table_name)
-        
+
         if not model:
             raise ValueError(f"找不到模型: {config.table_name}")
-        
+
         # 获取飞书记录
         page_token = None
         all_records = []
-        
+
         while True:
             params = {'page_size': 500}
             if page_token:
                 params['page_token'] = page_token
-            
+
             resp = httpx.get(
                 f'https://open.feishu.cn/open-apis/bitable/v1/apps/{config.bitable_app_token}/tables/{config.bitable_table_id}/records',
                 headers={'Authorization': f'Bearer {tenant_token}'},
                 params=params,
                 timeout=30.0,
             )
-            
+
             if resp.status_code != 200:
                 raise ValueError(f"获取飞书记录失败: HTTP {resp.status_code}")
-            
+
             result = resp.json()
             if result.get('code') != 0:
                 raise ValueError(f"获取飞书记录失败: {result.get('msg')}")
-            
+
             data = result.get('data', {})
             records = data.get('items', [])
             all_records.extend(records)
-            
+
             page_token = data.get('page_token')
             if not page_token or not data.get('has_more', False):
                 break
-        
+
         # 同步到数据库（upsert）
         success_count = 0
         failed_count = 0
-        
+
         # 反转字段映射：feishu_field_id -> db_field
         reverse_mapping = {v: k for k, v in config.field_mapping.items()}
-        
+
         unique_key_fields = [str(x).strip() for x in (config.unique_key_fields or []) if str(x).strip()]
 
         for feishu_record in all_records:
             try:
                 fields = feishu_record.get('fields', {})
                 record_id = feishu_record.get('record_id', '')
-                
+
                 # 构建数据库记录数据
                 db_data = {}
                 for feishu_field_id, db_field in reverse_mapping.items():
@@ -339,10 +338,10 @@ def sync_from_bitable(config: SyncConfig) -> SyncLog:
                         if isinstance(value, list) and len(value) == 1:
                             value = value[0]
                         db_data[db_field] = value
-                
+
                 if not db_data:
                     continue
-                
+
                 lookup = _build_upsert_lookup(db_data, unique_key_fields)
                 if not lookup:
                     failed_count += 1
@@ -363,27 +362,27 @@ def sync_from_bitable(config: SyncConfig) -> SyncLog:
                         instance.save()
                     else:
                         model.objects.create(**db_data)
-                
+
                 success_count += 1
             except Exception as e:
                 failed_count += 1
                 log.error_message += f"记录{feishu_record.get('record_id', 'unknown')}失败: {str(e)}\n"
-        
+
         log.status = SyncLogStatus.SUCCESS if failed_count == 0 else SyncLogStatus.FAILED
         log.records_synced = success_count
         log.completed_at = timezone.now()
         log.save()
-        
+
         # 更新配置的最后同步时间
         config.last_sync_time = timezone.now()
         config.save(update_fields=['last_sync_time'])
-        
+
     except Exception as e:
         log.status = SyncLogStatus.FAILED
         log.error_message = str(e)
         log.completed_at = timezone.now()
         log.save()
-    
+
     # 飞书通知：同步结果（对应 FEISHU_NATIVE_SETUP.md 4.2）
     try:
         from libs.notification import notify_sync_result
@@ -391,24 +390,24 @@ def sync_from_bitable(config: SyncConfig) -> SyncLog:
     except Exception as e_notify:
         import logging
         logging.getLogger(__name__).error(f"同步通知发送失败: {e_notify}")
-    
+
     return log
 
 
 def run_sync(config_id: int) -> SyncLog:
     """
     执行同步任务
-    
+
     Args:
         config_id: 同步配置ID
-        
+
     Returns:
         SyncLog: 同步日志记录
     """
     config = SyncConfig.objects.filter(id=config_id, enabled=True).first()
     if not config:
         raise ValueError(f"同步配置不存在或未启用: {config_id}")
-    
+
     if config.direction == SyncDirection.TO_FEISHU:
         return sync_to_bitable(config)
     elif config.direction == SyncDirection.FROM_FEISHU:

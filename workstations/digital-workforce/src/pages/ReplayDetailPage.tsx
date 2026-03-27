@@ -158,7 +158,7 @@ export default function ReplayDetailPage() {
         <div className="rounded-xl border border-slate-200 bg-white p-6">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-600">结构化产物</h3>
           <div className="mt-3 space-y-2 text-sm">
-            {artifacts.demand_summary && (
+            {!!artifacts.demand_summary && (
               <div>
                 <span className="font-medium text-slate-500">需求摘要：</span>
                 <span className="text-slate-700">{String(artifacts.demand_summary)}</span>
@@ -174,7 +174,7 @@ export default function ReplayDetailPage() {
                 </ul>
               </div>
             )}
-            {artifacts.solution_draft && (
+            {!!artifacts.solution_draft && (
               <div>
                 <span className="font-medium text-slate-500">方案初稿：</span>
                 <p className="mt-1 whitespace-pre-wrap text-slate-700">{String(artifacts.solution_draft)}</p>

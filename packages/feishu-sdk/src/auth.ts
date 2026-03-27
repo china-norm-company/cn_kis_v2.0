@@ -66,22 +66,64 @@ export class AuthError extends Error {
 
 /**
  * 子衿统一授权所需的用户数据 scope（OIDC 标准，空格分隔）。
- * 用户从任何工作台登录时均请求同一 scope 列表，
- * 确保 user_access_token 包含读取聊天、日历、邮件、任务等所需权限。
+ *
+ * 设计原则：有了不用可以，没有必出问题。
+ * 覆盖范围：全量数据采集（邮件/IM/日历/任务/审批/文档/云盘/知识库/会议纪要）
+ *           + 智能体写回执行（创建任务/审批/日历/文档）
+ *           + 未来能力预留（工号/手机/多维表格）
+ *
+ * 重要说明：
+ * - 刷新 token 不会增加新 scope，用户需重新登录才能获得新增权限。
+ * - 后端 _save_feishu_user_token 会将实际获得的 scope 存入 feishu_scope 字段，
+ *   供运行时校验使用。
+ *
+ * 最近更新：2026-03-23 — 补全 wiki/docx/drive/IM消息体/邮件正文/会议纪要/任务写回/审批写回
  */
 const DEFAULT_USER_SCOPES = [
-  'offline_access',
-  'contact:user.base:readonly',
-  'contact:user.email:readonly',
-  'im:chat:readonly',
-  'im:message:readonly',
-  'calendar:calendar:readonly',
-  'calendar:calendar',
-  'mail:user_mailbox',
-  'mail:user_mailbox.message:readonly',
-  'task:task:read',
-  'approval:approval:readonly',
-  'drive:drive:readonly',
+  // ── 基础 ──────────────────────────────────────────────────────────────────
+  'offline_access',                       // refresh_token 续期，绝对必须
+
+  // ── 通讯录与组织架构 ──────────────────────────────────────────────────────
+  'contact:user.base:readonly',           // 姓名/头像/open_id
+  'contact:user.email:readonly',          // 邮箱地址
+  'contact:user.employee_id:readonly',    // 工号（HR/lab-personnel 集成）
+  'contact:user.phone:readonly',          // 手机号（CRM/紧急联络场景）
+  'contact:department.base:readonly',     // 部门列表（组织架构图谱）
+
+  // ── 即时通讯（IM）──────────────────────────────────────────────────────────
+  'im:chat:readonly',                     // 群组/会话列表
+  'im:message:readonly',                  // 消息列表及正文（用户委托权限，覆盖群聊+单聊）
+
+  // ── 邮件 ──────────────────────────────────────────────────────────────────
+  'mail:user_mailbox',                    // 邮箱基础访问
+  'mail:user_mailbox.message:readonly',   // 邮件列表（发件人/时间等字段）
+  'mail:user_mailbox.message.body:read',  // 邮件正文（subject/body/from）
+
+  // ── 日历 ──────────────────────────────────────────────────────────────────
+  'calendar:calendar:readonly',           // 读取日历事件
+  'calendar:calendar',                    // 创建/更新/删除日历事件（智能体排程）
+
+  // ── 任务 ──────────────────────────────────────────────────────────────────
+  'task:task:read',                       // 读取任务
+  'task:task:write',                      // 创建/更新任务（智能体代办创建）
+
+  // ── 审批 ──────────────────────────────────────────────────────────────────
+  'approval:approval:readonly',           // 读取审批实例
+  'approval:approval',                    // 发起审批（智能体代提交）
+
+  // ── 文档 ──────────────────────────────────────────────────────────────────
+  'docx:document',                        // 读写飞书文档（知识采集核心）
+
+  // ── 云盘 ──────────────────────────────────────────────────────────────────
+  'drive:drive:readonly',                 // 云盘文件列表
+  'drive:file',                           // 下载/读取文件内容（附件binary）
+
+  // ── 知识库（Wiki）────────────────────────────────────────────────────────
+  'wiki:wiki',                            // 读写知识库（知识采集核心）
+
+  // ── 多维表格 ────────────────────────────────────────────────────────────
+  'bitable:app',                          // 个人/共享多维表格读写（预留）
+
 ].join(' ')
 
 const RETRY_DELAY = 1000

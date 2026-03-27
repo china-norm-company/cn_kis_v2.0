@@ -15,7 +15,7 @@ export default function ChangeAuditPage() {
       }),
   })
 
-  const data = (overviewRes as { data?: Record<string, unknown> })?.data
+  const data = ((overviewRes as unknown) as { data?: Record<string, unknown> } | undefined)?.data
   const summary = data?.route_governance_threshold_change_summary as
     | { total_changes?: number; operators_count?: number; top_changed_fields?: Array<{ field: string; count: number }> }
     | undefined

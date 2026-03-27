@@ -135,7 +135,7 @@ def list_sync_configs(request, page: int = Query(1, ge=1), page_size: int = Quer
     paging = sanitize_pagination(page, page_size, max_page_size=100)
     total = queryset.count()
     items = queryset[paging['offset']:paging['offset'] + paging['limit']]
-    
+
     return {
         'code': 200,
         'msg': 'OK',
@@ -525,16 +525,16 @@ def list_sync_logs(request, params: SyncLogQueryParams = Query(...)):
     from .models import SyncLog
 
     queryset = SyncLog.objects.all()
-    
+
     if params.config_id:
         queryset = queryset.filter(config_id=params.config_id)
     if params.status:
         queryset = queryset.filter(status=params.status)
-    
+
     paging = sanitize_pagination(params.page, params.page_size, max_page_size=200)
     total = queryset.count()
     items = queryset[paging['offset']:paging['offset'] + paging['limit']]
-    
+
     return {
         'code': 200,
         'msg': 'OK',

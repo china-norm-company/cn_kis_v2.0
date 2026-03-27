@@ -4,15 +4,12 @@
 import logging
 from decimal import Decimal
 from datetime import date
-from dateutil.relativedelta import relativedelta
-from django.db.models import Sum, Avg, Count, Q, DecimalField
+from django.db.models import Sum, Avg, DecimalField
 from django.db.models.functions import Coalesce
 
 from apps.finance.models import (
-    Contract, ContractStatus,
-    PaymentPlan, PaymentPlanStatus,
-    PaymentRecord, PaymentRecordStatus,
-    ProjectBudget, CostRecord, CostRecordStatus,
+    Contract, PaymentPlan, PaymentPlanStatus,
+    ProjectBudget,
 )
 from apps.finance.models_settlement import CreditScore
 

@@ -236,7 +236,7 @@ def recalculate_quality_score(entry_id: int, sync_status: bool = False) -> Dict[
     entity_count = 0
     relation_count = 0
     try:
-        from .models import KnowledgeEntity, KnowledgeRelation
+        from .models import KnowledgeEntity
         entity_count = KnowledgeEntity.objects.filter(linked_entry_id=entry_id, is_deleted=False).count()
     except Exception:
         pass

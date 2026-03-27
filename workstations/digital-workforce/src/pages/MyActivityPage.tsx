@@ -3,7 +3,7 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { digitalWorkforcePortalApi } from '@cn-kis/api-client'
-import { Activity, CheckCircle, XCircle, Clock } from 'lucide-react'
+import { CheckCircle, XCircle, Clock } from 'lucide-react'
 
 const STATUS_LABELS: Record<string, string> = {
   succeeded: '成功',

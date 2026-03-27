@@ -74,7 +74,7 @@ def _dt_iso_utc8_stored(dt):
 
 
 from django.db import transaction
-from django.db.models import Sum, Q, F, Max, Count
+from django.db.models import Sum, Q, Max
 from django.utils import timezone as djtzone
 from django.db.models.functions import Coalesce
 
@@ -1300,8 +1300,17 @@ def execution_create(data: dict, user_id: Optional[int] = None, user_name: Optio
     if not ProductDistributionWorkOrder.objects.filter(id=work_order_id, is_delete=0).exists():
         raise ValueError("工单不存在")
     related_project_no = (data.get("related_project_no") or "").strip()
-    subject_rd = (data.get("subject_rd") or "").strip()
+    screening_sc = _opt_str(data.get("screening_no"))
+    if not screening_sc:
+        raise ValueError("请填写受试者SC号")
+    # 同一项目下受试者 SC 号唯一
     if ProductDistributionExecution.objects.filter(
+        related_project_no=related_project_no, screening_no=screening_sc, is_delete=0
+    ).exists():
+        raise ValueError(f"受试者SC号：{screening_sc} 已存在于该项目中")
+    subject_rd = (data.get("subject_rd") or "").strip()
+    # 仅当填写了 RD 号时校验项目内唯一；未填则允许多条执行记录
+    if subject_rd and ProductDistributionExecution.objects.filter(
         related_project_no=related_project_no, subject_rd=subject_rd, is_delete=0
     ).exists():
         raise ValueError(f"RD号：{subject_rd} 已存在于项目中")
@@ -1313,7 +1322,7 @@ def execution_create(data: dict, user_id: Optional[int] = None, user_name: Optio
         related_project_no=related_project_no,
         subject_rd=subject_rd,
         subject_initials=(data.get("subject_initials") or "").strip(),
-        screening_no=_opt_str(data.get("screening_no")),
+        screening_no=screening_sc,
         execution_date=data.get("execution_date"),
         operator_id=user_id,
         operator_name=operator_display_name,
@@ -1381,18 +1390,35 @@ def execution_update(
 
     if "related_project_no" in data and data["related_project_no"] is not None:
         row.related_project_no = (data["related_project_no"] or "").strip()
+        # 项目变更后，当前 SC 号在新项目下仍需唯一
+        sc_cur = _opt_str(row.screening_no)
+        if sc_cur:
+            dup = ProductDistributionExecution.objects.filter(
+                related_project_no=row.related_project_no, screening_no=sc_cur, is_delete=0
+            ).exclude(id=execution_id).first()
+            if dup:
+                raise ValueError(f"受试者SC号：{sc_cur} 已存在于该项目中")
     if "subject_rd" in data and data["subject_rd"] is not None:
         new_rd = (data["subject_rd"] or "").strip()
-        other = ProductDistributionExecution.objects.filter(
-            related_project_no=row.related_project_no, subject_rd=new_rd, is_delete=0
-        ).exclude(id=execution_id).first()
-        if other:
-            raise ValueError(f"RD号：{new_rd} 已存在于项目中")
+        if new_rd:
+            other = ProductDistributionExecution.objects.filter(
+                related_project_no=row.related_project_no, subject_rd=new_rd, is_delete=0
+            ).exclude(id=execution_id).first()
+            if other:
+                raise ValueError(f"RD号：{new_rd} 已存在于项目中")
         row.subject_rd = new_rd
     if "subject_initials" in data and data["subject_initials"] is not None:
         row.subject_initials = (data["subject_initials"] or "").strip()
     if "screening_no" in data:
-        row.screening_no = _opt_str(data.get("screening_no"))
+        v = _opt_str(data.get("screening_no"))
+        if not v:
+            raise ValueError("请填写受试者SC号")
+        other = ProductDistributionExecution.objects.filter(
+            related_project_no=row.related_project_no, screening_no=v, is_delete=0
+        ).exclude(id=execution_id).first()
+        if other:
+            raise ValueError(f"受试者SC号：{v} 已存在于该项目中")
+        row.screening_no = v
     if "execution_date" in data:
         row.execution_date = data["execution_date"]
     if "exception_type" in data:

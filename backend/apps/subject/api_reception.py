@@ -88,12 +88,57 @@ def today_queue(
     page: int = 1,
     page_size: int = 10,
     project_code: Optional[str] = None,
+    visit_point: Optional[str] = None,
     source: str = 'execution',
 ):
     """source: execution=工单执行独立数据，board=接待看板独立数据。SC/RD/签到签出时间两套互不影响。"""
     result = svc.get_today_queue(
         target_date=target_date, page=page, page_size=page_size,
-        project_code=project_code, source=source,
+        project_code=project_code, visit_point=visit_point, source=source,
+    )
+    return {'code': 200, 'msg': 'OK', 'data': result}
+
+
+@router.get('/queue-list', summary='受试者队列明细（历史）')
+@require_permission('subject.subject.read')
+def queue_list(
+    request,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    page: int = 1,
+    page_size: int = 10,
+    project_code: Optional[str] = None,
+    project_code_exact: bool = False,
+    visit_point: Optional[str] = None,
+    status: Optional[str] = None,
+    enrollment_status: Optional[str] = None,
+):
+    result = svc.get_queue_list(
+        date_from=date_from,
+        date_to=date_to,
+        page=page,
+        page_size=page_size,
+        project_code=project_code,
+        project_code_exact=project_code_exact,
+        visit_point=visit_point,
+        status=status,
+        enrollment_status=enrollment_status,
+    )
+    return {'code': 200, 'msg': 'OK', 'data': result}
+
+
+@router.get('/queue-list/project-options', summary='队列项目编号下拉（当前日期范围下去重）')
+@require_permission('subject.subject.read')
+def queue_list_project_options(
+    request,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    visit_point: Optional[str] = None,
+):
+    result = svc.get_queue_list_project_codes(
+        date_from=date_from,
+        date_to=date_to,
+        visit_point=visit_point,
     )
     return {'code': 200, 'msg': 'OK', 'data': result}
 
@@ -104,11 +149,13 @@ def today_queue_export(
     request,
     target_date: Optional[date] = None,
     project_code: Optional[str] = None,
+    visit_point: Optional[str] = None,
     status: Optional[str] = None,
     source: str = 'execution',
 ):
     result = svc.get_today_queue_export(
-        target_date=target_date, project_code=project_code, status=status, source=source,
+        target_date=target_date, project_code=project_code,
+        visit_point=visit_point, status=status, source=source,
     )
     return {'code': 200, 'msg': 'OK', 'data': result}
 
@@ -130,6 +177,36 @@ def today_stats(
 ):
     """source=execution 工单执行；source=board 接待看板（签到/入组/SC/RD 与 execution 独立）。"""
     result = svc.get_today_stats(target_date, project_code=project_code, source=source)
+    return {'code': 200, 'msg': 'OK', 'data': result}
+
+
+@router.get('/today-queue/project-summary', summary='今日队列按项目汇总')
+@require_permission('subject.subject.read')
+def today_queue_project_summary(
+    request,
+    target_date: Optional[date] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    visit_point: Optional[str] = None,
+    project_code: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 10,
+    source: str = 'execution',
+    status: Optional[str] = None,
+    enrollment_status: Optional[str] = None,
+):
+    result = svc.get_today_queue_project_summary(
+        target_date=target_date,
+        date_from=date_from,
+        date_to=date_to,
+        visit_point=visit_point,
+        project_code=project_code,
+        page=page,
+        page_size=page_size,
+        source=source,
+        status=status,
+        enrollment_status=enrollment_status,
+    )
     return {'code': 200, 'msg': 'OK', 'data': result}
 
 

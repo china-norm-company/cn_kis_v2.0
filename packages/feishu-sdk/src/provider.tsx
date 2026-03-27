@@ -89,6 +89,52 @@ function isAuthDebugEnabled(): boolean {
   }
 }
 
+function workstationModeFromProfile(
+  profile: AuthProfile | null | undefined,
+  workstation: string,
+): string {
+  const modes = profile?.workstation_modes
+  if (!modes) return 'full'
+  return modes[workstation] ?? 'full'
+}
+
+type AuthProfileHookReturn = ReturnType<typeof useAuthProfile>
+
+function canSeeMenuFromProfile(
+  authProfile: AuthProfileHookReturn,
+  workbench: string,
+  menuKey: string,
+  permissions: string[] = [],
+): boolean {
+  if (authProfile.loading || !authProfile.profile) return true
+  const wbMenus = authProfile.profile.visible_menu_items?.[workbench] || []
+  const hasWorkbenchMenuConfig = Object.prototype.hasOwnProperty.call(
+    authProfile.profile.visible_menu_items || {},
+    workbench,
+  )
+  const hasProfileSignals =
+    wbMenus.length > 0
+    || (authProfile.profile.permissions?.length || 0) > 0
+  if (!hasProfileSignals) return true
+  if (!hasWorkbenchMenuConfig) return true
+  if (authProfile.isMenuVisible(workbench, menuKey)) return true
+  if (!wbMenus.length && permissions.length && !authProfile.hasAnyPermission(permissions)) return false
+  if (!permissions.length) return true
+  const allowed = authProfile.hasAnyPermission(permissions)
+  if (!allowed && isAuthDebugEnabled()) {
+    console.warn('[CNKIS auth] menu denied', {
+      workbench,
+      menuKey,
+      permissions,
+      wbMenus,
+      profilePermissionsCount: authProfile.profile.permissions?.length || 0,
+      roleNames: (authProfile.profile.roles || []).map((role) => role.name),
+      username: authProfile.profile.username,
+    })
+  }
+  return allowed
+}
+
 /** 从门户页接收 token 的 postMessage 类型（跨工作台同源/同主机免二次登录） */
 const CNKIS_PORTAL_READY = 'cnkis_portal_ready'
 const CNKIS_TOKEN_HANDOFF = 'cnkis_token_handoff'
@@ -132,6 +178,7 @@ export function FeishuAuthProvider({
   }, [])
 
   useEffect(() => {
+    if (DEV_BYPASS) return
     if (auth.isAuthenticated && authProfile.authRequired) {
       auth.logout()
     }
@@ -179,8 +226,34 @@ export function FeishuAuthProvider({
         localStorage.setItem('auth_user', JSON.stringify({ id: 0, name: '开发测试用户', email: 'dev@cnkis.local', avatar: '' }))
       }
     } catch { /* ignore */ }
+
+    const p = authProfile.profile
+    const fromBackendAccount = Boolean(p && p.id > 0)
+    const devDisplayUser: FeishuUser = p
+      ? {
+          id: p.id,
+          name: (p.display_name || p.username || DEV_MOCK_USER.name).trim() || DEV_MOCK_USER.name,
+          email: p.email || DEV_MOCK_USER.email,
+          avatar: p.avatar || '',
+        }
+      : DEV_MOCK_USER
+
+    try {
+      if (fromBackendAccount && p) {
+        localStorage.setItem(
+          'auth_user',
+          JSON.stringify({
+            id: p.id,
+            name: devDisplayUser.name,
+            email: devDisplayUser.email,
+            avatar: devDisplayUser.avatar,
+          }),
+        )
+      }
+    } catch { /* ignore */ }
+
     const devValue: FeishuContextValue = {
-      user: DEV_MOCK_USER,
+      user: devDisplayUser,
       token: 'dev-bypass-token',
       loading: false,
       error: null,
@@ -188,19 +261,21 @@ export function FeishuAuthProvider({
       login: () => {},
       logout: () => {},
       isAuthenticated: true,
-      profile: null,
-      profileLoading: false,
-      refetchProfile: () => {},
-      isAdmin: true,
-      hasPermission: alwaysTrue,
-      hasAnyPermission: alwaysTrue,
-      hasAllPermissions: alwaysTrue,
-      hasRole: alwaysTrue,
-      hasAnyRole: alwaysTrue,
-      canAccessWorkbench: alwaysTrue,
-      isMenuVisible: alwaysTrue,
-      canSeeMenu: () => true,
-      getWorkstationMode: () => 'full',
+      profile: p,
+      profileLoading: authProfile.loading,
+      refetchProfile: authProfile.refetch,
+      isAdmin: fromBackendAccount ? authProfile.isAdmin : true,
+      hasPermission: fromBackendAccount ? authProfile.hasPermission : alwaysTrue,
+      hasAnyPermission: fromBackendAccount ? authProfile.hasAnyPermission : alwaysTrue,
+      hasAllPermissions: fromBackendAccount ? authProfile.hasAllPermissions : alwaysTrue,
+      hasRole: fromBackendAccount ? authProfile.hasRole : alwaysTrue,
+      hasAnyRole: fromBackendAccount ? authProfile.hasAnyRole : alwaysTrue,
+      canAccessWorkbench: fromBackendAccount ? authProfile.canAccessWorkbench : alwaysTrue,
+      isMenuVisible: fromBackendAccount ? authProfile.isMenuVisible : alwaysTrue,
+      canSeeMenu: fromBackendAccount
+        ? (wb, key, perms) => canSeeMenuFromProfile(authProfile, wb, key, perms)
+        : () => true,
+      getWorkstationMode: (ws) => workstationModeFromProfile(p, ws),
     }
     return (
       <FeishuContext.Provider value={devValue}>
@@ -222,48 +297,13 @@ export function FeishuAuthProvider({
     hasAnyRole: authProfile.hasAnyRole,
     canAccessWorkbench: authProfile.canAccessWorkbench,
     isMenuVisible: authProfile.isMenuVisible,
-    getWorkstationMode: (workstation: string): string => {
-      // 从 profile.workstation_modes 读取；无配置时返回 'full'（完整模式，不限制菜单）
-      const modes = authProfile.profile?.workstation_modes
-      if (!modes) return 'full'
-      return modes[workstation] ?? 'full'
-    },
-    canSeeMenu: (workbench: string, menuKey: string, permissions: string[] = []) => {
-      // 策略统一：后端 visible_menu_items 优先；无命中时回退权限码判定
-      if (authProfile.loading || !authProfile.profile) return true
-      const wbMenus = authProfile.profile.visible_menu_items?.[workbench] || []
-      const hasWorkbenchMenuConfig = Object.prototype.hasOwnProperty.call(
-        authProfile.profile.visible_menu_items || {},
-        workbench,
-      )
-      const hasProfileSignals =
-        wbMenus.length > 0
-        || (authProfile.profile.permissions?.length || 0) > 0
-      // 飞书容器降级兼容：画像结构异常时避免菜单整栏消失
-      if (!hasProfileSignals) return true
-      // 工作台菜单映射缺失时降级为可见，避免因 key 不一致导致全栏空白
-      if (!hasWorkbenchMenuConfig) return true
-      if (authProfile.isMenuVisible(workbench, menuKey)) return true
-      // 后端显式返回空菜单且权限判定不命中时，按最小授权原则隐藏菜单，
-      // 避免前端展示无权限入口导致用户在多个页面遭遇 403。
-      if (!wbMenus.length && permissions.length && !authProfile.hasAnyPermission(permissions)) return false
-      if (!permissions.length) return true
-      const allowed = authProfile.hasAnyPermission(permissions)
-      if (!allowed && isAuthDebugEnabled()) {
-        console.warn('[CNKIS auth] menu denied', {
-          workbench,
-          menuKey,
-          permissions,
-          wbMenus,
-          profilePermissionsCount: authProfile.profile.permissions?.length || 0,
-          roleNames: (authProfile.profile.roles || []).map((role) => role.name),
-          username: authProfile.profile.username,
-        })
-      }
-      return allowed
-    },
+    getWorkstationMode: (workstation: string): string =>
+      workstationModeFromProfile(authProfile.profile, workstation),
+    canSeeMenu: (workbench: string, menuKey: string, permissions: string[] = []) =>
+      canSeeMenuFromProfile(authProfile, workbench, menuKey, permissions),
   }
 
+  // 仅在 profile 加载成功后再渲染主内容，避免 ClawQuickPanel 等组件在 token 尚未被 /auth/profile 验证前抢跑请求导致 401 级联（同事登录后闪退）
   let content: ReactNode
   if (auth.loading) {
     content = loadingFallback || <DefaultLoading />
@@ -271,6 +311,12 @@ export function FeishuAuthProvider({
     content = <ErrorFallback error={auth.error} errorType={auth.errorType} onRetry={auth.login} />
   } else if (!auth.isAuthenticated && loginFallback) {
     content = loginFallback
+  } else if (authProfile.authRequired) {
+    content = loadingFallback || <DefaultLoading />
+  } else if (auth.isAuthenticated && (!authProfile.profile) && authProfile.loading) {
+    content = loadingFallback || <DefaultLoading />
+  } else if (auth.isAuthenticated && auth.token && !authProfile.profile && !authProfile.loading) {
+    content = loadingFallback || <DefaultLoading />
   } else {
     content = children
   }

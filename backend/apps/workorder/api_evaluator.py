@@ -41,7 +41,6 @@ import time
 from ninja import Router, Schema, Query, File
 from ninja.files import UploadedFile
 from typing import Optional, List, Any
-from datetime import date
 from django.conf import settings
 from django.db import connections
 
@@ -755,44 +754,44 @@ def instrument_readings_upload_from_ui(request, payload: InstrumentReadingsFromU
     """
     import uuid
     from datetime import datetime
-    
+
     account = _get_account_from_request(request)
     if not account:
         return {'code': 403, 'msg': '未认证', 'data': {'uploaded': 0}}
-    
+
     header = payload.header or []
     rows = payload.rows or []
     meta = payload.meta or {}
-    
+
     if not header or not rows:
         return {'code': 400, 'msg': '缺少数据', 'data': {'uploaded': 0}}
-    
+
     col_map = {h: i for i, h in enumerate(header)}
-    
+
     def get_col(row: list, col_name: str, default: str = '') -> str:
         idx = col_map.get(col_name, -1)
         if idx >= 0 and idx < len(row):
             return row[idx] or default
         return default
-    
+
     records = []
     terminal_id = getattr(settings, 'SADC_TERMINAL_ID', '') or 'KIS'
-    
+
     for row_idx, row in enumerate(rows):
         record_id = f"REC-{terminal_id}-{uuid.uuid4().hex[:8].upper()}"
-        
+
         observation_time = get_col(row, 'Time & Date Session') or get_col(row, 'DateTime')
         if not observation_time:
             observation_time = datetime.now().isoformat()
-        
+
         attr_name = get_col(row, 'attribute_name')
         attr_value = get_col(row, 'attribute_value')
-        
+
         if not attr_name and 'Measurement' in col_map:
             attr_name = get_col(row, 'Measurement')
         if not attr_value and 'Value' in col_map:
             attr_value = get_col(row, 'Value')
-        
+
         rec = {
             'study_code': meta.get('study') or get_col(row, 'Study'),
             'subject_code': meta.get('subject') or get_col(row, 'Subject'),
@@ -811,7 +810,7 @@ def instrument_readings_upload_from_ui(request, payload: InstrumentReadingsFromU
             'created_by': account.id,
         }
         records.append(rec)
-    
+
     n, err = _upload_instrument_readings(records, created_by=account.id)
     if err:
         return {'code': 500, 'msg': f'上传失败：{err}', 'data': {'uploaded': 0}}

@@ -83,7 +83,7 @@ class Command(BaseCommand):
         sources = [s.strip() for s in sources_str.split(',') if s.strip()] if sources_str else None
 
         self.stdout.write(f'\n{"="*70}')
-        self.stdout.write(f'  飞书全量数据采集（sweep_feishu_all）')
+        self.stdout.write('  飞书全量数据采集（sweep_feishu_all）')
         self.stdout.write(f'  回溯: {days} 天')
         self.stdout.write(f'  数据源: {sources or "全部(mail,im,calendar,task,approval,doc)"}')
         self.stdout.write(f'  知识库沉淀: {"否" if no_deposit else "是"}')
@@ -97,7 +97,6 @@ class Command(BaseCommand):
 
         from apps.secretary.feishu_comprehensive_collector import (
             FeishuComprehensiveCollector,
-            BatchCollectionResult,
         )
 
         collector = FeishuComprehensiveCollector(
@@ -254,7 +253,7 @@ class Command(BaseCommand):
                 key=lambda x: x[1].get('mention_count', 0),
                 reverse=True,
             )
-            self.stdout.write(f'\n  关键角色（Top 20）:')
+            self.stdout.write('\n  关键角色（Top 20）:')
             for name, info in sorted_personnel[:20]:
                 roles = ', '.join(info.get('roles', []))
                 src_dist = info.get('source_distribution', {})
@@ -266,7 +265,7 @@ class Command(BaseCommand):
 
         resources = signals.get('resource_mentions', {})
         if resources:
-            self.stdout.write(f'\n  资源提及:')
+            self.stdout.write('\n  资源提及:')
             for res_type, mentions in resources.items():
                 keywords = set(m['keyword'] for m in mentions)
                 self.stdout.write(f'    {res_type}: {len(mentions)} 次 ({", ".join(list(keywords)[:5])})')
@@ -284,7 +283,7 @@ class Command(BaseCommand):
     def _print_final_stats(self, batch_result, project_results, signals):
         """打印最终统计"""
         self.stdout.write(f'\n{"="*70}')
-        self.stdout.write(f'  采集完成')
+        self.stdout.write('  采集完成')
         self.stdout.write(f'{"="*70}')
         self.stdout.write(f'  用户数: {len(batch_result.user_results)}')
         self.stdout.write(f'  总采集: {batch_result.total_items} 条')
@@ -307,7 +306,7 @@ class Command(BaseCommand):
             for source, count in ur.counts.items():
                 source_totals[source] += count
 
-        self.stdout.write(f'\n  按数据源:')
+        self.stdout.write('\n  按数据源:')
         for source, total in sorted(source_totals.items(), key=lambda x: -x[1]):
             self.stdout.write(f'    {source:12s}: {total}')
 

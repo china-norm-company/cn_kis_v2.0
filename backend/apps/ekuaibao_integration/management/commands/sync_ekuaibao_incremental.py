@@ -116,7 +116,7 @@ class Command(BaseCommand):
         from apps.ekuaibao_integration.ekb_client import get_client
         from apps.ekuaibao_integration.ekb_exporter import EkbExporter
         from apps.ekuaibao_integration.models import (
-            EkbSyncCheckpoint, EkbBatchStatus
+            EkbSyncCheckpoint
         )
 
         operator = options.get('operator', 'cron')
@@ -203,5 +203,5 @@ class Command(BaseCommand):
 
         self.stdout.write(
             '增量数据已进入原始层，双轨期间不自动注入业务层。\n'
-            f'查看对账: python manage.py sync_ekuaibao_incremental --reconcile-only'
+            '查看对账: python manage.py sync_ekuaibao_incremental --reconcile-only'
         )

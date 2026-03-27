@@ -8,7 +8,7 @@ from datetime import date
 from django.db import transaction
 
 from ..models_audit import (
-    QualityAudit, AuditStatus, AuditFinding, FindingSeverity, FindingStatus,
+    QualityAudit, AuditStatus, AuditFinding, FindingSeverity,
 )
 
 logger = logging.getLogger(__name__)

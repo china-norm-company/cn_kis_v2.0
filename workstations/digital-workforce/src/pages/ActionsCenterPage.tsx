@@ -86,7 +86,7 @@ export default function ActionsCenterPage() {
       ) : (
         <div className="space-y-3">
           {items.map((item) => (
-            <ActionCard key={item.id} item={item}>
+            <ActionCard key={item.id} item={item as unknown as import('@cn-kis/ui-kit').ActionCardItem}>
               <Button size="sm" variant="secondary" onClick={() => navigate(`/replay?action_id=${item.id}`)}>
                 查看回放
               </Button>

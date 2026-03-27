@@ -8,10 +8,10 @@ from typing import Optional, Dict
 from decimal import Decimal
 from datetime import date
 from django.utils import timezone
-from django.db.models import Sum, Count, Q, F
+from django.db.models import Sum, Count, Q
 
 from apps.finance.models import (
-    FinancialReport, FinancialReportType, FinancialReportStatus,
+    FinancialReport, FinancialReportStatus,
     ProfitAnalysis, CashFlowRecord, CashFlowType,
     Contract, ContractStatus, Invoice, InvoiceStatus,
     PaymentPlan, PaymentPlanStatus, CostRecord, CostRecordStatus, CostType,

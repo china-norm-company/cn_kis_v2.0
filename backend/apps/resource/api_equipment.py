@@ -8,6 +8,7 @@
 
 设备台账：
 - GET  /ledger                          设备列表（增强筛选）
+- GET  /index                           设备列表（与 /ledger 相同，兼容旧客户端）
 - GET  /ledger/{id}                     设备详情
 - POST /ledger/create                   新增设备
 - PUT  /ledger/{id}                     更新设备
@@ -46,6 +47,7 @@
 检测方法：
 - GET  /detection-methods/list          检测方法列表
 - GET  /detection-methods/{id}          检测方法详情
+- POST /detection-methods/sop-upload      上传 SOP 附件（返回 url）
 - POST /detection-methods/create        创建检测方法
 - PUT  /detection-methods/{id}          更新检测方法
 - POST /detection-methods/{id}/resources/add      添加资源需求
@@ -57,8 +59,16 @@ from ninja import Router, Schema, Query, File
 from ninja.files import UploadedFile
 from typing import Optional, List
 from pydantic import ConfigDict
+from pathlib import Path
+import os
+import uuid
+from django.conf import settings
 
-from apps.identity.decorators import _get_account_from_request, require_permission
+from apps.identity.decorators import (
+    _get_account_from_request,
+    require_permission,
+    require_any_permission,
+)
 
 router = Router()
 
@@ -81,12 +91,19 @@ class LedgerQueryIn(Schema):
     lims_only: Optional[bool] = None       # True = 只显示 LIMS 导入；False = 只显示手工录入
 
 
+class LedgerSummaryQueryIn(Schema):
+    keyword: Optional[str] = None
+    page: int = 1
+    page_size: int = 20
+
+
 class EquipmentCreateIn(Schema):
     model_config = ConfigDict(protected_namespaces=())
 
     name: str
     code: str
     category_id: int
+    name_classification: Optional[str] = ''
     status: Optional[str] = 'active'
     location: Optional[str] = ''
     manufacturer: Optional[str] = ''
@@ -94,7 +111,12 @@ class EquipmentCreateIn(Schema):
     serial_number: Optional[str] = ''
     purchase_date: Optional[str] = None
     warranty_expiry: Optional[str] = None
+    next_calibration_date: Optional[str] = None
+    next_verification_date: Optional[str] = None
+    next_maintenance_date: Optional[str] = None
     calibration_cycle_days: Optional[int] = None
+    verification_cycle_days: Optional[int] = None
+    maintenance_cycle_days: Optional[int] = None
     manager_id: Optional[int] = None
 
 
@@ -102,13 +124,19 @@ class EquipmentUpdateIn(Schema):
     model_config = ConfigDict(protected_namespaces=())
 
     name: Optional[str] = None
+    name_classification: Optional[str] = None
     location: Optional[str] = None
     manufacturer: Optional[str] = None
     model_number: Optional[str] = None
     serial_number: Optional[str] = None
     purchase_date: Optional[str] = None
     warranty_expiry: Optional[str] = None
+    next_calibration_date: Optional[str] = None
+    next_verification_date: Optional[str] = None
+    next_maintenance_date: Optional[str] = None
     calibration_cycle_days: Optional[int] = None
+    verification_cycle_days: Optional[int] = None
+    maintenance_cycle_days: Optional[int] = None
     manager_id: Optional[int] = None
 
 
@@ -279,8 +307,11 @@ class MethodCreateIn(Schema):
     code: str
     name: str
     name_en: Optional[str] = ''
+    equipment_name_classification: Optional[str] = ''
     category: str
     description: Optional[str] = ''
+    qc_requirements: Optional[str] = ''
+    sop_attachment_url: Optional[str] = ''
     estimated_duration_minutes: Optional[int] = 30
     preparation_time_minutes: Optional[int] = 10
     temperature_min: Optional[float] = None
@@ -296,8 +327,11 @@ class MethodCreateIn(Schema):
 class MethodUpdateIn(Schema):
     name: Optional[str] = None
     name_en: Optional[str] = None
+    equipment_name_classification: Optional[str] = None
     category: Optional[str] = None
     description: Optional[str] = None
+    qc_requirements: Optional[str] = None
+    sop_attachment_url: Optional[str] = None
     estimated_duration_minutes: Optional[int] = None
     preparation_time_minutes: Optional[int] = None
     temperature_min: Optional[float] = None
@@ -356,6 +390,47 @@ def list_ledger(request, params: Query[LedgerQueryIn]):
     return {'code': 0, 'msg': 'ok', 'data': data}
 
 
+@router.get('/index', summary='设备列表（别名，同 GET /ledger）')
+@require_permission('resource.equipment.read')
+def list_equipment_index_alias(request, params: Query[LedgerQueryIn]):
+    """与 list_ledger 一致，兼容请求 /equipment/index 的客户端"""
+    from .services.equipment_service import list_equipment
+    data = list_equipment(
+        keyword=params.keyword, category_id=params.category_id,
+        status=params.status, calibration_status=params.calibration_status,
+        location=params.location, page=params.page,
+        page_size=params.page_size, sort_by=params.sort_by,
+        lims_only=params.lims_only,
+    )
+    return {'code': 0, 'msg': 'ok', 'data': data}
+
+
+@router.get('/ledger-categories', summary='设备类别台账')
+@require_permission('resource.equipment.read')
+def list_ledger_categories(request, params: Query[LedgerSummaryQueryIn]):
+    """按设备类别聚合设备数量，支持模糊检索类别名/编码。"""
+    from .services.equipment_service import list_equipment_category_ledger
+    data = list_equipment_category_ledger(
+        keyword=params.keyword,
+        page=params.page,
+        page_size=params.page_size,
+    )
+    return {'code': 0, 'msg': 'ok', 'data': data}
+
+
+@router.get('/ledger-name-classifications', summary='设备细分类别台账')
+@require_permission('resource.equipment.read')
+def list_ledger_name_classifications(request, params: Query[LedgerSummaryQueryIn]):
+    """按名称分类 + 设备类别聚合设备数量，支持模糊检索。"""
+    from .services.equipment_service import list_equipment_name_classification_ledger
+    data = list_equipment_name_classification_ledger(
+        keyword=params.keyword,
+        page=params.page,
+        page_size=params.page_size,
+    )
+    return {'code': 0, 'msg': 'ok', 'data': data}
+
+
 @router.get('/ledger/{equipment_id}', summary='设备详情')
 @require_permission('resource.equipment.read')
 def get_ledger_detail(request, equipment_id: int):
@@ -395,10 +470,17 @@ def create_ledger(request, payload: EquipmentCreateIn):
     kwargs.pop('name', None)
     kwargs.pop('code', None)
     kwargs.pop('category_id', None)
-    if 'purchase_date' in kwargs and kwargs['purchase_date']:
-        kwargs['purchase_date'] = dt_date.fromisoformat(kwargs['purchase_date'])
-    if 'warranty_expiry' in kwargs and kwargs['warranty_expiry']:
-        kwargs['warranty_expiry'] = dt_date.fromisoformat(kwargs['warranty_expiry'])
+    name_classification = (kwargs.pop('name_classification', '') or '').strip()
+    for field_name in (
+        'purchase_date', 'warranty_expiry',
+        'next_calibration_date', 'next_verification_date', 'next_maintenance_date',
+    ):
+        if field_name in kwargs and kwargs[field_name]:
+            kwargs[field_name] = dt_date.fromisoformat(kwargs[field_name])
+    if name_classification:
+        attrs = dict(kwargs.get('attributes') or {})
+        attrs['name_classification'] = name_classification
+        kwargs['attributes'] = attrs
     item = create_equipment(
         name=payload.name, code=payload.code,
         category_id=payload.category_id, **kwargs,
@@ -413,10 +495,20 @@ def update_ledger(request, equipment_id: int, payload: EquipmentUpdateIn):
     from .services.equipment_service import update_equipment
     from datetime import date as dt_date
     kwargs = payload.dict(exclude_unset=True)
-    if 'purchase_date' in kwargs and kwargs['purchase_date']:
-        kwargs['purchase_date'] = dt_date.fromisoformat(kwargs['purchase_date'])
-    if 'warranty_expiry' in kwargs and kwargs['warranty_expiry']:
-        kwargs['warranty_expiry'] = dt_date.fromisoformat(kwargs['warranty_expiry'])
+    name_classification = kwargs.pop('name_classification', None)
+    for field_name in (
+        'purchase_date', 'warranty_expiry',
+        'next_calibration_date', 'next_verification_date', 'next_maintenance_date',
+    ):
+        if field_name in kwargs and kwargs[field_name]:
+            kwargs[field_name] = dt_date.fromisoformat(kwargs[field_name])
+    if name_classification is not None:
+        item = update_equipment(equipment_id)
+        if not item:
+            return {'code': 404, 'msg': '设备不存在', 'data': None}
+        attrs = dict(item.attributes or {})
+        attrs['name_classification'] = (name_classification or '').strip()
+        kwargs['attributes'] = attrs
     item = update_equipment(equipment_id, **kwargs)
     if not item:
         return {'code': 404, 'msg': '设备不存在', 'data': None}
@@ -937,7 +1029,7 @@ def cancel_maintenance_api(request, maintenance_id: int, payload: MaintenanceCan
 # 使用记录
 # ============================================================================
 @router.get('/usage/list', summary='使用记录列表')
-@require_permission('resource.usage.read')
+@require_any_permission(['resource.equipment.read', 'resource.usage.read'])
 def list_usage_api(request, params: Query[UsageQueryIn]):
     """使用记录列表（分页+筛选）"""
     from .services.equipment_service import list_usage
@@ -951,7 +1043,7 @@ def list_usage_api(request, params: Query[UsageQueryIn]):
 
 
 @router.get('/usage/stats', summary='使用统计')
-@require_permission('resource.usage.read')
+@require_any_permission(['resource.equipment.read', 'resource.usage.read'])
 def usage_stats_api(request):
     """设备使用统计（30天）"""
     from .services.equipment_service import get_usage_stats
@@ -959,7 +1051,7 @@ def usage_stats_api(request):
 
 
 @router.post('/usage/register', summary='登记使用')
-@require_permission('resource.usage.write')
+@require_any_permission(['resource.equipment.write', 'resource.usage.write'])
 def register_usage_api(request, payload: UsageRegisterIn):
     """手动登记设备使用（开始使用）"""
     account = _get_account_from_request(request)
@@ -977,7 +1069,7 @@ def register_usage_api(request, payload: UsageRegisterIn):
 
 
 @router.post('/usage/{usage_id}/end', summary='结束使用')
-@require_permission('resource.usage.write')
+@require_any_permission(['resource.equipment.write', 'resource.usage.write'])
 def end_usage_api(request, usage_id: int):
     """结束设备使用"""
     from .services.equipment_service import end_usage
@@ -1061,6 +1153,35 @@ def list_methods_api(request, params: Query[MethodQueryIn]):
         keyword=params.keyword, page=params.page, page_size=params.page_size,
     )
     return {'code': 0, 'msg': 'ok', 'data': data}
+
+
+@router.post('/detection-methods/sop-upload', summary='上传检测方法 SOP 附件')
+@require_permission('resource.method.write')
+def upload_detection_method_sop(request, file: File[UploadedFile] = File(...)):
+    """保存到 MEDIA_ROOT/detection_methods/sop/，返回可访问的 url（相对站点根路径）"""
+    suffix = Path(file.name or '').suffix.lower()
+    allowed = ('.pdf', '.doc', '.docx', '.xlsx', '.xls', '.ppt', '.pptx', '.png', '.jpg', '.jpeg', '.zip')
+    if suffix not in allowed:
+        return {'code': 400, 'msg': f'不支持的文件类型，允许: {", ".join(allowed)}', 'data': None}
+    rel_dir = 'detection_methods/sop'
+    media_root = Path(str(settings.MEDIA_ROOT))
+    dest_dir = media_root / rel_dir
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    stored = f'{uuid.uuid4().hex}{suffix}'
+    dest = dest_dir / stored
+    with open(dest, 'wb') as out:
+        if hasattr(file, 'chunks'):
+            for chunk in file.chunks():
+                out.write(chunk)
+        else:
+            out.write(file.read())
+    media_url = (settings.MEDIA_URL or '/media/').rstrip('/') + '/'
+    url = f'{media_url}{rel_dir}/{stored}'
+    return {
+        'code': 0,
+        'msg': 'ok',
+        'data': {'url': url, 'original_filename': os.path.basename(file.name or '')},
+    }
 
 
 @router.get('/detection-methods/{method_id}', summary='检测方法详情')

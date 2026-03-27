@@ -119,7 +119,7 @@ async function mockLifecycleApis(page: Page, audit: ApiAudit) {
           plan_id: 101,
           reg_status: 'confirmed',
           reg_date: '2026-02-22',
-          pre_screening: { id: 1, result: 'pass', date: '2026-02-25', notes: '粗筛通过' },
+          pre_screening: { id: 1, result: 'pass', date: '2026-02-25', notes: '初筛通过' },
           screening: { id: 2, result: 'pass', date: '2026-02-28', notes: '正式筛选通过' },
           enrollment: { id: 3, status: 'enrolled', enrollment_no: CHAIN.enrollmentNo, date: '2026-03-01' },
         }],

@@ -12,7 +12,7 @@
   GET  /ekuaibao/attachments   — 附件索引
 """
 import logging
-from typing import List, Optional
+from typing import Optional
 
 from django.http import HttpRequest
 from ninja import Router, Schema
@@ -214,7 +214,7 @@ def list_conflicts(
 
 @router.post('/conflicts/{conflict_id}/resolve', summary='处理单条冲突')
 def resolve_conflict(request: HttpRequest, conflict_id: int, payload: EkbConflictResolveIn):
-    from apps.ekuaibao_integration.models import EkbConflict, EkbImportBatch
+    from apps.ekuaibao_integration.models import EkbConflict
     from apps.ekuaibao_integration.ekb_dedup import EkbDedupReport
 
     conflict = EkbConflict.objects.select_related('batch').filter(id=conflict_id).first()
@@ -239,7 +239,6 @@ def resolve_conflict(request: HttpRequest, conflict_id: int, payload: EkbConflic
 def get_reconcile(request: HttpRequest, module: str = 'flows', batch_no: Optional[str] = None):
     from apps.ekuaibao_integration.models import EkbImportBatch
     from apps.ekuaibao_integration.ekb_dedup import EkbDedupReport
-    from apps.ekuaibao_integration.ekb_exporter import EkbExporter
 
     if batch_no:
         batch = EkbImportBatch.objects.filter(batch_no=batch_no).first()

@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import PortalPage from '../pages/PortalPage'
+import { PortalPage } from '../pages/PortalPage'
 import RosterPage from '../pages/RosterPage'
 import ValueDashboardPage from '../pages/ValueDashboardPage'
 import RoleDetailPage from '../pages/RoleDetailPage'
@@ -129,7 +129,7 @@ function renderWithProviders(ui: React.ReactElement) {
 }
 
 describe('PortalPage', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
   it('renders portal title and main structure', () => {
     renderWithProviders(<PortalPage />)
     expect(screen.getByRole('heading', { name: /数字员工门户/ })).toBeInTheDocument()
@@ -172,7 +172,7 @@ describe('PortalPage', () => {
 })
 
 describe('RosterPage', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
   it('renders roster page structure', () => {
     renderWithProviders(<RosterPage />)
     expect(screen.getByTestId('roster-page')).toBeInTheDocument()
@@ -180,7 +180,7 @@ describe('RosterPage', () => {
 })
 
 describe('ValueDashboardPage', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
   it('renders value dashboard structure', async () => {
     renderWithProviders(<ValueDashboardPage />)
     expect(screen.getByTestId('value-dashboard-page')).toBeInTheDocument()
@@ -240,7 +240,7 @@ describe('ValueDashboardPage', () => {
 })
 
 describe('RoleDetailPage', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
   it('renders role detail with runtime stats and replay section', async () => {
     const { digitalWorkforcePortalApi } = await import('@cn-kis/api-client')
     vi.mocked(digitalWorkforcePortalApi.getPortal).mockResolvedValue({
@@ -330,7 +330,7 @@ describe('RoleDetailPage', () => {
 })
 
 describe('ReplayDetailPage', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
   it('renders role as role detail link in governance block', async () => {
     const { digitalWorkforcePortalApi } = await import('@cn-kis/api-client')
     vi.mocked(digitalWorkforcePortalApi.getPortal).mockResolvedValue({
@@ -408,7 +408,7 @@ describe('AdminNoPermission', () => {
 })
 
 describe('PolicyCenterPage', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
   it('renders policy center structure', () => {
     renderWithProviders(<PolicyCenterPage />)
     expect(screen.getByTestId('policy-center-page')).toBeInTheDocument()
@@ -416,7 +416,7 @@ describe('PolicyCenterPage', () => {
 })
 
 describe('WorkflowsPage', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
   it('renders workflows page and heading', () => {
     renderWithProviders(<WorkflowsPage />)
     expect(screen.getByRole('heading', { name: /协作流程定义/ })).toBeInTheDocument()
@@ -424,7 +424,7 @@ describe('WorkflowsPage', () => {
 })
 
 describe('EvidenceGatePage', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
   it('renders evidence gate page structure', () => {
     renderWithProviders(<EvidenceGatePage />)
     expect(screen.getByTestId('evidence-gate-page')).toBeInTheDocument()
@@ -479,7 +479,7 @@ describe('EvidenceGatePage', () => {
 })
 
 describe('KnowledgeReviewPage', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
 
   it('renders knowledge review page heading and empty state', () => {
     renderWithProviders(<KnowledgeReviewPage />)
@@ -495,7 +495,7 @@ describe('KnowledgeReviewPage', () => {
 })
 
 describe('ValueDashboardPage – knowledge deposit card', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
   it('renders knowledge deposit card when data contains knowledge_deposit', async () => {
     const { digitalWorkforcePortalApi } = await import('@cn-kis/api-client')
     vi.mocked(digitalWorkforcePortalApi.getValueMetrics).mockResolvedValue({
@@ -532,7 +532,7 @@ describe('ValueDashboardPage – knowledge deposit card', () => {
 })
 
 describe('PerformancePage – role KPI report', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
   it('renders role KPI report section when by_role_kpi has data', async () => {
     const { digitalWorkforcePortalApi } = await import('@cn-kis/api-client')
     vi.mocked(digitalWorkforcePortalApi.getValueMetrics).mockResolvedValue({
@@ -579,7 +579,7 @@ describe('PerformancePage – role KPI report', () => {
 // ============================================================================
 
 describe('PolicyLearningPage – policy approval flow UI', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
 
   it('renders policy-learning-page testid', async () => {
     const { digitalWorkforcePortalApi } = await import('@cn-kis/api-client')
@@ -647,7 +647,7 @@ describe('PolicyLearningPage – policy approval flow UI', () => {
 // ============================================================================
 
 describe('EvergreenWatchDetailPage – detail page rendering', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
 
   it('renders detail page for a valid report', async () => {
     const { digitalWorkforcePortalApi } = await import('@cn-kis/api-client')
@@ -673,7 +673,7 @@ describe('EvergreenWatchDetailPage – detail page rendering', () => {
       },
     })
     const { default: EvergreenWatchDetailPage } = await import('../pages/EvergreenWatchDetailPage')
-    const wrapper = ({ children }: { children: React.ReactNode }) => (
+    const wrapper = () => (
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
         <MemoryRouter initialEntries={['/upgrades/42']}>
           <Routes>
@@ -692,7 +692,7 @@ describe('EvergreenWatchDetailPage – detail page rendering', () => {
 // ============================================================================
 
 describe('DailyBriefPage – basic rendering', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
 
   it('renders daily-brief-page testid', async () => {
     const { default: DailyBriefPage } = await import('../pages/DailyBriefPage')
@@ -708,7 +708,7 @@ describe('DailyBriefPage – basic rendering', () => {
 // ============================================================================
 
 describe('AgentDirectoryPage – basic rendering', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
 
   it('renders without crashing', async () => {
     const { default: AgentDirectoryPage } = await import('../pages/AgentDirectoryPage')
@@ -722,7 +722,7 @@ describe('AgentDirectoryPage – basic rendering', () => {
 // ============================================================================
 
 describe('MatrixPage – basic rendering', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
 
   it('renders without crashing', async () => {
     const { default: MatrixPage } = await import('../pages/MatrixPage')
@@ -736,7 +736,7 @@ describe('MatrixPage – basic rendering', () => {
 // ============================================================================
 
 describe('PositionsPage – basic rendering', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
 
   it('renders without crashing', async () => {
     const { default: PositionsPage } = await import('../pages/PositionsPage')
@@ -750,7 +750,7 @@ describe('PositionsPage – basic rendering', () => {
 // ============================================================================
 
 describe('MemoryArchivePage – basic rendering', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
 
   it('renders without crashing', async () => {
     const { default: MemoryArchivePage } = await import('../pages/MemoryArchivePage')
@@ -764,7 +764,7 @@ describe('MemoryArchivePage – basic rendering', () => {
 // ============================================================================
 
 describe('KnowledgeReviewPage – knowledge quality dashboard', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
 
   it('renders knowledge-quality-dashboard when data is available', async () => {
     const { digitalWorkforcePortalApi } = await import('@cn-kis/api-client')

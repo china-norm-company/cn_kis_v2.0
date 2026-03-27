@@ -39,16 +39,98 @@ class FeishuUserToken(models.Model):
     created_at = models.DateTimeField('创建时间', auto_now_add=True)
     updated_at = models.DateTimeField('更新时间', auto_now=True)
 
+    # ── Token 状态（migration 0022）──────────────────────────────────────────────
+    STATUS_ACTIVE = 'active'
+    STATUS_EXPIRING = 'expiring'
+    STATUS_ACCESS_EXPIRED = 'access_expired'
+    STATUS_REFRESH_EXPIRED = 'refresh_expired'
+    STATUS_REVOKED = 'revoked'
+    STATUS_INVALID = 'invalid'
+    STATUS_CHOICES = [
+        (STATUS_ACTIVE, '正常'),
+        (STATUS_EXPIRING, '即将到期'),
+        (STATUS_ACCESS_EXPIRED, 'Access过期'),
+        (STATUS_REFRESH_EXPIRED, '需重新登录'),
+        (STATUS_REVOKED, '已作废'),
+        (STATUS_INVALID, '无效'),
+    ]
+    status = models.CharField('Token 状态', max_length=20, choices=STATUS_CHOICES, default=STATUS_ACTIVE, db_index=True)
+
+    # ── 时间线统计（migration 0022）──────────────────────────────────────────────
+    first_authorized_at = models.DateTimeField('首次授权时间', null=True, blank=True)
+    last_refreshed_at = models.DateTimeField('最近刷新成功时间', null=True, blank=True)
+    last_used_at = models.DateTimeField('最近使用时间', null=True, blank=True)
+    last_refresh_failed_at = models.DateTimeField('最近刷新失败时间', null=True, blank=True)
+    refresh_count = models.PositiveIntegerField('累计刷新次数', default=0)
+    consecutive_refresh_failures = models.PositiveSmallIntegerField('连续刷新失败次数', default=0)
+    last_refresh_error = models.CharField('最近刷新错误信息', max_length=255, blank=True, default='')
+    revoked_at = models.DateTimeField('作废时间', null=True, blank=True)
+    revoked_reason = models.CharField('作废原因', max_length=64, blank=True, default='')
+
     # 子衿主授权：签发来源与预检可观测
     issuer_app_id = models.CharField('签发应用 App ID', max_length=64, blank=True, default='')
     issuer_app_name = models.CharField('签发应用名称', max_length=64, blank=True, default='')
-    granted_capabilities = models.JSONField('预检通过的能力(mail/im/calendar/task)', default=dict, blank=True)
+    feishu_scope = models.TextField(
+        '飞书授权 Scope',
+        blank=True,
+        default='',
+        help_text='OAuth 授权时飞书实际返回的 scope 字符串（空格分隔），'
+                  '可与 DEFAULT_USER_SCOPES 对比检测缺失权限。'
+                  '刷新 token 不会增加新 scope，需重新登录才能获得新增权限。',
+    )
+    granted_capabilities = models.JSONField(
+        '预检通过的能力',
+        default=dict,
+        blank=True,
+        help_text='预检结果字典，键：mail/im/calendar/task/wiki/docx/drive_file/minutes，值：bool',
+    )
     requires_reauth = models.BooleanField('需要重授权', default=False)
     last_preflight_at = models.DateTimeField('最近预检时间', null=True, blank=True)
     last_error_code = models.CharField('最近错误码', max_length=32, blank=True, default='')
 
     def __str__(self):
         return f'FeishuToken(account={self.account_id}, open_id={self.open_id})'
+
+    def compute_status(self) -> str:
+        """根据字段计算当前 token 状态（不写 DB，仅用于展示/同步）。"""
+        from django.utils import timezone
+        now = timezone.now()
+        if self.revoked_at:
+            return self.STATUS_REVOKED
+        if not self.refresh_expires_at or now >= self.refresh_expires_at:
+            return self.STATUS_REFRESH_EXPIRED
+        if not self.token_expires_at or now >= self.token_expires_at:
+            return self.STATUS_ACCESS_EXPIRED
+        from datetime import timedelta
+        if self.refresh_expires_at and self.refresh_expires_at - now < timedelta(days=7):
+            return self.STATUS_EXPIRING
+        return self.STATUS_ACTIVE
+
+    def revoke(self, reason: str = 'admin') -> None:
+        """将 token 标记为已作废。"""
+        from django.utils import timezone
+        self.status = self.STATUS_REVOKED
+        self.revoked_at = timezone.now()
+        self.revoked_reason = reason or 'admin'
+        self.save(update_fields=['status', 'revoked_at', 'revoked_reason', 'updated_at'])
+
+    @property
+    def access_token_remaining_seconds(self) -> int:
+        """Access token 剩余秒数（已过期返回 0）。"""
+        from django.utils import timezone
+        if not self.token_expires_at:
+            return 0
+        diff = (self.token_expires_at - timezone.now()).total_seconds()
+        return max(0, int(diff))
+
+    @property
+    def refresh_token_remaining_days(self) -> float:
+        """Refresh token 剩余天数（已过期返回 0.0）。"""
+        from django.utils import timezone
+        if not self.refresh_expires_at:
+            return 0.0
+        diff = (self.refresh_expires_at - timezone.now()).total_seconds()
+        return max(0.0, diff / 86400)
 
 
 class PersonalContext(models.Model):
@@ -90,232 +172,6 @@ class PersonalContext(models.Model):
         '采集批次ID', max_length=100, blank=True, default='',
         help_text='关联 FeishuMigrationBatch.batch_id，如 full-20260317',
     )
-
-
-class MailSignalExternalClassification(models.TextChoices):
-    EXTERNAL = 'external', '外部邮件'
-    INTERNAL = 'internal', '内部邮件'
-    MIXED = 'mixed', '混合线程'
-    UNKNOWN = 'unknown', '未知'
-
-
-class MailSignalType(models.TextChoices):
-    INQUIRY = 'inquiry', '询价/合作意向'
-    PROJECT_FOLLOWUP = 'project_followup', '项目执行沟通'
-    COMPETITOR_PRESSURE = 'competitor_pressure', '竞品/市场压力'
-    COMPLAINT = 'complaint', '投诉/强负反馈'
-    RELATIONSHIP_SIGNAL = 'relationship_signal', '关系变化信号'
-    INTERNAL_ADMIN = 'internal_admin', '内部行政事务'  # 评测改进：HR/财务/IT等内部邮件
-    UNKNOWN = 'unknown', '未分类'
-
-
-class MailSignalStatus(models.TextChoices):
-    NEW = 'new', '新建'
-    PARSED = 'parsed', '已解析'
-    LINKED = 'linked', '已关联'
-    TASKED = 'tasked', '已生成任务'
-    COMPLETED = 'completed', '已完成'
-    IGNORED = 'ignored', '已忽略'
-    ERROR = 'error', '异常'
-
-
-class MailSignalLinkType(models.TextChoices):
-    CLIENT = 'client', '客户'
-    CONTACT = 'contact', '联系人'
-    OPPORTUNITY = 'opportunity', '商机'
-    PROTOCOL = 'protocol', '协议/项目'
-    ACCOUNT = 'account', '内部账号'
-    TASK = 'task', '动作任务'
-
-
-class MailSignalMatchMethod(models.TextChoices):
-    EXACT_EMAIL = 'exact_email', '邮箱精确匹配'
-    DOMAIN = 'domain', '域名匹配'
-    SIGNATURE = 'signature', '签名匹配'
-    THREAD = 'thread', '线程匹配'
-    MANUAL = 'manual', '人工指定'
-
-
-class MailSignalEvent(models.Model):
-    """
-    邮件业务事件：从 PersonalContext 中抽取出的可运营事件层。
-
-    该模型不替代 PersonalContext，而是承接后续：
-    - 客户/联系人/项目关联
-    - 动作箱任务生成
-    - 正式业务回写
-    """
-    class Meta:
-        db_table = 't_mail_signal_event'
-        verbose_name = '邮件业务事件'
-        ordering = ['-received_at', '-created_at']
-        indexes = [
-            models.Index(fields=['account_id', 'received_at']),
-            models.Index(fields=['sender_email']),
-            models.Index(fields=['thread_id']),
-            models.Index(fields=['status', 'is_external']),
-            models.Index(fields=['mail_signal_type', 'status']),
-        ]
-
-    account_id = models.IntegerField('账号ID', db_index=True)
-    source_context_id = models.BigIntegerField('来源上下文ID', null=True, blank=True, db_index=True)
-    source_mail_id = models.CharField('飞书邮件ID', max_length=200, unique=True)
-    thread_id = models.CharField('邮件线程ID', max_length=200, blank=True, default='', db_index=True)
-    internet_message_id = models.CharField('Internet Message ID', max_length=500, blank=True, default='')
-    mailbox_owner_open_id = models.CharField('邮箱拥有者OpenID', max_length=100, blank=True, default='')
-
-    sender_email = models.CharField('发件人邮箱', max_length=200, db_index=True)
-    sender_name = models.CharField('发件人姓名', max_length=200, blank=True, default='')
-    sender_domain = models.CharField('发件域名', max_length=120, blank=True, default='')
-    recipient_emails = models.JSONField('收件人列表', default=list, blank=True)
-    cc_emails = models.JSONField('抄送列表', default=list, blank=True)
-
-    subject = models.CharField('邮件主题', max_length=500, blank=True, default='')
-    body_text = models.TextField('正文文本', blank=True, default='')
-    body_preview = models.TextField('正文预览', blank=True, default='')
-    sent_at = models.DateTimeField('发件时间', null=True, blank=True)
-    received_at = models.DateTimeField('收件时间', null=True, blank=True, db_index=True)
-
-    is_external = models.BooleanField('是否外部邮件', default=False, db_index=True)
-    external_classification = models.CharField(
-        '内外部分类',
-        max_length=30,
-        choices=MailSignalExternalClassification.choices,
-        default=MailSignalExternalClassification.UNKNOWN,
-    )
-    mail_signal_type = models.CharField(
-        '邮件业务类型',
-        max_length=50,
-        choices=MailSignalType.choices,
-        default=MailSignalType.UNKNOWN,
-        db_index=True,
-    )
-    importance_score = models.IntegerField('重要度分数', null=True, blank=True)
-    sentiment_score = models.IntegerField('情绪分数', null=True, blank=True)
-    urgency_score = models.IntegerField('紧急度分数', null=True, blank=True)
-    confidence_score = models.IntegerField('分类置信度', null=True, blank=True)
-
-    # 评测改进（2026-03-15）：增加业务价值评估和紧迫度，弥补系统与大模型的分析差距
-    business_value = models.CharField(
-        '业务价值',
-        max_length=20,
-        blank=True,
-        default='',
-        choices=[
-            ('critical', '极高价值'),
-            ('high', '高价值'),
-            ('medium', '中等价值'),
-            ('low', '低价值'),
-            ('none', '无业务价值'),
-        ],
-        db_index=True,
-    )
-    urgency_level = models.CharField(
-        '紧迫等级',
-        max_length=20,
-        blank=True,
-        default='',
-        choices=[
-            ('critical', '紧急'),
-            ('high', '较紧急'),
-            ('medium', '一般'),
-            ('low', '不紧急'),
-        ],
-    )
-
-    extracted_entities = models.JSONField('抽取实体', default=dict, blank=True)
-    extracted_people = models.JSONField('抽取人员', default=list, blank=True)
-    extracted_intents = models.JSONField('抽取意图', default=list, blank=True)
-    attachment_count = models.IntegerField('附件数', default=0)
-    raw_payload = models.JSONField('原始邮件快照', default=dict, blank=True)
-    parse_version = models.CharField('解析版本', max_length=20, default='v1')
-    status = models.CharField(
-        '状态',
-        max_length=30,
-        choices=MailSignalStatus.choices,
-        default=MailSignalStatus.NEW,
-        db_index=True,
-    )
-    error_note = models.TextField('异常说明', blank=True, default='')
-    created_at = models.DateTimeField('创建时间', auto_now_add=True)
-    updated_at = models.DateTimeField('更新时间', auto_now=True)
-
-
-class MailSignalAttachment(models.Model):
-    """邮件附件元数据与抽取状态。"""
-    class Meta:
-        db_table = 't_mail_signal_attachment'
-        verbose_name = '邮件业务附件'
-        ordering = ['id']
-        indexes = [
-            models.Index(fields=['mail_signal_event_id']),
-            models.Index(fields=['extract_status']),
-        ]
-
-    mail_signal_event_id = models.BigIntegerField('邮件事件ID', db_index=True)
-    attachment_id = models.CharField('附件ID', max_length=200, blank=True, default='')
-    filename = models.CharField('文件名', max_length=300)
-    content_type = models.CharField('MIME 类型', max_length=120, blank=True, default='')
-    file_size = models.BigIntegerField('文件大小', null=True, blank=True)
-    storage_uri = models.CharField('内部存储地址', max_length=500, blank=True, default='')
-    extract_status = models.CharField('抽取状态', max_length=30, default='pending')
-    extract_summary = models.TextField('附件提要', blank=True, default='')
-    extract_entities = models.JSONField('附件抽取实体', default=dict, blank=True)
-    created_at = models.DateTimeField('创建时间', auto_now_add=True)
-
-
-class MailSignalLink(models.Model):
-    """邮件事件与业务对象的候选/确认关联。"""
-    class Meta:
-        db_table = 't_mail_signal_link'
-        verbose_name = '邮件事件关联'
-        ordering = ['-is_primary', '-match_score', 'id']
-        indexes = [
-            models.Index(fields=['mail_signal_event_id', 'link_type']),
-            models.Index(fields=['link_type', 'target_id']),
-            models.Index(fields=['confirmed', 'match_score']),
-        ]
-
-    mail_signal_event_id = models.BigIntegerField('邮件事件ID', db_index=True)
-    link_type = models.CharField('关联类型', max_length=40, choices=MailSignalLinkType.choices)
-    target_id = models.BigIntegerField('目标对象ID')
-    match_method = models.CharField('匹配方式', max_length=40, choices=MailSignalMatchMethod.choices)
-    match_score = models.IntegerField('匹配分数', null=True, blank=True)
-    is_primary = models.BooleanField('是否主关联', default=False)
-    confirmed = models.BooleanField('是否确认', default=False)
-    confirmed_by = models.IntegerField('确认人ID', null=True, blank=True)
-    confirmed_at = models.DateTimeField('确认时间', null=True, blank=True)
-    note = models.TextField('说明', blank=True, default='')
-    created_at = models.DateTimeField('创建时间', auto_now_add=True)
-
-
-class MailThreadSnapshot(models.Model):
-    """同一线程的最近聚合上下文快照。"""
-    class Meta:
-        db_table = 't_mail_thread_snapshot'
-        verbose_name = '邮件线程快照'
-        unique_together = ['thread_id', 'account_id']
-        indexes = [
-            models.Index(fields=['thread_id', 'account_id']),
-            models.Index(fields=['primary_client_id']),
-            models.Index(fields=['primary_protocol_id']),
-        ]
-
-    thread_id = models.CharField('线程ID', max_length=200)
-    account_id = models.IntegerField('账号ID', db_index=True)
-    last_mail_signal_event_id = models.BigIntegerField('最近事件ID', null=True, blank=True)
-    primary_client_id = models.BigIntegerField('主客户ID', null=True, blank=True)
-    primary_contact_id = models.BigIntegerField('主联系人ID', null=True, blank=True)
-    primary_protocol_id = models.BigIntegerField('主项目ID', null=True, blank=True)
-    context_summary = models.TextField('线程摘要', blank=True, default='')
-    last_signal_type = models.CharField(
-        '最近信号类型',
-        max_length=50,
-        choices=MailSignalType.choices,
-        default=MailSignalType.UNKNOWN,
-    )
-    last_sentiment_score = models.IntegerField('最近情绪分数', null=True, blank=True)
-    updated_at = models.DateTimeField('更新时间', auto_now=True)
 
 
 class MailSignalExternalClassification(models.TextChoices):
@@ -1121,3 +977,8 @@ class FeishuMigrationBatch(models.Model):
 
     def __str__(self):
         return f'Batch({self.batch_id} {self.status} {self.total_items}条)'
+
+
+# ── 用户反馈模型（Issue #4 智能运营早晚报）─────────────────────────────────
+# 放在单独文件中定义，这里重导出让 Django 的 app 发现机制正常工作
+from .feedback_models import UserFeedback  # noqa: F401, E402

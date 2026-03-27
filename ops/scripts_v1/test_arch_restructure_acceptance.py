@@ -3,7 +3,7 @@
 架构重构验收测试脚本
 
 验收范围：
-  1. OAuth 统一授权 — 18 个工作台 VITE_FEISHU_APP_ID 统一
+  1. OAuth 统一授权 — 19 个工作台 VITE_FEISHU_APP_ID 统一
   2. 工作台注册完整性 — workstations.yaml / settings.py / nginx / feishu.yaml
   3. 子衿瘦身 — AI 和 admin 路由/导航已移除
   4. 鹿鸣·治理台 — 命名更新、配置注册
@@ -21,7 +21,7 @@ import sys
 import json
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ZIJIN_APP_ID = 'cli_a98b0babd020500e'
+ZIJIN_APP_ID = 'cli_a907f21f0723dbce'
 
 ALL_18_KEYS = [
     'secretary', 'finance', 'research', 'execution', 'quality',
@@ -114,7 +114,7 @@ def test_oauth_unified(t: TestResult):
 
 def test_workstations_yaml(t: TestResult):
     """2. workstations.yaml 完整性"""
-    t.section('2. workstations.yaml — 18 个工作台注册')
+    t.section('2. workstations.yaml — 19 个工作台注册')
 
     content = read('config/workstations.yaml')
     t.check(content is not None, 'config/workstations.yaml 存在')
@@ -122,7 +122,7 @@ def test_workstations_yaml(t: TestResult):
         return
 
     keys_in_yaml = re.findall(r'^\s+- key:\s+(\S+)', content, re.MULTILINE)
-    t.check(len(keys_in_yaml) == 18, f'工作台数量: {len(keys_in_yaml)}/18')
+    t.check(len(keys_in_yaml) == 19, f'工作台数量: {len(keys_in_yaml)}/19')
 
     for key in ALL_18_KEYS:
         t.check(key in keys_in_yaml, f'{key} 已注册')
@@ -148,7 +148,7 @@ def test_settings_py(t: TestResult):
             t.check(key in keys, f'WORKSTATION_APP_IDS 包含 {key}')
 
     t.check("FEISHU_PRIMARY_APP_ID" in content, 'FEISHU_PRIMARY_APP_ID 已定义')
-    t.check("cli_a98b0babd020500e" in content, 'FEISHU_PRIMARY_APP_ID 默认值为子衿')
+    t.check("cli_a907f21f0723dbce" in content, 'FEISHU_PRIMARY_APP_ID 默认值为子衿')
     t.check("FEISHU_PRIMARY_AUTH_FORCE" in content, 'FEISHU_PRIMARY_AUTH_FORCE 开关存在')
 
 
@@ -187,7 +187,7 @@ def test_feishu_yaml(t: TestResult):
     t.check(len(uris) >= 18, f'redirect_uri 数量: {len(uris)} (>=18)')
 
     path_map = {
-        'secretary': '/login',
+        'secretary': '/secretary/',
         'finance': '/finance/',
         'admin': '/admin/',
         'digital-workforce': '/digital-workforce/',
@@ -279,7 +279,7 @@ def test_digital_workforce(t: TestResult):
 
 def test_portal_page(t: TestResult):
     """9. 子衿门户页工作台卡片"""
-    t.section('9. 子衿门户 — 18 个工作台卡片')
+    t.section('9. 子衿门户 — 19 个工作台卡片')
 
     portal = read('apps/secretary/src/pages/PortalPage.tsx')
     t.check(portal is not None, 'PortalPage.tsx 存在')
@@ -326,7 +326,7 @@ def test_backend_rbac(t: TestResult):
         m = re.search(r'MODULE_MENU_MAP\s*=\s*\{(.+?)\n    \}', api, re.DOTALL)
         if m:
             menu_keys = re.findall(r"'([^']+)'\s*:\s*\{", m.group(1))
-            t.check(len(menu_keys) >= 18, f'MODULE_MENU_MAP 工作台数: {len(menu_keys)}/18')
+            t.check(len(menu_keys) >= 19, f'MODULE_MENU_MAP 工作台数: {len(menu_keys)}/19')
             t.check('digital-workforce' in menu_keys, 'MODULE_MENU_MAP 包含 digital-workforce')
             t.check('admin' in menu_keys, 'MODULE_MENU_MAP 包含 admin')
 
@@ -345,8 +345,8 @@ def test_docs_consistency(t: TestResult):
     md = read('docs/WORKSTATION_INDEPENDENCE.md')
     if md:
         rows = re.findall(r'^\| \d+', md, re.MULTILINE)
-        t.check(len(rows) == 18, f'WORKSTATION_INDEPENDENCE.md 工作台行数: {len(rows)}/18')
-        t.check('18 个' in md, '文档声明 "18 个" 工作台')
+        t.check(len(rows) == 19, f'WORKSTATION_INDEPENDENCE.md 工作台行数: {len(rows)}/18')
+        t.check('19 个' in md, '文档声明 "19 个" 工作台')
         t.check('鹿鸣·治理台' in md, '文档包含 "鹿鸣·治理台"')
         t.check('中书·智能台' in md, '文档包含 "中书·智能台"')
         t.check('典正' not in md, '文档无 "典正" 残留')
@@ -354,8 +354,8 @@ def test_docs_consistency(t: TestResult):
     mdc = read('.cursor/rules/workstation-independence.mdc')
     if mdc:
         rows = re.findall(r'^\| \d+', mdc, re.MULTILINE)
-        t.check(len(rows) == 18, f'workstation-independence.mdc 工作台行数: {len(rows)}/18')
-        t.check('18 个' in mdc, 'mdc 声明 "18 个" 工作台')
+        t.check(len(rows) == 19, f'workstation-independence.mdc 工作台行数: {len(rows)}/18')
+        t.check('19 个' in mdc, 'mdc 声明 "19 个" 工作台')
         t.check('典正' not in mdc, 'mdc 无 "典正" 残留')
 
     scope = read('docs/WORKSTATION_SCOPE_CANONICAL.md')
@@ -367,7 +367,7 @@ def test_docs_consistency(t: TestResult):
 
     ctx = read('.cursor/rules/00-project-context.mdc')
     if ctx:
-        t.check('cli_a98b0babd020500e' in ctx, '00-project-context 子衿 App ID 正确')
+        t.check('cli_a907f21f0723dbce' in ctx, '00-project-context 子衿 App ID 正确')
         t.check('cli_a907f21f0723dbce' not in ctx, '00-project-context 无旧错误 App ID')
 
 
@@ -380,10 +380,10 @@ def test_oauth_flow_e2e(t: TestResult):
     if config_ts:
         t.check('import.meta.env.VITE_FEISHU_APP_ID' in config_ts,
                 'config.ts 从 VITE_FEISHU_APP_ID 读取 appId')
-        t.check("normalized === 'secretary'" in config_ts,
-                'secretary 使用 /login 作为 redirect_uri')
-        t.check('/${normalized}/' in config_ts,
-                '其他工作台使用 /${key}/ 作为 redirect_uri')
+        t.check('${normalized}' in config_ts,
+                'redirect_uri 路径段使用 normalized workstation（秘书台为 /secretary/）')
+        t.check('baseNorm' in config_ts,
+                'config.ts 使用 baseNorm 与路径拼接 redirect_uri')
 
     auth_ts = read('packages/feishu-sdk/src/auth.ts')
     if auth_ts:
@@ -485,7 +485,7 @@ def test_docstring_consistency(t: TestResult):
     api = read('backend/apps/identity/api.py')
     if api:
         t.check('支持 15 个' not in api, 'identity/api.py 无 "支持 15 个" 过时注释')
-        t.check('18 个工作台' in api, 'feishu_callback docstring 更新为 18 台')
+        t.check('19 个工作台' in api, 'feishu_callback docstring 更新为 18 台')
 
     settings = read('backend/settings.py')
     if settings:

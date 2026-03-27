@@ -6,6 +6,7 @@
   演示-系统管理员 -> 林雪
   演示-CRC协调员 -> 刘敏
   演示-CRC主管   -> 陈芳
+（与 seed_witness_staff_demo 中 demo_witness_qa_* 账号对应）
 
 Usage:
     cd backend && python manage.py replace_demo_witness_display_names
@@ -21,6 +22,10 @@ from apps.subject.models import ICFVersion
 
 # username -> 新显示名（与 seed_witness_staff_demo 中账号一一对应）
 ACCOUNT_RENAME = (
+    ('demo_witness_qa_1', '林雪'),
+    ('demo_witness_qa_2', '刘敏'),
+    ('demo_witness_qa_3', '陈芳'),
+    # 旧演示账号（仍尝试重命名显示名，便于历史环境）
     ('demo_witness_admin', '林雪'),
     ('demo_witness_crc', '刘敏'),
     ('demo_witness_crc_sup', '陈芳'),
@@ -58,10 +63,10 @@ class Command(BaseCommand):
 
         usernames = [x[0] for x in ACCOUNT_RENAME]
         accounts = list(Account.objects.filter(username__in=usernames, is_deleted=False))
-        if len(accounts) != len(usernames):
-            found = {a.username for a in accounts}
-            missing = set(usernames) - found
-            self.stderr.write(self.style.WARNING(f'未找到演示账号: {missing}，将跳过账号重命名'))
+        found_usernames = {a.username for a in accounts}
+        missing = set(usernames) - found_usernames
+        if missing:
+            self.stderr.write(self.style.WARNING(f'未找到以下演示账号（将跳过）：{sorted(missing)}'))
 
         for username, new_name in ACCOUNT_RENAME:
             acc = next((a for a in accounts if a.username == username), None)

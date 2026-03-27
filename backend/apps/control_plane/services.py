@@ -1446,7 +1446,6 @@ def _check_ssl_expiry(hostname: str, port: int = 443, timeout: float = 5.0) -> d
         with ctx.wrap_socket(socket.create_connection((hostname, port), timeout=timeout), server_hostname=hostname) as conn:
             cert = conn.getpeercert()
         expire_str = cert.get('notAfter', '')
-        import email.utils
         expire_dt = datetime.strptime(expire_str, '%b %d %H:%M:%S %Y %Z')
         days_left = (expire_dt - datetime.utcnow()).days
         return {'ok': True, 'days_left': days_left, 'expire_date': expire_dt.strftime('%Y-%m-%d'), 'error': None}

@@ -5,7 +5,6 @@
 在审批变更前量化评估影响范围。
 """
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 

@@ -11,9 +11,7 @@
 - 法规更新通知
 - 培训通知
 """
-import json
 import logging
-from datetime import date
 from typing import Optional
 
 from django.utils import timezone
@@ -403,7 +401,7 @@ def notify_regulation_update(regulation_id: int):
                 {'label': '生效日期', 'value': str(reg.effective_date) if reg.effective_date else '待定'},
             ],
             actions=[
-                {'text': '查看详情', 'url': f'/ethics/regulations'},
+                {'text': '查看详情', 'url': '/ethics/regulations'},
             ],
         )
 

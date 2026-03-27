@@ -10,17 +10,15 @@
 - 创新(10%): 联合创新项目数
 """
 import logging
-from datetime import date, timedelta
+from datetime import date
 from typing import Optional
 
-from django.db.models import Avg, Count, Sum, Q
-from django.db.models.functions import Coalesce
+from django.db.models import Avg, Sum
 
 from apps.crm.models import (
     Client, ClientContact, ClientHealthScore, ClientAlert,
     ClientProductLine, InnovationCalendar,
-    SatisfactionSurvey, Ticket,
-    AlertType, AlertSeverity, ChurnRisk,
+    SatisfactionSurvey, AlertType, AlertSeverity, ChurnRisk,
 )
 
 logger = logging.getLogger(__name__)
@@ -132,7 +130,6 @@ def calculate_all_health_scores():
 
 def get_health_overview() -> dict:
     """全局健康度总览"""
-    from django.db.models import Max, Subquery, OuterRef
 
     clients = Client.objects.filter(is_deleted=False)
     latest_scores = []

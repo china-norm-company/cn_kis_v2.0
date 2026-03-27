@@ -44,7 +44,7 @@ def auto_fill_crf_from_detection(detection_id: int) -> dict:
         {"created": bool, "skipped": bool, "crf_record_id": int, "mapped_fields": dict}
     """
     from apps.workorder.models_execution import InstrumentDetection
-    from apps.edc.models import CRFRecord, CRFRecordStatus, InstrumentInterface
+    from apps.edc.models import CRFRecord, CRFRecordStatus
 
     try:
         detection = InstrumentDetection.objects.select_related('work_order').get(pk=detection_id)
@@ -135,7 +135,6 @@ def preview_crf_mapping(detection_id: int) -> dict:
     - 返回预览数据，前端可展示"将同步到 eCRF 的字段"
     """
     from apps.workorder.models_execution import InstrumentDetection
-    from apps.edc.models import InstrumentInterface
 
     try:
         detection = InstrumentDetection.objects.select_related('work_order').get(pk=detection_id)

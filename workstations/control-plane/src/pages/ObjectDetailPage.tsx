@@ -139,10 +139,10 @@ export function ObjectDetailPage() {
                 : ''}
             </span>
           </div>
-          {objectItem.extra?.governance_check_detail && (
+          {!!objectItem.extra?.governance_check_detail && (
             <p className="mt-2 text-sm text-slate-600">{String(objectItem.extra.governance_check_detail)}</p>
           )}
-          {objectItem.extra?.governance_check_action_hint && (
+          {!!objectItem.extra?.governance_check_action_hint && (
             <p className="mt-2 text-sm text-primary-700">{String(objectItem.extra.governance_check_action_hint)}</p>
           )}
         </section>

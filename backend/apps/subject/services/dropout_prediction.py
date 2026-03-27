@@ -11,10 +11,8 @@ AI 脱落预测服务
 """
 import logging
 from datetime import timedelta
-from typing import Optional
 
 from django.utils import timezone
-from django.db.models import Avg, Count, Q
 
 logger = logging.getLogger(__name__)
 

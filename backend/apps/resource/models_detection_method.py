@@ -60,17 +60,26 @@ class DetectionMethodTemplate(models.Model):
     code = models.CharField('方法编号', max_length=50, unique=True)
     name = models.CharField('方法名称', max_length=200)
     name_en = models.CharField('英文名称', max_length=200, blank=True, default='')
+    equipment_name_classification = models.CharField(
+        '设备名称分类', max_length=200, blank=True, default='',
+        help_text='与设备台账「名称分类」一致：同规格统一类型（如 电子天平、glossymeter）',
+    )
     category = models.CharField(
         '方法类别', max_length=30,
         choices=MethodCategory.choices, default=MethodCategory.OTHER
     )
     description = models.TextField('方法说明', blank=True, default='')
+    qc_requirements = models.TextField('质控要求', blank=True, default='')
 
     standard_procedure = models.TextField(
         '标准操作步骤', blank=True, default='',
         help_text='JSON 格式步骤列表：[{"step": 1, "name": "...", "description": "...", "duration_minutes": 5}]'
     )
     sop_reference = models.CharField('SOP 参考编号', max_length=100, blank=True, default='')
+    sop_attachment_url = models.CharField(
+        'SOP 附件', max_length=500, blank=True, default='',
+        help_text='上传后的访问路径，如 /media/detection_methods/sop/xxx.pdf',
+    )
     sop = models.ForeignKey(
         'quality.SOP', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='detection_methods', verbose_name='关联SOP'

@@ -19,8 +19,6 @@ JSON 文件目录结构：
 import hashlib
 import json
 import logging
-import os
-import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -117,7 +115,7 @@ class LimsExporter:
         manifest = {
             'batch_no': self.batch_no,
             'operator': operator,
-            'lims_url': 'http://lims.china-norm.com',
+            'lims_url': 'http://lims.china-norm.com:8088',
             'lims_account': 'malm',
             'created_at': datetime.now().isoformat(),
             'total_records': total_records,

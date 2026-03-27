@@ -17,7 +17,6 @@ from typing import Optional, List
 from datetime import datetime
 from .services import (
     list_subjects as svc_list_subjects,
-    get_subject as svc_get_subject,
     create_subject as svc_create_subject,
     update_subject as svc_update_subject,
     delete_subject as svc_delete_subject,

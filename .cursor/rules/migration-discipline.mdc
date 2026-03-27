@@ -1,0 +1,126 @@
+# 迁移文件纪律（V2.0 强制）
+
+## 核心原则
+
+**迁移文件是数据库状态的唯一合法变更记录。任何绕过迁移流程的操作都是危险的，任何手动编辑迁移文件依赖关系的行为都是被禁止的。**
+
+---
+
+## 迁移前强制检查流程
+
+### 每次运行 `makemigrations` 之前，必须先执行：
+
+```bash
+# Step 1：确认当前无未应用的迁移冲突
+python manage.py migrate --check
+# 期望输出：No migrations to apply.（或正常的待应用列表，无冲突提示）
+
+# Step 2：检查是否存在多个 leaf node（分叉）
+python manage.py showmigrations --list | grep -v "\[X\]"
+# 如果某个 app 有两行未应用的迁移，说明已有分叉，必须先合并
+
+# Step 3：确认无误后才执行
+python manage.py makemigrations
+```
+
+---
+
+## Leaf Node 冲突的处理流程（F-02 的根因）
+
+当 `showmigrations` 发现某个 app 存在多个 leaf node（多人并行开发导致）：
+
+```bash
+# ✅ 正确处理：使用 Django 自动合并
+python manage.py makemigrations --merge --name merge_<app>_leaf_nodes
+
+# 合并后验证
+python manage.py migrate --check
+
+# ✅ 合并迁移文件必须单独提交，与业务改动分开
+git add backend/apps/<app>/migrations/
+git commit -m "migrate(<app>): merge leaf node conflict"
+```
+
+**禁止的操作：**
+```bash
+# ❌ 手动编辑迁移文件中的 dependencies 列表来"解决"冲突
+# ❌ 删除冲突的迁移文件后重新生成
+# ❌ 把合并迁移与业务代码变更混在同一个 commit 中
+```
+
+---
+
+## 迁移文件命名规范
+
+| 场景 | 正确命名 | 禁止 |
+|------|----------|------|
+| Django 自动生成 | `0005_auto_20260301_1423.py` | 手动修改时间戳 |
+| 合并迁移 | `0006_merge_finance_leaf_nodes.py` | `0006_fix.py` |
+| 初始迁移 | `0001_initial.py` | `0001_create_tables.py` |
+
+**铁律：迁移文件名的时间戳部分（`YYYYMMDD_HHMM`）由 Django 自动生成，永远不得手动修改。**
+
+---
+
+## 跨应用迁移依赖规则
+
+```python
+# ❌ 禁止：finance 的迁移依赖 secretary 的迁移
+class Migration(migrations.Migration):
+    dependencies = [
+        ('secretary', '0012_some_model'),  # 跨应用依赖！
+        ('finance', '0011_previous'),
+    ]
+
+# ✅ 正确：只依赖本应用的上一个迁移
+class Migration(migrations.Migration):
+    dependencies = [
+        ('finance', '0011_previous'),
+    ]
+```
+
+如果业务上必须跨应用引用（如外键），使用 `settings.AUTH_USER_MODEL` 模式或在运行时通过 `apps.get_model()` 动态获取，不在迁移文件中硬编码跨应用依赖。
+
+---
+
+## 新增模型字段的完整流程
+
+```bash
+# 1. 编写模型变更
+# 2. 生成迁移（先检查）
+python manage.py migrate --check
+python manage.py makemigrations <app_name> --name <描述性名称>
+
+# 3. 检查生成的迁移文件内容是否符合预期
+# 4. 本地应用验证
+python manage.py migrate
+
+# 5. 提交（迁移文件必须与模型变更在同一个 commit）
+git add backend/apps/<app>/models.py backend/apps/<app>/migrations/
+git commit -m "feat(<app>): add <field_name> to <ModelName>"
+```
+
+---
+
+## 生产环境迁移规则
+
+```bash
+# 生产部署时，迁移必须在服务重启之前执行
+python manage.py migrate --check          # 确认有待应用的迁移
+python manage.py migrate                  # 应用迁移
+systemctl restart cn-kis-v2-api           # 然后才重启服务
+```
+
+**绝不允许：** 先重启服务，再应用迁移（会导致新代码找不到新字段的运行时错误）。
+
+---
+
+## AI 行为规范
+
+每次涉及模型变更时，AI 必须：
+
+1. 提醒用户先运行 `python manage.py migrate --check`
+2. 确认生成的迁移文件只包含预期的变更（无意外的 `AlterField`）
+3. 检查迁移文件的 `dependencies` 中是否有跨应用引用
+4. 将迁移文件与模型代码变更放在同一个 commit（不分开提交）
+5. 合并迁移必须单独 commit，不与业务代码混合

@@ -17,7 +17,7 @@ RESEARCH_MENU_KEYS = [
     'proposal-design', 'protocols', 'trial-initiation', 'feasibility', 'proposals', 'proposals/quality-check',
     'image-analysis/face', 'image-analysis/lip', 'image-analysis/lip/scaliness', 'image-analysis/hand', 'image-analysis/other',
     'data-statistics', 'data-report-preparation', 'trial-report-preparation',
-    'closeout', 'closeout/settlement', 'changes', 'tasks', 'visits', 'subjects', 'data-collection-monitor',
+    'closeout', 'closeout/settlement', 'changes', 'tasks', 'visits', 'subjects', 'diary', 'data-collection-monitor',
     'team', 'knowledge', 'ai-assistant', 'overview', 'admin/permissions',
 ]
 

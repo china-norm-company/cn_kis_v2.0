@@ -11,7 +11,6 @@ Agent Tool Registry — 工具定义与 Handler 注册
   - claw_skill_*     : Claw 技能体系（脚本/服务/Agent 执行）
   - agent_invoke     : 跨 Agent 调用（编排器专用）
 """
-import json
 import logging
 from typing import Any, Callable, Dict, List, Optional
 

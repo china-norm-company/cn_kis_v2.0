@@ -4,13 +4,11 @@
 封装工时记录、汇总、利用率分析、产能预测逻辑。
 """
 import logging
-from typing import Optional
 from datetime import date, time, timedelta
 from decimal import Decimal
 
-from django.db.models import Sum, Avg, Count, Q
+from django.db.models import Sum, Avg
 
-from apps.hr.models import Staff
 from apps.lab_personnel.models import LabStaffProfile
 from apps.lab_personnel.models_worktime import WorkTimeLog, WorkTimeSummary, WorkTimeSource
 from apps.lab_personnel.models_scheduling import ShiftSlot

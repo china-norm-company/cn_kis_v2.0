@@ -74,7 +74,7 @@ class Command(BaseCommand):
 
     def _backfill_roles(self, dry_run: bool):
         from apps.hr.models import Staff
-        from apps.identity.models import Account, AccountRole, Role
+        from apps.identity.models import AccountRole, Role
         from apps.lims_integration.p0_mapping import get_roles_for_group
 
         self.stdout.write('[1/5] 回填角色分配...')

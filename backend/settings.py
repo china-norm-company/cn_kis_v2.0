@@ -84,6 +84,7 @@ INSTALLED_APPS = [
     # Wave 3: 知识与数据平面
     'apps.secretary',
     'apps.knowledge',
+    'apps.data_intake',
     'apps.ekuaibao_integration',
     'apps.lims_integration',
     # Wave 4: 企业扩展域
@@ -110,6 +111,8 @@ INSTALLED_APPS = [
     'apps.project_full_link',
     'apps.weekly_report',
     'apps.product_distribution',
+    # 图像分析工具（研究台：唇部脱屑等）
+    'apps.image_analysis',
 ]
 
 MIDDLEWARE = [
@@ -148,6 +151,10 @@ DATABASES = {
         'PORT': os.getenv('DB_PORT', '5432'),
     }
 }
+# 可选：libpq 参数（联火山云/隧道时常用 sslmode=require，见 backend/.env.example）
+_db_sslmode = os.getenv('DB_SSLMODE', '').strip()
+if _db_sslmode:
+    DATABASES['default'].setdefault('OPTIONS', {})['sslmode'] = _db_sslmode
 
 if os.getenv('DB_REPLICA_HOST', '').strip():
     DATABASES['replica'] = {
@@ -183,6 +190,17 @@ INSTRUMENT_UPLOAD_API_KEY = os.getenv('INSTRUMENT_UPLOAD_API_KEY', '').strip() o
 DATABASE_ROUTERS = ['db_router.ReadWriteRouter']
 WORKORDER_FREEZE_LEGACY_WRITE = os.getenv('WORKORDER_FREEZE_LEGACY_WRITE', 'false').lower() == 'true'
 WORKORDER_FREEZE_OBSERVE_LOG_ENABLED = os.getenv('WORKORDER_FREEZE_OBSERVE_LOG_ENABLED', 'true').lower() == 'true'
+
+# ============================================================================
+# 初筛 ↔ 预约管理 / 按项目 SC 同步（可选，默认关闭）
+# ============================================================================
+# 开启后由 apps.subject.services.prescreening_appointment_sync 在初筛状态变更后执行钩子；
+# 具体写 SubjectAppointment / SubjectProjectSC 等需在钩子里实现并保持 Protocol.code 与 project_code 一致。
+PRESCREEN_APPOINTMENT_SYNC = os.getenv('PRESCREEN_APPOINTMENT_SYNC', '0').strip().lower() in (
+    '1',
+    'true',
+    'yes',
+)
 
 # ============================================================================
 # 时区（与 V1 对齐：预约/签到「今日」、飞书通知时间均按北京时间展示）
@@ -298,7 +316,7 @@ FEISHU_APP_CREDENTIALS = _build_feishu_credentials()
 
 # ★ 主授权配置（V2 迁移章程红线）
 _primary_from_env = os.getenv('FEISHU_PRIMARY_APP_ID', '')
-FEISHU_PRIMARY_APP_ID = _primary_from_env or FEISHU_APP_ID or 'cli_a98b0babd020500e'
+FEISHU_PRIMARY_APP_ID = _primary_from_env or FEISHU_APP_ID or 'cli_a907f21f0723dbce'
 if not _primary_from_env:
     import logging as _logging
     _logging.getLogger(__name__).warning(
@@ -311,6 +329,9 @@ _auto_fallback = [FEISHU_PRIMARY_APP_ID, FEISHU_APP_ID_DEV_ASSISTANT, FEISHU_APP
 FEISHU_REFRESH_FALLBACK_APP_IDS = list(dict.fromkeys(filter(None, _env_fallback + _auto_fallback)))
 FEISHU_PRIMARY_AUTH_FORCE = os.getenv('FEISHU_PRIMARY_AUTH_FORCE', '1').strip().lower() in ('1', 'true', 'yes')
 FEISHU_PREFLIGHT_BLOCK_SCAN = os.getenv('FEISHU_PREFLIGHT_BLOCK_SCAN', '1').strip().lower() in ('1', 'true', 'yes')
+
+# OAuth 换 token 时 redirect_uri 推导用（须与前端授权 URL 完全一致）。本地开发示例：http://localhost:3010
+FEISHU_REDIRECT_BASE = (os.getenv('FEISHU_REDIRECT_BASE', '') or '').strip()
 
 # 工作台 → app_id 映射
 FEISHU_WORKSTATION_APP_IDS = {

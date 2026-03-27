@@ -3,9 +3,9 @@
 """
 import logging
 from decimal import Decimal
-from datetime import date, timedelta
+from datetime import date
 from dateutil.relativedelta import relativedelta
-from django.db.models import Sum, Count, Q, F, DecimalField
+from django.db.models import Sum, DecimalField
 from django.db.models.functions import TruncMonth, Coalesce
 
 from apps.finance.models import (
@@ -140,7 +140,6 @@ def get_revenue_concentration(top_n: int = 10) -> dict:
 
 def get_revenue_recognition() -> dict:
     """收入确认跟踪：按项目展示已确认/已开票/已回款进度"""
-    from apps.finance.models import Quote, QuoteStatus
 
     contracts = Contract.objects.filter(
         is_deleted=False,

@@ -49,6 +49,8 @@ docs/                 治理、架构、协作文档
 2. [`docs/TEAM_WORKFLOW.md`](docs/TEAM_WORKFLOW.md) — 团队协作规范
 3. [`docs/CURSOR_COLLABORATION_ONBOARDING.md`](docs/CURSOR_COLLABORATION_ONBOARDING.md) — Cursor 协作入门
 
+**Cursor 前置与每日同步（短链）**：[配置要求说明](docs/CURSOR_COLLABORATION_ONBOARDING.md#配置要求说明) — 工具链检查、`develop` 集成线、功能分支命名、合并冲突与提交习惯。
+
 ### 2. 克隆仓库
 
 ```bash
