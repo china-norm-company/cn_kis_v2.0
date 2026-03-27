@@ -273,7 +273,7 @@ def _resolve_redirect_uri(state_payload: Optional[Dict[str, Any]] = None) -> str
     根据 workstation 推导 redirect_uri（与前端 config.ts 逻辑完全一致）。
 
     规则：
-    - secretary → {base}/login
+    - secretary → {base}/login（与生产 nginx location = /login 一致；本地 Vite 联调时前端会传 {base}/secretary/login）
     - 其他工作台 → {base}/{workstation}/
     - base 默认 http://118.196.64.48，可通过 FEISHU_REDIRECT_BASE 覆盖
     """
