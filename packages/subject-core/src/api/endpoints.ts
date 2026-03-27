@@ -107,7 +107,7 @@ export function buildSubjectEndpoints(api: ApiClient) {
         },
       }
     },
-    devSkipIdentityVerify: () => api.post('/my/identity/dev-skip', {}),
+    devSkipIdentityVerify: () => api.post('/my/identity/dev-skip', {}, { silent: true }),
     getMyConsents: () => api.get(SUBJECT_ENDPOINTS.consents),
     getIcfContent: (id: number) => api.get(`${SUBJECT_ENDPOINTS.consents}/icf/${id}`),
     faceSignConsent: (id: number, data: Record<string, unknown>) => api.post(`${SUBJECT_ENDPOINTS.consents}/${id}/face-sign`, data),

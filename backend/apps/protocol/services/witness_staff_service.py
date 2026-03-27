@@ -1505,7 +1505,7 @@ def submit_consent_test_scan_records(
     from apps.protocol.consent_test_tokens import unsign_consent_test_scan_token
 
     # 延迟导入，避免 apps.protocol.api ↔ witness_staff_service 循环依赖
-    from apps.protocol.api import _get_consent_settings, _is_consent_launched, get_consent_config_status_for_protocol
+    from apps.protocol.api import _get_consent_settings, get_consent_config_status_for_protocol
 
     tid = unsign_consent_test_scan_token(scan_token)
     if tid is None or int(tid) != int(protocol_id):
@@ -1514,13 +1514,12 @@ def submit_consent_test_scan_records(
     protocol = Protocol.objects.filter(id=protocol_id, is_deleted=False).first()
     if not protocol:
         raise ValueError('协议不存在')
-    if _is_consent_launched(protocol):
-        raise ValueError('知情已发布，不能使用知情测试口令签署')
     if get_consent_config_status_for_protocol(protocol) not in (
         '已授权待测试',
         '已测试待开始',
         '授权测试中',
         '待测试',
+        '进行中',
     ):
         raise ValueError('请先完成配置与工作人员授权核验')
 

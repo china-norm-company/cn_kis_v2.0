@@ -4,7 +4,26 @@ $primary: #2B6CB0;
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #f7fafc;
+  background: #f8fafc;
+}
+
+/* 与执行台知情扫码 H5 同底（slate-50） */
+.consent-page--h5 {
+  background: #f8fafc;
+}
+
+/* 单页纵向滚动：正文与签署区同列，避免底部固定栏过高时压扁正文预览区（与执行台扫码 H5 先读全文再签署一致） */
+.consent-scroll-main {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.consent-scroll-inner {
+  padding: 24px 32px;
+  padding-bottom: calc(40px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
 }
 
 .consent-content {
@@ -72,13 +91,35 @@ $primary: #2B6CB0;
   display: block;
 }
 
-/* 底部操作区 */
+/* 底部操作区（与正文同 ScrollView 内联时不再使用顶部投影） */
 .consent-footer {
   flex-shrink: 0;
   padding: 24px 32px;
   padding-bottom: calc(24px + env(safe-area-inset-bottom));
   background: #ffffff;
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.consent-footer--inline {
+  margin-top: 24px;
+  border-radius: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  padding-bottom: 24px;
+}
+
+.doc-preview-hint {
+  margin-bottom: 24px;
+  padding: 20px 24px;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 12px;
+}
+
+.doc-preview-hint-text {
+  display: block;
+  font-size: 24px;
+  color: #0c4a6e;
+  line-height: 1.65;
 }
 
 /* 签名区域 */
@@ -233,6 +274,37 @@ $primary: #2B6CB0;
   }
 }
 
+.btn-primary--stack {
+  padding: 20px 24px;
+  min-height: 112px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-primary-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.btn-primary-line1 {
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.btn-primary-line2 {
+  font-size: 22px;
+  font-weight: 400;
+  opacity: 0.92;
+  line-height: 1.35;
+}
+
 /* 已签署状态 */
 .signed-notice {
   display: flex;
@@ -321,4 +393,338 @@ $primary: #2B6CB0;
 .sign-error-notice .consent-back {
   margin-top: 12px;
   display: block;
+}
+
+/* 与执行台知情扫码 H5「认证基础信息」对齐：slate-50 底 + 白卡片 + 统一字段标签 */
+.consent-page--basic {
+  background: #f8fafc;
+}
+
+.consent-basic-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: 32px 32px 48px;
+  padding-bottom: calc(48px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.consent-basic-inner {
+  max-width: 100%;
+}
+
+.consent-basic-card {
+  background: #ffffff;
+  border-radius: 32px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  padding: 48px 40px;
+  box-sizing: border-box;
+}
+
+.consent-basic-header {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.consent-basic-icon {
+  font-size: 40px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.consent-basic-header-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.consent-basic-h1 {
+  display: block;
+  font-size: 32px;
+  font-weight: 600;
+  color: #1e293b;
+  line-height: 1.35;
+}
+
+.consent-basic-h2 {
+  display: block;
+  font-size: 26px;
+  font-weight: 500;
+  color: #64748b;
+  margin-top: 8px;
+  line-height: 1.4;
+}
+
+.consent-basic-project {
+  display: block;
+  font-size: 28px;
+  color: #64748b;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.consent-basic-note {
+  display: block;
+  font-size: 22px;
+  color: #94a3b8;
+  line-height: 1.65;
+  margin-bottom: 32px;
+}
+
+.consent-basic-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.consent-field {
+  display: block;
+}
+
+.consent-field-label {
+  display: block;
+  font-size: 28px;
+  font-weight: 500;
+  color: #334155;
+  margin-bottom: 12px;
+}
+
+.consent-field-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 88px;
+  padding: 20px 24px;
+  font-size: 28px;
+  color: #0f172a;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+}
+
+.consent-field-input--mono {
+  font-family: monospace;
+  letter-spacing: 2px;
+}
+
+.consent-basic-submit {
+  width: 100% !important;
+  margin-top: 48px;
+  min-height: 96px;
+  border-radius: 16px !important;
+}
+
+/* —— 执行台 ConsentTestScanPage H5：顶栏 + 正文卡片 + 操作区 —— */
+.consent-h5-top {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.consent-h5-top-icon {
+  font-size: 40px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.consent-h5-top-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.consent-h5-top-title {
+  display: block;
+  font-size: 32px;
+  font-weight: 600;
+  color: #1e293b;
+  line-height: 1.35;
+}
+
+.consent-h5-top-sub {
+  display: block;
+  font-size: 28px;
+  color: #64748b;
+  margin-top: 8px;
+  line-height: 1.45;
+}
+
+.consent-banner {
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-bottom: 24px;
+  box-sizing: border-box;
+}
+
+.consent-banner--warn {
+  background: #fff7ed;
+  border-left: 6px solid #ea580c;
+}
+
+.consent-banner--dev {
+  background: #e6fffa;
+}
+
+.consent-banner__title {
+  display: block;
+  font-size: 28px;
+  font-weight: 600;
+  color: #9a3412;
+}
+
+.consent-banner__body {
+  display: block;
+  font-size: 26px;
+  color: #57534e;
+  margin-top: 8px;
+  line-height: 1.55;
+}
+
+.consent-icf-card {
+  background: #ffffff;
+  border-radius: 24px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.consent-icf-card__head {
+  padding: 24px 32px;
+  background: rgba(248, 250, 252, 0.95);
+  border-bottom: 1px solid #f1f5f9;
+  box-sizing: border-box;
+}
+
+.consent-icf-card__title {
+  display: block;
+  font-size: 28px;
+  font-weight: 600;
+  color: #1e293b;
+  line-height: 1.4;
+}
+
+.consent-icf-card__ver {
+  display: block;
+  font-size: 24px;
+  color: #64748b;
+  margin-top: 8px;
+}
+
+.consent-icf-card__body {
+  padding: 24px 32px;
+  box-sizing: border-box;
+  background: #ffffff;
+}
+
+.consent-icf-card__loading {
+  display: block;
+  font-size: 28px;
+  color: #64748b;
+  padding: 24px 0;
+}
+
+.consent-icf-card__body .icf-rich-html {
+  font-size: 28px;
+  color: #1e293b;
+  line-height: 1.75;
+}
+
+.consent-actions-h5 {
+  width: 100%;
+}
+
+.consent-other-info--h5 {
+  margin-bottom: 24px;
+}
+
+.consent-other-info-title {
+  display: block;
+  font-size: 28px;
+  font-weight: 500;
+  color: #334155;
+  margin-bottom: 8px;
+}
+
+.signature-date-row--h5 {
+  margin-bottom: 24px;
+}
+
+.agree-row--h5 {
+  padding: 24px 0;
+  align-items: flex-start;
+}
+
+.agree-row--h5 .agree-text {
+  font-size: 28px;
+  color: #334155;
+  flex: 1;
+  line-height: 1.5;
+}
+
+.consent-sig-section-label {
+  display: block;
+  font-size: 24px;
+  color: #64748b;
+  margin-bottom: 16px;
+}
+
+.consent-sig-pad {
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.consent-sig-pad--mt {
+  margin-top: 16px;
+}
+
+.consent-sig-pad__bar {
+  padding: 16px 24px 12px;
+  background: rgba(248, 250, 252, 0.95);
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.consent-sig-pad__bar-text {
+  font-size: 24px;
+  color: #475569;
+}
+
+.consent-sig-pad__canvas {
+  width: 100% !important;
+  height: 160px !important;
+  min-height: 160px !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  box-sizing: border-box;
+}
+
+.consent-sig-pad__canvas .signature-canvas-inner {
+  width: 100%;
+  height: 160px;
+}
+
+.consent-sig-pad__footer {
+  padding: 12px 24px 16px;
+  background: #ffffff;
+}
+
+.consent-sig-pad__clear {
+  font-size: 24px;
+  color: #4f46e5;
+  font-weight: 500;
+}
+
+/* 认证基础信息：副标题（对齐 H5 text-sm text-slate-500） */
+.consent-basic-subtitle {
+  display: block;
+  font-size: 28px;
+  color: #64748b;
+  margin-bottom: 16px;
+  line-height: 1.5;
 }

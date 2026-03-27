@@ -233,6 +233,32 @@ def get_my_identity_status(request):
     return {'code': 200, 'msg': 'OK', 'data': data}
 
 
+@router.post('/identity/dev-skip', summary='[DEBUG] 本地跳过实名门禁')
+@require_permission('my.profile.update')
+def dev_skip_identity_verify(request):
+    """仅 DEBUG=True 时可用：将当前受试者标记为已实名，便于小程序/本地联调不进「去实名」拦截。生产环境返回 404。"""
+    from django.conf import settings
+
+    if not getattr(settings, 'DEBUG', False):
+        return 404, {'code': 404, 'msg': 'Not found'}
+    from django.utils import timezone
+
+    from .models import AuthLevel, IdentityVerifyStatus
+
+    subject = _get_subject_from_request(request)
+    if not subject:
+        return 404, {'code': 404, 'msg': '未找到受试者信息'}
+    if subject.identity_verified_at:
+        return {'code': 200, 'msg': 'OK', 'data': {'skipped': False, 'already_verified': True}}
+    now = timezone.now()
+    subject.identity_verified_at = now
+    subject.identity_verify_status = IdentityVerifyStatus.VERIFIED
+    subject.auth_level = AuthLevel.IDENTITY_VERIFIED
+    subject.save(update_fields=['identity_verified_at', 'identity_verify_status', 'auth_level', 'update_time'])
+    logger.info('identity_dev_skip subject_id=%s', getattr(subject, 'id', None))
+    return {'code': 200, 'msg': 'OK', 'data': {'skipped': True, 'already_verified': False}}
+
+
 @router.get('/identity/provider/config-check', summary='实名服务配置自检（只读）')
 @require_permission('my.profile.read')
 def get_identity_provider_config_check(request):

@@ -27,6 +27,22 @@ def _appt_time_sort_key(appt: SubjectAppointment) -> Tuple[int, time]:
     return (1, time(0, 0))
 
 
+def _latest_pinyin_initials_for_pc(subject_id: int, pc: str) -> str:
+    """同一项目下最近一条非空预约的拼音首字母（与接待台/扫码登记一致）。"""
+    pc = (pc or '').strip()
+    if not pc:
+        return ''
+    for a in (
+        SubjectAppointment.objects.filter(subject_id=subject_id, project_code=pc)
+        .order_by('-appointment_date', '-id')
+        .only('name_pinyin_initials')[:30]
+    ):
+        raw = (getattr(a, 'name_pinyin_initials', None) or '').strip()
+        if raw:
+            return raw
+    return ''
+
+
 def _format_sc_display(raw: str) -> str:
     s = (raw or '').strip()
     if not s:
@@ -308,6 +324,7 @@ def build_home_dashboard_data(subject: Subject, as_of: date) -> Dict[str, Any]:
 
         enrollment_status = _dashboard_enrollment_status_label(sc_rec, en)
         sc_number = (sc_rec.sc_number or '').strip() if sc_rec else ''
+        name_pinyin_initials = _latest_pinyin_initials_for_pc(subject_id, pc)
 
         blocks_by_pc[pc] = {
             'project_code': _display_project_code(pc, en),
@@ -317,6 +334,7 @@ def build_home_dashboard_data(subject: Subject, as_of: date) -> Dict[str, Any]:
             'enrollment_status': enrollment_status,
             'sc_number': sc_number,
             'sc_display': _format_sc_display(sc_number),
+            'name_pinyin_initials': name_pinyin_initials,
             'queue_checkin_today': q_today,
             'enrollment_id': en.id if en else None,
             'protocol_id': en.protocol_id if en else None,

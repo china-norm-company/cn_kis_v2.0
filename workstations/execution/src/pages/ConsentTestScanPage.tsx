@@ -243,7 +243,7 @@ export default function ConsentTestScanPage() {
     setSigPreviewDataUrls(urls)
   }, [sigFilled, phase, current?.icf_version_id, padCount, queueIndex])
 
-  /** 进入核验前信息页时从本机恢复上次填写（useLayoutEffect 避免首屏空白再闪出内容） */
+  /** 进入认证基础信息页时从本机恢复上次填写（useLayoutEffect 避免首屏空白再闪出内容） */
   useLayoutEffect(() => {
     if (phase !== 'info' || !Number.isFinite(protocolId) || items.length === 0) return
     const d = loadConsentTestScanSubjectInfo(protocolId)
@@ -837,7 +837,7 @@ export default function ConsentTestScanPage() {
         <div className="w-full max-w-lg rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
           <div className="flex items-center gap-2 text-slate-800 mb-1">
             <BookOpen className="w-6 h-6 text-indigo-600" />
-            <h1 className="text-lg font-semibold">核验前信息</h1>
+            <h1 className="text-lg font-semibold">认证基础信息</h1>
           </div>
           <p className="text-sm text-slate-500 mb-4">{title}</p>
           <p className="text-[11px] text-slate-400 mb-3 leading-relaxed">

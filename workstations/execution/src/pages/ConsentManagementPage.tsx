@@ -5861,19 +5861,19 @@ export default function ConsentManagementPage() {
                                 }),
                               )
                             : urlRaw
-                        const preLaunchConsentScanOk =
+                        /** 与后端 /public/consent-test-queue 白名单一致：含已发布后现场筛选窗口「进行中」，测试 H5 可与正式入口并行 */
+                        const consentTestScanAllowed =
                           record.config_status === '授权测试中' ||
                           record.config_status === '核验测试中' ||
                           record.config_status === '已授权待测试' ||
                           record.config_status === '待测试' ||
-                          record.config_status === '已测试待开始'
-                        const scanTestAllowed =
-                          preLaunchConsentScanOk && !record.consent_launched
+                          record.config_status === '已测试待开始' ||
+                          record.config_status === '进行中'
                         return (
                           <div className={consentOverviewSideCellWrapperClass(record, 'center')}>
                             <ConsentTestScanQr
                               scanUrl={url}
-                              verificationActive={scanTestAllowed}
+                              verificationActive={consentTestScanAllowed}
                               consentLaunched={!!record.consent_launched}
                               configStatus={record.config_status}
                               disabled={!url}

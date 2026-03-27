@@ -103,7 +103,7 @@ interface ConsentBootstrap {
   identity_gate_required?: boolean
   total_pending_consent_count?: number
   allow_l1_pilot?: boolean
-  pilot_protocol_codes?: string[]
+  pilot_protocol_codes?: string[] | null
   /** 是否存在「退回重签中」的待签项（与列表 staff_audit_status 一致） */
   has_returned_for_resign?: boolean
   projects?: Array<{
@@ -111,7 +111,16 @@ interface ConsentBootstrap {
     protocol_title: string
     pending_consent_count: number
     auth_ok_for_signing: boolean
-  }>
+  }> | null
+}
+
+/** GET /my/home-dashboard 项目块（用于与接待台一致的 SC / 拼音首字母预填） */
+interface HomeDashboardProjectBlock {
+  project_code?: string
+  protocol_id?: number | null
+  sc_number?: string
+  sc_display?: string
+  name_pinyin_initials?: string
 }
 
 function isIdentityRequiredError(res: { code?: number; data?: unknown; error_code?: unknown }): boolean {
@@ -333,6 +342,14 @@ function ConsentPage() {
       ? `（${initialPendingTotalRef.current - totalSteps + 1}/${initialPendingTotalRef.current}）`
       : ''
 
+  /** 与执行台知情测试 H5 卡片头「版本 v1.0」一致 */
+  const icfVersionDisplay = useMemo(() => {
+    const v = (currentItem?.icf_version || '').trim()
+    if (!v) return 'v1.0'
+    if (/^v\d/i.test(v)) return v
+    return `v${v}`
+  }, [currentItem?.icf_version])
+
   /** 切换节点时刷新，用于 {{ICF_SIGNED_DATE}} 等预览锚点 */
   const previewAnchorAt = useMemo(() => new Date(), [effectiveIcfVersionId])
 
@@ -345,6 +362,11 @@ function ConsentPage() {
     const id = currentItem.icf_version_id
     setIcfLoading(true)
     setIcfContent(null)
+    /** 切换待签项时先清空采集规则，避免沿用上一条的 needSupplement 导致错误页面顺序 */
+    setCollectSubjectName(false)
+    setCollectIdCard(false)
+    setCollectScreeningNumber(false)
+    setCollectInitials(false)
     setAgreed(false)
     setHasSignature(false)
     setReadingStartedAt(null)
@@ -446,11 +468,48 @@ function ConsentPage() {
       if (profileRes.code !== 200 || !profileRes.data) return
       const p = profileRes.data
       const ph = (p.phone || '').replace(/\D/g, '').slice(0, 11)
-      if (ph) setDeclaredPhone(ph)
+      if (ph) setDeclaredPhone((prev) => (prev.trim() ? prev : ph))
       const nm = (p.name || '').trim()
-      if (nm) setDeclaredSubjectName(nm)
+      if (nm) setDeclaredSubjectName((prev) => (prev.trim() ? prev : nm))
     })
   }, [effectiveIcfVersionId, devPreview])
+
+  /** 与首页/接待台同源：按当前协议匹配项目块，预填 SC 号、拼音首字母（身份证仍由用户手填） */
+  useEffect(() => {
+    if (effectiveIcfVersionId == null || devPreview) return
+    const code = (currentItem?.protocol_code || '').trim()
+    const pid = currentItem?.protocol_id
+    if (!code && (pid == null || !Number.isFinite(Number(pid)))) return
+    void get<{ projects_ordered?: HomeDashboardProjectBlock[] }>('/my/home-dashboard', { silent: true }).then(
+      (res) => {
+        if (res.code !== 200 || !res.data?.projects_ordered?.length) return
+        const rows = res.data.projects_ordered
+        const match =
+          (pid != null
+            ? rows.find((b) => b.protocol_id != null && Number(b.protocol_id) === Number(pid))
+            : undefined)
+          || (code ? rows.find((b) => (b.project_code || '').trim() === code) : undefined)
+          || (code ? rows.find((b) => (b.project_code || '').includes(code)) : undefined)
+        if (!match) return
+        const scRaw = ((match.sc_display || match.sc_number || '') as string).trim()
+        if (scRaw && collectScreeningNumber) {
+          setDeclaredScreeningNumber((prev) => (prev.trim() ? prev : scRaw))
+        }
+        const ini = (match.name_pinyin_initials || '').trim()
+        if (ini && collectInitials) {
+          const normalized = ini.replace(/[^A-Za-z]/g, '').toUpperCase()
+          if (normalized) setDeclaredInitials((prev) => (prev.trim() ? prev : normalized))
+        }
+      },
+    )
+  }, [
+    effectiveIcfVersionId,
+    devPreview,
+    currentItem?.protocol_code,
+    currentItem?.protocol_id,
+    collectScreeningNumber,
+    collectInitials,
+  ])
 
   useEffect(() => {
     if (!readingStartedAt || requiredReadingSeconds <= 0) {
@@ -480,11 +539,14 @@ function ConsentPage() {
     !needSubjectSig ||
     (subjectSignatureTimes === 1 && hasSignature) ||
     (subjectSignatureTimes === 2 && hasSignature && hasSignature2)
-  /** 请求未返回前 icfLoading 可能仍为 false（同一帧），与 icfContent===null 组合避免中间区域整段不渲染 */
+  /** 正文区：等 ICF 接口返回并写入 icfContent（空字符串也算已返回） */
   const showIcfDocLoading = icfLoading || (effectiveIcfVersionId != null && icfContent === null)
-  /** 需身份确认时：先独占一屏填写，再进入阅读计时与签署（与执行台扫码核验顺序一致） */
+  /**
+   * 认证基础信息：仅依赖 ICF 规则是否已返回（icfLoading），不依赖正文 HTML。
+   * 若仍用 showIcfDocLoading 拦截，会先闪「主签署页 + 内容加载中」，体验上像进错页。
+   */
   const showBasicInfoStepOnly =
-    effectiveIcfVersionId != null && needSupplement && !basicInfoStepDone && !showIcfDocLoading
+    effectiveIcfVersionId != null && needSupplement && !basicInfoStepDone && !icfLoading
 
   /** 正文内 {{ICF_SUBJECT_SIG_*}}：导出画布为临时路径供 RichText 内嵌展示 */
   const [sigInlineTempPaths, setSigInlineTempPaths] = useState<string[]>([])
@@ -533,6 +595,7 @@ function ConsentPage() {
         declared_id_card: declaredIdCard,
         declared_phone: declaredPhone,
         declared_screening_number: declaredScreeningNumber,
+        declared_pinyin_initials: declaredInitials,
       },
       miniSignConfirm: {
         subject_name: declaredSubjectName,
@@ -987,7 +1050,7 @@ function ConsentPage() {
           setSignedAt(data.signed_at || null)
           setLastSignStatus(st)
           setSignedReceipts((prev) => [
-            ...prev,
+            ...(Array.isArray(prev) ? prev : []),
             {
               node_title: currentItem?.node_title || icfTitle || '知情文档',
               icf_version_id: effectiveIcfVersionId,
@@ -1092,10 +1155,11 @@ function ConsentPage() {
   }
 
   if (identityGateRequired) {
-    const protocolHint =
-      (bootstrap?.projects?.length
+    const rawHint =
+      bootstrap?.projects?.length
         ? bootstrap.projects.map((p) => p.protocol_code).filter(Boolean)
-        : bootstrap?.pilot_protocol_codes) || []
+        : bootstrap?.pilot_protocol_codes
+    const protocolHint = Array.isArray(rawHint) ? rawHint : rawHint ? [String(rawHint)] : []
     const protocolHintStr = protocolHint.length ? protocolHint.join('、') : ''
 
     return (
@@ -1209,292 +1273,306 @@ function ConsentPage() {
   }
 
   if (showBasicInfoStepOnly) {
+    const basicSubtitle = (() => {
+      if (!currentItem) return '请先完成以下信息，再进入阅读与签署'
+      const t = (currentItem.protocol_title || '').trim()
+      const c = (currentItem.protocol_code || '').trim()
+      if (t && c) return `${t} ${c}`
+      if (t) return t
+      if (c) return c
+      return '请先完成以下信息，再进入阅读与签署'
+    })()
+
     return (
-      <View className='consent-page'>
-        <ScrollView className='consent-content' scrollY>
-          <View className='document'>
-            <Text className='doc-title'>签署前身份确认{stepLabel}</Text>
-            {currentItem?.protocol_code ? (
-              <Text className='doc-subtitle'>
-                项目编号 {currentItem.protocol_code}
-                {currentItem.protocol_title ? ` · ${currentItem.protocol_title}` : ''}
+      <View className='consent-page consent-page--basic'>
+        <ScrollView className='consent-basic-scroll' scrollY enhanced={false}>
+          <View className='consent-basic-inner'>
+            <View className='consent-basic-card'>
+              <View className='consent-basic-header'>
+                <Text className='consent-basic-icon'>📖</Text>
+                <View className='consent-basic-header-text'>
+                  <Text className='consent-basic-h1'>认证基础信息</Text>
+                </View>
+              </View>
+              <Text className='consent-basic-subtitle'>{basicSubtitle}</Text>
+              <Text className='consent-basic-note'>
+                为便于重复核验，本页填写会保存在本机（按协议区分）；请勿在公共设备上留存真实受试者信息。
               </Text>
-            ) : (
-              <Text className='doc-subtitle'>请先完成以下信息，再进入阅读与签署</Text>
-            )}
-            <View className='doc-section' style={{ marginTop: 16 }}>
-              <Text className='section-text' style={{ color: '#4a5568' }}>
-                请与接待登记信息一致；手机号须与当前登录账号一致。
-              </Text>
+              <View className='consent-basic-fields'>
+                {collectSubjectName ? (
+                  <View className='consent-field'>
+                    <Text className='consent-field-label'>姓名</Text>
+                    <Input
+                      className='consent-field-input'
+                      value={declaredSubjectName}
+                      onInput={(e) => setDeclaredSubjectName(String(e.detail.value || '').slice(0, 100))}
+                      placeholder='请输入姓名'
+                      disabled={submitting}
+                    />
+                  </View>
+                ) : null}
+                {collectIdCard ? (
+                  <View className='consent-field'>
+                    <Text className='consent-field-label'>身份证号</Text>
+                    <Input
+                      className='consent-field-input'
+                      value={declaredIdCard}
+                      onInput={(e) => setDeclaredIdCard(String(e.detail.value || '').slice(0, 22))}
+                      placeholder='请输入身份证号'
+                      disabled={submitting}
+                    />
+                  </View>
+                ) : null}
+                <View className='consent-field'>
+                  <Text className='consent-field-label'>手机号</Text>
+                  <Input
+                    type='number'
+                    maxlength={11}
+                    className='consent-field-input'
+                    value={declaredPhone}
+                    onInput={(e) => setDeclaredPhone(String(e.detail.value || '').replace(/\D/g, '').slice(0, 11))}
+                    placeholder='请输入手机号'
+                    disabled={submitting}
+                  />
+                </View>
+                {collectScreeningNumber ? (
+                  <View className='consent-field'>
+                    <Text className='consent-field-label'>SC号</Text>
+                    <Input
+                      className='consent-field-input'
+                      value={declaredScreeningNumber}
+                      onInput={(e) => setDeclaredScreeningNumber(String(e.detail.value || '').slice(0, 64))}
+                      placeholder='请输入数字'
+                      disabled={submitting}
+                    />
+                  </View>
+                ) : null}
+                {collectInitials ? (
+                  <View className='consent-field'>
+                    <Text className='consent-field-label'>拼音首字母</Text>
+                    <Input
+                      className='consent-field-input consent-field-input--mono'
+                      value={declaredInitials}
+                      onInput={(e) =>
+                        setDeclaredInitials(
+                          String(e.detail.value || '')
+                            .replace(/[^A-Za-z]/g, '')
+                            .toUpperCase()
+                            .slice(0, 32),
+                        )
+                      }
+                      placeholder='如 WMD'
+                      disabled={submitting}
+                    />
+                  </View>
+                ) : null}
+              </View>
+              <Button
+                className={`btn-primary consent-basic-submit ${!supplementOk ? 'disabled' : ''}`}
+                onClick={handleBasicInfoNext}
+                disabled={!supplementOk || submitting}
+              >
+                {devPreview ? '进入知情测试' : `进入阅读与签署${stepLabel}`}
+              </Button>
             </View>
           </View>
         </ScrollView>
-        <View className='consent-footer'>
-          <View className='doc-section consent-other-info' style={{ marginBottom: 12 }}>
-            <Text className='signature-label'>确认手机号</Text>
-            <Input
-              type='number'
-              maxlength={11}
-              className='consent-other-info-textarea'
-              style={{ padding: '8px 12px', background: '#f7fafc', borderRadius: 8 }}
-              value={declaredPhone}
-              onInput={(e) => setDeclaredPhone(String(e.detail.value || '').replace(/\D/g, '').slice(0, 11))}
-              placeholder='11 位手机号'
-              disabled={submitting}
-            />
-            {collectSubjectName ? (
-              <>
-                <Text className='signature-label' style={{ fontSize: 26, marginTop: 12 }}>姓名</Text>
-                <Input
-                  className='consent-other-info-textarea'
-                  style={{ padding: '8px 12px', background: '#f7fafc', borderRadius: 8 }}
-                  value={declaredSubjectName}
-                  onInput={(e) => setDeclaredSubjectName(String(e.detail.value || '').slice(0, 100))}
-                  placeholder='与身份证件一致'
-                  disabled={submitting}
-                />
-              </>
-            ) : null}
-            {collectIdCard ? (
-              <>
-                <Text className='signature-label' style={{ fontSize: 26, marginTop: 12 }}>身份证号</Text>
-                <Input
-                  className='consent-other-info-textarea'
-                  style={{ padding: '8px 12px', background: '#f7fafc', borderRadius: 8 }}
-                  value={declaredIdCard}
-                  onInput={(e) => setDeclaredIdCard(String(e.detail.value || '').slice(0, 22))}
-                  placeholder='18 位身份证号码'
-                  disabled={submitting}
-                />
-              </>
-            ) : null}
-            {collectScreeningNumber ? (
-              <>
-                <Text className='signature-label' style={{ fontSize: 26, marginTop: 12 }}>SC 编号</Text>
-                <Input
-                  className='consent-other-info-textarea'
-                  style={{ padding: '8px 12px', background: '#f7fafc', borderRadius: 8 }}
-                  value={declaredScreeningNumber}
-                  onInput={(e) => setDeclaredScreeningNumber(String(e.detail.value || '').slice(0, 64))}
-                  placeholder='现场筛选编号'
-                  disabled={submitting}
-                />
-              </>
-            ) : null}
-            {collectInitials ? (
-              <>
-                <Text className='signature-label' style={{ fontSize: 26, marginTop: 12 }}>拼音首字母</Text>
-                <Input
-                  className='consent-other-info-textarea'
-                  style={{ padding: '8px 12px', background: '#f7fafc', borderRadius: 8 }}
-                  value={declaredInitials}
-                  onInput={(e) => setDeclaredInitials(String(e.detail.value || '').slice(0, 32))}
-                  placeholder='如 WY'
-                  disabled={submitting}
-                />
-              </>
-            ) : null}
-          </View>
-          <Button
-            className={`btn-primary sign-btn ${!supplementOk ? 'disabled' : ''}`}
-            onClick={handleBasicInfoNext}
-            disabled={!supplementOk || submitting}
-          >
-            下一步：阅读并签署本页{stepLabel}
-          </Button>
-        </View>
       </View>
     )
   }
 
   return (
-    <View className='consent-page'>
-      <ScrollView className='consent-content' scrollY>
-        <View className='document'>
-          <Text className='doc-title'>{icfTitle}{stepLabel}</Text>
-          {currentItem?.protocol_code ? (
-            <Text className='doc-subtitle'>项目编号 {currentItem.protocol_code}{currentItem.protocol_title ? ` · ${currentItem.protocol_title}` : ''}</Text>
-          ) : (
-            <Text className='doc-subtitle'>临床研究知情文档 (ICF)</Text>
-          )}
-          {currentItem?.staff_audit_status === 'returned' ? (
-            <View
-              className='doc-section'
-              style={{
-                padding: '12px 16px',
-                background: '#fff7ed',
-                borderLeft: '4px solid #ea580c',
-                borderRadius: 8,
-                marginBottom: 16,
-              }}
-            >
-              <Text className='section-text' style={{ fontSize: 28, fontWeight: 600, color: '#9a3412' }}>
-                需重新签署
+    <View className='consent-page consent-page--h5'>
+      <ScrollView className='consent-scroll-main' scrollY style={{ height: '100%' }}>
+        <View className='consent-scroll-inner'>
+          <View className='consent-h5-top'>
+            <Text className='consent-h5-top-icon'>📖</Text>
+            <View className='consent-h5-top-text'>
+              <Text className='consent-h5-top-title'>
+                {devPreview ? `知情测试${stepLabel}` : `知情同意${stepLabel}`}
               </Text>
+              <Text className='consent-h5-top-sub'>
+                {currentItem?.protocol_code
+                  ? `项目编号 ${currentItem.protocol_code}${currentItem.protocol_title ? ` · ${currentItem.protocol_title}` : ''}`
+                  : icfTitle || '临床研究知情文档'}
+              </Text>
+            </View>
+          </View>
+
+          {currentItem?.staff_audit_status === 'returned' ? (
+            <View className='consent-banner consent-banner--warn'>
+              <Text className='consent-banner__title'>需重新签署</Text>
               {currentItem.staff_return_reason ? (
-                <Text className='section-text' style={{ marginTop: 8, color: '#431407', fontSize: 26 }}>
-                  原因：{currentItem.staff_return_reason}
-                </Text>
+                <Text className='consent-banner__body'>原因：{currentItem.staff_return_reason}</Text>
               ) : (
-                <Text className='section-text' style={{ marginTop: 8, color: '#78716c', fontSize: 26 }}>
-                  工作人员已退回本次签署，请重新阅读并签署。
-                </Text>
+                <Text className='consent-banner__body'>工作人员已退回本次签署，请重新阅读并签署。</Text>
               )}
             </View>
           ) : null}
-          {devPreview && (
-            <View className='doc-section' style={{ padding: '12px 16px', background: '#e6fffa', borderRadius: 8, marginBottom: 16 }}>
-              <Text className='section-text' style={{ fontSize: 24, color: '#0d9488' }}>
+
+          {devPreview ? (
+            <View className='consent-banner consent-banner--dev'>
+              <Text className='consent-banner__body'>
                 开发预览模式（后端不可达时展示，可测试签名交互）
               </Text>
             </View>
-          )}
-          {showIcfDocLoading ? (
-            <View className='doc-section'>
-              <Text className='section-text loading-text'>内容加载中…</Text>
-            </View>
-          ) : icfContent !== null && icfContent !== '' ? (
-            <View className='doc-section'>
-              {icfDisplayContent.includes('<') ? (
-                <RichText className='icf-rich-html' nodes={`<div class="icf-doc-body">${icfDisplayContent}</div>`} />
-              ) : (
-                <Text className='section-text icf-plain-text'>{icfDisplayContent}</Text>
-              )}
-            </View>
-          ) : effectiveIcfVersionId != null ? (
-            <View className='doc-section'>
-              <Text className='section-text loading-text'>暂无正文，请联系研究方。</Text>
-            </View>
           ) : null}
-        </View>
-      </ScrollView>
 
-      <View className='consent-footer'>
-        <View className='doc-section'>
-          <Text className='section-text'>
-            {requiredReadingSeconds <= 0
-              ? '本页无需阅读计时（项目配置为 0 秒）'
-              : `阅读计时：${elapsedSec} / ${requiredReadingSeconds} 秒${!readOk ? '（未满不可签署）' : '（已满足）'}`}
-          </Text>
-        </View>
-
-        {effectiveIcfVersionId != null && collectOtherInformation ? (
-          <View className='doc-section consent-other-info'>
-            <Text className='signature-label'>其他补充说明（选填）</Text>
-            <Text className='section-text consent-other-info-hint'>
-              若文档中有「如有其他信息，可在此添加」等说明，可在此填写。
-            </Text>
-            <Textarea
-              className='consent-other-info-textarea'
-              value={otherInformationText}
-              onInput={(e) => setOtherInformationText(String(e.detail.value || '').slice(0, 4000))}
-              placeholder='可填写与研究相关的其他说明…'
-              maxlength={4000}
-              showConfirmBar={false}
-              autoHeight
-              disabled={submitting}
-            />
-          </View>
-        ) : null}
-
-        {effectiveIcfVersionId != null && needSubjectSig && (
-          <>
-            <View className='signature-date-row'>
-              <Text className='signature-date-label'>签署日期</Text>
-              <Text className='signature-date-value'>
-                {enableAutoSignDate
-                  ? (() => {
-                      const d = new Date()
-                      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-                    })()
-                  : new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })}
-                {enableAutoSignDate ? '（自动签署日）' : ''}
-              </Text>
+          <View className='consent-icf-card'>
+            <View className='consent-icf-card__head'>
+              <Text className='consent-icf-card__title'>{icfTitle}</Text>
+              <Text className='consent-icf-card__ver'>版本 {icfVersionDisplay}</Text>
             </View>
-            <View className='signature-area'>
-              <View className='signature-header'>
-                <Text className='signature-label'>
-                  受试者手写签名{subjectSignatureTimes > 1 ? `（${subjectSignatureTimes} 次）` : ''}
+            <ScrollView scrollY className='consent-icf-card__body' style={{ maxHeight: '420px' }}>
+              {showIcfDocLoading ? (
+                <Text className='consent-icf-card__loading'>内容加载中…</Text>
+              ) : icfContent !== null && icfContent !== '' ? (
+                icfDisplayContent.includes('<') ? (
+                  <RichText className='icf-rich-html' nodes={`<div class="icf-doc-body">${icfDisplayContent}</div>`} />
+                ) : (
+                  <Text className='section-text icf-plain-text'>{icfDisplayContent}</Text>
+                )
+              ) : effectiveIcfVersionId != null ? (
+                <Text className='consent-icf-card__loading'>暂无正文，请联系研究方。</Text>
+              ) : (
+                <Text className='consent-icf-card__loading'>暂无正文</Text>
+              )}
+            </ScrollView>
+          </View>
+
+          <View className='consent-actions-h5'>
+            {effectiveIcfVersionId != null && collectOtherInformation ? (
+              <View className='consent-other-info consent-other-info--h5'>
+                <Text className='consent-other-info-title'>其他补充说明（选填）</Text>
+                <Text className='section-text consent-other-info-hint'>
+                  若文档中有「如有其他信息，可在此添加」等说明，可在此填写。
                 </Text>
-                {hasSignature && (
-                  <Text className='signature-clear' onClick={handleClearSignature}>重新签名</Text>
-                )}
-              </View>
-              <View
-                className='signature-canvas-wrap signature-canvas-wrap-first signature-canvas'
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
-              >
-                <Canvas
-                  canvasId='signatureCanvas'
-                  className='signature-canvas-inner'
-                  disableScroll
+                <Textarea
+                  className='consent-other-info-textarea'
+                  value={otherInformationText}
+                  onInput={(e) => setOtherInformationText(String(e.detail.value || '').slice(0, 4000))}
+                  placeholder='可填写与研究相关的其他说明…'
+                  maxlength={4000}
+                  showConfirmBar={false}
+                  autoHeight
+                  disabled={submitting}
                 />
               </View>
-              <Text className='signature-hint'>
-                {subjectSignatureTimes > 1 ? '第 1 处：' : ''}
-                {hasSignature ? '签名已完成' : '请在上方区域用手指书写签名'}
-              </Text>
-            </View>
-            {subjectSignatureTimes >= 2 ? (
-              <View className='signature-area' style={{ marginTop: 12 }}>
-                <View className='signature-header'>
-                  <Text className='signature-label'>受试者手写签名（第 2 次）</Text>
-                  {hasSignature2 && (
-                    <Text className='signature-clear' onClick={handleClearSignature2}>重新签名</Text>
-                  )}
-                </View>
-                <View
-                  className='signature-canvas-wrap signature-canvas-wrap-2 signature-canvas'
-                  onTouchStart={handleTouchStart2}
-                  onTouchMove={handleTouchMove2}
-                  onTouchEnd={handleTouchEnd2}
-                >
-                  <Canvas
-                    canvasId='signatureCanvas2'
-                    className='signature-canvas-inner'
-                    disableScroll
-                  />
-                </View>
-                <Text className='signature-hint'>
-                  {hasSignature2 ? '第 2 处签名已完成' : '请完成第二处签名'}
+            ) : null}
+
+            {effectiveIcfVersionId != null && needSubjectSig ? (
+              <View className='signature-date-row signature-date-row--h5'>
+                <Text className='signature-date-label'>签署日期</Text>
+                <Text className='signature-date-value'>
+                  {enableAutoSignDate
+                    ? (() => {
+                        const d = new Date()
+                        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+                      })()
+                    : new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                  {enableAutoSignDate ? '（自动签署日）' : ''}
                 </Text>
               </View>
             ) : null}
-          </>
-        )}
 
-        <View className='agree-row' onClick={() => setAgreed(!agreed)}>
-          <View className={`checkbox ${agreed ? 'checkbox-checked' : ''}`}>
-            {agreed && <Text className='check-mark'>✓</Text>}
+            <View className='agree-row agree-row--h5' onClick={() => setAgreed(!agreed)}>
+              <View className={`checkbox ${agreed ? 'checkbox-checked' : ''}`}>
+                {agreed && <Text className='check-mark'>✓</Text>}
+              </View>
+              <Text className='agree-text'>本人已阅读并知晓上述协议内容</Text>
+            </View>
+
+            {effectiveIcfVersionId != null && needSubjectSig ? (
+              <>
+                <Text className='consent-sig-section-label'>
+                  {devPreview ? '手写签名（知情测试）' : '手写签名'}
+                </Text>
+                <View className='consent-sig-pad'>
+                  {subjectSignatureTimes > 1 ? (
+                    <View className='consent-sig-pad__bar'>
+                      <Text className='consent-sig-pad__bar-text'>
+                        受试者签名 1 / {subjectSignatureTimes}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <View
+                    className='signature-canvas-wrap signature-canvas-wrap-first signature-canvas consent-sig-pad__canvas'
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                  >
+                    <Canvas canvasId='signatureCanvas' className='signature-canvas-inner' disableScroll />
+                  </View>
+                  <View className='consent-sig-pad__footer'>
+                    <Text className='consent-sig-pad__clear' onClick={handleClearSignature}>
+                      清除本框签名
+                    </Text>
+                  </View>
+                </View>
+                {subjectSignatureTimes >= 2 ? (
+                  <View className='consent-sig-pad consent-sig-pad--mt'>
+                    <View className='consent-sig-pad__bar'>
+                      <Text className='consent-sig-pad__bar-text'>
+                        受试者签名 2 / {subjectSignatureTimes}
+                      </Text>
+                    </View>
+                    <View
+                      className='signature-canvas-wrap signature-canvas-wrap-2 signature-canvas consent-sig-pad__canvas'
+                      onTouchStart={handleTouchStart2}
+                      onTouchMove={handleTouchMove2}
+                      onTouchEnd={handleTouchEnd2}
+                    >
+                      <Canvas canvasId='signatureCanvas2' className='signature-canvas-inner' disableScroll />
+                    </View>
+                    <View className='consent-sig-pad__footer'>
+                      <Text className='consent-sig-pad__clear' onClick={handleClearSignature2}>
+                        清除本框签名
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
+              </>
+            ) : null}
+
+            <Button
+              className={`btn-primary btn-primary--stack sign-btn ${showIcfDocLoading || !agreed || !readOk || !supplementOk || (effectiveIcfVersionId != null && !subjectSigReady) ? 'disabled' : ''}`}
+              onClick={handleSign}
+              disabled={
+                showIcfDocLoading
+                || !agreed
+                || !readOk
+                || !supplementOk
+                || (effectiveIcfVersionId != null && !subjectSigReady)
+                || submitting
+              }
+            >
+              {submitting ? (
+                <Text className='btn-primary-line1'>提交中...</Text>
+              ) : (
+                <View className='btn-primary-inner'>
+                  <Text className='btn-primary-line1'>
+                    {totalSteps > 1 ? `确认签署本页${stepLabel}` : '确认签署'}
+                  </Text>
+                  {requiredReadingSeconds > 0 ? (
+                    <Text className='btn-primary-line2'>
+                      阅读计时 {Math.min(elapsedSec, requiredReadingSeconds)} / {requiredReadingSeconds} 秒
+                      {!readOk ? '，请继续阅读' : '，可确认'}
+                    </Text>
+                  ) : null}
+                </View>
+              )}
+            </Button>
+
+            {signError ? (
+              <View className='sign-error-notice'>
+                <Text className='sign-error-text'>{signError}</Text>
+                <Text className='sign-error-action' onClick={() => setSignError(null)}>关闭</Text>
+                <Text className='consent-back' onClick={() => Taro.navigateBack()}>返回</Text>
+              </View>
+            ) : null}
           </View>
-          <Text className='agree-text'>我已阅读并理解以上内容</Text>
         </View>
-
-        <Button
-          className={`btn-primary sign-btn ${showIcfDocLoading || !agreed || !readOk || !supplementOk || (effectiveIcfVersionId != null && !subjectSigReady) ? 'disabled' : ''}`}
-          onClick={handleSign}
-          disabled={
-            showIcfDocLoading
-            || !agreed
-            || !readOk
-            || !supplementOk
-            || (effectiveIcfVersionId != null && !subjectSigReady)
-            || submitting
-          }
-        >
-          {submitting ? '提交中...' : (totalSteps > 1 ? `确认签署本页${stepLabel}` : '确认签署')}
-        </Button>
-
-        {signError ? (
-          <View className='sign-error-notice'>
-            <Text className='sign-error-text'>{signError}</Text>
-            <Text className='sign-error-action' onClick={() => setSignError(null)}>关闭</Text>
-            <Text className='consent-back' onClick={() => Taro.navigateBack()}>返回</Text>
-          </View>
-        ) : null}
-      </View>
+      </ScrollView>
     </View>
   )
 }

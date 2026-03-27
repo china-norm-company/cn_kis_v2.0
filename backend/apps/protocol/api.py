@@ -4064,13 +4064,9 @@ def consent_test_scan_queue(request, p: int = Query(...), t: str = Query(...)):
     protocol = Protocol.objects.filter(id=p, is_deleted=False).first()
     if not protocol:
         return 404, {'code': 404, 'msg': '协议不存在'}
-    if _is_consent_launched(protocol):
-        return 403, {
-            'code': 403,
-            'msg': '知情已发布，预发布知情测试不可用，请使用正式入口或先下架知情。',
-        }
+    # 已发布且处于现场筛选窗口（列表为「进行中」）时仍允许知情测试 H5，便于与正式入口并行联调；未在此白名单的状态仍拦截
     st = get_consent_config_status_for_protocol(protocol)
-    if st not in ('已授权待测试', '已测试待开始', '授权测试中', '待测试'):
+    if st not in ('已授权待测试', '已测试待开始', '授权测试中', '待测试', '进行中'):
         return 403, {
             'code': 403,
             'msg': '请先完成配置与工作人员授权核验',
@@ -4237,20 +4233,9 @@ def consent_test_landing(request, p: int = Query(...), t: str = Query(...)):
             status=404,
             content_type='text/html; charset=utf-8',
         )
-    if _is_consent_launched(protocol):
-        block_msg = '知情已发布，预发布知情测试扫码不可用，请使用正式入口或先下架知情。'
-        safe = html_module.escape(block_msg)
-        body = (
-            f'<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-            f'<title>暂无法开始签署测试</title></head><body style="font-family:system-ui;padding:24px;line-height:1.6;">'
-            f'<p style="font-size:18px;font-weight:600;">暂无法开始签署测试</p>'
-            f'<p style="color:#334155;">{safe}</p>'
-            f'</body></html>'
-        )
-        return HttpResponse(body, content_type='text/html; charset=utf-8')
     st = get_consent_config_status_for_protocol(protocol)
     block_msg = '请先完成配置与工作人员授权核验'
-    if st not in ('已授权待测试', '已测试待开始', '授权测试中', '待测试'):
+    if st not in ('已授权待测试', '已测试待开始', '授权测试中', '待测试', '进行中'):
         safe = html_module.escape(block_msg)
         safe_status = html_module.escape(st)
         body = (
