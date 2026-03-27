@@ -13,6 +13,10 @@ function statusLabel(s: string) {
   return '已完成'
 }
 
+function projectStatusLabel(status?: string) {
+  return status === 'completed' ? '已完成' : '未完成'
+}
+
 export default function WeeklyProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -75,7 +79,7 @@ export default function WeeklyProjectDetailPage() {
           <h3 className="text-sm font-semibold text-slate-700 mb-3">基本信息</h3>
           <dl className="space-y-2 text-sm">
             <div><dt className="text-slate-500">开始 / 结束</dt><dd className="text-slate-800">{project.start_date ?? '-'} ~ {project.end_date ?? '-'}</dd></div>
-            <div><dt className="text-slate-500">状态</dt><dd className="text-slate-800">{project.status ?? 'active'}</dd></div>
+            <div><dt className="text-slate-500">状态</dt><dd className="text-slate-800">{projectStatusLabel(project.status)}</dd></div>
           </dl>
         </div>
         {membersContrib.length > 0 && (

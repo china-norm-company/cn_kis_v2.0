@@ -386,6 +386,38 @@ def update_project(request, project_id: int, payload: ProjectUpdateIn):
         return JsonResponse({"code": status, "msg": msg, "data": None}, status=status)
 
 
+@router.post("/projects/{project_id}/complete")
+def complete_project(request, project_id: int):
+    err = _auth_required(request)
+    if err is not None:
+        return err
+    uid = _user_id(request)
+    is_admin = _is_admin(request)
+    try:
+        proj = services.complete_project(project_id, requester_id=uid, requester_is_admin=is_admin)
+        return {"code": 200, "msg": "OK", "data": proj}
+    except ValueError as e:
+        msg = str(e) or "Complete failed"
+        status = 403 if "权限" in msg else 404
+        return JsonResponse({"code": status, "msg": msg, "data": None}, status=status)
+
+
+@router.post("/projects/{project_id}/activate")
+def activate_project(request, project_id: int):
+    err = _auth_required(request)
+    if err is not None:
+        return err
+    uid = _user_id(request)
+    is_admin = _is_admin(request)
+    try:
+        proj = services.activate_project(project_id, requester_id=uid, requester_is_admin=is_admin)
+        return {"code": 200, "msg": "OK", "data": proj}
+    except ValueError as e:
+        msg = str(e) or "Activate failed"
+        status = 403 if "权限" in msg else 404
+        return JsonResponse({"code": status, "msg": msg, "data": None}, status=status)
+
+
 @router.get("/users")
 def list_users(request):
     err = _auth_required(request)
