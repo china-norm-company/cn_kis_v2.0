@@ -29,7 +29,7 @@ const typeLabels: Record<string, string> = {
   transportation: '交通补贴',
   meal: '餐饮补贴',
   referral: '推荐奖励',
-  pre_screening: '粗筛补偿',
+  pre_screening: '初筛补偿',
   other: '其他',
 }
 

@@ -28,6 +28,20 @@ from ..models_execution import (
 logger = logging.getLogger(__name__)
 
 
+def _recruitment_try_auto_complete_for_project_code(project_code: str) -> None:
+    """SubjectProjectSC 入组人数变化后，按项目编号尝试将招募计划标为「已完成」。"""
+    pc = (project_code or '').strip()
+    if not pc:
+        return
+    try:
+        from .recruitment_service import recruitment_plan_ids_for_project_code, try_auto_complete_plan_by_enrollment
+
+        for pid in recruitment_plan_ids_for_project_code(pc):
+            try_auto_complete_plan_by_enrollment(pid)
+    except Exception as e:
+        logger.warning('招募计划入组满员自动完结失败: %s', e, exc_info=True)
+
+
 def _visit_point_allocates_sc(visit_point: str) -> bool:
     """
     签到时是否应分配 SC 排队号（与接待台访视点选项对齐）。
@@ -408,11 +422,12 @@ def get_today_queue(
     page: int = 1,
     page_size: int = 10,
     project_code: Optional[str] = None,
+    visit_point: Optional[str] = None,
     source: str = 'execution',
 ) -> dict:
     """
     今日受试者队列：聚合预约 + 签到状态；排序为项目编号升序，同项目内先排有 SC 号的记录再排无 SC 的，再按 SC 号升序。
-    支持分页（每页默认10条）、按项目编号筛选。
+    支持分页（每页默认10条）、按项目编号筛选、按访视点精确筛选（去空白后与 visit_point 一致）。
     source: execution=工单执行（SubjectCheckin+SubjectProjectSC），board=接待看板（ReceptionBoardCheckin+ReceptionBoardProjectSc）
     两套数据完全独立，SC/RD号、签到签出时间互不影响。
     """
@@ -427,6 +442,9 @@ def get_today_queue(
         if project_code and str(project_code).strip():
             pc_lower = str(project_code).strip().lower()
             queue = [i for i in queue if (i.get('project_code') or '').strip().lower() == pc_lower]
+        if visit_point and str(visit_point).strip():
+            vp = str(visit_point).strip()
+            queue = [i for i in queue if (i.get('visit_point') or '').strip() == vp]
         total = len(queue)
         start = (page - 1) * page_size
         end = start + page_size
@@ -448,6 +466,8 @@ def get_today_queue(
 
     if project_code:
         appointments_qs = appointments_qs.filter(project_code=project_code)
+    if visit_point and str(visit_point).strip():
+        appointments_qs = appointments_qs.filter(visit_point=str(visit_point).strip())
 
     appointments = list(appointments_qs)
 
@@ -581,6 +601,9 @@ def get_today_queue(
     if project_code and str(project_code).strip():
         pc_lower = str(project_code).strip().lower()
         queue = [i for i in queue if (i.get('project_code') or '').strip().lower() == pc_lower]
+    if visit_point and str(visit_point).strip():
+        vp = str(visit_point).strip()
+        queue = [i for i in queue if (i.get('visit_point') or '').strip() == vp]
 
     queue.sort(key=_today_queue_sort_key)
 
@@ -597,9 +620,223 @@ def get_today_queue(
     }
 
 
+def _build_queue_list_items(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    visit_point: Optional[str] = None,
+) -> list[dict]:
+    """
+    预约队列明细（与 get_today_queue 同源字段），不含项目/状态/入组筛选。
+    项目编号以预约+协议解析后的最终 project_code 为准（不在 DB 层按 project_code 过滤）。
+    """
+    appointments_qs = SubjectAppointment.objects.exclude(
+        status=AppointmentStatus.CANCELLED,
+    ).select_related('subject', 'enrollment', 'enrollment__protocol').order_by('-appointment_date', 'appointment_time', 'id')
+
+    if date_from:
+        appointments_qs = appointments_qs.filter(appointment_date__gte=date_from)
+    if date_to:
+        appointments_qs = appointments_qs.filter(appointment_date__lte=date_to)
+    if visit_point and str(visit_point).strip():
+        appointments_qs = appointments_qs.filter(visit_point=str(visit_point).strip())
+
+    appointments = list(appointments_qs)
+    if not appointments:
+        return []
+
+    subject_ids = {a.subject_id for a in appointments}
+    date_keys = {a.appointment_date for a in appointments}
+    checkin_rows = list(
+        SubjectCheckin.objects.filter(
+            subject_id__in=subject_ids,
+            checkin_date__in=date_keys,
+        ).select_related('subject'),
+    )
+    checkins_by_date: dict[date, list[SubjectCheckin]] = defaultdict(list)
+    for c in checkin_rows:
+        checkins_by_date[c.checkin_date].append(c)
+
+    queue: list[dict] = []
+    appts_by_date: dict[date, list[SubjectAppointment]] = defaultdict(list)
+    for appt in appointments:
+        appts_by_date[appt.appointment_date].append(appt)
+
+    for d, appts in appts_by_date.items():
+        appt_checkin_map = _map_appointments_to_checkins(appts, checkins_by_date.get(d, []))
+        for appt in appts:
+            checkin = appt_checkin_map.get(appt.id)
+            project_name = getattr(appt, 'project_name', '') or ''
+            project_code_val = getattr(appt, 'project_code', '') or ''
+            if (
+                not project_name
+                and appt.enrollment_id
+                and appt.enrollment
+                and hasattr(appt.enrollment, 'protocol')
+                and appt.enrollment.protocol
+            ):
+                p = appt.enrollment.protocol
+                project_name = p.title or ''
+                project_code_val = (p.code or '').strip()
+            subj = appt.subject
+            _phone = getattr(subj, 'phone', '') or '' if subj else ''
+            queue.append({
+                'appointment_id': appt.id,
+                'appointment_date': appt.appointment_date.isoformat() if appt.appointment_date else '',
+                'subject_id': appt.subject_id,
+                'subject_name': subj.name if subj else '',
+                'subject_no': subj.subject_no if subj else '',
+                '_subject_phone': _phone,
+                'phone': _phone,
+                'name_pinyin_initials': (getattr(appt, 'name_pinyin_initials', '') or '').strip(),
+                'liaison': (getattr(appt, 'liaison', '') or '').strip(),
+                'notes': (getattr(appt, 'notes', '') or '').strip(),
+                'sc_number': '',
+                'rd_number': '',
+                'gender': getattr(subj, 'gender', '') or '' if subj else '',
+                'age': getattr(subj, 'age', None) if subj else None,
+                'appointment_time': appt.appointment_time.strftime('%H:%M') if appt.appointment_time else '',
+                'purpose': appt.purpose,
+                'visit_point': getattr(appt, 'visit_point', '') or '',
+                'project_name': project_name,
+                'project_code': project_code_val,
+                'task_type': _determine_task_type(appt),
+                'status': _determine_queue_status(appt, checkin),
+                'checkin_id': checkin.id if checkin else None,
+                'checkin_time': checkin.checkin_time.isoformat() if checkin and checkin.checkin_time else None,
+                'checkout_time': checkin.checkout_time.isoformat() if checkin and checkin.checkout_time else None,
+                'enrollment_id': appt.enrollment_id,
+            })
+
+    keys = [(item.get('subject_id'), (item.get('project_code') or '').strip()) for item in queue]
+    keys = [(s, p) for s, p in keys if s is not None and p]
+    sc_map: dict[tuple[int, str], SubjectProjectSC] = {}
+    if keys:
+        for rec in SubjectProjectSC.objects.filter(is_deleted=False).filter(
+            subject_id__in={s for s, _ in keys},
+            project_code__in={p for _, p in keys},
+        ):
+            k = (rec.subject_id, (rec.project_code or '').strip())
+            if k not in sc_map:
+                sc_map[k] = rec
+    for item in queue:
+        k = (item.get('subject_id'), (item.get('project_code') or '').strip())
+        rec = sc_map.get(k)
+        if rec:
+            sn = (rec.sc_number or '').strip()
+            item['sc_number'] = f'SC{sn}' if sn.isdigit() else (sn or '')
+            item['rd_number'] = (rec.rd_number or '').strip()
+            item['enrollment_status'] = (rec.enrollment_status or '').strip()
+        else:
+            item['enrollment_status'] = ''
+
+    queue.sort(key=lambda x: (
+        str(x.get('appointment_date') or ''),
+        str(x.get('project_code') or ''),
+        str(x.get('appointment_time') or ''),
+        int(x.get('appointment_id') or 0),
+    ), reverse=True)
+    return queue
+
+
+def _filter_queue_list_items(
+    queue: list[dict],
+    project_code: Optional[str] = None,
+    project_code_exact: bool = False,
+    status: Optional[str] = None,
+    enrollment_status: Optional[str] = None,
+) -> list[dict]:
+    """在已构建的队列条目上应用项目/状态/入组筛选（与 get_queue_list 一致）。"""
+    out = queue
+    if project_code and str(project_code).strip():
+        pc = str(project_code).strip()
+        if project_code_exact:
+            out = [i for i in out if (i.get('project_code') or '').strip() == pc]
+        else:
+            ql = pc.lower()
+            out = [i for i in out if ql in (i.get('project_code') or '').lower()]
+    if status and str(status).strip().lower() not in ('', 'all'):
+        st = str(status).strip().lower()
+        out = [i for i in out if (i.get('status') or '').lower() == st]
+    if enrollment_status is not None:
+        es = str(enrollment_status).strip()
+        if es and es.lower() not in ('all',):
+            if es == '__none__':
+                out = [i for i in out if not (i.get('enrollment_status') or '').strip()]
+            else:
+                out = [i for i in out if (i.get('enrollment_status') or '').strip() == es]
+    return out
+
+
+def get_queue_list(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    page: int = 1,
+    page_size: int = 10,
+    project_code: Optional[str] = None,
+    project_code_exact: bool = False,
+    visit_point: Optional[str] = None,
+    status: Optional[str] = None,
+    enrollment_status: Optional[str] = None,
+) -> dict:
+    """
+    队列明细（历史可查）：
+    - 日期为空 => 全部日期
+    - 项目编号：默认包含匹配（解析后 project_code）；project_code_exact=True 时为精确匹配
+    - 可选 status / enrollment_status（enrollment_status=__none__ 表示无入组情况）
+    """
+    queue = _build_queue_list_items(date_from, date_to, visit_point)
+    if not queue:
+        return {
+            'items': [],
+            'total': 0,
+            'page': page,
+            'page_size': page_size,
+            'date_from': str(date_from) if date_from else '',
+            'date_to': str(date_to) if date_to else '',
+        }
+
+    queue = _filter_queue_list_items(
+        queue,
+        project_code=project_code,
+        project_code_exact=project_code_exact,
+        status=status,
+        enrollment_status=enrollment_status,
+    )
+
+    total = len(queue)
+    start = (page - 1) * page_size
+    end = start + page_size
+    page_items = queue[start:end]
+    for it in page_items:
+        it.pop('_subject_phone', None)
+    return {
+        'items': page_items,
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'date_from': str(date_from) if date_from else '',
+        'date_to': str(date_to) if date_to else '',
+    }
+
+
+def get_queue_list_project_codes(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    visit_point: Optional[str] = None,
+) -> dict:
+    """当前日期范围/访视点下，队列中出现的去重项目编号（解析后），用于下拉选项。"""
+    queue = _build_queue_list_items(date_from, date_to, visit_point)
+    codes = sorted(
+        {(i.get('project_code') or '').strip() for i in queue if (i.get('project_code') or '').strip()},
+        key=lambda x: x.lower(),
+    )
+    return {'project_codes': codes}
+
+
 def get_today_queue_export(
     target_date: Optional[date] = None,
     project_code: Optional[str] = None,
+    visit_point: Optional[str] = None,
     status: Optional[str] = None,
     source: str = 'execution',
 ) -> dict:
@@ -608,12 +845,103 @@ def get_today_queue_export(
     返回完整列表（不分页）供前端生成 CSV/Excel。
     source: execution=工单执行，board=接待看板。
     """
-    full = get_today_queue(target_date=target_date, page=1, page_size=99999, project_code=project_code, source=source)
+    full = get_today_queue(
+        target_date=target_date, page=1, page_size=99999,
+        project_code=project_code, visit_point=visit_point, source=source,
+    )
     items = full.get('items', [])
     if status and str(status).strip().lower() not in ('', 'all'):
         status_lower = str(status).strip().lower()
         items = [i for i in items if (i.get('status') or '').lower() == status_lower]
     return {'items': items, 'date': full.get('date', ''), 'total': len(items)}
+
+
+def get_today_queue_project_summary(
+    target_date: Optional[date] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    visit_point: Optional[str] = None,
+    project_code: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 10,
+    source: str = 'execution',
+    status: Optional[str] = None,
+    enrollment_status: Optional[str] = None,
+) -> dict:
+    """
+    按项目编号汇总当日队列：
+    - 预约人数：该项目下队列条数
+    - 状态：waiting/checked_in/in_progress/checked_out/no_show 计数
+    - 入组情况：按 enrollment_status 文本计数
+    与 get_queue_list 同源筛选（日期、访视点、项目含匹配、状态、入组情况）。
+    """
+    effective_from = date_from
+    effective_to = date_to
+    if target_date:
+        effective_from = target_date
+        effective_to = target_date
+    full = get_queue_list(
+        date_from=effective_from,
+        date_to=effective_to,
+        page=1,
+        page_size=999999,
+        project_code=project_code,
+        project_code_exact=False,
+        visit_point=visit_point,
+        status=status,
+        enrollment_status=enrollment_status,
+    )
+    items = full.get('items', [])
+    summary_date = str(target_date) if target_date else ''
+    grouped: dict[str, dict] = {}
+
+    for it in items:
+        project_code = (it.get('project_code') or '').strip()
+        if not project_code:
+            continue
+        project_name = (it.get('project_name') or '').strip()
+        rec = grouped.get(project_code)
+        if rec is None:
+            rec = {
+                'project_code': project_code,
+                'project_name': project_name,
+                'appointment_count': 0,
+                'status_counts': {
+                    'waiting': 0,
+                    'checked_in': 0,
+                    'in_progress': 0,
+                    'checked_out': 0,
+                    'no_show': 0,
+                },
+                'enrollment_status_counts': {},
+            }
+            grouped[project_code] = rec
+
+        rec['appointment_count'] += 1
+        status = (it.get('status') or '').strip()
+        if status in rec['status_counts']:
+            rec['status_counts'][status] += 1
+
+        enroll_st = (it.get('enrollment_status') or '').strip()
+        if enroll_st:
+            rec['enrollment_status_counts'][enroll_st] = rec['enrollment_status_counts'].get(enroll_st, 0) + 1
+
+    summary_items = [grouped[k] for k in sorted(grouped.keys(), key=lambda x: x.lower())]
+    total = len(summary_items)
+    safe_page = max(1, int(page or 1))
+    safe_page_size = max(1, int(page_size or 10))
+    start = (safe_page - 1) * safe_page_size
+    end = start + safe_page_size
+    page_items = summary_items[start:end]
+
+    return {
+        'date': summary_date,
+        'total_projects': total,
+        'total': total,
+        'page': safe_page,
+        'page_size': safe_page_size,
+        'items': page_items,
+    }
 
 
 def get_appointment_calendar(target_month: Optional[str] = None) -> dict:
@@ -898,6 +1226,7 @@ def ensure_project_sc_from_import(
             update_fields.extend(['rd_number', 'enrollment_status'])
         rec.save(update_fields=update_fields)
     invalidate_execution_queue_cache_for_date(_local_today())
+    _recruitment_try_auto_complete_for_project_code(project_code)
 
 
 def _ensure_project_sc_on_checkin(
@@ -1205,6 +1534,7 @@ def update_project_sc(
     if update_fields:
         rec.save(update_fields=set(update_fields) | {'update_time'})
     invalidate_execution_queue_cache_for_date(_local_today())
+    _recruitment_try_auto_complete_for_project_code(project_code)
     return {
         'subject_id': rec.subject_id,
         'project_code': rec.project_code,
@@ -1608,7 +1938,7 @@ def _determine_task_type(appt: SubjectAppointment) -> str:
     purpose = (appt.purpose or '').lower()
     visit_point = (getattr(appt, 'visit_point', '') or '').lower()
     combined = f'{purpose} {visit_point}'
-    if '粗筛' in combined or 'pre_screening' in combined:
+    if '初筛' in combined or '粗筛' in combined or 'pre_screening' in combined:
         return 'pre_screening'
     if '筛选' in combined or 'v0' in combined:
         return 'screening'

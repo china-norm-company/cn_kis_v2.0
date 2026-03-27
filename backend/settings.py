@@ -192,6 +192,17 @@ WORKORDER_FREEZE_LEGACY_WRITE = os.getenv('WORKORDER_FREEZE_LEGACY_WRITE', 'fals
 WORKORDER_FREEZE_OBSERVE_LOG_ENABLED = os.getenv('WORKORDER_FREEZE_OBSERVE_LOG_ENABLED', 'true').lower() == 'true'
 
 # ============================================================================
+# 初筛 ↔ 预约管理 / 按项目 SC 同步（可选，默认关闭）
+# ============================================================================
+# 开启后由 apps.subject.services.prescreening_appointment_sync 在初筛状态变更后执行钩子；
+# 具体写 SubjectAppointment / SubjectProjectSC 等需在钩子里实现并保持 Protocol.code 与 project_code 一致。
+PRESCREEN_APPOINTMENT_SYNC = os.getenv('PRESCREEN_APPOINTMENT_SYNC', '0').strip().lower() in (
+    '1',
+    'true',
+    'yes',
+)
+
+# ============================================================================
 # 时区（与 V1 对齐：预约/签到「今日」、飞书通知时间均按北京时间展示）
 # ============================================================================
 USE_TZ = os.getenv('DJANGO_USE_TZ', 'true').lower() in ('1', 'true', 'yes')

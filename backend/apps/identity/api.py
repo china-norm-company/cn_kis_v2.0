@@ -19,6 +19,7 @@ from django.utils import timezone
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
+from django.db.utils import OperationalError
 import logging
 import httpx
 import time
@@ -573,7 +574,7 @@ def _compute_visible_menus(perm_codes: list, workbenches: list) -> dict:
 @router.post(
     '/feishu/callback',
     summary='飞书OAuth回调',
-    response={200: dict, 400: dict, 401: dict, 500: dict},
+    response={200: dict, 400: dict, 401: dict, 500: dict, 503: dict},
 )
 def feishu_callback(request, data: FeishuCallbackIn):
     """飞书 OAuth 授权码换取 Token（18 个工作台统一使用子衿 App ID 授权）"""
@@ -710,6 +711,23 @@ def feishu_callback(request, data: FeishuCallbackIn):
                 'trace_id': trace_id or '',
             },
         }
+    except OperationalError as e:
+        logger.exception('OAuth 回调: 数据库不可用 (feishu_oauth): %s', e)
+        _auth_trace(
+            request,
+            'oauth_callback_error',
+            app_id=app_id or '-',
+            error_type='db_unavailable',
+            trace_id=trace_id or '-',
+        )
+        return 503, {
+            'code': 503,
+            'msg': (
+                '数据库暂时不可用。本地开发请确认 PostgreSQL 已启动或已建立 SSH 隧道'
+                '（仓库 scripts/ssh_tunnel_postgres.sh），并核对 backend/.env 的 DB_HOST、DB_PORT。'
+            ),
+            'data': {'error_code': 'AUTH_DB_UNAVAILABLE', 'trace_id': trace_id or ''},
+        }
     except Exception as e:
         logger.exception(f"OAuth 回调异常 (app_id={app_id}): {e}")
         _auth_trace(request, 'oauth_callback_error', app_id=app_id or '-', error_type='internal_error', trace_id=trace_id or '-')
@@ -719,14 +737,49 @@ def feishu_callback(request, data: FeishuCallbackIn):
             'data': {'error_code': 'AUTH_INTERNAL_ERROR', 'trace_id': trace_id or ''},
         }
 
-    token = create_session(
-        account,
-        device_info=request.META.get('HTTP_USER_AGENT', ''),
-        ip_address=request.META.get('REMOTE_ADDR', ''),
-    )
+    try:
+        token = create_session(
+            account,
+            device_info=request.META.get('HTTP_USER_AGENT', ''),
+            ip_address=request.META.get('REMOTE_ADDR', ''),
+        )
+    except OperationalError as e:
+        logger.exception('OAuth 回调: 数据库不可用 (create_session): %s', e)
+        _auth_trace(
+            request,
+            'oauth_callback_error',
+            app_id=app_id or '-',
+            error_type='db_unavailable',
+            trace_id=trace_id or '-',
+        )
+        return 503, {
+            'code': 503,
+            'msg': (
+                '数据库暂时不可用。本地开发请确认 PostgreSQL 已启动或已建立 SSH 隧道'
+                '（仓库 scripts/ssh_tunnel_postgres.sh），并核对 backend/.env 的 DB_HOST、DB_PORT。'
+            ),
+            'data': {'error_code': 'AUTH_DB_UNAVAILABLE', 'trace_id': trace_id or ''},
+        }
 
     try:
         profile = _build_user_profile(account)
+    except OperationalError as e:
+        logger.exception('OAuth 回调: 数据库不可用 (profile): %s', e)
+        _auth_trace(
+            request,
+            'oauth_callback_error',
+            app_id=app_id or '-',
+            error_type='db_unavailable',
+            trace_id=trace_id or '-',
+        )
+        return 503, {
+            'code': 503,
+            'msg': (
+                '数据库暂时不可用。本地开发请确认 PostgreSQL 已启动或已建立 SSH 隧道'
+                '（仓库 scripts/ssh_tunnel_postgres.sh），并核对 backend/.env 的 DB_HOST、DB_PORT。'
+            ),
+            'data': {'error_code': 'AUTH_DB_UNAVAILABLE', 'trace_id': trace_id or ''},
+        }
     except Exception as e:
         logger.exception('OAuth 回调: _build_user_profile 异常 (account_id=%s): %s', account.id, e)
         return 500, {

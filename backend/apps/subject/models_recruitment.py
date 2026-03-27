@@ -19,6 +19,21 @@ class RecruitmentPlanStatus(models.TextChoices):
     CANCELLED = 'cancelled', '已取消'
 
 
+class MaterialPrepStatus(models.TextChoices):
+    """物料准备状态（与计划生命周期状态区分）"""
+    DRAFT = 'draft', '草稿'
+    IN_PROGRESS = 'in_progress', '进行中'
+    PUBLISHED = 'published', '发布'
+
+
+class AppointmentDocsStatus(models.TextChoices):
+    """招募预约文档包审批状态"""
+    MISSING = 'missing', '待上传'
+    PENDING_REVIEW = 'pending_review', '待审批'
+    APPROVED = 'approved', '已通过'
+    REJECTED = 'rejected', '已驳回'
+
+
 class RecruitmentPlan(models.Model):
     """招募计划"""
 
@@ -34,9 +49,58 @@ class RecruitmentPlan(models.Model):
     protocol = models.ForeignKey(
         'protocol.Protocol', on_delete=models.CASCADE,
         related_name='recruitment_plans', verbose_name='关联协议',
+        null=True,
+        blank=True,
     )
     title = models.CharField('计划标题', max_length=200)
     description = models.TextField('计划描述', blank=True, default='')
+
+    # 维周工单 / 项目信息（项目编号全局唯一；与 protocol.code 可并存）
+    project_code = models.CharField(
+        '项目编号', max_length=64, unique=True, null=True, blank=True, db_index=True,
+        help_text='维周同步或手工录入，唯一',
+    )
+    sample_requirement = models.TextField('样本要求', blank=True, default='')
+    wei_visit_point = models.CharField('访视点', max_length=200, blank=True, default='')
+    wei_visit_date = models.CharField(
+        '具体访视日期',
+        max_length=500,
+        blank=True,
+        default='',
+        help_text='自由文本，如具体日期或「3月上旬」等说明',
+    )
+    researcher_name = models.CharField('研究员', max_length=200, blank=True, default='')
+    supervisor_name = models.CharField('督导', max_length=200, blank=True, default='')
+
+    # 招募主管填报（第二步）
+    recruit_start_date = models.DateField('招募启动日期', null=True, blank=True)
+    recruit_end_date = models.DateField('招募结束日期', null=True, blank=True)
+    planned_appointment_count = models.IntegerField('计划预约人数', default=0)
+    estimated_work_hours = models.DecimalField(
+        '预计工时', max_digits=10, decimal_places=2, null=True, blank=True,
+    )
+    actual_work_hours = models.DecimalField(
+        '实际工时', max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='仅招募专员填写',
+    )
+    recruit_specialist_names = models.JSONField(
+        '派发招募专员', default=list, blank=True,
+        help_text='姓名列表，多选则多人可见「我的计划」',
+    )
+    channel_recruitment_needed = models.BooleanField('是否需要渠道招募', default=False)
+    material_prep_status = models.CharField(
+        '物料准备状态', max_length=20,
+        choices=MaterialPrepStatus.choices,
+        default=MaterialPrepStatus.DRAFT,
+        db_index=True,
+    )
+    appointment_docs_status = models.CharField(
+        '招募预约文档状态', max_length=20,
+        choices=AppointmentDocsStatus.choices,
+        default=AppointmentDocsStatus.MISSING,
+        db_index=True,
+    )
+    appointment_docs_reject_reason = models.TextField('预约文档驳回原因', blank=True, default='')
 
     target_count = models.IntegerField('目标人数', default=0)
     enrolled_count = models.IntegerField('已入组人数', default=0)
@@ -177,6 +241,7 @@ class AdType(models.TextChoices):
     VIDEO = 'video', '视频'
     ARTICLE = 'article', '文章'
     SOCIAL_MEDIA = 'social_media', '社交媒体'
+    RECRUIT_TEMPLATE = 'recruit_template', '招募模板'
 
 
 class AdStatus(models.TextChoices):
@@ -201,6 +266,21 @@ class RecruitmentAd(models.Model):
     publish_channels = models.JSONField('发布渠道', null=True, blank=True, default=list)
     status = models.CharField('状态', max_length=20, choices=AdStatus.choices, default=AdStatus.DRAFT)
 
+    template_project_code = models.CharField('模板-项目编号', max_length=128, blank=True, default='')
+    template_project_name = models.CharField('模板-项目名称', max_length=200, blank=True, default='')
+    template_sample_requirement = models.TextField('模板-样本要求', blank=True, default='')
+    template_visit_date = models.DateField('模板-具体访视日期', null=True, blank=True)
+    template_honorarium = models.DecimalField(
+        '模板-礼金', max_digits=12, decimal_places=2, null=True, blank=True,
+    )
+    template_liaison_fee = models.CharField(
+        '模板-联络费', max_length=200, blank=True, default='',
+        help_text='支持金额或说明文字，如「合格1人15元」',
+    )
+    reject_reason = models.TextField('驳回原因', blank=True, default='')
+    submitted_at = models.DateTimeField('提交审批时间', null=True, blank=True)
+    submitted_by_id = models.IntegerField('提交人ID', null=True, blank=True)
+
     view_count = models.IntegerField('查看数', default=0)
     click_count = models.IntegerField('点击数', default=0)
     registration_count = models.IntegerField('注册数', default=0)
@@ -214,15 +294,50 @@ class RecruitmentAd(models.Model):
         return f'{self.title}({self.get_ad_type_display()})'
 
 
+def _appointment_doc_upload_to(instance: 'RecruitmentPlanAppointmentDoc', filename: str) -> str:
+    safe = (filename or 'file').replace('..', '').replace('/', '_').replace('\\', '_')[:180]
+    return f'recruitment/appointment_docs/plan_{instance.plan_id}/{instance.doc_type}_{safe}'
+
+
+class RecruitmentPlanAppointmentDoc(models.Model):
+    """招募计划预约文档（三类固定槽位，每计划每类型一条，上传覆盖）"""
+
+    class Meta:
+        db_table = 't_recruitment_plan_appointment_doc'
+        verbose_name = '招募预约文档'
+        constraints = [
+            models.UniqueConstraint(fields=['plan', 'doc_type'], name='uniq_plan_appointment_doc_type'),
+        ]
+
+    class DocType(models.TextChoices):
+        PHONE_APPOINTMENT_FLOW = 'phone_appointment_flow', '测试电话预约流程'
+        PHONE_SCREENING_QUESTIONNAIRE = 'phone_screening_questionnaire', '电话甄别问卷'
+        PHONE_APPOINTMENT_FORM = 'phone_appointment_form', '电话预约信息表'
+
+    plan = models.ForeignKey(
+        RecruitmentPlan, on_delete=models.CASCADE, related_name='appointment_docs',
+    )
+    doc_type = models.CharField('文档类型', max_length=40, choices=DocType.choices, db_index=True)
+    file = models.FileField('文件', upload_to=_appointment_doc_upload_to, max_length=500)
+    original_filename = models.CharField('原始文件名', max_length=255, blank=True, default='')
+    file_size = models.BigIntegerField('文件大小', default=0)
+    uploaded_by_id = models.IntegerField('上传人ID', null=True, blank=True)
+    create_time = models.DateTimeField('创建时间', auto_now_add=True)
+    update_time = models.DateTimeField('更新时间', auto_now=True)
+
+    def __str__(self):
+        return f'{self.plan_id}/{self.doc_type}'
+
+
 # ============================================================================
 # 受试者报名
 # ============================================================================
 class RegistrationStatus(models.TextChoices):
     REGISTERED = 'registered', '已报名'
     CONTACTED = 'contacted', '已联系'
-    PRE_SCREENING = 'pre_screening', '粗筛中'
-    PRE_SCREENED_PASS = 'pre_screened_pass', '粗筛通过'
-    PRE_SCREENED_FAIL = 'pre_screened_fail', '粗筛不通过'
+    PRE_SCREENING = 'pre_screening', '初筛中'
+    PRE_SCREENED_PASS = 'pre_screened_pass', '初筛通过'
+    PRE_SCREENED_FAIL = 'pre_screened_fail', '初筛不通过'
     SCREENING = 'screening', '筛选中'
     SCREENED_PASS = 'screened_pass', '筛选通过'
     SCREENED_FAIL = 'screened_fail', '筛选未通过'
@@ -477,7 +592,7 @@ class RecruitmentStrategy(models.Model):
 
 
 # ============================================================================
-# 粗筛记录
+# 初筛记录
 # ============================================================================
 class PreScreeningResult(models.TextChoices):
     PENDING = 'pending', '待评估'
@@ -488,9 +603,9 @@ class PreScreeningResult(models.TextChoices):
 
 class PreScreeningRecord(models.Model):
     """
-    受试者粗筛评估记录
+    受试者初筛评估记录
 
-    粗筛是正式筛选之前的专业评估环节。每个到场受试者必须建档，
+    初筛是正式筛选之前的专业评估环节。每个到场受试者必须建档，
     由专业人员按协议定义的检查表逐项评估。仪器数据和医学史写入
     Subject 模型体系（timeseries / profile），本模型仅保存聚合
     结果和判定信息。
@@ -498,7 +613,7 @@ class PreScreeningRecord(models.Model):
 
     class Meta:
         db_table = 't_pre_screening_record'
-        verbose_name = '粗筛记录'
+        verbose_name = '初筛记录'
         indexes = [
             models.Index(fields=['protocol', 'result']),
             models.Index(fields=['pre_screening_date', 'result']),
@@ -518,13 +633,13 @@ class PreScreeningRecord(models.Model):
         related_name='pre_screenings', verbose_name='关联协议',
     )
 
-    pre_screening_no = models.CharField('粗筛编号', max_length=50, unique=True, db_index=True)
+    pre_screening_no = models.CharField('初筛编号', max_length=50, unique=True, db_index=True)
 
     # --- 时间 ---
-    pre_screening_date = models.DateField('粗筛日期')
+    pre_screening_date = models.DateField('初筛日期')
     start_time = models.DateTimeField('开始时间', null=True, blank=True)
     end_time = models.DateTimeField('结束时间', null=True, blank=True)
-    location = models.CharField('粗筛地点', max_length=200, blank=True, default='')
+    location = models.CharField('初筛地点', max_length=200, blank=True, default='')
 
     # --- 检查结果（聚合摘要，详细数据在 Subject 子表中） ---
     hard_exclusion_checks = models.JSONField(
@@ -550,7 +665,7 @@ class PreScreeningRecord(models.Model):
 
     # --- 判定 ---
     result = models.CharField(
-        '粗筛结果', max_length=20,
+        '初筛结果', max_length=20,
         choices=PreScreeningResult.choices,
         default=PreScreeningResult.PENDING, db_index=True,
     )
@@ -568,7 +683,7 @@ class PreScreeningRecord(models.Model):
     # --- 后续安排 ---
     screening_appointment_id = models.IntegerField(
         '筛选预约ID', null=True, blank=True,
-        help_text='粗筛通过后创建的正式筛选预约 SubjectAppointment ID',
+        help_text='初筛通过后创建的正式筛选预约 SubjectAppointment ID',
     )
     compensation_amount = models.DecimalField(
         '交通补贴金额', max_digits=10, decimal_places=2,
@@ -577,7 +692,7 @@ class PreScreeningRecord(models.Model):
     compensation_paid = models.BooleanField('补贴已发放', default=False)
 
     # --- 人员 ---
-    screener_id = models.IntegerField('粗筛评估员ID', null=True, blank=True, help_text='Account ID')
+    screener_id = models.IntegerField('初筛评估员ID', null=True, blank=True, help_text='Account ID')
     reviewer_id = models.IntegerField('复核人ID', null=True, blank=True, help_text='Account ID')
 
     # --- 元数据 ---

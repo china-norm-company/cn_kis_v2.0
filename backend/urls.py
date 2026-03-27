@@ -66,7 +66,7 @@ if not is_registration_done():
     from apps.subject.api_prescreening import router as prescreening_router
     from apps.subject.api_reception import router as reception_router
     _safe_add_router(api, '/recruitment/', recruitment_router, tags=['招募管理'])
-    _safe_add_router(api, '/pre-screening/', prescreening_router, tags=['粗筛管理'])
+    _safe_add_router(api, '/pre-screening/', prescreening_router, tags=['初筛管理'])
     _safe_add_router(api, '/reception/', reception_router, tags=['前台接待'])
     _safe_add_router(api, '/execution/', execution_router, tags=['执行管理'])
     _safe_add_router(api, '/my/', my_router, tags=['受试者自助'])

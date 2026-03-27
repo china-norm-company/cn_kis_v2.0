@@ -1,7 +1,7 @@
 /**
- * 粗筛管理工作流 E2E 测试 — 场景 P1-P6
+ * 初筛管理工作流 E2E 测试 — 场景 P1-P6
  *
- * P1 粗筛发起与建档
+ * P1 初筛发起与建档
  * P2 硬性条件速查
  * P3 专业评估与仪器数据
  * P4 医学史采集
@@ -165,7 +165,7 @@ async function setupPreScreeningMocks(page: Page) {
 }
 
 
-test.describe('场景 P1: 粗筛发起与建档', () => {
+test.describe('场景 P1: 初筛发起与建档', () => {
   test.describe.configure({ mode: 'serial' })
   let page: Page
 
@@ -178,20 +178,20 @@ test.describe('场景 P1: 粗筛发起与建档', () => {
 
   test.afterAll(async () => { await page?.context().close() })
 
-  test('P1.1 粗筛列表页标题正确', async () => {
-    await navigateTo(page, '/recruitment/pre-screening', '粗筛管理')
-    await expect(page.getByRole('heading', { name: '粗筛管理' })).toBeVisible()
+  test('P1.1 初筛列表页标题正确', async () => {
+    await navigateTo(page, '/recruitment/pre-screening', '初筛管理')
+    await expect(page.getByRole('heading', { name: '初筛管理' })).toBeVisible()
   })
 
   test('P1.2 统计条显示今日摘要数据', async () => {
-    await expect(page.getByText('待粗筛').first()).toBeVisible()
+    await expect(page.getByText('待初筛').first()).toBeVisible()
   })
 
-  test('P1.3 发起粗筛按钮可见', async () => {
-    await expect(page.getByRole('button', { name: /发起粗筛/ })).toBeVisible()
+  test('P1.3 发起初筛按钮可见', async () => {
+    await expect(page.getByRole('button', { name: /发起初筛/ })).toBeVisible()
   })
 
-  test('P1.4 粗筛记录列表显示数据', async () => {
+  test('P1.4 初筛记录列表显示数据', async () => {
     await expect(page.getByText('PS-20260220-0001')).toBeVisible()
     await expect(page.getByText('张三')).toBeVisible()
   })
@@ -204,7 +204,7 @@ test.describe('场景 P1: 粗筛发起与建档', () => {
 })
 
 
-test.describe('场景 P2-P4: 粗筛评估详情页', () => {
+test.describe('场景 P2-P4: 初筛评估详情页', () => {
   test.describe.configure({ mode: 'serial' })
   let page: Page
 
@@ -217,7 +217,7 @@ test.describe('场景 P2-P4: 粗筛评估详情页', () => {
 
   test.afterAll(async () => { await page?.context().close() })
 
-  test('P2.1 粗筛详情页加载步骤指示器', async () => {
+  test('P2.1 初筛详情页加载步骤指示器', async () => {
     await navigateTo(page, '/recruitment/pre-screening/1', '受试者确认')
     await expect(page.locator('[data-section="pre-screening-detail"]')).toBeVisible({ timeout: 8000 })
   })
@@ -253,8 +253,8 @@ test.describe('场景 P5: 综合判定-通过', () => {
     await setupPreScreeningMocks(page)
   })
 
-  test('P5.1 已完成的粗筛记录显示通过标识', async ({ page }) => {
-    await navigateTo(page, '/recruitment/pre-screening', '粗筛管理')
+  test('P5.1 已完成的初筛记录显示通过标识', async ({ page }) => {
+    await navigateTo(page, '/recruitment/pre-screening', '初筛管理')
     const table = page.locator('[data-section="pre-screening-list"] table')
     await expect(table).toBeVisible({ timeout: 8000 })
     await expect(table.locator('text=通过').first()).toBeVisible()
@@ -268,8 +268,8 @@ test.describe('场景 P6: 综合判定-不通过与PI复核', () => {
     await setupPreScreeningMocks(page)
   })
 
-  test('P6.1 粗筛列表同时显示通过和待评估记录', async ({ page }) => {
-    await navigateTo(page, '/recruitment/pre-screening', '粗筛管理')
+  test('P6.1 初筛列表同时显示通过和待评估记录', async ({ page }) => {
+    await navigateTo(page, '/recruitment/pre-screening', '初筛管理')
     const table = page.locator('[data-section="pre-screening-list"] table')
     await expect(table).toBeVisible({ timeout: 8000 })
     await expect(table.locator('text=待评估').first()).toBeVisible()

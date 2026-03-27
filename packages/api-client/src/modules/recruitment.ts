@@ -3,7 +3,7 @@
  *
  * 对应后端：/api/v1/recruitment/
  */
-import { api } from '../client'
+import { api, getAxiosInstance } from '../client'
 import type {
   ApiListResponse,
   RecruitmentPlan,
@@ -13,6 +13,8 @@ import type {
   ChannelEvaluation,
   SubjectRegistration,
   RecruitmentStatistics,
+  RecruitTemplateAd,
+  RecruitmentAppointmentDocItem,
 } from '../types'
 
 export const recruitmentApi = {
@@ -56,6 +58,104 @@ export const recruitmentApi = {
   /** 招募统计 */
   getPlanStatistics(planId: number) {
     return api.get<RecruitmentStatistics>(`/recruitment/plans/${planId}/statistics`)
+  },
+
+  /** 招募模板广告（无则创建草稿） */
+  getRecruitTemplateAd(planId: number) {
+    return api.get<RecruitTemplateAd>(`/recruitment/plans/${planId}/recruit-template-ad`)
+  },
+
+  /** 更新招募模板（仅草稿） */
+  updateRecruitTemplateAd(
+    adId: number,
+    data: Partial<{
+      title: string
+      content: string
+      template_project_code: string
+      template_project_name: string
+      template_sample_requirement: string
+      template_visit_date: string | null
+      template_honorarium: number | null
+      template_liaison_fee?: string | null
+    }>,
+  ) {
+    return api.put<RecruitTemplateAd>(`/recruitment/ads/${adId}/recruit-template`, data)
+  },
+
+  submitRecruitTemplateAd(adId: number) {
+    return api.post<RecruitTemplateAd>(`/recruitment/ads/${adId}/submit`)
+  },
+
+  approveRecruitTemplateAd(adId: number) {
+    return api.post<RecruitTemplateAd>(`/recruitment/ads/${adId}/approve`)
+  },
+
+  rejectRecruitTemplateAd(adId: number, reason?: string) {
+    return api.post<RecruitTemplateAd>(`/recruitment/ads/${adId}/reject`, { reason: reason || '' })
+  },
+
+  listAppointmentDocs(planId: number) {
+    return api.get<{ items: RecruitmentAppointmentDocItem[] }>(`/recruitment/plans/${planId}/appointment-docs`)
+  },
+
+  uploadAppointmentDoc(planId: number, docType: string, file: File) {
+    const fd = new FormData()
+    fd.append('doc_type', docType)
+    fd.append('file', file)
+    return api.post<RecruitmentAppointmentDocItem>(`/recruitment/plans/${planId}/appointment-docs`, fd)
+  },
+
+  submitAppointmentDocs(planId: number) {
+    return api.post<{ appointment_docs_status: string }>(`/recruitment/plans/${planId}/appointment-docs/submit`)
+  },
+
+  approveAppointmentDocs(planId: number) {
+    return api.post<{ appointment_docs_status: string }>(`/recruitment/plans/${planId}/appointment-docs/approve`)
+  },
+
+  rejectAppointmentDocs(planId: number, reason?: string) {
+    return api.post<{ appointment_docs_status: string; appointment_docs_reject_reason: string }>(
+      `/recruitment/plans/${planId}/appointment-docs/reject`,
+      { reason: reason || '' },
+    )
+  },
+
+  /** 下载预约文档二进制流（需登录；与列表接口共用 axios 鉴权，避免 fetch 与代理不一致） */
+  async fetchAppointmentDocBlob(planId: number, docType: string): Promise<Blob> {
+    try {
+      const res = await getAxiosInstance().get(
+        `/recruitment/plans/${planId}/appointment-docs/${encodeURIComponent(docType)}/file`,
+        { responseType: 'blob', timeout: 120000 },
+      )
+      const raw = res.data as Blob
+      // axios 的 Blob 常不带 type；原生 fetch().blob() 会带 Content-Type。缺 MIME 时浏览器易按二进制下载而非用 Office 打开
+      const hdr = res.headers['content-type']
+      const mime = typeof hdr === 'string' ? hdr.split(';')[0].trim() : ''
+      if (mime && raw.type !== mime) {
+        return new Blob([raw], { type: mime })
+      }
+      return raw
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: Blob; status?: number }; message?: string }
+      const blob = ax.response?.data
+      if (blob instanceof Blob) {
+        try {
+          const text = await blob.text()
+          const j = JSON.parse(text) as { msg?: string }
+          if (j.msg) throw new Error(j.msg)
+        } catch (inner) {
+          if (inner instanceof SyntaxError) {
+            /* 非 JSON 错误体 */
+          } else if (inner instanceof Error) {
+            throw inner
+          }
+        }
+        const st = ax.response?.status
+        throw new Error(st === 403 ? '无权限预览该文件' : st === 404 ? '文件不存在' : `无法打开文件${st != null ? ` (${st})` : ''}`)
+      }
+      if (err instanceof Error && err.message) throw err
+      throw new Error('无法打开文件')
+    }
   },
 
   // ========== 入排标准 ==========
