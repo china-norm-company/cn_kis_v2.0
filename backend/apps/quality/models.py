@@ -6,6 +6,10 @@
 from django.db import models
 
 
+def _empty_plan_entries():
+    return []
+
+
 # ============================================================================
 # 偏差管理
 # ============================================================================
@@ -395,8 +399,22 @@ class ProtocolProjectSupervision(models.Model):
     )
     execution_start_date = models.DateField('执行周期开始', null=True, blank=True, db_index=True)
     execution_end_date = models.DateField('执行周期结束', null=True, blank=True)
+    # 结构化监察计划：[{visit_phase, planned_date, content, supervisor}, ...]；plan_content 存汇总文本便于检索与旧版兼容
+    plan_entries = models.JSONField(
+        '监察计划条目',
+        default=_empty_plan_entries,
+        blank=True,
+        help_text='JSON 数组：访视阶段、计划监察日期、监察内容、监察人',
+    )
     plan_content = models.TextField('监察计划（监察内容）', blank=True, default='')
     plan_submitted_at = models.DateTimeField('监察计划提交时间', null=True, blank=True)
+    # 结构化监察记录：访视阶段、监察时间、内容、结论；actual_content 存汇总文本
+    actual_entries = models.JSONField(
+        '监察记录条目',
+        default=_empty_plan_entries,
+        blank=True,
+        help_text='JSON 数组：访视阶段、监察时间、监察内容、结论（entry_id 锁定已提交行）',
+    )
     actual_content = models.TextField('实际监察内容', blank=True, default='')
     actual_submitted_at = models.DateTimeField('实际监察提交时间', null=True, blank=True)
     updated_by_id = models.IntegerField('最后更新人', null=True, blank=True)
@@ -410,7 +428,7 @@ class ProtocolProjectSupervision(models.Model):
 class QualityProjectRegistry(models.Model):
     """
     质量台「项目管理」来源登记：维周执行台新建协议自动登记为 weizhou；
-    质量台本地测试创建可标记为 quality_manual（仅项目监察测试，不出现在项目管理页签）。
+    质量台本地测试创建标记为 quality_manual（与维周一并出现在项目管理页签列表）。
     """
 
     class Meta:

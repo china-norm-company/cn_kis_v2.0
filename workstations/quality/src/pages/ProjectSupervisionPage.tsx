@@ -4,7 +4,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { qualityApi, protocolApi, type ProjectSupervisionItem, type ProjectSupervisionDetail } from '@cn-kis/api-client'
+import {
+  qualityApi,
+  protocolApi,
+  type ProjectSupervisionItem,
+  type ProjectSupervisionDetail,
+  type SupervisionPlanEntry,
+  type SupervisionActualEntry,
+} from '@cn-kis/api-client'
 import { Card, DataTable, StatCard, Input, Modal, Button, Badge, type Column } from '@cn-kis/ui-kit'
 import { PermissionGuard } from '@cn-kis/feishu-sdk'
 import {
@@ -14,9 +21,155 @@ import {
   CircleCheck,
   FileQuestion,
   Eye,
+  Trash2,
 } from 'lucide-react'
 
 type Row = ProjectSupervisionItem
+
+/** 监察计划表单行（日期用 input[type=date] 的 YYYY-MM-DD 字符串） */
+type PlanRowForm = {
+  entry_id?: string
+  visit_phase: string
+  planned_date: string
+  content: string
+  supervisor: string
+}
+
+/** 监察记录表单行（监察时间：date 或 datetime-local） */
+type ActualRowForm = {
+  entry_id?: string
+  visit_phase: string
+  supervision_at: string
+  content: string
+  conclusion: string
+}
+
+function emptyPlanRow(): PlanRowForm {
+  return { visit_phase: '', planned_date: '', content: '', supervisor: '' }
+}
+
+function emptyActualRow(): ActualRowForm {
+  return { visit_phase: '', supervision_at: '', content: '', conclusion: '' }
+}
+
+function normalizeSupervisionAtForInput(s: string | null | undefined): string {
+  if (!s) return ''
+  const t = s.trim()
+  if (t.length >= 16 && t[10] === 'T') return t.slice(0, 16)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return `${t}T00:00`
+  return t.slice(0, 10)
+}
+
+function formatSupervisionAtDisplay(s: string | null | undefined): string {
+  const t = (s || '').trim()
+  if (!t) return '—'
+  return t.replace('T', ' ').slice(0, 16)
+}
+
+function validateActualRows(rows: ActualRowForm[]): string | null {
+  if (rows.length === 0) return '请至少添加一条监察记录'
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]
+    const n = i + 1
+    if (!r.visit_phase.trim()) return `第${n}条：请填写访视阶段`
+    const st = (r.supervision_at || '').trim()
+    if (!st) return `第${n}条：请填写监察时间`
+    if (st.length < 10) return `第${n}条：监察时间格式无效`
+    if (!r.content.trim()) return `第${n}条：请填写监察内容`
+    if (!r.conclusion.trim()) return `第${n}条：请填写结论`
+  }
+  return null
+}
+
+function detailToActualRows(d: ProjectSupervisionDetail): ActualRowForm[] {
+  const raw = d.actual_entries
+  if (raw && raw.length > 0) {
+    return raw.map((e: SupervisionActualEntry) => ({
+      entry_id: e.entry_id,
+      visit_phase: e.visit_phase ?? '',
+      supervision_at: normalizeSupervisionAtForInput(e.supervision_at),
+      content: e.content ?? '',
+      conclusion: e.conclusion ?? '',
+    }))
+  }
+  return [emptyActualRow()]
+}
+
+function validatePlanRows(rows: PlanRowForm[]): string | null {
+  if (rows.length === 0) return '请至少添加一条监察计划'
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]
+    const n = i + 1
+    if (!r.visit_phase.trim()) return `第${n}条：请填写访视阶段`
+    const d = normalizeIsoDateInput(r.planned_date)
+    if (!d) return `第${n}条：计划监察日期须为有效日期（YYYY-MM-DD）`
+    if (!r.content.trim()) return `第${n}条：请填写监察内容`
+    if (!r.supervisor.trim()) return `第${n}条：请填写监察人`
+  }
+  return null
+}
+
+function formatPlanDateDisplay(iso: string | null | undefined): string {
+  const s = (iso || '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '—'
+  return s.replace(/-/g, '.')
+}
+
+/** 从「访视时间点」拆出阶段标签，用于预填监察计划（与基本信息一致，避免漏填访视阶段） */
+function splitVisitsLabel(visitsLabel: string | null | undefined): string[] {
+  const vl = (visitsLabel || '').trim()
+  if (!vl || vl === '—') return []
+  return vl
+    .split(/[;；,，\n\r]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+function detailToPlanRows(d: ProjectSupervisionDetail): PlanRowForm[] {
+  const raw = d.plan_entries
+  const parts = splitVisitsLabel(d.visits_label)
+  const execStart = (d.execution_start_date || '').slice(0, 10)
+  const execEnd = (d.execution_end_date || '').slice(0, 10)
+
+  if (raw && raw.length > 0) {
+    let rows = raw.map((e: SupervisionPlanEntry) => ({
+      entry_id: e.entry_id,
+      visit_phase: e.visit_phase ?? '',
+      planned_date: (e.planned_date ?? '').slice(0, 10),
+      content: e.content ?? '',
+      supervisor: e.supervisor ?? '',
+    }))
+    // 未提交行访视阶段为空时，用「访视时间点」按行对齐补全（常见：只填了日期与内容）
+    const canAlign = parts.length > 0 && parts.length === rows.length
+    if (canAlign) {
+      rows = rows.map((r, i) =>
+        !r.entry_id && !r.visit_phase.trim()
+          ? { ...r, visit_phase: parts[i] ?? r.visit_phase }
+          : r,
+      )
+    } else if (parts.length === 1 && rows.length === 1 && !rows[0].entry_id && !rows[0].visit_phase.trim()) {
+      rows = [{ ...rows[0], visit_phase: parts[0] }]
+    }
+    return rows
+  }
+
+  if (parts.length > 0) {
+    return parts.map((phase, i) => ({
+      visit_phase: phase,
+      planned_date:
+        parts.length === 1
+          ? execStart
+          : i === 0
+            ? execStart
+            : i === parts.length - 1
+              ? execEnd
+              : '',
+      content: '',
+      supervisor: '',
+    }))
+  }
+  return [emptyPlanRow()]
+}
 
 const statusVariant: Record<string, 'default' | 'warning' | 'success' | 'error'> = {
   pending_plan: 'default',
@@ -36,9 +189,17 @@ function currentYearMonth(): string {
 function normalizeIsoDateInput(s: string): string | undefined {
   const t = (s || '').trim()
   if (!t) return undefined
-  const d = t.replace(/\//g, '-').slice(0, 10)
-  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d
-  return undefined
+  const normalized = t.replace(/\//g, '-').replace(/\./g, '-')
+  const m = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+  if (!m) return undefined
+  const y = m[1]
+  const mo = m[2].padStart(2, '0')
+  const day = m[3].padStart(2, '0')
+  const out = `${y}-${mo}-${day}`
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(out)) return undefined
+  const dt = new Date(`${out}T12:00:00`)
+  if (Number.isNaN(dt.getTime())) return undefined
+  return out
 }
 
 export function ProjectSupervisionPage() {
@@ -88,8 +249,8 @@ export function ProjectSupervisionPage() {
   /** 打开弹窗时的页签（避免切换页签后弹窗逻辑错乱） */
   const [modalOpenedAsManagement, setModalOpenedAsManagement] = useState(false)
   const [activeRow, setActiveRow] = useState<Row | null>(null)
-  const [planText, setPlanText] = useState('')
-  const [actualText, setActualText] = useState('')
+  const [planRows, setPlanRows] = useState<PlanRowForm[]>([emptyPlanRow()])
+  const [actualRows, setActualRows] = useState<ActualRowForm[]>([emptyActualRow()])
 
   const emptyCreateForm = () => ({
     title: '',
@@ -183,24 +344,52 @@ export function ProjectSupervisionPage() {
   useEffect(() => {
     const d = detailQuery.data?.data as ProjectSupervisionDetail | undefined
     if (!d) return
-    setPlanText(d.plan_content_full ?? d.plan_content ?? '')
-    setActualText(d.actual_content_full ?? d.actual_content ?? '')
-  }, [detailQuery.data])
+    setPlanRows(detailToPlanRows(d))
+    setActualRows(detailToActualRows(d))
+  }, [detailQuery.data, activeRow?.protocol_id])
+
+  const planValidationError = useMemo(() => validatePlanRows(planRows), [planRows])
 
   const planMutation = useMutation({
-    mutationFn: () => qualityApi.submitSupervisionPlan(activeRow!.protocol_id, planText),
+    mutationFn: async () => {
+      const msg = validatePlanRows(planRows)
+      if (msg) throw new Error(msg)
+      const payload: SupervisionPlanEntry[] = planRows.map((r) => {
+        const d = normalizeIsoDateInput(r.planned_date)!
+        return {
+          ...(r.entry_id ? { entry_id: r.entry_id } : {}),
+          visit_phase: r.visit_phase.trim(),
+          planned_date: d,
+          content: r.content.trim(),
+          supervisor: r.supervisor.trim(),
+        }
+      })
+      return qualityApi.submitSupervisionPlan(activeRow!.protocol_id, payload)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quality', 'project-supervision'] })
       queryClient.invalidateQueries({ queryKey: ['quality', 'project-supervision-detail'] })
     },
   })
 
+  const actualValidationError = useMemo(() => validateActualRows(actualRows), [actualRows])
+
   const actualMutation = useMutation({
-    mutationFn: () => qualityApi.submitSupervisionActual(activeRow!.protocol_id, actualText),
+    mutationFn: async () => {
+      const msg = validateActualRows(actualRows)
+      if (msg) throw new Error(msg)
+      const payload: SupervisionActualEntry[] = actualRows.map((r) => ({
+        ...(r.entry_id ? { entry_id: r.entry_id } : {}),
+        visit_phase: r.visit_phase.trim(),
+        supervision_at: r.supervision_at.trim(),
+        content: r.content.trim(),
+        conclusion: r.conclusion.trim(),
+      }))
+      return qualityApi.submitSupervisionActual(activeRow!.protocol_id, payload)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quality', 'project-supervision'] })
       queryClient.invalidateQueries({ queryKey: ['quality', 'project-supervision-detail'] })
-      setModalOpen(false)
     },
   })
 
@@ -213,8 +402,8 @@ export function ProjectSupervisionPage() {
       setActiveRow(row)
       setModalOpenedAsManagement(listMode === 'management')
       setModalOpen(true)
-      setPlanText('')
-      setActualText('')
+      setPlanRows([emptyPlanRow()])
+      setActualRows([emptyActualRow()])
     }
 
     const shared: Column<Row>[] = [
@@ -226,27 +415,30 @@ export function ProjectSupervisionPage() {
           <span className="font-mono text-xs">{(val as string) || row.project_title}</span>
         ),
       },
-      { key: 'group_label', title: '组别', width: 88, render: (v) => (v as string) || '—' },
+      // DataTable：单参 render 的 arity===1 会被当成 (record)=>，须至少两参才会走 (value, record, index)
+      { key: 'group_label', title: '组别', width: 88, render: (v, _row) => (v as string) || '—' },
       { key: 'sample_size_label', title: '样本量', width: 72 },
-      { key: 'backup_label', title: '备份样本量', width: 96, render: (v) => (v as string) || '—' },
+      { key: 'backup_label', title: '备份样本量', width: 96, render: (v, _row) => (v as string) || '—' },
       {
         key: 'visits_label',
         title: '访视时间点',
-        render: (v) => <span className="text-xs text-slate-700 line-clamp-2">{v as string}</span>,
+        render: (v, _row) => (
+          <span className="text-xs text-slate-700 line-clamp-2">{v as string}</span>
+        ),
       },
       {
         key: 'execution_start_date',
         title: '执行开始时间',
         width: 120,
-        render: (val) => (val ? String(val).slice(0, 10) : '—'),
+        render: (val, _row) => (val ? String(val).slice(0, 10) : '—'),
       },
       {
         key: 'execution_end_date',
         title: '执行结束时间',
         width: 120,
-        render: (val) => (val ? String(val).slice(0, 10) : '—'),
+        render: (val, _row) => (val ? String(val).slice(0, 10) : '—'),
       },
-      { key: 'researcher_label', title: '研究员', width: 88, render: (v) => (v as string) || '—' },
+      { key: 'researcher_label', title: '研究员', width: 88, render: (v, _row) => (v as string) || '—' },
     ]
 
     const supervisionCols: Column<Row>[] =
@@ -328,7 +520,7 @@ export function ProjectSupervisionPage() {
             </button>
             <button
               type="button"
-              title="仅维周执行台同步的项目"
+              title="维周与质量台登记的项目（含手动补录）"
               onClick={() => setTab('management')}
               className={`rounded-lg px-4 py-2 text-sm font-medium min-h-11 border transition-colors ${
                 listMode === 'management'
@@ -342,7 +534,7 @@ export function ProjectSupervisionPage() {
           <p className="mt-2 text-sm text-slate-500">
             {listMode === 'management' ? (
               <>
-                <strong>项目管理</strong>仅展示已在质量台登记的<strong>维周执行台</strong>来源项目（维周新建协议会自动推送登记）。可按执行开始年月与关键词筛选。
+                <strong>项目管理</strong>展示已在质量台登记的<strong>维周执行台</strong>与<strong>质量台手动补录</strong>项目。可按执行开始年月与关键词筛选。
               </>
             ) : (
               <>
@@ -614,7 +806,7 @@ export function ProjectSupervisionPage() {
               loading={isLoading}
               emptyText={
                 listMode === 'management'
-                  ? '暂无维周来源项目；维周执行台新建协议后会自动出现在此'
+                  ? '暂无登记项目；维周新建协议或在本页手动补录后会出现在此'
                   : '暂无符合当前监察视图的数据；可调整年月/关键词/研究员或前往维周创建项目'
               }
               pagination={{ current: page, pageSize, total, onChange: setPage }}
@@ -721,19 +913,81 @@ export function ProjectSupervisionPage() {
               <>
                 <section>
                   <h4 className="font-medium text-slate-800 mb-2">监察计划</h4>
-                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 whitespace-pre-wrap min-h-[4rem]">
-                    {(detail?.plan_content_full ?? detail?.plan_content ?? planText)?.trim()
-                      ? (detail?.plan_content_full ?? detail?.plan_content ?? planText)
-                      : '暂无监察计划'}
-                  </div>
+                  {detail?.plan_entries && detail.plan_entries.length > 0 ? (
+                    <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                      <table className="min-w-[640px] w-full border-collapse text-xs text-slate-800">
+                        <thead>
+                          <tr className="bg-slate-50 text-slate-600">
+                            <th className="border border-slate-200 px-2 py-2 w-12 text-center font-medium">序号</th>
+                            <th className="border border-slate-200 px-2 py-2 text-left font-medium min-w-[7rem]">访视阶段</th>
+                            <th className="border border-slate-200 px-2 py-2 text-left font-medium w-28 whitespace-nowrap">
+                              计划监察日期
+                            </th>
+                            <th className="border border-slate-200 px-2 py-2 text-left font-medium min-w-[12rem]">监察内容</th>
+                            <th className="border border-slate-200 px-2 py-2 text-left font-medium w-24">监察人</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detail.plan_entries.map((e, idx) => (
+                            <tr key={idx}>
+                              <td className="border border-slate-200 px-2 py-2 text-center text-slate-500">{idx + 1}</td>
+                              <td className="border border-slate-200 px-2 py-2 align-top">{e.visit_phase || '—'}</td>
+                              <td className="border border-slate-200 px-2 py-2 align-top whitespace-nowrap">
+                                {formatPlanDateDisplay(e.planned_date)}
+                              </td>
+                              <td className="border border-slate-200 px-2 py-2 align-top text-slate-700 whitespace-pre-wrap">
+                                {e.content || '—'}
+                              </td>
+                              <td className="border border-slate-200 px-2 py-2 align-top">{e.supervisor || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (detail?.plan_content_full ?? detail?.plan_content ?? '').trim() ? (
+                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 whitespace-pre-wrap min-h-[4rem]">
+                      {detail?.plan_content_full ?? detail?.plan_content}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500">暂无监察计划</p>
+                  )}
                 </section>
                 <section>
-                  <h4 className="font-medium text-slate-800 mb-2">监察记录详情</h4>
-                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 whitespace-pre-wrap min-h-[4rem]">
-                    {(detail?.actual_content_full ?? detail?.actual_content)?.trim()
-                      ? (detail?.actual_content_full ?? detail?.actual_content)
-                      : '暂无监察记录'}
-                  </div>
+                  <h4 className="font-medium text-slate-800 mb-2">监察记录</h4>
+                  {detail?.actual_entries && detail.actual_entries.length > 0 ? (
+                    <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                      <table className="min-w-[720px] w-full border-collapse text-xs text-slate-800">
+                        <thead>
+                          <tr className="bg-slate-50 text-slate-600">
+                            <th className="border border-slate-200 px-2 py-2 w-12 text-center font-medium">序号</th>
+                            <th className="border border-slate-200 px-2 py-2 text-left font-medium min-w-[6rem]">访视阶段</th>
+                            <th className="border border-slate-200 px-2 py-2 text-left font-medium w-36">监察时间</th>
+                            <th className="border border-slate-200 px-2 py-2 text-left font-medium min-w-[10rem]">监察内容</th>
+                            <th className="border border-slate-200 px-2 py-2 text-left font-medium min-w-[6rem]">结论</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detail.actual_entries.map((e, idx) => (
+                            <tr key={e.entry_id ?? idx}>
+                              <td className="border border-slate-200 px-2 py-2 text-center text-slate-500">{idx + 1}</td>
+                              <td className="border border-slate-200 px-2 py-2 align-top">{e.visit_phase || '—'}</td>
+                              <td className="border border-slate-200 px-2 py-2 align-top whitespace-nowrap">
+                                {formatSupervisionAtDisplay(e.supervision_at)}
+                              </td>
+                              <td className="border border-slate-200 px-2 py-2 align-top whitespace-pre-wrap">{e.content || '—'}</td>
+                              <td className="border border-slate-200 px-2 py-2 align-top whitespace-pre-wrap">{e.conclusion || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (detail?.actual_content_full ?? detail?.actual_content ?? '').trim() ? (
+                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 whitespace-pre-wrap min-h-[4rem]">
+                      {detail?.actual_content_full ?? detail?.actual_content}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500">暂无监察记录</p>
+                  )}
                 </section>
               </>
             ) : (
@@ -741,24 +995,132 @@ export function ProjectSupervisionPage() {
                 <section>
                   <h4 className="font-medium text-slate-800 mb-2">监察计划</h4>
                   <p className="text-xs text-slate-500 mb-2">
-                    填写监察内容后提交，监察状态将变为「待执行」{planSubmitted ? '（已提交，可修改至完成实际监察前）' : ''}
+                    按访视阶段填写多条监察安排；首次提交后状态变为「待执行」。已提交的计划行不可再改，可「添加一行」追加新计划（至完成实际监察前）。
                   </p>
-                  <textarea
-                    title="监察计划内容"
-                    value={planText}
-                    disabled={actualSubmitted}
-                    onChange={(e) => setPlanText(e.target.value)}
-                    rows={4}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                    placeholder="监察内容、监察要点、计划等"
-                  />
+                  <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                    <table className="min-w-[720px] w-full border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-600">
+                          <th className="border border-slate-200 px-1 py-2 w-10 text-center font-medium">序号</th>
+                          <th className="border border-slate-200 px-1 py-2 text-left font-medium min-w-[6.5rem]">访视阶段</th>
+                          <th className="border border-slate-200 px-1 py-2 text-left font-medium w-[8.5rem]">计划监察日期</th>
+                          <th className="border border-slate-200 px-1 py-2 text-left font-medium min-w-[10rem]">监察内容</th>
+                          <th className="border border-slate-200 px-1 py-2 text-left font-medium w-[5.5rem]">监察人</th>
+                          <th className="border border-slate-200 px-1 py-2 w-14 text-center font-medium"> </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {planRows.map((row, idx) => (
+                          <tr key={idx}>
+                            <td className="border border-slate-200 px-1 py-1 text-center text-slate-500 align-top pt-2">
+                              {idx + 1}
+                            </td>
+                            <td className="border border-slate-200 p-1 align-top">
+                              <input
+                                type="text"
+                                title="访视阶段"
+                                disabled={actualSubmitted || !!row.entry_id}
+                                value={row.visit_phase}
+                                onChange={(e) =>
+                                  setPlanRows((prev) =>
+                                    prev.map((r, i) => (i === idx ? { ...r, visit_phase: e.target.value } : r)),
+                                  )
+                                }
+                                className="w-full min-h-9 rounded border border-slate-200 px-2 text-sm disabled:bg-slate-50"
+                                placeholder="如 T0+Timm+T1h"
+                              />
+                            </td>
+                            <td className="border border-slate-200 p-1 align-top">
+                              <input
+                                type="date"
+                                title="计划监察日期"
+                                disabled={actualSubmitted || !!row.entry_id}
+                                value={row.planned_date}
+                                onChange={(e) =>
+                                  setPlanRows((prev) =>
+                                    prev.map((r, i) => (i === idx ? { ...r, planned_date: e.target.value } : r)),
+                                  )
+                                }
+                                className="w-full min-h-9 rounded border border-slate-200 px-1 text-sm disabled:bg-slate-50"
+                              />
+                            </td>
+                            <td className="border border-slate-200 p-1 align-top">
+                              <textarea
+                                title="监察内容"
+                                disabled={actualSubmitted || !!row.entry_id}
+                                value={row.content}
+                                onChange={(e) =>
+                                  setPlanRows((prev) =>
+                                    prev.map((r, i) => (i === idx ? { ...r, content: e.target.value } : r)),
+                                  )
+                                }
+                                rows={2}
+                                className="w-full min-h-[2.75rem] rounded border border-slate-200 px-2 py-1.5 text-sm disabled:bg-slate-50 resize-y"
+                                placeholder="监察要点、检查项等"
+                              />
+                            </td>
+                            <td className="border border-slate-200 p-1 align-top">
+                              <input
+                                type="text"
+                                title="监察人"
+                                disabled={actualSubmitted || !!row.entry_id}
+                                value={row.supervisor}
+                                onChange={(e) =>
+                                  setPlanRows((prev) =>
+                                    prev.map((r, i) => (i === idx ? { ...r, supervisor: e.target.value } : r)),
+                                  )
+                                }
+                                className="w-full min-h-9 rounded border border-slate-200 px-2 text-sm disabled:bg-slate-50"
+                                placeholder="姓名"
+                              />
+                            </td>
+                            <td className="border border-slate-200 p-1 align-middle text-center">
+                              <button
+                                type="button"
+                                title="删除本行"
+                                disabled={actualSubmitted || planRows.length <= 1 || !!row.entry_id}
+                                onClick={() =>
+                                  setPlanRows((prev) =>
+                                    prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx),
+                                  )
+                                }
+                                className="inline-flex min-h-9 min-w-9 items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30 disabled:hover:bg-transparent"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="min-h-9"
+                      title="增加一条监察计划"
+                      disabled={actualSubmitted}
+                      icon={<Plus className="w-3.5 h-3.5" />}
+                      onClick={() => setPlanRows((prev) => [...prev, emptyPlanRow()])}
+                    >
+                      添加一行
+                    </Button>
+                    {planValidationError && (
+                      <span className="text-xs text-red-600 font-medium">{planValidationError}</span>
+                    )}
+                    {planMutation.isError && planMutation.error instanceof Error && (
+                      <span className="text-xs text-red-600">{planMutation.error.message}</span>
+                    )}
+                  </div>
                   <PermissionGuard permission="quality.deviation.create">
                     <div className="mt-2 flex justify-end">
                       <Button
                         className="min-h-11"
                         title="提交监察计划"
                         loading={planMutation.isPending}
-                        disabled={!planText.trim() || actualSubmitted}
+                        disabled={!!planValidationError || actualSubmitted}
                         onClick={() => planMutation.mutate()}
                       >
                         {planSubmitted ? '保存监察计划' : '提交监察计划'}
@@ -768,29 +1130,137 @@ export function ProjectSupervisionPage() {
                 </section>
 
                 <section>
-                  <h4 className="font-medium text-slate-800 mb-2">监察记录详情</h4>
+                  <h4 className="font-medium text-slate-800 mb-2">监察记录</h4>
                   <p className="text-xs text-slate-500 mb-2">
-                    须先提交监察计划。填写实际监察内容并提交后，状态变为「已完成」。
+                    须先提交监察计划。按访视阶段填写监察时间、内容及结论，可多条。首次提交后状态为「已完成」；已提交的记录行不可改，可「添加一行」追加新记录。
                   </p>
-                  <textarea
-                    title="监察记录详情"
-                    value={actualText}
-                    disabled={!planSubmitted || actualSubmitted}
-                    onChange={(e) => setActualText(e.target.value)}
-                    rows={4}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm disabled:bg-slate-50"
-                    placeholder={planSubmitted ? '实际监察内容' : '请先提交监察计划'}
-                  />
+                  <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                    <table className="min-w-[800px] w-full border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-600">
+                          <th className="border border-slate-200 px-1 py-2 w-10 text-center font-medium">序号</th>
+                          <th className="border border-slate-200 px-1 py-2 text-left font-medium min-w-[6rem]">访视阶段</th>
+                          <th className="border border-slate-200 px-1 py-2 text-left font-medium w-[11rem]">监察时间</th>
+                          <th className="border border-slate-200 px-1 py-2 text-left font-medium min-w-[9rem]">监察内容</th>
+                          <th className="border border-slate-200 px-1 py-2 text-left font-medium min-w-[6rem]">结论</th>
+                          <th className="border border-slate-200 px-1 py-2 w-14 text-center font-medium"> </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {actualRows.map((row, idx) => (
+                          <tr key={row.entry_id ?? `new-${idx}`}>
+                            <td className="border border-slate-200 px-1 py-1 text-center text-slate-500 align-top pt-2">
+                              {idx + 1}
+                            </td>
+                            <td className="border border-slate-200 p-1 align-top">
+                              <input
+                                type="text"
+                                title="访视阶段"
+                                disabled={!planSubmitted || !!row.entry_id}
+                                value={row.visit_phase}
+                                onChange={(e) =>
+                                  setActualRows((prev) =>
+                                    prev.map((r, i) => (i === idx ? { ...r, visit_phase: e.target.value } : r)),
+                                  )
+                                }
+                                className="w-full min-h-9 rounded border border-slate-200 px-2 text-sm disabled:bg-slate-50"
+                                placeholder={planSubmitted ? '如 T0' : '先提交计划'}
+                              />
+                            </td>
+                            <td className="border border-slate-200 p-1 align-top">
+                              <input
+                                type="datetime-local"
+                                title="监察时间"
+                                disabled={!planSubmitted || !!row.entry_id}
+                                value={row.supervision_at}
+                                onChange={(e) =>
+                                  setActualRows((prev) =>
+                                    prev.map((r, i) => (i === idx ? { ...r, supervision_at: e.target.value } : r)),
+                                  )
+                                }
+                                className="w-full min-h-9 max-w-[11rem] rounded border border-slate-200 px-1 text-sm disabled:bg-slate-50"
+                              />
+                            </td>
+                            <td className="border border-slate-200 p-1 align-top">
+                              <textarea
+                                title="监察内容"
+                                disabled={!planSubmitted || !!row.entry_id}
+                                value={row.content}
+                                onChange={(e) =>
+                                  setActualRows((prev) =>
+                                    prev.map((r, i) => (i === idx ? { ...r, content: e.target.value } : r)),
+                                  )
+                                }
+                                rows={2}
+                                className="w-full min-h-[2.75rem] rounded border border-slate-200 px-2 py-1.5 text-sm disabled:bg-slate-50 resize-y"
+                                placeholder="监察过程与发现"
+                              />
+                            </td>
+                            <td className="border border-slate-200 p-1 align-top">
+                              <textarea
+                                title="结论"
+                                disabled={!planSubmitted || !!row.entry_id}
+                                value={row.conclusion}
+                                onChange={(e) =>
+                                  setActualRows((prev) =>
+                                    prev.map((r, i) => (i === idx ? { ...r, conclusion: e.target.value } : r)),
+                                  )
+                                }
+                                rows={2}
+                                className="w-full min-h-[2.75rem] rounded border border-slate-200 px-2 py-1.5 text-sm disabled:bg-slate-50 resize-y"
+                                placeholder="结论"
+                              />
+                            </td>
+                            <td className="border border-slate-200 p-1 align-middle text-center">
+                              <button
+                                type="button"
+                                title="删除本行"
+                                disabled={!planSubmitted || actualRows.length <= 1 || !!row.entry_id}
+                                onClick={() =>
+                                  setActualRows((prev) =>
+                                    prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx),
+                                  )
+                                }
+                                className="inline-flex min-h-9 min-w-9 items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30 disabled:hover:bg-transparent"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="min-h-9"
+                      title="增加一条监察记录"
+                      disabled={!planSubmitted}
+                      icon={<Plus className="w-3.5 h-3.5" />}
+                      onClick={() => setActualRows((prev) => [...prev, emptyActualRow()])}
+                    >
+                      添加一行
+                    </Button>
+                    {actualValidationError && (
+                      <span className="text-xs text-amber-700">{actualValidationError}</span>
+                    )}
+                    {actualMutation.isError && actualMutation.error instanceof Error && (
+                      <span className="text-xs text-red-600">{actualMutation.error.message}</span>
+                    )}
+                  </div>
                   <PermissionGuard permission="quality.deviation.create">
                     <div className="mt-2 flex justify-end">
                       <Button
                         className="min-h-11"
-                        title="提交实际监察"
+                        title="提交监察记录"
                         loading={actualMutation.isPending}
-                        disabled={!planSubmitted || !actualText.trim() || actualSubmitted}
+                        disabled={!planSubmitted || !!actualValidationError}
                         onClick={() => actualMutation.mutate()}
                       >
-                        提交监察记录
+                        {actualSubmitted ? '追加保存监察记录' : '提交监察记录'}
                       </Button>
                     </div>
                   </PermissionGuard>

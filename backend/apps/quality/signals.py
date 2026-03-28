@@ -4,49 +4,98 @@
 Phase 1: Deviation/CAPA 状态变更时自动推送通知
 """
 import logging
+
+from django.db import connection, transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 logger = logging.getLogger(__name__)
 
 
+def _rollback_db_if_needed() -> None:
+    """PostgreSQL 等库在语句失败后可能将连接置于需回滚状态；避免影响同一请求内后续 ORM。"""
+    try:
+        if connection.needs_rollback():
+            connection.rollback()
+    except Exception:
+        pass
+
+
 @receiver(post_save, sender='protocol.Protocol')
 def on_protocol_saved_for_supervision(sender, instance, created, **kwargs):
-    """新建协议时自动创建项目监察行并写入解析得到的执行周期。"""
+    """协议保存后同步项目监察行（提交后再跑，避免与 create_protocol 内后续 save 抢连接状态）。"""
     try:
-        if getattr(instance, 'is_deleted', False):
-            return
-        from apps.quality.services.project_supervision_service import ensure_supervision_row
+        from apps.protocol.services.protocol_service import quality_manual_sidecars_deferred
 
-        ensure_supervision_row(instance)
-    except Exception as e:
-        logger.warning('协议创建监察行失败 protocol_id=%s: %s', getattr(instance, 'id', None), e)
+        if quality_manual_sidecars_deferred.get():
+            return
+    except Exception:
+        pass
+    if getattr(instance, 'is_deleted', False):
+        return
+    pk = getattr(instance, 'pk', None)
+    if not pk:
+        return
+
+    def _ensure_row():
+        try:
+            from apps.protocol.models import Protocol
+            from apps.quality.services.project_supervision_service import ensure_supervision_row
+
+            p = Protocol.objects.filter(pk=pk).first()
+            if p and not getattr(p, 'is_deleted', False):
+                ensure_supervision_row(p)
+        except BaseException as e:
+            logger.error('协议创建监察行 on_commit 失败 protocol_id=%s: %s', pk, e, exc_info=True)
+            _rollback_db_if_needed()
+
+    transaction.on_commit(_ensure_row)
 
 
 @receiver(post_save, sender='protocol.Protocol')
 def on_protocol_saved_for_quality_registry(sender, instance, **kwargs):
-    """维周/其他工作台新建协议 → 登记质量台项目来源（项目管理页签数据源，每次保存同步 parsed_data 中的 manual 标记）。"""
+    """维周/其他工作台新建协议 → 登记质量台项目来源（项目管理页签数据源）。"""
     try:
-        if getattr(instance, 'is_deleted', False):
-            return
-        from apps.quality.models import QualityProjectRegistry
+        from apps.protocol.services.protocol_service import quality_manual_sidecars_deferred
 
-        pd = instance.parsed_data or {}
-        src = (
-            QualityProjectRegistry.Source.QUALITY_MANUAL
-            if isinstance(pd, dict) and pd.get('quality_origin') == 'manual_test'
-            else QualityProjectRegistry.Source.WEIZHOU
-        )
-        QualityProjectRegistry.objects.update_or_create(
-            protocol=instance,
-            defaults={'source': src},
-        )
-    except Exception as e:
-        logger.warning(
-            '质量台项目来源登记失败 protocol_id=%s: %s',
-            getattr(instance, 'id', None),
-            e,
-        )
+        if quality_manual_sidecars_deferred.get():
+            return
+    except Exception:
+        pass
+    if getattr(instance, 'is_deleted', False):
+        return
+    pk = getattr(instance, 'pk', None)
+    if not pk:
+        return
+
+    def _register():
+        try:
+            from apps.protocol.models import Protocol
+            from apps.quality.models import QualityProjectRegistry
+
+            p = Protocol.objects.filter(pk=pk).first()
+            if not p or getattr(p, 'is_deleted', False):
+                return
+            pd = p.parsed_data or {}
+            src = (
+                QualityProjectRegistry.Source.QUALITY_MANUAL
+                if isinstance(pd, dict) and pd.get('quality_origin') == 'manual_test'
+                else QualityProjectRegistry.Source.WEIZHOU
+            )
+            QualityProjectRegistry.objects.update_or_create(
+                protocol=p,
+                defaults={'source': src},
+            )
+        except BaseException as e:
+            logger.error(
+                '质量台项目来源 on_commit 失败 protocol_id=%s: %s',
+                pk,
+                e,
+                exc_info=True,
+            )
+            _rollback_db_if_needed()
+
+    transaction.on_commit(_register)
 
 
 @receiver(post_save, sender='quality.Deviation')

@@ -129,8 +129,9 @@ export function DataTable<T extends object>({
     )
   }
 
+  /** 至少为 1，避免 total=0 时出现 0 页导致按钮状态异常 */
   const totalPages = resolvedPagination
-    ? Math.ceil(resolvedPagination.total / resolvedPagination.pageSize)
+    ? Math.max(1, Math.ceil(resolvedPagination.total / resolvedPagination.pageSize))
     : 0
 
   const headerCellClass = (col: Column<T>) =>
@@ -339,28 +340,36 @@ export function DataTable<T extends object>({
         </div>
       )}
 
-      {/* 分页 */}
-      {resolvedPagination && totalPages > 1 && (
-        <div className="flex items-center justify-between mt-4 px-2">
+      {/* 分页：传入 pagination 即展示（含仅 1 页 / 0 条），便于项目监察/项目管理等列表在移动端与桌面端均可翻页 */}
+      {resolvedPagination && (
+        <div className="flex flex-wrap items-center justify-between gap-2 mt-4 px-2">
           <span className="text-sm text-slate-500">
             共 {resolvedPagination.total} 条
+            {resolvedPagination.total > 0 ? (
+              <span className="text-slate-400">
+                {' '}
+                · 每页 {resolvedPagination.pageSize} 条
+              </span>
+            ) : null}
           </span>
           <div className="flex items-center gap-2">
             <Button
               variant="secondary"
               size="sm"
-              disabled={resolvedPagination.current <= 1}
+              disabled={resolvedPagination.current <= 1 || resolvedPagination.total === 0}
               onClick={() => resolvedPagination.onChange(resolvedPagination.current - 1)}
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>
-            <span className="text-sm text-slate-600">
-              {resolvedPagination.current} / {totalPages}
+            <span className="text-sm text-slate-600 tabular-nums min-w-[4.5rem] text-center">
+              {resolvedPagination.total === 0 ? '—' : `${resolvedPagination.current} / ${totalPages}`}
             </span>
             <Button
               variant="secondary"
               size="sm"
-              disabled={resolvedPagination.current >= totalPages}
+              disabled={
+                resolvedPagination.total === 0 || resolvedPagination.current >= totalPages
+              }
               onClick={() => resolvedPagination.onChange(resolvedPagination.current + 1)}
             >
               <ChevronRight className="w-4 h-4" />

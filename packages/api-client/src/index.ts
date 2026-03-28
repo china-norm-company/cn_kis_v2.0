@@ -125,6 +125,8 @@ export type {
 export { resourceApi } from './modules/resource'
 export { qualityApi } from './modules/quality'
 export type {
+  SupervisionPlanEntry,
+  SupervisionActualEntry,
   ProjectSupervisionItem,
   ProjectSupervisionDetail,
   ProjectSupervisionListStats,

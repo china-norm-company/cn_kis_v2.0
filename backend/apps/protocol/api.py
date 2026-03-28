@@ -25,7 +25,7 @@ from ninja.files import UploadedFile
 from typing import Optional, List, Any
 from datetime import date, datetime
 from django.conf import settings as django_settings
-from django.db import IntegrityError
+from django.db import IntegrityError, connection
 from django.http import FileResponse
 from django.utils import timezone
 from . import services
@@ -269,6 +269,11 @@ def create_protocol(request, data: ProtocolCreateIn):
         return 400, {'code': 400, 'msg': '项目编号可能已被占用，请更换后重试', 'data': None}
     except Exception as e:
         logger.exception('创建协议失败: %s', e)
+        try:
+            if connection.needs_rollback():
+                connection.rollback()
+        except Exception:
+            pass
         detail = str(e)[:500] if getattr(django_settings, 'DEBUG', False) else '创建协议失败，请查看服务端日志或稍后重试'
         return 500, {'code': 500, 'msg': detail, 'data': None}
     return {

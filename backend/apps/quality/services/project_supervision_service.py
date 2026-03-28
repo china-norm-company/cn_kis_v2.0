@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -29,6 +30,89 @@ def _parse_date_str(s: Any) -> Optional[date]:
         return datetime.strptime(s, '%Y-%m-%d').date()
     except ValueError:
         return None
+
+
+def _parse_supervision_at_str(s: Any) -> Optional[str]:
+    """监察时间：日期或 datetime-local(YYYY-MM-DDTHH:mm)，统一存 YYYY-MM-DDTHH:MM:SS。"""
+    if not s or not isinstance(s, str):
+        return None
+    t = s.strip().replace(' ', 'T', 1)
+    if not t:
+        return None
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', t):
+        d = _parse_date_str(t)
+        return f'{d.isoformat()}T00:00:00' if d else None
+    try:
+        raw = t[:19] if len(t) >= 19 else t
+        dt = datetime.fromisoformat(raw)
+        return dt.replace(microsecond=0).isoformat(sep='T', timespec='seconds')
+    except ValueError:
+        return None
+
+
+def _supervision_at_compare_key(s: Any) -> str:
+    """合并校验用：与 _parse_supervision_at_str 规范化结果一致。"""
+    p = _parse_supervision_at_str(s)
+    return p or ''
+
+
+def _plan_tuple(d: dict) -> Tuple[str, str, str, str]:
+    pd = d.get('planned_date')
+    pd_s = str(pd)[:10] if pd else ''
+    return (
+        str(d.get('visit_phase') or '').strip(),
+        pd_s,
+        str(d.get('content') or '').strip(),
+        str(d.get('supervisor') or '').strip(),
+    )
+
+
+def _actual_tuple(d: dict) -> Tuple[str, str, str, str]:
+    return (
+        str(d.get('visit_phase') or '').strip(),
+        _supervision_at_compare_key(d.get('supervision_at')),
+        str(d.get('content') or '').strip(),
+        str(d.get('conclusion') or '').strip(),
+    )
+
+
+def _merge_locked_entries(
+    existing: List[Any],
+    incoming_parsed: List[Dict[str, Any]],
+    tuple_fn,
+    kind_label: str,
+    id_key: str,
+    build_stored_new,
+) -> List[Dict[str, Any]]:
+    """
+    已存在的前 k 条须与请求逐项一致（不可改、不可删）；仅允许在末尾追加新行。
+    新行不得带 entry_id；库中缺 entry_id 的旧行在合并时补全 uuid。
+    """
+    ex_list = [e for e in (existing or []) if isinstance(e, dict)]
+    k = len(ex_list)
+    if len(incoming_parsed) < k:
+        raise ValueError(f'不可删除已提交的{kind_label}行')
+    for i in range(k):
+        ex = ex_list[i]
+        inc = incoming_parsed[i]
+        if tuple_fn(ex) != tuple_fn(inc):
+            raise ValueError(f'不可修改已提交的{kind_label}行')
+        eid_ex = str(ex.get(id_key) or '').strip()
+        if eid_ex:
+            eid_in = str(inc.get(id_key) or '').strip()
+            if eid_in != eid_ex:
+                raise ValueError(f'不可修改已提交的{kind_label}行')
+    out: List[Dict[str, Any]] = []
+    for ex in ex_list:
+        d = dict(ex)
+        if not str(d.get(id_key) or '').strip():
+            d[id_key] = str(uuid.uuid4())
+        out.append(d)
+    for inc in incoming_parsed[k:]:
+        if str(inc.get(id_key) or '').strip():
+            raise ValueError(f'新增的{kind_label}行请勿携带 entry_id')
+        out.append(build_stored_new(inc))
+    return out
 
 
 def derive_execution_dates(protocol: Protocol) -> Tuple[Optional[date], Optional[date]]:
@@ -190,14 +274,202 @@ def enrich_protocol_display(protocol: Protocol) -> Dict[str, str]:
     }
 
 
+def _plan_preview_from_entries(entries: List[Any]) -> str:
+    """列表页「计划」摘要：多条时截取前几项访视阶段+日期。"""
+    if not entries:
+        return ''
+    chunks: List[str] = []
+    for e in entries[:3]:
+        if not isinstance(e, dict):
+            continue
+        phase = str(e.get('visit_phase') or '').strip()
+        dt = str(e.get('planned_date') or '')[:10]
+        seg = ' '.join(x for x in (phase, dt) if x).strip()
+        chunks.append(seg or '·')
+    s = '；'.join(chunks)
+    if len(entries) > 3:
+        s = f'{s}…' if s else '…'
+    s = (s or '').strip()
+    if len(s) > 80:
+        return s[:80] + '…'
+    return s or '—'
+
+
+def _plan_entries_for_response(sup: ProtocolProjectSupervision) -> List[Dict[str, Any]]:
+    """详情接口：结构化条目；库中仅有旧版 plan_content 时退化为单行便于前端编辑。"""
+    raw = sup.plan_entries
+    if isinstance(raw, list) and len(raw) > 0:
+        out: List[Dict[str, Any]] = []
+        for row in raw:
+            if not isinstance(row, dict):
+                continue
+            pd = row.get('planned_date')
+            pd_s = str(pd)[:10] if pd else ''
+            eid = str(row.get('entry_id') or '').strip()
+            item: Dict[str, Any] = {
+                'visit_phase': str(row.get('visit_phase') or ''),
+                'planned_date': pd_s or None,
+                'content': str(row.get('content') or ''),
+                'supervisor': str(row.get('supervisor') or ''),
+            }
+            if eid:
+                item['entry_id'] = eid
+            out.append(item)
+        if out:
+            return out
+    if (sup.plan_content or '').strip():
+        return [
+            {
+                'visit_phase': '',
+                'planned_date': None,
+                'content': sup.plan_content.strip(),
+                'supervisor': '',
+            }
+        ]
+    return []
+
+
+def _parse_plan_entry_incoming(row: Any, idx: int) -> Dict[str, Any]:
+    if not isinstance(row, dict):
+        raise ValueError(f'第{idx}条监察计划格式无效')
+    phase = str(row.get('visit_phase') or '').strip()
+    date_raw = str(row.get('planned_date') or '').strip()[:10]
+    content = str(row.get('content') or '').strip()
+    sup_name = str(row.get('supervisor') or '').strip()
+    if not phase:
+        raise ValueError(f'第{idx}条：请填写访视阶段')
+    d = _parse_date_str(date_raw)
+    if d is None:
+        raise ValueError(f'第{idx}条：计划监察日期须为有效日期（YYYY-MM-DD）')
+    if not content:
+        raise ValueError(f'第{idx}条：请填写监察内容')
+    if not sup_name:
+        raise ValueError(f'第{idx}条：请填写监察人')
+    eid = str(row.get('entry_id') or '').strip()
+    return {
+        'visit_phase': phase,
+        'planned_date': d.isoformat(),
+        'content': content,
+        'supervisor': sup_name,
+        'entry_id': eid or None,
+    }
+
+
+def _actual_entries_for_response(sup: ProtocolProjectSupervision) -> List[Dict[str, Any]]:
+    raw = sup.actual_entries
+    if isinstance(raw, list) and len(raw) > 0:
+        out: List[Dict[str, Any]] = []
+        for row in raw:
+            if not isinstance(row, dict):
+                continue
+            eid = str(row.get('entry_id') or '').strip()
+            item: Dict[str, Any] = {
+                'visit_phase': str(row.get('visit_phase') or ''),
+                'supervision_at': str(row.get('supervision_at') or '') or None,
+                'content': str(row.get('content') or ''),
+                'conclusion': str(row.get('conclusion') or ''),
+            }
+            if eid:
+                item['entry_id'] = eid
+            out.append(item)
+        if out:
+            return out
+    if (sup.actual_content or '').strip():
+        return [
+            {
+                'visit_phase': '',
+                'supervision_at': None,
+                'content': sup.actual_content.strip(),
+                'conclusion': '',
+            }
+        ]
+    return []
+
+
+def _parse_actual_entry_incoming(row: Any, idx: int) -> Dict[str, Any]:
+    if not isinstance(row, dict):
+        raise ValueError(f'第{idx}条监察记录格式无效')
+    phase = str(row.get('visit_phase') or '').strip()
+    sat = _parse_supervision_at_str(row.get('supervision_at') or '')
+    content = str(row.get('content') or '').strip()
+    concl = str(row.get('conclusion') or '').strip()
+    if not phase:
+        raise ValueError(f'第{idx}条：请填写访视阶段')
+    if not sat:
+        raise ValueError(f'第{idx}条：请填写有效的监察时间（日期或日期+时间）')
+    if not content:
+        raise ValueError(f'第{idx}条：请填写监察内容')
+    if not concl:
+        raise ValueError(f'第{idx}条：请填写结论')
+    eid = str(row.get('entry_id') or '').strip()
+    return {
+        'visit_phase': phase,
+        'supervision_at': sat,
+        'content': content,
+        'conclusion': concl,
+        'entry_id': eid or None,
+    }
+
+
+def _actual_content_summary(entries: List[Dict[str, Any]]) -> str:
+    lines: List[str] = []
+    for i, e in enumerate(entries, 1):
+        ct = e.get('content') or ''
+        tail = '…' if len(ct) > 100 else ''
+        ct_short = ct[:100] + tail if tail else ct
+        lines.append(
+            f"{i}. {e.get('visit_phase')} | {e.get('supervision_at')} | {ct_short} | 结论：{e.get('conclusion') or '—'}"
+        )
+    return '\n'.join(lines)
+
+
+def _actual_preview_from_entries(entries: List[Any]) -> str:
+    if not entries:
+        return ''
+    chunks: List[str] = []
+    for e in entries[:3]:
+        if not isinstance(e, dict):
+            continue
+        phase = str(e.get('visit_phase') or '').strip()
+        sat = str(e.get('supervision_at') or '')[:16]
+        chunks.append(' '.join(x for x in (phase, sat) if x).strip() or '·')
+    s = '；'.join(chunks)
+    if len(entries) > 3:
+        s = f'{s}…' if s else '…'
+    s = (s or '').strip()
+    if len(s) > 80:
+        return s[:80] + '…'
+    return s or '—'
+
+
+def _plan_content_summary(entries: List[Dict[str, Any]]) -> str:
+    """写入 plan_content 的纯文本汇总，便于检索与兼容旧逻辑。"""
+    lines: List[str] = []
+    for i, e in enumerate(entries, 1):
+        sup_name = e.get('supervisor') or '—'
+        c = e.get('content') or ''
+        tail = '…' if len(c) > 120 else ''
+        c_short = c[:120] + tail if tail else c
+        lines.append(f"{i}. {e['visit_phase']} | {e['planned_date']} | {c_short} | {sup_name}")
+    return '\n'.join(lines)
+
+
 def _supervision_to_item(protocol: Protocol, sup: ProtocolProjectSupervision) -> Dict[str, Any]:
     st = compute_supervision_status(sup)
-    plan_preview = (sup.plan_content or '').strip()
-    if len(plan_preview) > 80:
-        plan_preview = plan_preview[:80] + '…'
-    actual_preview = (sup.actual_content or '').strip()
-    if len(actual_preview) > 80:
-        actual_preview = actual_preview[:80] + '…'
+    entries_raw = sup.plan_entries if isinstance(sup.plan_entries, list) else []
+    if entries_raw:
+        plan_preview = _plan_preview_from_entries(entries_raw)
+    else:
+        plan_preview = (sup.plan_content or '').strip()
+        if len(plan_preview) > 80:
+            plan_preview = plan_preview[:80] + '…'
+    actual_raw = sup.actual_entries if isinstance(sup.actual_entries, list) else []
+    if actual_raw:
+        actual_preview = _actual_preview_from_entries(actual_raw)
+    else:
+        actual_preview = (sup.actual_content or '').strip()
+        if len(actual_preview) > 80:
+            actual_preview = actual_preview[:80] + '…'
     record_summary = []
     if sup.plan_submitted_at:
         record_summary.append('监察计划已提交')
@@ -238,6 +510,8 @@ def _apply_supervision_main_tab_filter(sup_qs, today: date):
     项目监察主表：执行启动月为本月或下月且监察未完成
     ∪ 全部历史「已完成监察」
     ∪ 全部历史「监察异常」（超过执行结束日仍未提交监察计划，即未执行监察）。
+    ∪ 质量台手动补录（登记为 quality_manual）且尚未完成实际监察 — 不受执行开始月窗口限制，
+      避免手动创建时填写了非本月/下月的执行周期后在监察主表「消失」。
     """
     cur_start = today.replace(day=1)
     next_start = cur_start + relativedelta(months=1)
@@ -254,10 +528,15 @@ def _apply_supervision_main_tab_filter(sup_qs, today: date):
         plan_submitted_at__isnull=True,
         actual_submitted_at__isnull=True,
     )
+    manual_marker = Q(protocol__quality_project_registry__source=QualityProjectRegistry.Source.QUALITY_MANUAL) | Q(
+        protocol__parsed_data__quality_origin='manual_test'
+    )
+    set_d = sup_qs.filter(manual_marker).filter(actual_submitted_at__isnull=True)
     ids: Set[int] = set()
     ids.update(set_a.values_list('id', flat=True))
     ids.update(set_b.values_list('id', flat=True))
     ids.update(set_c.values_list('id', flat=True))
+    ids.update(set_d.values_list('id', flat=True))
     if not ids:
         return sup_qs.none()
     return sup_qs.filter(id__in=ids)
@@ -288,8 +567,9 @@ def list_project_supervision(
     page_size: int = 20,
 ) -> Dict[str, Any]:
     """
-    list_mode=management：仅维周来源登记（项目管理页签），逻辑与原列表一致，可按年月/关键词筛选。
-    list_mode=supervision：项目监察主表 — 本月/下月未完成 ∪ 历史已完成 ∪ 历史监察异常；可按年月/关键词/研究员缩小范围。
+    list_mode=management：项目管理页签 — 维周登记 ∪ 质量台手动补录（quality_manual），可按年月/关键词筛选。
+    list_mode=supervision：项目监察主表 — 本月/下月未完成 ∪ 历史已完成 ∪ 历史监察异常 ∪ 手动补录未完成；
+    按年月筛选时，手动补录项目一律不受执行开始月限制（避免补测项目填错执行月或已完成监察后因月份不一致从列表消失）。
     """
     proto_qs = Protocol.objects.filter(is_deleted=False)
     proto_qs = _apply_data_scope(proto_qs, account)
@@ -315,11 +595,14 @@ def list_project_supervision(
 
     mode = (list_mode or 'supervision').strip().lower()
     if mode == 'management':
-        wz_ids = QualityProjectRegistry.objects.filter(
-            source=QualityProjectRegistry.Source.WEIZHOU,
+        reg_ids = QualityProjectRegistry.objects.filter(
+            source__in=(
+                QualityProjectRegistry.Source.WEIZHOU,
+                QualityProjectRegistry.Source.QUALITY_MANUAL,
+            ),
             protocol_id__in=allowed_ids,
         ).values_list('protocol_id', flat=True)
-        sup_qs = sup_qs.filter(protocol_id__in=list(wz_ids))
+        sup_qs = sup_qs.filter(protocol_id__in=list(reg_ids))
     else:
         sup_qs = _apply_supervision_main_tab_filter(sup_qs, timezone.now().date())
 
@@ -328,10 +611,15 @@ def list_project_supervision(
         try:
             parts = ym.split('-')
             y, m = int(parts[0]), int(parts[1])
-            sup_qs = sup_qs.filter(
-                execution_start_date__year=y,
-                execution_start_date__month=m,
-            ).exclude(execution_start_date__isnull=True)
+            month_q = (
+                Q(execution_start_date__year=y, execution_start_date__month=m)
+                & ~Q(execution_start_date__isnull=True)
+            )
+            # 手动补录：不按执行开始月筛掉（未完成时执行月易填错；已完成监察后也不应因月份与筛选不一致而消失）
+            manual_bypass_month_q = Q(
+                protocol__quality_project_registry__source=QualityProjectRegistry.Source.QUALITY_MANUAL
+            ) | Q(protocol__parsed_data__quality_origin='manual_test')
+            sup_qs = sup_qs.filter(month_q | manual_bypass_month_q)
         except (ValueError, IndexError):
             pass
 
@@ -396,10 +684,12 @@ def get_supervision_detail(account, protocol_id: int) -> Optional[Dict[str, Any]
     out = _supervision_to_item(proto, sup)
     out['plan_content_full'] = sup.plan_content or ''
     out['actual_content_full'] = sup.actual_content or ''
+    out['plan_entries'] = _plan_entries_for_response(sup)
+    out['actual_entries'] = _actual_entries_for_response(sup)
     return out
 
 
-def submit_plan(account, protocol_id: int, plan_content: str) -> Dict[str, Any]:
+def submit_plan(account, protocol_id: int, plan_entries: List[Dict[str, Any]]) -> Dict[str, Any]:
     from apps.identity.models import Account as AccountModel
 
     proto = Protocol.objects.filter(id=protocol_id, is_deleted=False).first()
@@ -413,18 +703,39 @@ def submit_plan(account, protocol_id: int, plan_content: str) -> Dict[str, Any]:
     sup = ensure_supervision_row(proto)
     if sup.actual_submitted_at is not None:
         raise ValueError('已完成实际监察，不可再修改计划')
-    text = (plan_content or '').strip()
-    if not text:
-        raise ValueError('请填写监察内容')
-    sup.plan_content = text
-    sup.plan_submitted_at = timezone.now()
+    if not isinstance(plan_entries, list) or len(plan_entries) == 0:
+        raise ValueError('请至少添加一条监察计划')
+    existing = list(sup.plan_entries) if isinstance(sup.plan_entries, list) else []
+    incoming_parsed = [_parse_plan_entry_incoming(r, i + 1) for i, r in enumerate(plan_entries)]
+    merged = _merge_locked_entries(
+        existing,
+        incoming_parsed,
+        _plan_tuple,
+        '监察计划',
+        'entry_id',
+        lambda inc: {
+            'entry_id': str(uuid.uuid4()),
+            'visit_phase': inc['visit_phase'],
+            'planned_date': inc['planned_date'],
+            'content': inc['content'],
+            'supervisor': inc['supervisor'],
+        },
+    )
+    sup.plan_entries = merged
+    sup.plan_content = _plan_content_summary(merged)
+    first_plan = sup.plan_submitted_at is None
+    if first_plan:
+        sup.plan_submitted_at = timezone.now()
     if account and isinstance(account, AccountModel):
         sup.updated_by_id = account.id
-    sup.save(update_fields=['plan_content', 'plan_submitted_at', 'updated_by_id', 'update_time'])
+    uf = ['plan_entries', 'plan_content', 'updated_by_id', 'update_time']
+    if first_plan:
+        uf.append('plan_submitted_at')
+    sup.save(update_fields=uf)
     return get_supervision_detail(account, protocol_id)  # type: ignore
 
 
-def submit_actual(account, protocol_id: int, actual_content: str) -> Dict[str, Any]:
+def submit_actual(account, protocol_id: int, actual_entries: List[Dict[str, Any]]) -> Dict[str, Any]:
     from apps.identity.models import Account as AccountModel
 
     proto = Protocol.objects.filter(id=protocol_id, is_deleted=False).first()
@@ -438,12 +749,33 @@ def submit_actual(account, protocol_id: int, actual_content: str) -> Dict[str, A
     sup = ensure_supervision_row(proto)
     if sup.plan_submitted_at is None:
         raise ValueError('请先提交监察计划')
-    text = (actual_content or '').strip()
-    if not text:
-        raise ValueError('请填写实际监察内容')
-    sup.actual_content = text
-    sup.actual_submitted_at = timezone.now()
+    if not isinstance(actual_entries, list) or len(actual_entries) == 0:
+        raise ValueError('请至少添加一条监察记录')
+    existing = list(sup.actual_entries) if isinstance(sup.actual_entries, list) else []
+    incoming_parsed = [_parse_actual_entry_incoming(r, i + 1) for i, r in enumerate(actual_entries)]
+    merged = _merge_locked_entries(
+        existing,
+        incoming_parsed,
+        _actual_tuple,
+        '监察记录',
+        'entry_id',
+        lambda inc: {
+            'entry_id': str(uuid.uuid4()),
+            'visit_phase': inc['visit_phase'],
+            'supervision_at': inc['supervision_at'],
+            'content': inc['content'],
+            'conclusion': inc['conclusion'],
+        },
+    )
+    sup.actual_entries = merged
+    sup.actual_content = _actual_content_summary(merged)
+    first_actual = sup.actual_submitted_at is None
+    if first_actual:
+        sup.actual_submitted_at = timezone.now()
     if account and isinstance(account, AccountModel):
         sup.updated_by_id = account.id
-    sup.save(update_fields=['actual_content', 'actual_submitted_at', 'updated_by_id', 'update_time'])
+    uf = ['actual_entries', 'actual_content', 'updated_by_id', 'update_time']
+    if first_actual:
+        uf.append('actual_submitted_at')
+    sup.save(update_fields=uf)
     return get_supervision_detail(account, protocol_id)  # type: ignore

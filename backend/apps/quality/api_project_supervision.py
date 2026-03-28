@@ -8,10 +8,10 @@ POST /quality/project-supervision/{protocol_id}/submit-plan
 POST /quality/project-supervision/{protocol_id}/submit-actual
 """
 import logging
-from typing import Optional
+from typing import List, Optional
 
 from django.conf import settings as django_settings
-from django.db import IntegrityError
+from django.db import IntegrityError, connection
 from ninja import Router, Schema, Query
 from django.http import JsonResponse
 
@@ -24,12 +24,34 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 
+class PlanEntryIn(Schema):
+    """单条监察计划：缺省空串由服务层校验并返回中文提示，避免 Pydantic 英文 field required"""
+
+    entry_id: Optional[str] = None
+    visit_phase: str = ''
+    planned_date: str = ''
+    content: str = ''
+    supervisor: str = ''
+
+
 class SubmitPlanIn(Schema):
-    plan_content: str
+    """一个项目可包含多条监察计划"""
+
+    plan_entries: List[PlanEntryIn]
+
+
+class ActualEntryIn(Schema):
+    """单条监察记录：缺省空串由服务层校验"""
+
+    entry_id: Optional[str] = None
+    visit_phase: str = ''
+    supervision_at: str = ''
+    content: str = ''
+    conclusion: str = ''
 
 
 class SubmitActualIn(Schema):
-    actual_content: str
+    actual_entries: List[ActualEntryIn]
 
 
 @router.get('/project-supervision/list', summary='项目监察/项目管理列表')
@@ -64,7 +86,6 @@ def supervision_list(
 @router.post(
     '/project-supervision/create-protocol',
     summary='项目监察：创建协议',
-    response={200: dict, 400: dict, 500: dict},
 )
 @require_permission('quality.deviation.create')
 def supervision_create_protocol(request, data: ProtocolCreateIn):
@@ -91,9 +112,9 @@ def supervision_create_protocol(request, data: ProtocolCreateIn):
         )
         verr = validate_screening_schedule_test_rules(sched)
         if verr:
-            return 400, {'code': 400, 'msg': verr, 'data': None}
+            return {'code': 400, 'msg': verr, 'data': None}
         if any((x.get('signing_staff_name') or '').strip() for x in (sched or [])):
-            return 400, {
+            return {
                 'code': 400,
                 'msg': '请先在「知情配置」中添加双签工作人员并保存后，再指定各现场日知情签署人员',
                 'data': None,
@@ -117,14 +138,20 @@ def supervision_create_protocol(request, data: ProtocolCreateIn):
             quality_manual_test=True,
         )
     except ValueError as e:
-        return 400, {'code': 400, 'msg': str(e), 'data': None}
+        return {'code': 400, 'msg': str(e), 'data': None}
     except IntegrityError as e:
         logger.warning('项目监察创建协议唯一约束冲突: %s', e)
-        return 400, {'code': 400, 'msg': '项目编号可能已被占用，请更换后重试', 'data': None}
+        return {'code': 400, 'msg': '项目编号可能已被占用，请更换后重试', 'data': None}
     except Exception as e:
         logger.exception('项目监察创建协议失败: %s', e)
-        detail = str(e)[:500] if getattr(django_settings, 'DEBUG', False) else '创建协议失败，请查看服务端日志或稍后重试'
-        return 500, {'code': 500, 'msg': detail, 'data': None}
+        try:
+            if connection.needs_rollback():
+                connection.rollback()
+        except Exception:
+            pass
+        # 统一 HTTP 200 + body.code，前端 axios 才能稳定展示 msg，避免仅见「请求失败 (500)」
+        detail = str(e)[:500] if getattr(django_settings, 'DEBUG', False) else '创建失败，请稍后重试或联系管理员；若持续出现请提供时间便于查日志'
+        return {'code': 500, 'msg': detail, 'data': None}
     return {
         'code': 200,
         'msg': 'OK',
@@ -147,7 +174,11 @@ def supervision_detail(request, protocol_id: int):
 def supervision_submit_plan(request, protocol_id: int, payload: SubmitPlanIn):
     account = _get_account_from_request(request)
     try:
-        data = svc.submit_plan(account, protocol_id, payload.plan_content)
+        rows = [
+            x.model_dump() if hasattr(x, 'model_dump') else x.dict()
+            for x in payload.plan_entries
+        ]
+        data = svc.submit_plan(account, protocol_id, rows)
         return {'code': 200, 'msg': 'OK', 'data': data}
     except ValueError as e:
         return JsonResponse({'code': 400, 'msg': str(e), 'data': None}, status=400)
@@ -158,7 +189,11 @@ def supervision_submit_plan(request, protocol_id: int, payload: SubmitPlanIn):
 def supervision_submit_actual(request, protocol_id: int, payload: SubmitActualIn):
     account = _get_account_from_request(request)
     try:
-        data = svc.submit_actual(account, protocol_id, payload.actual_content)
+        rows = [
+            x.model_dump() if hasattr(x, 'model_dump') else x.dict()
+            for x in payload.actual_entries
+        ]
+        data = svc.submit_actual(account, protocol_id, rows)
         return {'code': 200, 'msg': 'OK', 'data': data}
     except ValueError as e:
         return JsonResponse({'code': 400, 'msg': str(e), 'data': None}, status=400)

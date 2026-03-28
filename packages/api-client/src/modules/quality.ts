@@ -14,6 +14,27 @@ import type {
   ProtocolCreateIn,
 } from '../types'
 
+/** 单条监察计划（可多条） */
+export interface SupervisionPlanEntry {
+  /** 服务端生成；有值表示已提交锁定，仅可追加新行 */
+  entry_id?: string
+  visit_phase: string
+  /** YYYY-MM-DD */
+  planned_date: string | null
+  content: string
+  supervisor: string
+}
+
+/** 单条监察记录（可多条、可追加） */
+export interface SupervisionActualEntry {
+  entry_id?: string
+  visit_phase: string
+  /** ISO 日期或 datetime-local，如 YYYY-MM-DD / YYYY-MM-DDTHH:mm */
+  supervision_at: string | null
+  content: string
+  conclusion: string
+}
+
 /** 项目监察列表行 */
 export interface ProjectSupervisionItem {
   protocol_id: number
@@ -43,6 +64,8 @@ export interface ProjectSupervisionItem {
 export interface ProjectSupervisionDetail extends ProjectSupervisionItem {
   plan_content_full: string
   actual_content_full: string
+  /** 结构化监察计划；旧数据可能仅 plan_content_full 有正文 */
+  plan_entries?: SupervisionPlanEntry[]
 }
 
 /** 与当前列表筛选（年月、关键词）一致的监察数量聚合 */
@@ -237,17 +260,29 @@ export const qualityApi = {
     )
   },
 
-  /** 提交监察计划 */
-  submitSupervisionPlan(protocolId: number, plan_content: string) {
+  /** 提交监察计划（多条：访视阶段、计划日期、内容、监察人） */
+  submitSupervisionPlan(protocolId: number, plan_entries: SupervisionPlanEntry[]) {
     return api.post<ProjectSupervisionDetail>(`/quality/project-supervision/${protocolId}/submit-plan`, {
-      plan_content,
+      plan_entries: plan_entries.map((e) => ({
+        ...(e.entry_id ? { entry_id: e.entry_id } : {}),
+        visit_phase: e.visit_phase,
+        planned_date: (e.planned_date || '').slice(0, 10),
+        content: e.content,
+        supervisor: e.supervisor,
+      })),
     })
   },
 
-  /** 提交实际监察 */
-  submitSupervisionActual(protocolId: number, actual_content: string) {
+  /** 提交监察记录（多条；已带 entry_id 的行不可改，仅可追加） */
+  submitSupervisionActual(protocolId: number, actual_entries: SupervisionActualEntry[]) {
     return api.post<ProjectSupervisionDetail>(`/quality/project-supervision/${protocolId}/submit-actual`, {
-      actual_content,
+      actual_entries: actual_entries.map((e) => ({
+        ...(e.entry_id ? { entry_id: e.entry_id } : {}),
+        visit_phase: e.visit_phase,
+        supervision_at: (e.supervision_at || '').trim(),
+        content: e.content,
+        conclusion: e.conclusion,
+      })),
     })
   },
 }

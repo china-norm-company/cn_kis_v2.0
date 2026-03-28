@@ -173,8 +173,12 @@ def require_permission(
             except Exception as e:
                 logger.exception('require_permission get_authz_service failed: %s', e)
                 return JsonResponse(
-                    {'code': 500, 'msg': f'权限服务不可用: {e!s}', 'data': None},
-                    status=500,
+                    {
+                        'code': 503,
+                        'msg': '权限服务暂时不可用，请稍后重试；若持续出现请联系管理员',
+                        'data': {'detail': str(e)[:200]} if getattr(settings, 'DEBUG', False) else None,
+                    },
+                    status=503,
                 )
 
             # 提取项目 ID（若启用项目级校验）
@@ -187,8 +191,12 @@ def require_permission(
             except Exception as e:
                 logger.exception('require_permission has_permission failed: %s', e)
                 return JsonResponse(
-                    {'code': 500, 'msg': f'权限校验失败: {e!s}', 'data': None},
-                    status=500,
+                    {
+                        'code': 503,
+                        'msg': '权限校验暂时失败，请稍后重试；若持续出现请联系管理员',
+                        'data': {'detail': str(e)[:200]} if getattr(settings, 'DEBUG', False) else None,
+                    },
+                    status=503,
                 )
 
             if not has_perm:

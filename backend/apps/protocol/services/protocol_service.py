@@ -7,6 +7,7 @@
 - 协议创建/状态变更时同步到飞书多维表格看板（替代原飞书项目工作项）
 - 通过 feishu_sync 模块的 SyncConfig 配置决定同步目标
 """
+import contextvars
 import html as html_module
 import logging
 import os
@@ -27,6 +28,11 @@ from django.utils import timezone
 from apps.protocol.models import Protocol, ProtocolStatus, ProtocolParseLog
 
 logger = logging.getLogger(__name__)
+
+# 质量台「新建项目(测试)」创建过程中为 True：跳过 quality signals 的 on_commit，改由 create_protocol 末尾显式同步侧车表
+quality_manual_sidecars_deferred: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    'quality_manual_sidecars_deferred', default=False
+)
 
 # 知情配置负责人：治理台全局角色（与 witness_staff_service 中双签可选角色区分）
 CONSENT_CONFIG_ROLE_NAMES = ('qa',)
@@ -326,7 +332,48 @@ def apply_protocol_onboarding_metadata(
         protocol.save(update_fields=update_fields)
 
 
-def create_protocol(
+def _sync_quality_manual_sidecars_inline(protocol: Protocol) -> None:
+    """
+    同步项目监察行 + 质量台项目来源登记。
+    放在 create_protocol 末尾、parsed_data 已写盘后执行；独立 atomic，失败只打日志不回滚已提交的协议主行。
+    """
+    from django.db import connection, transaction
+
+    try:
+        with transaction.atomic():
+            from apps.quality.models import QualityProjectRegistry
+            from apps.quality.services.project_supervision_service import ensure_supervision_row
+
+            try:
+                protocol.refresh_from_db(fields=['parsed_data', 'is_deleted', 'team_members'])
+            except Exception:
+                pass
+            ensure_supervision_row(protocol)
+            pd = protocol.parsed_data or {}
+            src = (
+                QualityProjectRegistry.Source.QUALITY_MANUAL
+                if isinstance(pd, dict) and pd.get('quality_origin') == 'manual_test'
+                else QualityProjectRegistry.Source.WEIZHOU
+            )
+            QualityProjectRegistry.objects.update_or_create(
+                protocol=protocol,
+                defaults={'source': src},
+            )
+    except Exception as e:
+        logger.warning(
+            '质量台手动项目侧车同步失败 protocol_id=%s: %s',
+            getattr(protocol, 'id', None),
+            e,
+            exc_info=True,
+        )
+        try:
+            if connection.needs_rollback():
+                connection.rollback()
+        except Exception:
+            pass
+
+
+def _create_protocol_impl(
     title: str,
     code: str = '',
     efficacy_type: str = '',
@@ -436,7 +483,62 @@ def create_protocol(
                 raise ValueError('知情签署工作人员须从双签工作人员名单中选择')
         cur['consent_signing_staff_name'] = sn
         _save_consent_settings(protocol, cur)
+    if quality_manual_test:
+        _sync_quality_manual_sidecars_inline(protocol)
     return protocol
+
+
+def create_protocol(
+    title: str,
+    code: str = '',
+    efficacy_type: str = '',
+    sample_size: int = None,
+    file_path: str = '',
+    created_by_id: int = None,
+    screening_schedule: Optional[List[Dict[str, Any]]] = None,
+    consent_config_account_id: Optional[int] = None,
+    consent_signing_staff_name: Optional[str] = None,
+    group_label: Optional[str] = None,
+    backup_sample_label: Optional[str] = None,
+    visits_summary: Optional[str] = None,
+    execution_start: Optional[str] = None,
+    execution_end: Optional[str] = None,
+    principal_investigator: Optional[str] = None,
+    quality_manual_test: bool = False,
+) -> Protocol:
+    """
+    对外入口。质量台手动补录时设置 ContextVar，避免 quality 模块 post_save 注册 on_commit
+    （部分环境下回调异常会拖垮整次 HTTP）；侧车数据在 _create_protocol_impl 末尾显式写入。
+    """
+    kwargs = dict(
+        title=title,
+        code=code,
+        efficacy_type=efficacy_type,
+        sample_size=sample_size,
+        file_path=file_path,
+        created_by_id=created_by_id,
+        screening_schedule=screening_schedule,
+        consent_config_account_id=consent_config_account_id,
+        consent_signing_staff_name=consent_signing_staff_name,
+        group_label=group_label,
+        backup_sample_label=backup_sample_label,
+        visits_summary=visits_summary,
+        execution_start=execution_start,
+        execution_end=execution_end,
+        principal_investigator=principal_investigator,
+        quality_manual_test=quality_manual_test,
+    )
+    if quality_manual_test:
+        tok = quality_manual_sidecars_deferred.set(True)
+        try:
+            from django.db import transaction
+
+            # 手动补录：单事务内完成主表 + 扩展字段 + 侧车，避免半提交与连接异常
+            with transaction.atomic():
+                return _create_protocol_impl(**kwargs)
+        finally:
+            quality_manual_sidecars_deferred.reset(tok)
+    return _create_protocol_impl(**kwargs)
 
 
 def save_protocol_upload_file(uploaded_file) -> str:
