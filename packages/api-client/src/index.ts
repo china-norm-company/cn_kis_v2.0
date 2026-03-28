@@ -258,6 +258,11 @@ export type {
   WeeklySchedule,
   ScheduleNote,
   ScheduleAttachment,
+  MyTodayProjectsData,
+  MyTodayProjectItem,
+  MyTodayProjectSubject,
+  MyTodayProjectCell,
+  MyTodayProjectTask,
   WaitingSubject,
   EnvironmentStatus,
   InstrumentStatus,
@@ -316,6 +321,9 @@ export type {
   ProjectBusiness,
   BusinessPipelineData,
 } from './modules/dashboard'
+
+// 洞明·数据台
+export { dataPlatformApi } from './modules/data-platform'
 
 // 可行性评估（B1）
 export { feasibilityApi } from './modules/feasibility'

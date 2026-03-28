@@ -10,10 +10,11 @@
 """
 import json
 import logging
-from typing import Optional
+import re
+from typing import Any, Optional
 from datetime import date, datetime
 from django.utils import timezone
-from django.db import transaction, models
+from django.db import transaction, models, connections
 from django.db.models import Q
 
 from ..models import WorkOrder, WorkOrderStatus
@@ -31,6 +32,60 @@ from ..models_extended import (
 )
 
 logger = logging.getLogger(__name__)
+
+SADC_PROBE_PRIMARY_PARAMS = {
+    'TMHex': 'TEWL Robust [g/m²/h]',
+    'TM300': 'TEWL Robust [g/m²/h]',
+    'TMNano': 'TEWL Robust [g/m²/h]',
+    'CM825': 'Hydration',
+    'GL200': 'Gloss',
+    'MX18': 'Melanin',
+    'IDM800': 'Indentometer value',
+    'ST500': 'Temp. °C',
+    'PH905': 'pH',
+    'SM815': 'Sebum [µg/cm²]',
+    'CL400': 'ITA°',
+    'CL440': 'ITA°',
+    'Cutometer': 'R0 [mm]',
+}
+
+SADC_PROBE_EXACT_ALIASES = {
+    'TMHex': {'tmhex', 'tewametertmhex'},
+    'TM300': {'tm300', 'tewametertm300'},
+    'TMNano': {'tmnano', 'tewametertmnano'},
+    'CM825': {'cm825', 'corneometercm825'},
+    'GL200': {'gl200', 'glossymetergl200'},
+    'MX18': {'mx18', 'mexametermx18'},
+    'IDM800': {'idm800', 'indentometeridm800'},
+    'ST500': {'st500', 'skinthermometerst500'},
+    'PH905': {'ph905', 'skinphmeterph905', 'phmeterph905'},
+    'SM815': {'sm815', 'sebumetersm815'},
+    'CL400': {'cl400', 'colorimetercl400'},
+    'CL440': {'cl440', 'colorimetercl440'},
+    'Cutometer': {'cutometer', 'cutometermpa'},
+}
+
+SADC_PROBE_FAMILY_HINTS = {
+    'tewameter': ['TMHex', 'TM300', 'TMNano'],
+    'tewl': ['TMHex', 'TM300', 'TMNano'],
+    'corneometer': ['CM825'],
+    'hydration': ['CM825'],
+    'glossymeter': ['GL200'],
+    'gloss': ['GL200'],
+    'mexameter': ['MX18'],
+    'melanin': ['MX18'],
+    'indentometer': ['IDM800'],
+    'skinthermometer': ['ST500'],
+    'temperature': ['ST500'],
+    'phmeter': ['PH905'],
+    'sebumeter': ['SM815'],
+    'sebum': ['SM815'],
+    'colorimeter': ['CL400', 'CL440'],
+    'ita': ['CL400', 'CL440'],
+    'cutometer': ['Cutometer'],
+}
+
+TERMINATED_ENROLLMENT_STATUSES = {'不合格', '复筛不合格', '退出'}
 
 
 # ============================================================================
@@ -208,6 +263,472 @@ def _get_evaluator_role(account_id: int) -> str:
     except Exception:
         pass
     return 'instrument_operator'
+
+
+def _mask_subject_name(name: str) -> str:
+    value = (name or '').strip()
+    if not value:
+        return ''
+    if len(value) == 1:
+        return value
+    return value[:1] + '*' * (len(value) - 1)
+
+
+def _normalize_equipment_name(name: str) -> str:
+    value = (name or '').strip().lower()
+    if not value:
+        return ''
+    value = value.replace('®', '')
+    for token in ('测试探头', '测量探头', '测试仪', '探头', 'probe', '设备'):
+        value = value.replace(token, '')
+    return re.sub(r'[\s\-_.,()（）]+', '', value)
+
+
+def _parse_jsonish_list(value: Any) -> list[dict]:
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return []
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return [item for item in parsed if isinstance(item, dict)]
+        except (TypeError, ValueError):
+            return []
+    return []
+
+
+def _parse_multi_time_points(raw: Any) -> list[str]:
+    value = str(raw or '').strip()
+    if not value:
+        return []
+    return [part.strip() for part in re.split(r'[,，;；\s]+', value) if str(part).strip()]
+
+
+def _build_visit_time_point_mapping(visit_plan: list[dict]) -> tuple[dict[str, str], list[str]]:
+    raw_to_final: dict[str, str] = {}
+    ordered_final_points: list[str] = []
+    for visit in visit_plan:
+        raw = str(visit.get('visit_time_point') or '').strip()
+        final = str(visit.get('test_time_point') or raw).strip()
+        if not raw or not final:
+            continue
+        raw_to_final[raw] = final
+        if final not in ordered_final_points:
+            ordered_final_points.append(final)
+    return raw_to_final, ordered_final_points
+
+
+def _resolve_task_time_points(raw_value: Any, raw_to_final: dict[str, str], ordered_time_points: list[str]) -> list[str]:
+    parts = _parse_multi_time_points(raw_value)
+    if not parts:
+        return []
+    if any(part in ('所有访视', '全部访视') for part in parts):
+        return list(ordered_time_points)
+    lowered = {key.lower(): value for key, value in raw_to_final.items()}
+    resolved: list[str] = []
+    for part in parts:
+        final = raw_to_final.get(part) or lowered.get(part.lower()) or part
+        if final not in resolved:
+            resolved.append(final)
+    return resolved
+
+
+def _match_sadc_probe(equipment_name: str) -> dict[str, Any]:
+    normalized = _normalize_equipment_name(equipment_name)
+    if not normalized:
+        return {
+            'judgment_mode': 'unsupported',
+            'probe': None,
+            'probe_options': [],
+            'primary_param': None,
+        }
+    for probe, aliases in SADC_PROBE_EXACT_ALIASES.items():
+        if normalized in aliases:
+            return {
+                'judgment_mode': 'auto',
+                'probe': probe,
+                'probe_options': [probe],
+                'primary_param': SADC_PROBE_PRIMARY_PARAMS[probe],
+            }
+    hinted: list[str] = []
+    for keyword, probes in SADC_PROBE_FAMILY_HINTS.items():
+        if keyword in normalized:
+            for probe in probes:
+                if probe not in hinted:
+                    hinted.append(probe)
+    if hinted:
+        return {
+            'judgment_mode': 'needs_probe_selection',
+            'probe': None,
+            'probe_options': hinted,
+            'primary_param': None,
+        }
+    return {
+        'judgment_mode': 'unsupported',
+        'probe': None,
+        'probe_options': [],
+        'primary_param': None,
+    }
+
+
+def _fetch_project_execution_order_map(project_codes: set[str]) -> dict[str, dict[str, Any]]:
+    if not project_codes:
+        return {}
+    from apps.scheduling.api import _execution_order_to_full_detail, _execution_order_to_summary
+    from apps.scheduling.models import ExecutionOrderUpload
+
+    result: dict[str, dict[str, Any]] = {}
+    for rec in ExecutionOrderUpload.objects.order_by('-create_time').all():
+        if not rec or not rec.data:
+            continue
+        summary = _execution_order_to_summary(rec)
+        project_code = str(summary.get('project_code') or '').strip()
+        if not project_code or project_code not in project_codes or project_code in result:
+            continue
+        result[project_code] = {
+            'order_id': rec.id,
+            'summary': summary,
+            'detail': _execution_order_to_full_detail(rec),
+        }
+        if len(result) == len(project_codes):
+            break
+    return result
+
+
+def _build_project_timepoint_templates(detail: dict[str, Any]) -> tuple[list[str], dict[str, dict[str, list[dict]]], bool]:
+    fields = detail.get('fields') or {}
+    visit_plan = _parse_jsonish_list(fields.get('visit_plan'))
+    equipment_plan = _parse_jsonish_list(fields.get('equipment_plan'))
+    evaluation_plan = _parse_jsonish_list(fields.get('evaluation_plan'))
+    auxiliary_plan = _parse_jsonish_list(fields.get('auxiliary_measurement_plan'))
+
+    raw_to_final, time_points = _build_visit_time_point_mapping(visit_plan)
+    grouped: dict[str, dict[str, list[dict]]] = {
+        time_point: {'equipment_tasks': [], 'evaluation_tasks': [], 'auxiliary_tasks': []}
+        for time_point in time_points
+    }
+    has_low_confidence = False
+
+    for idx, item in enumerate(equipment_plan):
+        matched = _match_sadc_probe(str(item.get('test_equipment') or '').strip())
+        task_name = (
+            str(item.get('test_equipment') or '').strip()
+            or str(item.get('test_indicator') or '').strip()
+            or '设备任务'
+        )
+        for time_point in _resolve_task_time_points(item.get('visit_time_point'), raw_to_final, time_points):
+            grouped.setdefault(time_point, {'equipment_tasks': [], 'evaluation_tasks': [], 'auxiliary_tasks': []})
+            grouped[time_point]['equipment_tasks'].append({
+                'task_key': f'equipment-{idx}',
+                'task_name': task_name,
+                'test_indicator': str(item.get('test_indicator') or '').strip(),
+                'measurement_area': str(item.get('test_location') or '').strip(),
+                'judgment_mode': matched['judgment_mode'],
+                'probe': matched['probe'],
+                'primary_param': matched['primary_param'],
+                'probe_options': matched['probe_options'],
+            })
+            if matched['judgment_mode'] == 'needs_probe_selection':
+                has_low_confidence = True
+
+    for idx, item in enumerate(evaluation_plan):
+        task_name = (
+            str(item.get('evaluation_indicator') or '').strip()
+            or str(item.get('evaluation_category') or '').strip()
+            or str(item.get('evaluator_category') or '').strip()
+            or '评估任务'
+        )
+        for time_point in _resolve_task_time_points(item.get('visit_time_point'), raw_to_final, time_points):
+            grouped.setdefault(time_point, {'equipment_tasks': [], 'evaluation_tasks': [], 'auxiliary_tasks': []})
+            grouped[time_point]['evaluation_tasks'].append({
+                'task_key': f'evaluation-{idx}',
+                'task_name': task_name,
+            })
+
+    for idx, item in enumerate(auxiliary_plan):
+        task_name = str(item.get('operation_name') or '').strip() or '辅助任务'
+        for time_point in _resolve_task_time_points(item.get('visit_time_point'), raw_to_final, time_points):
+            grouped.setdefault(time_point, {'equipment_tasks': [], 'evaluation_tasks': [], 'auxiliary_tasks': []})
+            grouped[time_point]['auxiliary_tasks'].append({
+                'task_key': f'auxiliary-{idx}',
+                'task_name': task_name,
+            })
+
+    if not time_points:
+        time_points = list(grouped.keys())
+    return time_points, grouped, has_low_confidence
+
+
+def _fetch_measured_pairs(project_code: str, subject_codes: list[str], time_points: list[str], probes: list[str]) -> set[tuple[str, str, str]]:
+    if (
+        'instrument_upload' not in connections.databases
+        or not project_code
+        or not subject_codes
+        or not time_points
+        or not probes
+    ):
+        return set()
+
+    conn = connections['instrument_upload']
+    measured: set[tuple[str, str, str]] = set()
+    for probe in probes:
+        primary_param = SADC_PROBE_PRIMARY_PARAMS.get(probe)
+        if not primary_param:
+            continue
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT subject_code, time_point
+                FROM instrument_readings
+                WHERE study_code = %s
+                  AND subject_code = ANY(%s)
+                  AND time_point = ANY(%s)
+                  AND probe = %s
+                  AND LOWER(COALESCE(status_code, 'active')) = 'active'
+                  AND COALESCE(is_current, 1) = 1
+                  AND attribute_name = %s
+                  AND attribute_value IS NOT NULL
+                  AND BTRIM(CAST(attribute_value AS TEXT)) <> ''
+                """,
+                [project_code, subject_codes, time_points, probe, primary_param],
+            )
+            for subject_code, time_point in cur.fetchall():
+                measured.add((str(subject_code or '').strip(), str(time_point or '').strip(), probe))
+    return measured
+
+
+def _to_measure_link(project_code: str, subject_no: str, time_point: str) -> str:
+    from urllib.parse import quote
+
+    return (
+        f'/evaluator/measure?project_code={quote(project_code)}'
+        f'&subject_no={quote(subject_no)}'
+        f'&time_point={quote(time_point)}'
+    )
+
+
+def _build_equipment_task_view(
+    task: dict[str, Any],
+    project_code: str,
+    subject_no: str,
+    time_point: str,
+    measured_pairs: set[tuple[str, str, str]],
+) -> dict[str, Any]:
+    base = {
+        'task_key': task['task_key'],
+        'task_name': task['task_name'],
+        'test_indicator': task.get('test_indicator') or '',
+        'measurement_area': task.get('measurement_area') or '',
+        'judgment_mode': task['judgment_mode'],
+        'measure_link': _to_measure_link(project_code, subject_no, time_point) if subject_no else '',
+    }
+    if task['judgment_mode'] == 'auto':
+        probe = str(task.get('probe') or '')
+        measured = (subject_no, time_point, probe) in measured_pairs if subject_no and probe else False
+        return {
+            **base,
+            'status': 'measured' if measured else 'unmeasured',
+            'status_label': '已测量' if measured else '未测量',
+            'probe': probe,
+            'primary_param': task.get('primary_param') or '',
+        }
+    if task['judgment_mode'] == 'needs_probe_selection':
+        return {
+            **base,
+            'status': 'needs_probe_selection',
+            'status_label': '选择探头',
+            'probe_options': [
+                {
+                    'probe': probe,
+                    'primary_param': SADC_PROBE_PRIMARY_PARAMS.get(probe, ''),
+                    'measured': (subject_no, time_point, probe) in measured_pairs if subject_no else False,
+                }
+                for probe in (task.get('probe_options') or [])
+            ],
+        }
+    return {
+        **base,
+        'status': 'pending',
+        'status_label': '暂不判定',
+    }
+
+
+def _derive_subject_overall_status(queue_status: str, enrollment_status: str, all_auto_done: bool) -> str:
+    if enrollment_status in ('不合格', '复筛不合格'):
+        return '筛败终止完成'
+    if enrollment_status == '退出':
+        return '退出终止完成'
+    if queue_status == 'waiting':
+        return '未签到'
+    if queue_status == 'no_show':
+        return '缺席'
+    if queue_status == 'checked_out':
+        return '已完成' if all_auto_done else '已签出未完成'
+    return '执行中'
+
+
+def get_my_today_projects(account_id: int) -> dict:
+    """聚合评估员今日负责项目、时间点矩阵与 SADC 自动判定结果。"""
+    from apps.protocol.models import Protocol
+    from apps.subject.services.reception_service import get_queue_list
+    from apps.workorder.services import get_my_today_work_orders
+
+    today = timezone.localdate()
+    work_orders = get_my_today_work_orders(account_id)
+    protocol_ids = {int(item['protocol_id']) for item in work_orders if item.get('protocol_id')}
+    protocol_map = {
+        protocol.id: protocol
+        for protocol in Protocol.objects.filter(id__in=protocol_ids, is_deleted=False)
+    }
+
+    project_map: dict[str, dict[str, Any]] = {}
+    for item in work_orders:
+        protocol = protocol_map.get(item.get('protocol_id'))
+        project_code = (getattr(protocol, 'code', '') or '').strip()
+        if not project_code:
+            continue
+        project_map.setdefault(project_code, {
+            'project_code': project_code,
+            'project_name': (getattr(protocol, 'title', '') or '').strip() or project_code,
+        })
+
+    execution_order_map = _fetch_project_execution_order_map(set(project_map.keys()))
+    projects = []
+    total_signed_in = 0
+    total_completed = 0
+
+    for project_code, project_info in project_map.items():
+        queue_data = get_queue_list(
+            date_from=today,
+            date_to=today,
+            page=1,
+            page_size=99999,
+            project_code=project_code,
+            project_code_exact=True,
+        )
+        queue_items = queue_data.get('items', [])
+        detail = (execution_order_map.get(project_code) or {}).get('detail') or {}
+        time_points, grouped_tasks, has_low_confidence = _build_project_timepoint_templates(detail)
+        subject_codes = sorted({
+            str(item.get('subject_no') or '').strip()
+            for item in queue_items
+            if str(item.get('subject_no') or '').strip()
+        })
+        probes = {
+            str(task.get('probe') or '')
+            for bucket in grouped_tasks.values()
+            for task in bucket['equipment_tasks']
+            if task.get('judgment_mode') == 'auto' and str(task.get('probe') or '').strip()
+        }
+        if has_low_confidence:
+            probes.update(SADC_PROBE_PRIMARY_PARAMS.keys())
+        measured_pairs = _fetch_measured_pairs(project_code, subject_codes, time_points, sorted(probes))
+
+        latest_checkin_time = ''
+        signed_in_count = 0
+        completed_count = 0
+        subject_rows = []
+
+        for item in queue_items:
+            subject_no = str(item.get('subject_no') or '').strip()
+            queue_status = str(item.get('status') or '').strip() or 'waiting'
+            enrollment_status = str(item.get('enrollment_status') or '').strip()
+            if queue_status in ('checked_in', 'in_progress', 'checked_out'):
+                signed_in_count += 1
+            checkin_time = str(item.get('checkin_time') or '').strip()
+            if checkin_time and checkin_time > latest_checkin_time:
+                latest_checkin_time = checkin_time
+
+            total_auto = 0
+            total_auto_done = 0
+            cells = []
+            for time_point in time_points:
+                bucket = grouped_tasks.get(time_point, {'equipment_tasks': [], 'evaluation_tasks': [], 'auxiliary_tasks': []})
+                equipment_tasks = [
+                    _build_equipment_task_view(task, project_code, subject_no, time_point, measured_pairs)
+                    for task in bucket['equipment_tasks']
+                ]
+                auto_task_count = sum(1 for task in equipment_tasks if task['status'] in ('measured', 'unmeasured'))
+                auto_done_count = sum(1 for task in equipment_tasks if task['status'] == 'measured')
+                total_auto += auto_task_count
+                total_auto_done += auto_done_count
+                cells.append({
+                    'time_point': time_point,
+                    'terminated': enrollment_status in TERMINATED_ENROLLMENT_STATUSES,
+                    'equipment_tasks': equipment_tasks,
+                    'evaluation_tasks': [
+                        {
+                            'task_key': task['task_key'],
+                            'task_name': task['task_name'],
+                            'status': 'pending',
+                            'status_label': '暂不判定',
+                        }
+                        for task in bucket['evaluation_tasks']
+                    ],
+                    'auxiliary_tasks': [
+                        {
+                            'task_key': task['task_key'],
+                            'task_name': task['task_name'],
+                            'status': 'pending',
+                            'status_label': '暂不判定',
+                        }
+                        for task in bucket['auxiliary_tasks']
+                    ],
+                })
+
+            all_auto_done = enrollment_status in TERMINATED_ENROLLMENT_STATUSES or total_auto == total_auto_done
+            overall_status = _derive_subject_overall_status(queue_status, enrollment_status, all_auto_done)
+            if overall_status in ('已完成', '筛败终止完成', '退出终止完成'):
+                completed_count += 1
+
+            subject_rows.append({
+                'subject_id': item.get('subject_id'),
+                'subject_name': _mask_subject_name(str(item.get('subject_name') or '').strip()),
+                'subject_no': subject_no,
+                'sc_number': str(item.get('sc_number') or '').strip(),
+                'queue_status': queue_status,
+                'enrollment_status': enrollment_status,
+                'overall_status': overall_status,
+                'time_point_cells': cells,
+            })
+
+        pending_count = max(signed_in_count - completed_count, 0)
+        completion_rate = round(completed_count / signed_in_count * 100, 1) if signed_in_count else 0
+        projects.append({
+            'project_code': project_code,
+            'project_name': project_info['project_name'],
+            'execution_order_id': (execution_order_map.get(project_code) or {}).get('order_id'),
+            'time_points': time_points,
+            'recent_checkin_time': latest_checkin_time or None,
+            'stats': {
+                'signed_in_count': signed_in_count,
+                'completed_count': completed_count,
+                'pending_count': pending_count,
+                'completion_rate': completion_rate,
+            },
+            'subjects': subject_rows,
+        })
+        total_signed_in += signed_in_count
+        total_completed += completed_count
+
+    projects.sort(key=lambda item: ((item.get('recent_checkin_time') or ''), item['project_code']), reverse=True)
+    return {
+        'date': str(today),
+        'refreshed_at': timezone.now().isoformat(),
+        'refresh_interval_seconds': 300,
+        'measurement_source_available': 'instrument_upload' in connections.databases,
+        'stats': {
+            'project_count': len(projects),
+            'signed_in_count': total_signed_in,
+            'completed_count': total_completed,
+            'pending_count': max(total_signed_in - total_completed, 0),
+            'completion_rate': round(total_completed / total_signed_in * 100, 1) if total_signed_in else 0,
+        },
+        'projects': projects,
+    }
 
 
 # ============================================================================

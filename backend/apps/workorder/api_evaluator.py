@@ -194,6 +194,17 @@ def my_schedule(request, params: Query[ScheduleQueryIn]):
     return {'code': 0, 'msg': 'ok', 'data': data}
 
 
+@router.get('/my-today-projects')
+@require_permission('evaluator.workorder.read')
+def my_today_projects(request):
+    """评估台我的今日项目：项目聚合、时间点矩阵、SADC 自动判定。"""
+    account = _get_account_from_request(request)
+
+    from .services.evaluator_service import get_my_today_projects
+    data = get_my_today_projects(account.id)
+    return {'code': 0, 'msg': 'ok', 'data': data}
+
+
 class ScheduleByPersonQueryIn(Schema):
     person_name: str = ''
     week_offset: int = 0

@@ -28,6 +28,7 @@ export function MeasurePage() {
   const [startError, setStartError] = useState<string | null>(null)
   const [copyTip, setCopyTip] = useState<string | null>(null)
   const linkInputRef = useRef<HTMLInputElement>(null)
+  const currentSearch = typeof window !== 'undefined' ? window.location.search : ''
 
   const check = () => {
     setStatus('checking')
@@ -195,10 +196,24 @@ export function MeasurePage() {
     )
   }
 
+  const embeddedMeasureUrl = (() => {
+    try {
+      const url = new URL(SADC_MEASURE_URL)
+      const params = new URLSearchParams(currentSearch)
+      for (const key of ['project_code', 'subject_no', 'time_point']) {
+        const value = params.get(key)
+        if (value) url.searchParams.set(key, value)
+      }
+      return url.toString()
+    } catch {
+      return SADC_MEASURE_URL
+    }
+  })()
+
   return (
     <div className="flex flex-col h-full min-h-0 -mx-4 -my-2">
       <iframe
-        src={SADC_MEASURE_URL}
+        src={embeddedMeasureUrl}
         title="测量工作台"
         className="flex-1 w-full min-h-[calc(100vh-8rem)] border-0 rounded-lg bg-slate-100"
       />

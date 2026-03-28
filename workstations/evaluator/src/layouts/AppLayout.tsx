@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
-import { LayoutDashboard, QrCode, Calendar, BookOpen, TrendingUp, ClipboardList, Microscope, AlertTriangle, History, User, Settings, Gauge } from 'lucide-react'
+import { LayoutDashboard, QrCode, Calendar, BookOpen, TrendingUp, ClipboardList, Microscope, AlertTriangle, History, User, Settings, Gauge, TableProperties } from 'lucide-react'
 import { FeishuAuthProvider, useFeishuContext, LoginFallback, createWorkstationFeishuConfig } from '@cn-kis/feishu-sdk'
 import { MobileWorkstationLayout, type MobileWorkstationNavItem } from '@cn-kis/ui-kit'
 
@@ -8,6 +8,7 @@ const FEISHU_CONFIG = createWorkstationFeishuConfig('evaluator')
 
 const navItems = [
   { path: '/dashboard', label: '工作面板', icon: LayoutDashboard, permissions: ['workorder.workorder.read'] },
+  { path: '/my-today-projects', label: '我的今日项目', icon: TableProperties, permissions: ['workorder.workorder.read'] },
   { path: '/workorders', label: '我的工单', icon: ClipboardList, permissions: ['workorder.workorder.read'] },
   { path: '/scan', label: '扫码执行', icon: QrCode, permissions: ['workorder.workorder.read'] },
   { path: '/instrument-measure', label: '仪器测量', icon: Gauge, permissions: ['workorder.workorder.read'] },

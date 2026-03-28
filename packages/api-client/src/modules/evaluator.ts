@@ -161,6 +161,71 @@ export interface WeeklySchedule {
   next_week_count: number
 }
 
+export interface MyTodayProjectTask {
+  task_key: string
+  task_name: string
+  status: string
+  status_label: string
+  judgment_mode?: string
+  measure_link?: string
+  probe?: string
+  primary_param?: string
+  probe_options?: Array<{
+    probe: string
+    primary_param: string
+    measured: boolean
+  }>
+}
+
+export interface MyTodayProjectCell {
+  time_point: string
+  terminated: boolean
+  equipment_tasks: MyTodayProjectTask[]
+  evaluation_tasks: MyTodayProjectTask[]
+  auxiliary_tasks: MyTodayProjectTask[]
+}
+
+export interface MyTodayProjectSubject {
+  subject_id: number | null
+  subject_name: string
+  subject_no: string
+  sc_number: string
+  queue_status: string
+  enrollment_status: string
+  overall_status: string
+  time_point_cells: MyTodayProjectCell[]
+}
+
+export interface MyTodayProjectItem {
+  project_code: string
+  project_name: string
+  execution_order_id?: number | null
+  time_points: string[]
+  recent_checkin_time: string | null
+  stats: {
+    signed_in_count: number
+    completed_count: number
+    pending_count: number
+    completion_rate: number
+  }
+  subjects: MyTodayProjectSubject[]
+}
+
+export interface MyTodayProjectsData {
+  date: string
+  refreshed_at: string
+  refresh_interval_seconds: number
+  measurement_source_available: boolean
+  stats: {
+    project_count: number
+    signed_in_count: number
+    completed_count: number
+    pending_count: number
+    completion_rate: number
+  }
+  projects: MyTodayProjectItem[]
+}
+
 // ============================================================================
 // API 方法
 // ============================================================================
@@ -189,6 +254,10 @@ export const evaluatorApi = {
     return api.get<ApiResponse<WeeklySchedule>['data']>(
       '/evaluator/my-schedule', { params }
     )
+  },
+
+  myTodayProjects() {
+    return api.get<ApiResponse<MyTodayProjectsData>['data']>('/evaluator/my-today-projects')
   },
 
   /** 按姓名查看排程（维周同步后可按人查看；后端未实现时回退为当前用户排程） */

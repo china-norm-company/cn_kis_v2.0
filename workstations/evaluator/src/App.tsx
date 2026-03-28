@@ -16,6 +16,7 @@ import { DetectionHistoryPage } from './pages/DetectionHistoryPage'
 import { ExceptionListPage } from './pages/ExceptionListPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { MyTodayProjectsPage } from './pages/MyTodayProjectsPage'
 import { useApiInit } from './hooks/useApiInit'
 
 export default function App() {
@@ -31,6 +32,7 @@ export default function App() {
           <Route element={<AppLayout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/my-today-projects" element={<MyTodayProjectsPage />} />
             <Route path="/workorders" element={<WorkOrderListPage />} />
             <Route path="/execute/:id" element={<ExecutePage />} />
             <Route path="/scan" element={<ScanPage />} />
